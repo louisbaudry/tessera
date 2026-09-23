@@ -181,7 +181,9 @@ epic in this repo (QA engine, smart glossary, portal):
 ## 4. Assignment lifecycle
 
 An `assignment_event`-style append-only history, same pattern as
-`portal-v0-spec.md` §2's `order_event`: every transition is a row, legal
+`portal-v0-spec.md` §2's `order_event`, but with a required actor and
+append-only triggers from its first migration (`planning/audit-spec.md`
+§8.2): every transition is a row, legal
 transitions enforced in `vendor-core` (`transitionAssignment` or
 equivalent), not scattered across routes. This is what the job-feed
 screens in §7 read from, and — same reasoning as `order_event` — the

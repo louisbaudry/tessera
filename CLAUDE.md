@@ -136,6 +136,23 @@ already settled differently.
   have created `docx/` → `segment/`. Work out the dependency direction
   before writing the glue code, not after the cycle shows up.
 
+## Auditability
+
+`planning/audit-spec.md` (backlog #55–#58). Designed before most of it
+is built, because history not recorded at write time is gone. Before
+writing any new write path, know these three rules:
+
+- **A change that matters writes an `audit_event` in the same
+  transaction**, in the same file as the data it describes. The table is
+  append-only by trigger. Its row type, action list and hash chain live
+  once, in `core/audit/`. A new action widens the `CHECK`; it never
+  becomes free text.
+- **The actor is a required parameter, never optional or defaulted.**
+  A write that can't name who caused it shouldn't compile.
+- **Actor and `origin` are separate facts.** An AI engine or a TM match
+  is an `origin`, never an actor. The accountable human (or a named
+  `system:` job) is the actor.
+
 ## The smart glossary (`.ctg`)
 
 Epic 8a (`planning/smart-glossary-spec.md`) is a `.ctm`-shaped SQLite
@@ -350,6 +367,19 @@ pattern.
   a fact — the mistake the invariant above names. Reach for the same
   pattern before duplicating a schema into a test.
 
+- **The `.ctm` scale benchmark is `pnpm bench:tm`** (`db/tm/bench/`,
+  tm-format-spec.md §11), kept out of `pnpm test` and out of the build:
+  it runs from source under Node's type stripping against the built
+  `@cat-tool/db`, which is why `db/tsconfig.check.json` allows `.ts`
+  import specifiers. It writes multi-GB files to the OS temp dir and
+  deletes them; its numbers are synthetic, and §11 says what that
+  leaves unproven. A change to a TM query's shape is worth one
+  `pnpm bench:tm --sizes 1000000` before and after. With
+  `--sdltm <file> --src en --tgt es` it measures a real Trados memory
+  instead, imported whole through `importSdltm`: client data, so it
+  runs on the owner's machine and only the numbers (its results files
+  hold no text) come back into §11.
+
 ## Gotchas that have already cost time once
 
 - `pnpm test:gate` is `vitest run gate.test` — a **positional filter**,
@@ -428,6 +458,16 @@ pattern.
   still reports a green check**, so CI that silently stopped running looks
   exactly like CI that passed. When a workflow's coverage changes, read
   the job list on a real PR rather than the colour of the summary.
+- **A function around an indexed column turns a lookup into a table
+  scan, and nothing at test scale shows it.** `retrievePair` matched
+  `primary_subtag(s.lang) = primary_subtag(@srcLang)` so region-
+  insensitive matching could live in SQL — which also meant the
+  `(lang, hash)` index could never seek, and every exact lookup scanned
+  all of `tuv`, calling a JS function per row: 161 ms at 100k units,
+  1.7 s at 1M (tm-format-spec.md §11). Every unit test was green
+  because every unit test had a dozen rows. Read `EXPLAIN QUERY PLAN`
+  for any new query on a table that grows with the customer, and look
+  for `SCAN` where you expected `SEARCH`.
 - **A matrix job's real check name is the expanded one.**
   `name: 🚦 roundtrip gate` with a two-OS matrix produces
   `🚦 roundtrip gate (ubuntu-latest)` and `(windows-latest)`; the bare

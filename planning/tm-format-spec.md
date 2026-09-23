@@ -940,16 +940,260 @@ SQLCipher operates below this schema and changes nothing above it. Worth
 revisiting when agency clients with confidentiality clauses appear — which
 the transferable-licence model makes likely.
 
+**Revisited 2026-09-23:** encryption at rest is now a first-priority
+control, to be decided before launch rather than retrofitted onto files
+clients already hold (`worldwide-and-compliance-spec.md` §6.3).
+
 ---
 
 ## 11. Sizing
 
 Target: **under 100k units** on day one, from existing Trados memories.
+That target is unchanged. What changed on 2026-09-23 is that the ceiling
+above it is now measured rather than estimated. An agency master TM for
+a worldwide deployment could reach 1–10M units, and the earlier sentence
+here ("the design holds to roughly 2M units") was a guess.
 
-At that scale nothing here needs special handling — plain B-tree indexes,
-import in seconds, a file comfortably under 200MB. The design holds to
-roughly 2M units before chunked/resumable import and deferred FTS build
-become worth the complexity; neither is in v1.
+### 11.1 Measured, on synthetic data
+
+`pnpm bench:tm` (`packages/db/src/tm/bench/`, kept out of `pnpm test`)
+builds en→fr memories of 100k, 1M and 5M units through the real code
+path (`createTm`, the shared migration runner, `importTmx` in 50k-unit
+TMX slices, one transaction each), then times the real repository
+functions against them. Each size runs in its own process, so peak RSS
+belongs to one size. Generated files go to the OS temp dir and are
+deleted as the run proceeds. The full run takes about 75 minutes and
+needs free disk of two to three times the largest file (7.5 GiB at
+5M) at its peak.
+
+**These are synthetic numbers.** The corpus is two 6,000-word
+pseudo-vocabularies drawn Zipf(1.07), 3–40 words per sentence (median
+13), ~25% near-duplicates of a recent unit, ~2% same-source/new-target,
+~10% numbers and ~10% inline tags. It was built to stop FTS and fuzzy
+from looking artificially good, but it is not a real memory. §11.3 says
+what that leaves open.
+
+Machine: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores, 15.7 GiB RAM, linux 6.18.44-fc-v37, Node v22.22.2, SQLite 3.49.2.
+
+| Units | File | After VACUUM (time) | Build, 50k-unit `importTmx` slices (peak RSS) | Single-file `importTmx` (TMX size, peak RSS) | Copy | Online backup |
+|---|---|---|---|---|---|---|
+| 100k | 150 MiB | 144 MiB (2.3 s) | 25 s (404 MiB) | 26 s (40 MiB, 530 MiB) | 394 ms | 663 ms |
+| 1M | 1,496 MiB | 1,438 MiB (26 s) | 335 s (1071 MiB) | 363 s (395 MiB, 4119 MiB) | 8.1 s | 8.1 s |
+| 5M | 7,503 MiB | 7,212 MiB (133 s) | 2282 s (1051 MiB) | **fails** after 15 s (1,975 MiB): Error: Cannot create a string longer than 0x1fffffe8 characters | 36 s | 48 s |
+
+Latency, p50 / p99 (samples):
+
+| Units | Exact: `retrievePair` as shipped | Exact: same, after `ANALYZE` | Exact: index-friendly rewrite | Concordance, common word | Concordance, rare word | Concordance, 2-word phrase | `writeBack` (one confirm) |
+|---|---|---|---|---|---|---|---|
+| 100k | 161 ms / 213 ms (366) | 0.07 ms / 0.18 ms (10000; ANALYZE 217 ms) | 0.02 ms / 0.08 ms (10000) | 17 ms / 99 ms ranked; 0.07 ms / 0.16 ms unranked | 0.16 ms / 0.39 ms ranked; 0.07 ms / 0.13 ms unranked | 0.91 ms / 45 ms ranked; 0.27 ms / 0.99 ms unranked | 24 ms / 37 ms (300) |
+| 1M | 1.7 s / 1.8 s (36) | 0.08 ms / 0.18 ms (10000; ANALYZE 2.4 s) | 0.03 ms / 0.11 ms (10000) | 209 ms / 1.4 s ranked; 0.10 ms / 0.23 ms unranked | 1.2 ms / 2.1 ms ranked; 0.16 ms / 0.46 ms unranked | 5.6 ms / 334 ms ranked; 0.71 ms / 3.3 ms unranked | 247 ms / 314 ms (238) |
+| 5M | 8.7 s / 9.2 s (20) | 0.09 ms / 0.24 ms (10000; ANALYZE 13 s) | 0.03 ms / 0.10 ms (10000) | 1.2 s / 6.5 s ranked; 0.10 ms / 0.24 ms unranked | 5.7 ms / 10 ms ranked; 0.15 ms / 0.35 ms unranked | 31 ms / 2.8 s ranked; 1.1 ms / 9.3 ms unranked | 1.3 s / 1.4 s (47) |
+
+Fuzzy baselines, per query sentence, p50 / p99 (queries); recall = the shortlist contained the best match the naive scan found:
+
+| Units | Naive: score every source variant | FTS top-50, all query words | FTS top-50, stopwords dropped |
+|---|---|---|---|
+| 100k | 907 ms / 1.6 s (40) | 147 ms / 270 ms, recall 95% | 3.1 ms / 9.3 ms, recall 90% |
+| 1M | 9.4 s / 13 s (6) | 1.9 s / 3.4 s, recall 83% | 43 ms / 186 ms, recall 67% |
+| 5M | 58 s / 59 s (3) | 9.6 s / 15 s, recall 67% | 177 ms / 502 ms, recall 67% |
+
+Warm page cache throughout: the machine had 15.7 GiB of RAM, so the
+whole 7.5 GiB file fit in memory. Hits and misses are interleaved 1:1 in
+the exact-lookup columns. Every sampled hit was found by all three
+lookup variants, and every miss returned nothing. A budget of 60 s per
+measurement is why the full-scan columns have fewer samples than 10,000.
+Concordance and the fuzzy shortlist query `tuv_fts` directly, because no
+repository function for either exists yet. "Ranked" is `ORDER BY rank
+LIMIT 50`; "unranked" is the first 50 hits in rowid order. Fuzzy uses
+word-level Levenshtein; recall has 40 queries at 100k, but only 6 at 1M
+and 3 at 5M (the naive scan is what limits it), so those two recall
+figures are indicative only.
+
+### 11.2 What the numbers say
+
+**The format holds at 5M; two of today's queries do not hold at 100k.**
+A size problem in the file itself would show up as an indexed lookup
+slowing down, and it doesn't. An exact lookup that seeks the
+`(lang, hash)` index costs 0.03 ms at 100k units and still 0.03 ms at
+5M. The file grows linearly at about 1.5 KiB per bilingual unit, so
+1M ≈ 1.5 GiB, 5M ≈ 7.3 GiB and 10M ≈ 15 GiB by extrapolation. `VACUUM`
+recovers only 4%. Everything that went wrong is in code that reads or
+writes the format, and every such case can be fixed without a format
+change.
+
+*Broken today, at any agency size* — each is a code fix, not a format one:
+
+- **`retrievePair` scans the whole `tuv` table on every lookup.**
+  `primary_subtag(s.lang) = primary_subtag(@srcLang)` wraps the indexed
+  column in a function, so the plan is `SCAN s` with a JS callback per
+  row: 161 ms at 100k units, 1.7 s at 1M and 8.7 s at 5M. At 1M,
+  pretranslating a 5,000-segment document would take 2.4 hours. The
+  rewrite in the table reads the matching languages from `tm.langs`
+  and matches `lang` by equality. Its plan is `SEARCH … (lang=? AND
+  hash=?)`, it returns the same rows, and it measured 0.03 ms. Running
+  `ANALYZE` alone also rescues the shipped query: SQLite then
+  skip-scans the index (0.09 ms). But that depends on `sqlite_stat1`
+  existing, and nothing in this codebase ever runs `ANALYZE`, so it
+  belongs as a complement to the rewrite rather than a substitute. The
+  same pattern is in the glossary's `findRendering`
+  (`term_variant_lookup`).
+- **`writeBack` gets slower with every unit already in the memory.**
+  It calls `refreshLangs`, whose `SELECT DISTINCT lang FROM tuv` walks
+  the whole index on every confirm: 24 ms at 100k units, 247 ms at 1M
+  and 1.3 s at 5M. At 5M, each segment confirm would stall for more
+  than a second.
+- **Single-file `importTmx` cannot take an agency-sized TMX.** It needs
+  the whole document as one string plus the whole parse tree in memory.
+  At 1M units (a 395 MiB TMX) it peaked at **4.1 GiB RSS**, twice a
+  2 GB server. At 5M (a 2 GiB TMX) it fails before parsing begins,
+  because V8 cannot hold a string longer than 2^29 characters. Import
+  in 50k-unit slices, each its own transaction, stayed near 1 GiB peak
+  RSS at every size. That figure is mostly V8 heap left uncollected
+  between slices, not live data, and it is still unproven under a
+  capped heap.
+
+*Comfortable* — fine for a 2 GB server as measured:
+
+- Exact lookup once it seeks the index: under 0.25 ms at p99 at every
+  size.
+- Unranked concordance: under 10 ms at p99 at every size, for common
+  words, rare words and phrases alike. Ranked concordance on a rare
+  word also stays fast (10 ms at p99 at 5M).
+- Copying the file (a stand-in for backup or a move between regions):
+  8.1 s at 1M (1.5 GiB), 36 s at 5M. SQLite's online backup
+  API, which is the right tool for a live WAL file, took 48 s at 5M.
+  Both scale linearly, at roughly 150–210 MiB/s on this disk.
+
+*A risk on a 2 GB server* — works, but not comfortably:
+
+- **Ranked concordance on common words** scales with how often the word
+  occurs, because bm25 has to score every hit before it can return the
+  top 50: 209 ms p50 and 1.4 s p99 at 1M, 1.2 s and 6.5 s at 5M. A
+  concordance UI should return unranked hits first, or cap the ranked
+  query.
+- **Bulk import throughput falls as the memory grows**: 4,700 units/s
+  into an empty file, 1,850 units/s by the time it holds 4.95M. That
+  makes a 5M import 38 minutes and a 10M one plausibly two hours or
+  more. It needs a `worker_thread` (§1.1), resumable progress, and
+  probably deferred FTS building. SQLite's default 2 MiB page cache was
+  left untuned; a bigger `cache_size` is an obvious lever that has not
+  been measured.
+- **Nothing here measured a cold cache.** Once the file is larger than
+  RAM, which on a 2 GB server means anything past about 1M units, an
+  indexed lookup still touches only a handful of pages. But any
+  full-scan path (the shipped `retrievePair`, `refreshLangs`, naive
+  fuzzy) becomes disk-bound and far slower than the figures above.
+- **`VACUUM` and the pre-migration backup (§10) each need about one
+  extra file's worth of free disk**, 7+ GiB at 5M. `VACUUM` also took
+  133 s holding a write lock.
+
+*Fuzzy* (v1-spec.md §4.3's plan, checked — fuzzy is still not built):
+scoring every unit takes 0.9 s at 100k units, 9.4 s at 1M and 58 s at
+5M. As expected, that is not an option. The FTS shortlist fixes the
+latency: dropping the 100 most frequent words and taking the top 50 by
+bm25 costs 177 ms p50 at 5M. What it does not hold is *recall*: 90% at
+100k and 67% at 1M. As the memory grows, more near-identical candidates
+compete for 50 places, and a pure bag-of-words rank does not favour the
+one closest in edit distance. The shortlist-then-score design stands.
+The shortlist's size and ranking have to be designed for scale rather
+than assumed. See §12.
+
+### 11.3 What only a real multi-million-unit memory can confirm
+
+A real memory differs from this corpus in exactly the ways that move
+these numbers:
+
+- **The vocabulary is larger.** A real memory has tens of thousands of
+  distinct words plus product names, codes and numbers, not 6,000. That
+  changes FTS posting-list lengths, and with them ranked-concordance
+  cost and shortlist recall, in a direction nobody can predict from
+  here.
+- **Boilerplate and repetition are heavier.** Legal and software memories
+  repeat the same segment with small variations far more than 25% of the
+  time. That is the case most likely to break a 50-candidate shortlist.
+- **Segments and tag payloads are longer.** Real Trados exports carry
+  more and larger tags and more `<prop>`s per unit, so expect a bigger
+  file per unit than 1.5 KiB.
+- **Multilingual units.** A master TM with 5–10 languages per unit
+  multiplies the number of `tuv` rows. The indexed paths should not
+  care; the full-scan paths above would get proportionally worse.
+- **The deployment box itself.** Nothing here ran on 2 GB of RAM, a
+  capped Node heap, a cold cache, network storage, or with concurrent
+  readers during an import.
+
+Before quoting any of this to a client, rerun it against a real
+multi-million-unit memory: import time and RSS, file size per unit,
+concordance on the most common real words, and shortlist recall against
+a naive scan. Then treat the synthetic figures above as the floor, not
+the forecast.
+
+The bench has a mode for exactly that, `pnpm bench:tm -- --sdltm <file>
+--src en --tgt es`. It imports a real Trados memory whole through
+`importSdltm` (opened read-only, so the original is never touched),
+takes "common" and "rare" words and stopwords from the memory's own
+source sentences by document frequency, and runs every measurement
+above on it. That makes it a measurement of `.sdltm` import at scale
+too, which nothing had measured before. A client's memory never leaves
+the owner's machine for this. The run writes its `.ctm` to the OS temp
+dir and deletes it (a crashed run can leave one behind), and its
+results files hold timings, counts, query plans and the language tags,
+never text, so only the numbers come back into this section.
+
+### 11.4 The first real memory (2026-09-23)
+
+A 2022 en-US→es-ES client memory, run on the owner's machine: Intel
+i5-10500T, 12 threads, 15.8 GiB RAM with only about 1.8 GiB free,
+Windows 11, Node 22.23, SQLite 3.49.2. That is a different and slower
+machine than §11.1's, so compare shapes rather than absolute
+milliseconds.
+
+| Units | `.sdltm` | `.ctm` (after VACUUM) | `importSdltm`, whole file (peak RSS) | Copy / online backup |
+|---|---|---|---|---|
+| 86,240 | 574 MiB | 154 MiB (148 MiB, 2.7 s) | 31 s (396 MiB) | 111 ms / 988 ms |
+
+| Exact: `retrievePair` as shipped | after `ANALYZE` | index-friendly rewrite | Concordance, common word | rare word | 2-word phrase | `writeBack` |
+|---|---|---|---|---|---|---|
+| 214 / 267 ms (278) | 0.10 / 0.23 ms | 0.04 / 0.10 ms | 11 / 46 ms ranked; 0.10 / 0.24 ms unranked | 0.10 / 1.7 ms ranked; 0.05 / 0.49 ms unranked | 0.51 / 6.5 ms ranked; 0.28 / 1.1 ms unranked | 16 / 46 ms |
+
+| Fuzzy: naive | FTS top-50, all words | FTS top-50, stopwords dropped |
+|---|---|---|
+| 1.0 / 1.3 s (40) | 49 / 209 ms, recall 100% | 2.4 / 68 ms, recall 100% |
+
+(p50 / p99, samples in brackets.)
+
+What it says:
+
+- **The synthetic corpus held up at this size.** Every shape in §11.1's
+  100k row reappears: `retrievePair` as shipped scans (214 ms), and the
+  rewrite seeks (0.04 ms); `writeBack` costs tens of milliseconds;
+  ranked concordance on a common word is the one slow FTS path; the
+  naive fuzzy scan takes about a second. Shortlist recall was 100% on
+  real text at 86k units, against 90–95% synthetic at 100k. That makes
+  §11.2's recall worry no worse on real data at this size. It does not
+  settle it at 1M.
+- **A `.ctm` is about 3.7× smaller than the `.sdltm` it came from**:
+  1.8 KiB per unit against Trados's 6.8 KiB. The `.ctm` figure is 20%
+  above the synthetic 1.5 KiB, partly because of the 110,960 Trados
+  context occurrences carried as provenance (§8a.1). **Megabytes of
+  `.sdltm` are not a unit count.** This "huge" 574 MB memory is under
+  the 100k day-one target. At 6.8 KiB a unit, a 10M-unit agency memory
+  would be about 65 GB as `.sdltm` and about 18 GiB as `.ctm`.
+- **`importSdltm` has the same whole-file memory shape as `importTmx`.**
+  It parses every unit before writing any: 396 MiB peak for 86k units,
+  or roughly 3.5 KiB per unit above the process baseline. Extrapolated
+  linearly (not measured), a 2 GB server runs out somewhere around
+  half a million units. §12.4 applies to both importers.
+- **Issue #68's first check passed on this file.** Units read matched
+  the file's own `tucount` (the importer's mismatch warning did not
+  fire); 6 units with no source text were skipped by design. Two things
+  §8a had not recorded turned up: a tag `<Type>` of `TextPlaceholder`
+  (26 tags, carried as placeholders), and a Trados attribute
+  (`StructureContext`) repeated within one unit (254 units, first value
+  kept). 7,888 `CanHide` tags were left out as designed, and 15,356
+  variants carry tags without a kind hint (§12.3). The file's
+  `application_id` is 0, like every real file in §8a.3. The bench wraps
+  the file so the guard lets it through; the product still refuses it
+  until #68 drops the guard.
 
 ---
 
@@ -974,3 +1218,48 @@ become worth the complexity; neither is in v1.
    hashes it differently from §4. Recovering tag *kinds*, which `.sdltm`
    does not record either, is the other thing a fully-placed match from
    a Trados memory would still need.
+   **Priority, decided 2026-09-23: TMX first.** Translators and
+   language providers routinely export TMX, and that path is enough.
+   Native `.sdltm` import is a nice-to-have: keep what exists, and let
+   issue #68 (drop the `application_id` guard, fix the fixture) wait
+   behind the TMX work in §12.4. One real file has now been through it
+   (§11.4, `tucount` matched), which is further than the
+   reverse-engineering needed to go for now.
+4. **Import at agency scale (§11.2, §11.4).** Both importers build the
+   whole memory in memory before writing: `importSdltm` peaked at
+   396 MiB for a real 86k-unit memory, so a 2 GB server runs out
+   somewhere around half a million units (extrapolated).
+   `importTmx(db, xml: string)`
+   cannot import a TMX of more than about 1M units on a 2 GB server,
+   and cannot import one of 5M units anywhere: a V8 string tops out at
+   2^29 characters. An agency master TM needs a streaming TMX reader
+   (and a paged `.sdltm` reader, since `parseSdltm` has the same shape)
+   that feeds units into bounded transactions (the 50k-unit slices in
+   §11.1 stayed near 1 GiB peak RSS), run in a `worker_thread` per
+   §1.1, and it needs a resume point. One more design question comes
+   with it: whether one import is still one transaction (§7's
+   all-or-nothing) when it takes 38 minutes, or whether resumable
+   slices plus a visible "incomplete import" state are the honest
+   contract.
+5. **Fuzzy candidate retrieval at scale (§11.2).** In the synthetic
+   corpus, a top-50 FTS shortlist lost the best edit-distance match
+   10% of the time at 100k units and a third of the time at 1M. Open:
+   a larger or adaptive shortlist, a rank that rewards length
+   similarity, n-gram rather than word terms, or embeddings
+   (`tuv_vec`, §2.8) as a second candidate source. Measure against a
+   real memory before choosing (§11.3).
+6. **Query statistics.** Nothing ever runs `ANALYZE` or
+   `PRAGMA optimize`, so the planner never has statistics. §11.2 shows
+   that statistics alone turn the shipped `retrievePair` from a table
+   scan into an index skip-scan. Worth deciding whether imports and
+   `VACUUM` should end with `PRAGMA optimize` as a safety net, even
+   once every hot query seeks its index by construction.
+7. **One file per client, or one master file?** The format holds a 5M
+   memory, but every whole-file operation grows linearly with it: copy,
+   online backup, `VACUUM`, and the pre-migration backup (§10), all
+   36–133 s at 5M and each needing a file's worth of free disk. How an
+   agency deployment splits memories across files (per client, per
+   language pair, per region), and how the `priority` resolution that
+   already exists for attached TMs (`tm_ref`) covers the split, is a
+   product decision that these numbers now inform rather than a
+   performance problem.

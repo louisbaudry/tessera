@@ -1399,6 +1399,38 @@ language-pair plumbing and an EN→FR number round trip through
 `runQaRules`). Full gate green: 759 tests, 73-test `test:gate` (nothing
 under `docx/` changed, run anyway).
 
+**Three follow-ups from the `.ctm` scale benchmark** (`pnpm bench:tm`,
+`db/tm/bench/`; results in `tm-format-spec.md` §11, 2026-09-23). The
+format held at 5M synthetic units, and the one real memory measured
+(86k units, en→es, §11.4) matched the synthetic shapes. What didn't
+hold was code that reads or writes the format. It wasn't caught
+earlier because every unit test has a dozen rows (CLAUDE.md's
+function-around-an-indexed-column gotcha).
+
+**#18c · Streaming TMX import with bounded memory · M** · [issue #106]
+TMX is what translators and language providers actually export, so it
+is the import that has to scale. `.sdltm` is a nice-to-have (§12.3).
+`importTmx(db, xml: string)` peaked at 4.1 GiB RSS at 1M units and
+cannot read a 5M-unit TMX at all (V8's 2^29-character string cap); in
+50k-unit slices it stayed near 1 GiB. The fix is a streaming reader
+into bounded transactions, with a resume point, and a recorded answer
+to §12.4's all-or-nothing question. Running it off-thread stays #16a.
+*Done when:* a 5M-unit TMX imports under a 2 GB-capped Node heap.
+
+**#19a · Make exact lookup seek the `(lang, hash)` index · S** · [issue #104]
+`retrievePair`'s `primary_subtag(s.lang) = …` scans all of `tuv` on
+every lookup: 1.7 s at 1M units, and 214 ms on the real 86k memory. An
+index-friendly rewrite (languages taken from `tm.langs`, matched by
+equality) measured 0.04 ms and returned the same rows. The glossary's
+`findRendering` has the same pattern. *Done when:* both plans show
+`SEARCH`, and a test asserts it.
+
+**#20a · Stop `refreshLangs` scanning `tuv` on every confirm · S** · [issue #105]
+`writeBack` recomputes `tm.langs` with a full `DISTINCT` on every
+confirm: 247 ms at 1M units, 1.3 s at 5M. Keep it a projection (§2.1),
+but compute it cheaply. *Done when:* a confirm at 1M units takes low
+single-digit milliseconds in `pnpm bench:tm`.
+
 ---
 
 ## Epic 5 — CLI *(the harness that proves it all)*
@@ -2007,6 +2039,50 @@ any of this to render into until those land:
 - **#54 · Capacity status toggle UI · S** · [issue #93] — after
   `#28`–`#35`.
 
+### Cross-cutting — Auditability (spec'd 2026-09-23, not started)
+
+Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the
+epics that need it, for the reason the `.ctm` context columns were: history
+not recorded at write time can't be recovered afterwards. Today
+`setSegmentTarget` overwrites `target_tokens` with no actor, so every edit
+destroys the one before it. That was harmless while one person wrote every
+segment. It stops being harmless the moment vendors (Epic 9) and AI drafts
+(Epic 8) write into the same project. The decisions worth carrying forward:
+
+- **An append-only `audit_event`, written in the same transaction as the
+  change, enforced by triggers**, `term_decision`'s way, not by
+  convention. One table shape, defined once in `core/audit/`, in each
+  database that needs it (`project.catdb`, `platform.sqlite`,
+  `portal.sqlite`). The log lives in the file whose data it describes.
+- **The actor is required at the repository API, never defaulted**, and
+  it is a different fact from `origin`. An AI engine is never an actor:
+  the human who accepted its draft is, and the engine's provenance
+  (model, prompt version, input digest) rides in the event. That section
+  (spec §4) is a requirement Epic 8's design must meet.
+- **Hash-chained from the first row**, because a chain can't be
+  retrofitted onto rows written before it. Anchoring the head outside the
+  file is deferred.
+- **Reads aren't audited; content leaving the system is**: exports,
+  downloads, deliveries, and AI requests.
+
+Sized issues:
+
+- **#55 · `core/audit`: actor, event shape, hash chain · S** ·
+  [issue #97] — pure TS, the one definition the rest import.
+- **#56 · `audit_event` in `project.catdb` (schema v5), actor required
+  on every segment write · M** · [issue #98] — `setSegmentTarget` is
+  already the single segment writer, so this is one chokepoint, plus a
+  `segment.baseline` for existing data and CLI `history`/`audit-verify`.
+- **#57 · `audit_event` in `platform.sqlite`; the server passes the
+  session's actor into every write · M** · [issue #99] — auth and
+  download events; `authorization.*` joins once `#45` lands.
+- **#58 · Portal: actor on `order_event`, append-only triggers, portal
+  `audit_event` · S** · [issue #100].
+
+Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
+history, `assignment_event`) carry an `actor` from their first migration
+(spec §8.2).
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,
@@ -2046,3 +2122,7 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #56]: https://github.com/louisbaudry/cat-tool-project/issues/56
 [issue #57]: https://github.com/louisbaudry/cat-tool-project/issues/57
 [issue #65]: https://github.com/louisbaudry/cat-tool-project/issues/65
+[issue #97]: https://github.com/louisbaudry/cat-tool-project/issues/97
+[issue #98]: https://github.com/louisbaudry/cat-tool-project/issues/98
+[issue #99]: https://github.com/louisbaudry/cat-tool-project/issues/99
+[issue #100]: https://github.com/louisbaudry/cat-tool-project/issues/100

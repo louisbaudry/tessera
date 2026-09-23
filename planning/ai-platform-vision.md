@@ -116,6 +116,13 @@ Architecture, otherwise settled:
   value (`v1-spec.md` §4.3) — `mt_draft`, `mt_claude_polished` slot in
   without touching `@cat-tool/db`.
 
+**Already fixed for Ring 0.5 (2026-09-23):** every accepted AI draft
+is recorded with the accepting human as actor and the engine, model,
+prompt version and input digest as provenance. Every send of client
+content to an engine is an event too. This is what makes §5's disclosure
+and per-client opt-out provable after the fact
+(`planning/audit-spec.md` §4).
+
 Not yet designed: the actual editor interaction (what an inline AI
 suggestion looks like, how it's accepted/rejected/edited, how QA findings
 surface next to rule-based ones). That's Ring 0.5's own spec, written the
@@ -272,6 +279,11 @@ re-litigated per project:
    sector (legal, health, government, pre-filing patents) is actually
    on the books. Building the compliance machinery before there's a
    client who needs it is effort spent on the wrong thing right now.
+   **Partly reversed 2026-09-23** (`worldwide-and-compliance-spec.md`
+   §6.1): the compliance *machinery* (audit log, access control,
+   encryption at rest, deletion) is now built by design from the start;
+   the per-client *paperwork* (DPA, BAA) is still produced when a client
+   needs it.
 
 ---
 

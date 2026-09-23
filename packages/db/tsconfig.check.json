@@ -4,7 +4,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // The scale benchmark (src/tm/bench/) runs straight from source under
+    // Node's type stripping, which needs real `.ts` import specifiers.
+    "allowImportingTsExtensions": true
   },
   "include": ["src/**/*.ts"],
   "exclude": []
