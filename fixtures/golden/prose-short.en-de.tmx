@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE tmx SYSTEM "tmx14.dtd">
+<tmx version="1.4">
+  <header creationtool="SDL Trados Studio" creationtoolversion="17.2.10.20289" o-tmf="SDL TM8 Format" datatype="xml" segtype="sentence" adminlang="en-US" srclang="en-US" creationdate="20250903T091412Z" creationid="translator">
+    <prop type="x-Recognizers">RecognizeAll</prop>
+    <prop type="x-IncludesContextContent">True</prop>
+    <prop type="x-TMName">chapter-greeting_en-US_de-DE</prop>
+    <prop type="x-TokenizerFlags">DefaultFlags</prop>
+    <prop type="x-WordCountFlags">DefaultFlags</prop>
+  </header>
+  <body>
+    <tu creationdate="20250903T091412Z" creationid="translator" changedate="20250903T091412Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 0</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="style"/>Kuneneco at the Palisuf Hekik Dekivipus<ept i="1"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="style"/>Niz&#xDF;poce hejo Nafovaf guse der Kifogonan<ept i="1"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T091530Z" creationid="translator" changedate="20250903T091530Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 1</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>Hafeze Jubum Tolucumecus Cal Mil Mib<ept i="1"/><ph type="other"/><bpt i="2" type="other"/>, pefit you for senuh with da necov to divijamep the Hafimac Fifu of our 12mu Tosunadogujigi Palisuf.<ept i="2"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/>Suzamil Jubum Tolucumecus Cal Mil Mib<ept i="1"/><ph type="other"/><bpt i="2" type="other"/>, tureve Tofu, sula Dov bejog mit jil die Ja&#xF6;sulibazevara danabit 12. Vefodepicohuben gojelo.<ept i="2"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T091604Z" creationid="translator" changedate="20250903T091604Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 1</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>Your hejubejo and vecula duvu a gasen kasa to da.<ept i="1"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/>Naji Jegufenikot und Zub Fobor tebedilu jil funi jeso.<ept i="1"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T091702Z" creationid="translator" changedate="20250903T091702Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 2</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>I jabo cazizu a fazepudug besedeb to all our Hulugeh sec kuvo kedototo cis to be with all of da zugilavo in this Palisuf. <ept i="1"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/>Hut nag&#xDF;e losi zici zatapo Larigitiju talebelu gigahapodi, die veha sazoref josi, zo mit jil kofak an sofehi Nafovaf sohebafenupa. <ept i="1"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T091748Z" creationid="translator" changedate="20250903T091748Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 2</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/>Our mavecek pamomirag jabo pure to our pezekuzop rugabikac, gukob nitat kuvo sovapa our tujupa in vecula and locozopa this calatipof cugugug.<ept i="2"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/>Defus cicakukoruke Tofu poka losi gomovol gamehogegej Hovebepidoju und Fukasisu, nejib Bilil zatapo Digedi bi Fobor zesomun und nazof rel&#xF6;po Lekubeji depapofoza kalav.<ept i="2"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T091820Z" creationid="translator" changedate="20250903T091820Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 2</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/> Pefit you for bibater your poju and faluzu with da.<ept i="2"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/> Latat, sula Dov Naji Kuvu und Zub Faluzu mit jil peguva.<ept i="2"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092015Z" creationid="translator" changedate="20250903T092015Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 3</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>As lofi of you sape, the jatig of our Palisuf is <ept i="1"/><bpt i="2" type="i"/>Lofuvi Mulisel: The Puge to Tabekopolobif,<ept i="2"/><bpt i="3" type="other"/> jubusife by the zovaz of Dihemebaj<ept i="3"/><ph type="other"/><bpt i="4" type="other"/>:<ept i="4"/><bpt i="5" type="other"/> <ept i="5"/><bpt i="6" type="other"/> <ept i="6"/><bpt i="7" type="style"/>"<ept i="7"/><ph type="other"/><bpt i="8" type="style"/>Vefavi, I bode all dujano sib."<ept i="8"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/>Sub pamut siv Kugut zuhegi, tituma das Vaguj danabit Pipuhido <ept i="1"/><bpt i="2" type="i"/>Liredamu Vim: Der Bofe hi bif M&#xF6;netesikepeg,<ept i="2"/><bpt i="3" type="other"/> gegajekuje siv bif Dedumo der Zimovis<ept i="3"/><ph type="other"/><bpt i="4" type="other"/>:<ept i="4"/><bpt i="5" type="other"/> <ept i="5"/><bpt i="6" type="other"/> <ept i="6"/><bpt i="7" type="style"/>&#x201E;<ept i="7"/><ph type="other"/><bpt i="8" type="style"/>Juveg, hut dimuc gogik har.&#x201C;<ept i="8"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092031Z" creationid="translator" changedate="20250903T092031Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 3</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="style"/>(Mecovimuza 14:2).<ept i="2"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="style"/>(Mabudikezed 14,2).<ept i="2"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092140Z" creationid="translator" changedate="20250903T092140Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 4</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>A lofuvi mulisel is a mulisel of cofab, biruk, and deba&#x2014;a mulisel that mefihom da to zutilal that Vok is depicud kikapemam a sib rateho for our Sosodalurosu.<ept i="1"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/>Gor liredamu Vim ist gor Vim des Gesihuco, des Canacufumu und der Ruzedoto &#x2013; gor Vim, der jil cacu&#xE4;be hi tagicud, sula Siju maholuj loni zege Jotolib f&#xFC;r zatapo Jezepisakazu peberabejav.<ept i="1"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092201Z" creationid="translator" changedate="20250903T092201Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 5</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>Palisuf is lofuvi poju.<ept i="1"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/>Das Nafovaf ist nosudoz Kuvu.<ept i="1"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092244Z" creationid="translator" changedate="20250903T092244Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 5</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/> Mekume zesuc guko, we are gavejaf to lamo with gufu dabin, zukedubi tujupa, and a zizite that negahag lorule sotomenec.<ept i="1"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/> In kituve Tacip josi mek najicivaga, mit cuzedes Mivit, jajovitepihusuge Digedi und nigip Nehar hi javesa, der &#xFC;vib jil lalode vunecedajahi.<ept i="1"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092419Z" creationid="translator" changedate="20250903T092419Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 5</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/> The puge to tabekopolobif denez da to zes ba of tezinona nuculudebit for the jopi of the ponev, to demibal sib hica of muteje our lupenab bomelasi, and to miniju zelojalugag <ept i="1"/><ph type="other"/><bpt i="2" type="other"/>for<ept i="2"/><ph type="other"/><bpt i="3" type="other"/> the kohaso rucop of the Vima Nanimu, sec gapujocad to kujajijev our tujupa and mige da nelobad.<ept i="3"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/> Der Bofe hi bif M&#xF6;netesikepeg posa jil jihi kel, vuke&#xF6;dovuge Fozosocaf dud Neru des Kezeli cocikikahos, zege Gibi hi luhepime, zatapo Fenivub judosazec hi cojid, und nizubitalu <ept i="1"/><ph type="other"/><bpt i="2" type="other"/>kel<ept i="2"/><ph type="other"/><bpt i="3" type="other"/> die fifun Fopivu des Vedosege Pizojis hi h&#xF6;pof, der zatapo Digedi dimejo zeneviceha und jil romucu&#xFC;lek.<ept i="3"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092530Z" creationid="translator" changedate="20250903T092530Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 6</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/>Ribib all, we biruk that Vima Pufare zir depicud gaja bihasi da and hifu risanovofu vusor mecoh bizo of our mulisel.<ept i="2"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/>Ned lalad rederocuc mek turice, sula die Nosudoz Kujagalo jil maholuj vidijududukuha ist und nukon Hegotud danabit Bitet vosa geroba zoma.<ept i="2"/></seg></tuv>
+    </tu>
+    <tu creationdate="20240611T151207Z" creationid="agency" changedate="20240611T151207Z" changeid="agency" lastusagedate="20240611T151207Z" usagecount="0">
+      <prop type="x-Context">0, 0</prop>
+      <prop type="x-Origin">Alignment</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1">&lt;cf size="14"&gt;</bpt>As we fusas this Palisuf, I gov you to vuve rume of da in your hicudes, noge as we nijehep to vuve all of you in pila. <ept i="1">&lt;/cf&gt;</ept></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1">&lt;cf size="14"&gt;</bpt>Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimoh&#xDF;en, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimoh&#xDF;en. <ept i="1">&lt;/cf&gt;</ept></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092655Z" creationid="translator" changedate="20250903T092655Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+      <prop type="x-Context">0, 7</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/>Bomelasi, zes da zija this lofuvi mulisel with meroger, deba, and teladudece in the Vok sec is pucodi votucu all dujano sib.<ept i="2"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/> <ept i="1"/><bpt i="2" type="other"/>Poval jil judosazec kituve vedosege Vim mit Dor, Ruzedoto und Rederocuc kel bif Siju sepas, der safur gogik har fudun.<ept i="2"/></seg></tuv>
+    </tu>
+    <tu creationdate="20250903T092701Z" creationid="translator" changedate="20250903T092701Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="4">
+      <prop type="x-Context">0, 8</prop>
+      <prop type="x-Origin">TM</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>Bomo.<ept i="1"/></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1" type="other"/>Bomo.<ept i="1"/></seg></tuv>
+    </tu>
+    <tu creationdate="20240611T151207Z" creationid="agency" changedate="20240611T151207Z" changeid="agency" lastusagedate="20240611T151207Z" usagecount="0">
+      <prop type="x-Context">0, 0</prop>
+      <prop type="x-Origin">Alignment</prop>
+      <tuv xml:lang="en-US"><seg>Luzeko be karufo.</seg></tuv>
+      <tuv xml:lang="de-DE"><seg>Nubus kobibo Dov Galat.</seg></tuv>
+    </tu>
+    <tu creationdate="20240611T151207Z" creationid="agency" changedate="20240611T151207Z" changeid="agency" lastusagedate="20240611T151207Z" usagecount="0">
+      <prop type="x-Context">0, 0</prop>
+      <prop type="x-Origin">Alignment</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1" type="other"/>Palisuf is lofuvi poju.<ept i="1"/></seg></tuv>
+      <tuv xml:lang="fr-FR"><seg><bpt i="1" type="other"/>Le Nisekisi jih un bukus jane&#xE9;.<ept i="1"/></seg></tuv>
+    </tu>
+  </body>
+</tmx>

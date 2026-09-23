@@ -1,0 +1,9 @@
+packages:
+  - 'packages/*'
+
+# better-sqlite3 is a native module and needs its build script to run.
+# pnpm 10 blocks postinstall scripts unless a package is listed here.
+onlyBuiltDependencies:
+  - better-sqlite3
+  - electron
+  - esbuild

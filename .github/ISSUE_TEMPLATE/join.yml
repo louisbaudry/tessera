@@ -1,0 +1,42 @@
+name: Introduce yourself
+description: Translator, reviewer or PM who codes? Tell us who you are.
+title: 'Hello: <your name>'
+labels: ['introduction']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for stopping by. This issue is public, so share only what you're happy for anyone to read.
+  - type: input
+    id: pairs
+    attributes:
+      label: Language pairs
+      description: The pairs you work in, e.g. EN→FR, ES→EN.
+    validations:
+      required: true
+  - type: input
+    id: tools
+    attributes:
+      label: CAT tools you use (or used to)
+      description: Trados, memoQ, Phrase, Wordfast, OmegaT, CafeTran…
+  - type: textarea
+    id: code
+    attributes:
+      label: What you can build
+      description: Languages, frameworks, and anything you've built that you're proud of. Links welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: interest
+    attributes:
+      label: What you'd like to work on
+      description: A piece of the roadmap, an open issue, or the thing you've always wished your CAT tool did.
+  - type: dropdown
+    id: time
+    attributes:
+      label: Roughly how much time could you give?
+      options:
+        - A few hours, once
+        - A few hours a month
+        - A few hours a week
+        - More than that

@@ -1,0 +1,59 @@
+## $ cat-tool init <job>/job.catdb --src en --tgt de --name Golden
+Created project "Golden" (en → de) at <job>/job.catdb
+exit 0
+
+## $ cat-tool add-file <job>/job.catdb <repo>/fixtures/docx/prose-short.docx
+Added prose-short.docx as file #1: 18 segments (1 locked)
+exit 0
+
+## $ cat-tool add-tm <job>/job.catdb <job>/memory.tmx
+stderr: warning: TMX-sourced units carry no context (prev_hash/next_hash) — they can never be ICE matches.
+Imported <job>/memory.tmx into <job>/memory.ctm: 18 units, 36 variants, 1 warnings
+Attached <job>/memory.ctm as TM #1 (priority 1)
+exit 0
+
+## $ cat-tool add-tm <job>/job.catdb <job>/job.ctm --write-target
+Created empty memory <job>/job.ctm
+Attached <job>/job.ctm as TM #2 (priority 2, write target)
+exit 0
+
+## $ cat-tool pretranslate <job>/job.catdb
+Pre-translated: 14 exact, 1 tag-diff (draft), 0 propagated, 2 unmatched, 1 skipped (confirmed or locked)
+exit 0
+
+## $ cat-tool qa <job>/job.catdb
+#6	warning	punct.spacing	double space
+#7	warning	punct.spacing	double space
+#8	error	num.missing	Missing numbers: 14, 2
+#15	error	tag.missing	Missing tag: 1
+#17	warning	seg.untranslated	Target is identical to source
+QA: 5 issues across 18 segments — 2 errors, 3 warnings, 0 info; 2 blocking
+exit 1
+
+## review
+confirmed #15 with its tag reapplied
+dismissed #8 num.missing
+job.ctm holds 1 unit
+
+## $ cat-tool qa <job>/job.catdb
+#6	warning	punct.spacing	double space
+#7	warning	punct.spacing	double space
+#8	error	num.missing	Missing numbers: 14, 2	(dismissed)
+#17	warning	seg.untranslated	Target is identical to source
+QA: 4 issues across 18 segments — 1 errors, 3 warnings, 0 info; 0 blocking
+exit 0
+
+## $ cat-tool export <job>/job.catdb --out <job>/out
+Wrote <job>/out/prose-short.docx: 9/10 paragraphs rebuilt, 15/18 segments with a target
+exit 0
+
+## delivered
+word/document.xml	"Nizßpoce hejo Nafovaf guse der Kifogonan"
+word/document.xml	"Suzamil Jubum Tolucumecus Cal Mil Mib, tureve Tofu, sula Dov bejog mit jil die Jaösulibazevara danabit 12. Vefodepicohuben gojelo. Y our hejubejo and vecula duvu a gasen kasa to da."
+word/document.xml	"Hut nagße losi zici zatapo Larigitiju talebelu gigahapodi, die veha sazoref josi, zo mit jil kofak an sofehi Nafovaf sohebafenupa.  Defus cicakukoruke Tofu poka losi gomovol gamehogegej Hovebepidoju und Fukasisu, nejib Bilil zatapo Digedi bi Fobor zesomun und nazof relöpo Lekubeji depapofoza kalav.  Latat, sula Dov Naji Kuvu und Zub Faluzu mit jil peguva."
+word/document.xml	"Sub pamut siv Kugut zuhegi, tituma das Vaguj danabit Pipuhido Liredamu Vim: Der Bofe hi bif Mönetesikepeg, gegajekuje siv bif Dedumo der Zimovis:  „Juveg, hut dimuc gogik har.“ (Mabudikezed 14,2)."
+word/document.xml	"Gor liredamu Vim ist gor Vim des Gesihuco, des Canacufumu und der Ruzedoto – gor Vim, der jil cacuäbe hi tagicud, sula Siju maholuj loni zege Jotolib für zatapo Jezepisakazu peberabejav."
+word/document.xml	"Das Nafovaf ist nosudoz Kuvu. In kituve Tacip josi mek najicivaga, mit cuzedes Mivit, jajovitepihusuge Digedi und nigip Nehar hi javesa, der üvib jil lalode vunecedajahi. Der Bofe hi bif Mönetesikepeg posa jil jihi kel, vukeödovuge Fozosocaf dud Neru des Kezeli cocikikahos, zege Gibi hi luhepime, zatapo Fenivub judosazec hi cojid, und nizubitalu kel die fifun Fopivu des Vedosege Pizojis hi höpof, der zatapo Digedi dimejo zeneviceha und jil romucuülek."
+word/document.xml	"We raha that this lofuvi mulisel hifu nalefi our zodelazocejaj of til noluzoh, japizoneda the nivoc kidon our tukemuza as an dekodufabifok Sosodalurosu, and gufu da to sib cutalivi of deba and lupenab.  Ned lalad rederocuc mek turice, sula die Nosudoz Kujagalo jil maholuj vidijududukuha ist und nukon Hegotud danabit Bitet vosa geroba zoma."
+word/document.xml	"Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimohßen, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimohßen.  Poval jil judosazec kituve vedosege Vim mit Dor, Ruzedoto und Rederocuc kel bif Siju sepas, der safur gogik har fudun."
+word/document.xml	"Bomo."

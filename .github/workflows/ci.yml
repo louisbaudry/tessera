@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  # Base-branch filter, so elsewhere "this is a pull_request event" already
+  # means "this PR targets main" without consulting github.base_ref.
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Full three-OS matrix only where it protects something: pushes to
+        # main and PRs targeting main. Feature-branch pushes with no PR yet
+        # run Linux only — macOS alone is ~62% of the cost of a run at
+        # GitHub's runner multipliers.
+        #
+        # **`github.base_ref` must not appear in this expression.** It is
+        # populated on `pull_request` events and empty on `push`. Paired with
+        # a job-level `if:` that skipped the pull_request run for same-repo
+        # branches, it silently cancelled this matrix out entirely: the push
+        # run saw an empty base_ref and chose Linux only, and the PR run that
+        # would have expanded it never executed. Every PR into main between
+        # #69 and this change therefore ran on Linux alone, macOS and Windows
+        # never once — including the PR that fixed a Windows-only file-locking
+        # bug found by this very job three days earlier. Both guards were
+        # reasonable alone; the interaction was invisible because the skipped
+        # run still reported a green check.
+        #
+        # `github.event_name` is true on the event that carries it, so the
+        # expression cannot be disarmed by whether some other event ran.
+        os: ${{ (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+          && fromJSON('["ubuntu-latest","windows-latest","macos-latest"]')
+          || fromJSON('["ubuntu-latest"]') }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Build first: packages/db imports @cat-tool/core by package name,
+      # which resolves through core's `types: "./dist/index.d.ts"` — that
+      # file doesn't exist until core is built. Typechecking before
+      # building made every @cat-tool/core import fail TS2307 on a fresh
+      # checkout (it only ever passed locally because a previous build's
+      # dist/ was still sitting there). Build first so it's real.
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Test
+        run: pnpm test
+
+  # 🚦 THE ROUNDTRIP GATE — backlog #8.
+  #
+  # Its own job, on purpose. Import every real client document, export it
+  # again with nothing translated, and require every part back byte-
+  # identical. If the filter cannot return an unmodified document unchanged
+  # it cannot return a translated one safely, so this must be unmistakable
+  # when it breaks rather than one red dot among a hundred unit tests.
+  #
+  # Mark this job as a required status check on the default branch.
+  roundtrip-gate:
+    name: 🚦 roundtrip gate
+    # Where it protects something, and exactly once: on a PR into main, and
+    # on main itself. A feature-branch push with no PR skips it; opening the
+    # PR runs it. Deliberately *not* the same-repo `if:` the check job used
+    # to carry — that one made a run disappear while still reporting green,
+    # which is the failure mode this file is being fixed for.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Runs on Windows too: line-ending handling is a classic way to break
+      # byte fidelity, and .gitattributes marks *.docx binary to prevent it.
+      # If that ever regresses, this is where it surfaces.
+      - name: Roundtrip gate
+        run: pnpm test:gate
+
+  # 🏁 THE GOLDEN END-TO-END TEST — backlog #26.
+  #
+  # The gate above proves a zero-edit export is byte-identical. This proves
+  # the rest of the pipeline with a memory in the loop and a translator's
+  # edits applied: one real document and a Trados-shaped TMX go through
+  # every CLI command, and everything the job prints plus the text of the
+  # delivered document must match fixtures/golden/*.expected.txt exactly.
+  # Its own job for the same reason the gate has one: a drift in what the
+  # pipeline delivers should be unmistakable, and its diff is the review.
+  # Linux only — the check matrix already runs the CLI's own suite on all
+  # three platforms; what this adds is the golden comparison, which has no
+  # platform-specific half.
+  golden:
+    name: 🏁 golden end-to-end
+    # Same positive condition as the gate, for the same reason: this job
+    # arrived (backlog #26) carrying the same-repo dedupe `if:` the check
+    # job used to have. It was not losing coverage — nothing here depends
+    # on a matrix — but it reported a permanently *skipped* check on every
+    # pull request, and a skipped job showing green is precisely what hid
+    # the matrix bug this file was fixed for. One job either way; this way
+    # the check list says what actually ran.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The test drives @cat-tool/cli against @cat-tool/core and @cat-tool/db
+      # by package name, which resolve through their dist/ — same reason the
+      # check job builds before it typechecks.
+      - name: Build
+        run: pnpm build
+
+      - name: Golden end-to-end
+        run: pnpm test:golden
+
+  # Placeholder for backlog #3's second half: once @cat-tool/desktop exists,
+  # build and smoke-run the *packaged* app on all three platforms and open a
+  # .ctm file. better-sqlite3 is a native module and its Electron ABI
+  # rebuild is the most likely "works locally, broken in the installer"
+  # failure — running tests alone would not catch it.
+  # See planning/tm-format-spec.md §1.1.

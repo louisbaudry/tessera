@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+pnpm-lock.yaml
+
+# Planning docs are hand-wrapped for readability; leave them alone.
+planning/
+
+# Parked licensing spike (Tauri + FastAPI). Not part of the v1 build.
+code/
+
+# Editor config, hand-maintained. Prettier rewrites it with trailing commas.
+*.code-workspace

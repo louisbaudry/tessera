@@ -1,0 +1,21 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+
+# Build output
+out/
+release/
+
+# Test artefacts
+packages/*/tmp/
+*.ctm-backup-*
+
+# portal-server's default local dev db/storage path (config.ts)
+packages/portal-server/data/
+
+# server's default local dev db/storage path (config.ts)
+packages/server/data/

@@ -1,0 +1,13 @@
+# Text files are normalised to LF, on checkout, on every platform — the
+# git blobs are already all LF, but Windows git defaults core.autocrlf=true
+# and silently rewrites the working tree to CRLF on checkout, which made
+# `prettier --check` (endOfLine defaults to "lf") flag every single file on
+# windows-latest CI runners.
+* text=auto eol=lf
+
+# DOCX fixtures are binary; never normalise line endings or diff them.
+# The roundtrip gate (#8) asserts byte fidelity, which any filtering breaks.
+# Listed after the blanket text rule above so its `binary` (implying -text)
+# wins for these paths specifically — .gitattributes rules are applied in
+# file order, last match takes precedence.
+*.docx binary

@@ -1,0 +1,116 @@
+/* Deliberately plain: reliable and low-friction for institutional
+   clients, not a flashy startup look (portal-v0-spec.md §8 / UX ask). */
+:root {
+  color-scheme: light;
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --border: #d1d5db;
+  --bg: #ffffff;
+  --panel: #f9fafb;
+  --accent: #1d4ed8;
+  --error: #b91c1c;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.5;
+}
+header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+main {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+h2 {
+  font-size: 1.05rem;
+  margin-top: 2rem;
+}
+label {
+  display: block;
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0.25rem;
+}
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 100%;
+}
+button {
+  width: auto;
+  background: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+td button {
+  margin-top: 0;
+}
+button.secondary {
+  background: white;
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-top: 1rem;
+  background: var(--panel);
+}
+.status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: #e5e7eb;
+}
+.status.approved,
+.status.delivered {
+  background: #dcfce7;
+}
+.status.cancelled {
+  background: #fee2e2;
+}
+.muted {
+  color: var(--muted);
+}
+.error {
+  color: var(--error);
+  margin-top: 0.5rem;
+}

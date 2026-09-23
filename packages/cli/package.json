@@ -1,0 +1,20 @@
+{
+  "name": "@cat-tool/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "cat-tool": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.check.json"
+  },
+  "dependencies": {
+    "@cat-tool/core": "workspace:*",
+    "@cat-tool/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1"
+  }
+}
