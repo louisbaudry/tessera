@@ -798,7 +798,7 @@ holds; and the context-hash algorithm itself, unchanged from §8a.1.
 
 ### 8a.3 Four real files, read by shape only (2026-09-19 → 09-23)
 
-Issue #68 asks for the importer to be run against a real `.sdltm`. Before
+Issue #26 asks for the importer to be run against a real `.sdltm`. Before
 that could happen, four real memories were examined on the owner's machine
 with a read-only probe that prints the file's *shape* (tables, declared vs
 stored types, value widths, whether any column holds recoverable text) and
@@ -904,7 +904,7 @@ checks unit count against `tucount`.
 **Still to do, none of it started:** drop the `application_id` guard;
 correct the six fixture mistakes and add a regression test built on the
 older schema's real shape; decide between the two fixture approaches
-above; then the local real-file run that issue #68 asks for.
+above; then the local real-file run that issue #26 asks for.
 
 ## 9. Versioning
 
@@ -1183,7 +1183,7 @@ What it says:
   or roughly 3.5 KiB per unit above the process baseline. Extrapolated
   linearly (not measured), a 2 GB server runs out somewhere around
   half a million units. §12.4 applies to both importers.
-- **Issue #68's first check passed on this file.** Units read matched
+- **Issue #26's first check passed on this file.** Units read matched
   the file's own `tucount` (the importer's mismatch warning did not
   fire); 6 units with no source text were skipped by design. Two things
   §8a had not recorded turned up: a tag `<Type>` of `TextPlaceholder`
@@ -1221,7 +1221,7 @@ What it says:
    **Priority, decided 2026-09-23: TMX first.** Translators and
    language providers routinely export TMX, and that path is enough.
    Native `.sdltm` import is a nice-to-have: keep what exists, and let
-   issue #68 (drop the `application_id` guard, fix the fixture) wait
+   issue #26 (drop the `application_id` guard, fix the fixture) wait
    behind the TMX work in §12.4. One real file has now been through it
    (§11.4, `tucount` matched), which is further than the
    reverse-engineering needed to go for now.

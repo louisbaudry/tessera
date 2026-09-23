@@ -272,7 +272,7 @@ mapped to each framework. Status as of 2026-09-23, checked in code:
 |---|---|---|
 | 1 | Tenant isolation | **Built** — per-account storage root, no path from a request (`server/src/storage.ts`) |
 | 2 | Credential storage | **Built** — scrypt passwords, hashed session tokens (`core/auth/credentials.ts`) |
-| 3 | Access control (who opens which project) | Planned — issue #84, `project_authorization` |
+| 3 | Access control (who opens which project) | Planned — issue #17, `project_authorization` |
 | 4 | Audit log | **Missing** |
 | 5 | Encryption at rest | Reserved — SQLCipher option, `tm-format-spec.md` §10 |
 | 6 | Encryption in transit (HTTPS) | Not deployed — backlog #36 |
@@ -293,7 +293,7 @@ mapped to each framework. Status as of 2026-09-23, checked in code:
    `BEFORE DELETE` triggers that abort) — the pattern `term_decision`
    already uses (`db/glossary/schema.ts`), so not even an administrator
    can quietly rewrite it. Auditors look for exactly that property.
-2. **Access control** — issue #84; every later screen depends on it.
+2. **Access control** — issue #17; every later screen depends on it.
 3. **Encryption at rest** — decided before launch, it costs almost
    nothing; after, it is a migration of every file clients hold.
 4. **Deletion and retention** — touches every file type (`.catdb`,

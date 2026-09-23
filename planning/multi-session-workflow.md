@@ -83,11 +83,11 @@ Each session's scope is **one phase, or a logical partition of a large phase**, 
 - Known unknowns recorded for Phase 2b: Trados's context-hash algorithm, tag ordering, version-specific schema differences
 - PR, merged after go-ahead
 
-**Session 3 (Phase 2b — Database Integration)** — not started; tracked as [issue 32](https://github.com/louisbaudry/cat-tool-project/issues/32)
+**Session 3 (Phase 2b — Database Integration)** — not started; tracked in an issue of the former private repository
 - Create `packages/db/src/tm/import-sdltm.ts` — mirror `import-tmx.ts`
 - Validate against real pseudonymised `.sdltm` files
 - Document any schema differences by Trados version
-- PR with `Closes #32`
+- PR that closes that issue
 
 Note what the issue carries that this document deliberately does not: whether Phase 2b has started, who is on it, and what is blocking it (here, a second real `.sdltm` to validate the one-sample schema against). Look there for state; look here for the shape of the work.
 

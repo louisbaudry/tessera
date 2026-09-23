@@ -4,15 +4,15 @@ Derived from `planning/v1-spec.md`. Ordered so that the riskiest thing —
 tag-safe DOCX roundtrip — is proven before any UI exists.
 
 Sizes: **S** ≈ half a day, **M** ≈ 1–2 days, **L** ≈ 3–5 days.
-Built in this repo (`cat-tool-project`).
+Built in this repo.
 
 **Every open entry below is a GitHub issue**, linked from its own
 heading and labelled by epic and size. *Status, ordering and what is in
 flight live there, not here* — don't record progress in this file, move
 the card. (The two numberings are independent and will never line up:
-`#19` is a backlog ID, `issue #33` is where its state lives. GitHub's
-issue counter is shared with pull requests and was already at 27 when
-these were filed.)
+`#15d` is a backlog ID, `issue #3` is where its state lives. The
+issues were renumbered when they moved here from the private
+development repository in September 2026.)
 
 Two heading forms, and only two. An open entry is
 `**#N · Title · SIZE** · [issue #X]`. A completed one is
@@ -57,7 +57,7 @@ pnpm workspaces, `@cat-tool/core`, TS strict (`noUncheckedIndexedAccess`,
 — vitest only transpiles, so without that a type error in a test would go
 unnoticed. Changesets still to add when there is something to version.
 
-**#3 · CI matrix · PARTIAL** · [issue #28]
+**#3 · CI matrix · PARTIAL** · [issue #1]
 GitHub Actions on Windows / macOS / Linux: install, typecheck, lint,
 format check, test, build. **Green.**
 *Remaining, re-scoped for the web-service pivot:* the 3-OS matrix mattered
@@ -299,7 +299,7 @@ split by hand (#14). The recoverable mistake is the one to make.
 
 `:` and `;` are per-language switches, off everywhere by default.
 
-**#13a · Segmentation rules for Korean and Vietnamese · M** · [issue #29]
+**#13a · Segmentation rules for Korean and Vietnamese · M** · [issue #2]
 Found while reverse-engineering real `.sdltm` memories (2026-09-13, two
 more real client TMs — EN→KO, 529 units; EN→VI, 2,866 units,
 both with real tagged content): `rulesFor('ko-KR')` and
@@ -532,7 +532,7 @@ remapped onto a *different* document whose bold run is bold+italic —
 the rendered output carries the receiving document's `<w:b/><w:i/>`
 run, not the origin's plain `<w:b/>`.
 
-**#15d · Merge two `.ctm` files · M** · [issue #30]
+**#15d · Merge two `.ctm` files · M** · [issue #3]
 `uuid` + `rev` resolution, tombstone propagation, history retention,
 same-hash-different-uuid kept as distinct units (format spec §7).
 *Done when:* merging a file with itself is a no-op, and merge is
@@ -606,7 +606,7 @@ rows: `insertFile`/`listSegments` round-trip a genuine 371-paragraph
 manuscript through JSON and back; `attachTms` attaches real `.ctm`
 files created via `createTm` and queries across the alias.
 
-**#16a · Off-thread bulk operations · M** · [issue #31]
+**#16a · Off-thread bulk operations · M** · [issue #4]
 Route TMX import, `.ctm` merge, `VACUUM`, rehash, and batch
 find-and-replace through a `worker_thread` / Electron `utilityProcess`
 with progress reporting and cancellation (format spec §1.1).
@@ -957,7 +957,7 @@ up in `tm-format-spec.md` §8a.3. What it taught:
 Nothing was imported and no code changed. The probe and scrub scripts
 stay out of the repository, as the DOCX scrub does. The follow-through
 (drop the guard, correct the fixture, then the real-file run) is tracked
-on issue #68.
+on issue #26.
 
 *What this was never checked against, closed anyway (2026-09-15):* **no
 real `.sdltm` has been through this path.** Everything above is exercised
@@ -1407,7 +1407,7 @@ hold was code that reads or writes the format. It wasn't caught
 earlier because every unit test has a dozen rows (CLAUDE.md's
 function-around-an-indexed-column gotcha).
 
-**#18c · Streaming TMX import with bounded memory · M** · [issue #106]
+**#18c · Streaming TMX import with bounded memory · M** · [issue #40]
 TMX is what translators and language providers actually export, so it
 is the import that has to scale. `.sdltm` is a nice-to-have (§12.3).
 `importTmx(db, xml: string)` peaked at 4.1 GiB RSS at 1M units and
@@ -1417,7 +1417,7 @@ into bounded transactions, with a resume point, and a recorded answer
 to §12.4's all-or-nothing question. Running it off-thread stays #16a.
 *Done when:* a 5M-unit TMX imports under a 2 GB-capped Node heap.
 
-**#19a · Make exact lookup seek the `(lang, hash)` index · S** · [issue #104]
+**#19a · Make exact lookup seek the `(lang, hash)` index · S** · [issue #38]
 `retrievePair`'s `primary_subtag(s.lang) = …` scans all of `tuv` on
 every lookup: 1.7 s at 1M units, and 214 ms on the real 86k memory. An
 index-friendly rewrite (languages taken from `tm.langs`, matched by
@@ -1425,7 +1425,7 @@ equality) measured 0.04 ms and returned the same rows. The glossary's
 `findRendering` has the same pattern. *Done when:* both plans show
 `SEARCH`, and a test asserts it.
 
-**#20a · Stop `refreshLangs` scanning `tuv` on every confirm · S** · [issue #105]
+**#20a · Stop `refreshLangs` scanning `tuv` on every confirm · S** · [issue #39]
 `writeBack` recomputes `tm.langs` with a full `DISTINCT` on every
 confirm: 247 ms at 1M units, 1.3 s at 5M. Keep it a projection (§2.1),
 but compute it cheaply. *Done when:* a confirm at 1M units takes low
@@ -1504,7 +1504,7 @@ Smaller things the harness settled:
   pre-translate produced would write unreviewed targets into the
   memory, exactly what §6.2's write-back is not for.
 
-Noticed in passing, not fixed here: issue #29 (backlog #13a) says
+Noticed in passing, not fixed here: issue #2 (backlog #13a) says
 `rulesFor('ko')` and `rulesFor('vi')` throw, but `LANGUAGE_RULES` has
 had `ko` and `vi` entries for a while — the "unsupported language"
 test here had to use `ja` to find a language `rulesFor` still refuses.
@@ -1664,47 +1664,47 @@ where they get a caller, and each is one repository call away.
 tests moved with their module). Full gate green; the server smoke-run as
 a real process with `create-account` then `start`.
 
-**#28 · Virtualised segment grid · L** · [issue #42]
+**#28 · Virtualised segment grid · L** · [issue #5]
 Two columns, status/origin/QA gutter, smooth at 10k+ segments.
 
-**#29 · Tag-aware target editor · L** · [issue #43]
+**#29 · Tag-aware target editor · L** · [issue #11]
 Atomic tag chips, insert-next-tag, tag list, full-tag toggle. Tags never
 editable as text.
 
-**#30 · Keyboard model · M** · [issue #44]
+**#30 · Keyboard model · M** · [issue #6]
 Confirm-and-advance, copy source, tag insert, merge/split, filter focus
 (spec §7).
 
-**#31 · Autosave · S** · [issue #45]
+**#31 · Autosave · S** · [issue #7]
 Debounced per keystroke. No save action; crash costs seconds.
 
-**#32 · Project and TM management UI · M** · [issue #46]
+**#32 · Project and TM management UI · M** · [issue #8]
 Create project, add files, attach TMs, set priority and write target.
 
-**#33 · QA panel · M** · [issue #47]
+**#33 · QA panel · M** · [issue #9]
 Filter by rule and severity, jump to segment, dismiss.
 
-**#34 · Filters and progress · S** · [issue #48]
+**#34 · Filters and progress · S** · [issue #10]
 Status/origin/QA/text filters; segment and word progress.
 
-**#35 · Dark mode and visual pass · M** · [issue #49]
+**#35 · Dark mode and visual pass · M** · [issue #20]
 Calm palette, no layout shift when panels open.
 
 ---
 
 ## Epic 7 — Ship to self
 
-**#36 · Deploy · M** · [issue #50]
+**#36 · Deploy · M** · [issue #21]
 One container image (server + built SPA), one deployment target with a
 persistent volume for `platform.sqlite`, project `.catdb` files, and
 `.cattm` files. HTTPS in front of it. Superseded electron-builder plan
 (three-platform installers) — a web service ships once, to one place.
 
-**#37 · 🏁 Real job dogfood · L** · [issue #51]
+**#37 · 🏁 Real job dogfood · L** · [issue #22]
 Translate and deliver one real paid multi-file client job end to end.
 *Done when:* delivered without opening Trados. **This is v1 done.**
 
-**#38 · Post-job triage · S** · [issue #52]
+**#38 · Post-job triage · S** · [issue #23]
 Log every friction point from #37. Feeds v1.1 — concordance is the
 expected first item.
 
@@ -1766,7 +1766,7 @@ deferred:
 - **Epic 10 — Client-facing** (Ring 2): intake, status, feedback.
 - **Epic 11 — Invoicing/payments integration** (Ring 3): provisionally
   hand off to Zoho Books rather than rebuild accounting.
-- **Epic 12 — Website localisation** (Ring 4, v2/v3) · [issue #65]: the
+- **Epic 12 — Website localisation** (Ring 4, v2/v3) · [issue #25]: the
   Weglot slot, with the one thing Weglot cannot do — accept a translation
   memory.
   Design constraints and the four deferred decisions are in vision doc
@@ -1815,7 +1815,7 @@ DOM-path- or selector-derived value **never** goes in
 `prev_hash`/`next_hash` — that is the `.sdltm` mistake — it goes in
 `tu_attr` as provenance.
 
-Carded as [issue #65] so the reasoning has somewhere to live, but still
+Carded as [issue #25] so the reasoning has somewhere to live, but still
 unsized and still a placeholder — sizing and an issue-level breakdown
 wait for the ring's own design pass, and Ring 0 finishes first. (Epics
 8–11 carry no card; this one does because it came out of a live
@@ -1954,14 +1954,14 @@ Split so the headless part does not wait on the editor:
     and the tests _passed_ that way — the bytes were right, the source
     was the fragile form the gotcha warns about. Caught by checking the
     file's bytes, not by any test; rewritten as literal escapes.
-- **#40 · Candidate extraction + flagging · M** · [issue #53] — buildable
+- **#40 · Candidate extraction + flagging · M** · [issue #24] — buildable
   now, deterministic; the aligner is a seam (`TermAligner`), `core` ships
   only the static test implementation.
-- **#41 · Session state machine · S** · [issue #54] — buildable now.
-- **#42 · `ClaudeTermAligner` · M** · [issue #55] — with Epic 8,
+- **#41 · Session state machine · S** · [issue #12] — buildable now.
+- **#42 · `ClaudeTermAligner` · M** · [issue #13] — with Epic 8,
   opt-in gated per `ai-platform-vision.md` §5.
-- **#43 · Glossary panel · M** · [issue #56] — after #28–#35.
-- **#44 · `term.glossary_mismatch` QA rule · S** · [issue #57] — with
+- **#43 · Glossary panel · M** · [issue #14] — after #28–#35.
+- **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
   a CHECK constraint.
 
@@ -2012,31 +2012,31 @@ the headless part doesn't wait on Epic 6's editor UI — none of backlog
 any of this to render into until those land:
 
 - **#45 · Account role + `project_authorization` model · M** ·
-  [issue #84] — foundational, everything else depends on it; also where
+  [issue #17] — foundational, everything else depends on it; also where
   spec §3's `scope` vocabulary question (beyond `owner`/
   `assigned_translator`) gets settled.
 - **#46 · `.ctv` format + `db/vendor` profile repositories · M** ·
-  [issue #85] — mirrors `#39`; versioned rate history so a later rate
+  [issue #18] — mirrors `#39`; versioned rate history so a later rate
   change can't retroactively alter a past delivered job's payable.
 - **#47 · `vendor-core`: assignment lifecycle state machine · S** ·
-  [issue #86] — pure TS, no DB, same discipline as `core`/`portal-core`.
+  [issue #27] — pure TS, no DB, same discipline as `core`/`portal-core`.
 - **#48 · Assignment repositories + offer/pool/claim/accept/decline
-  routes · M** · [issue #87] — concurrency-safe pool claim (spec §7);
+  routes · M** · [issue #19] — concurrency-safe pool claim (spec §7);
   where §3/§6's `vendor-server`-vs-routes-on-`@cat-tool/server` question
   gets decided, once the route count here plus `#50`/`#51` is known.
-- **#49 · Tiered rate/payable calculation · M** · [issue #88] —
+- **#49 · Tiered rate/payable calculation · M** · [issue #28] —
   `db/vendor` reading `db/tm`'s `retrievePair` output, the cross-package
   dependency spec §1 decision 9 calls out explicitly.
 - **#50 · Vendor-facing API: job feed, offer detail, accept/decline/
-  claim · S** · [issue #89] — JSON only; the UI for it is `#52`.
+  claim · S** · [issue #29] — JSON only; the UI for it is `#52`.
 - **#51 · PM-facing API: assign vendor, review/close assignment · S** ·
-  [issue #90] — where spec §4's `reviewed` gate (QA `isBlocking`, PM
+  [issue #30] — where spec §4's `reviewed` gate (QA `isBlocking`, PM
   read, or both) gets decided for real.
-- **#52 · Job feed + offer detail screens · M** · [issue #91] — after
+- **#52 · Job feed + offer detail screens · M** · [issue #31] — after
   `#28`–`#35`, the same gating the glossary panel (`#43`) got.
-- **#53 · Running payable total in the editor · M** · [issue #92] —
+- **#53 · Running payable total in the editor · M** · [issue #32] —
   after `#28`–`#35` and `#49`.
-- **#54 · Capacity status toggle UI · S** · [issue #93] — after
+- **#54 · Capacity status toggle UI · S** · [issue #33] — after
   `#28`–`#35`.
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, not started)
@@ -2068,16 +2068,16 @@ segment. It stops being harmless the moment vendors (Epic 9) and AI drafts
 Sized issues:
 
 - **#55 · `core/audit`: actor, event shape, hash chain · S** ·
-  [issue #97] — pure TS, the one definition the rest import.
+  [issue #34] — pure TS, the one definition the rest import.
 - **#56 · `audit_event` in `project.catdb` (schema v5), actor required
-  on every segment write · M** · [issue #98] — `setSegmentTarget` is
+  on every segment write · M** · [issue #35] — `setSegmentTarget` is
   already the single segment writer, so this is one chokepoint, plus a
   `segment.baseline` for existing data and CLI `history`/`audit-verify`.
 - **#57 · `audit_event` in `platform.sqlite`; the server passes the
-  session's actor into every write · M** · [issue #99] — auth and
+  session's actor into every write · M** · [issue #36] — auth and
   download events; `authorization.*` joins once `#45` lands.
 - **#58 · Portal: actor on `order_event`, append-only triggers, portal
-  `audit_event` · S** · [issue #100].
+  `audit_event` · S** · [issue #37].
 
 Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration
@@ -2095,34 +2095,28 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 
 <!-- Open backlog items, one GitHub issue each. -->
 
-[issue #28]: https://github.com/louisbaudry/cat-tool-project/issues/28
-[issue #29]: https://github.com/louisbaudry/cat-tool-project/issues/29
-[issue #30]: https://github.com/louisbaudry/cat-tool-project/issues/30
-[issue #31]: https://github.com/louisbaudry/cat-tool-project/issues/31
-[issue #35]: https://github.com/louisbaudry/cat-tool-project/issues/35
-[issue #37]: https://github.com/louisbaudry/cat-tool-project/issues/37
-[issue #38]: https://github.com/louisbaudry/cat-tool-project/issues/38
-[issue #39]: https://github.com/louisbaudry/cat-tool-project/issues/39
-[issue #40]: https://github.com/louisbaudry/cat-tool-project/issues/40
-[issue #41]: https://github.com/louisbaudry/cat-tool-project/issues/41
-[issue #42]: https://github.com/louisbaudry/cat-tool-project/issues/42
-[issue #43]: https://github.com/louisbaudry/cat-tool-project/issues/43
-[issue #44]: https://github.com/louisbaudry/cat-tool-project/issues/44
-[issue #45]: https://github.com/louisbaudry/cat-tool-project/issues/45
-[issue #46]: https://github.com/louisbaudry/cat-tool-project/issues/46
-[issue #47]: https://github.com/louisbaudry/cat-tool-project/issues/47
-[issue #48]: https://github.com/louisbaudry/cat-tool-project/issues/48
-[issue #49]: https://github.com/louisbaudry/cat-tool-project/issues/49
-[issue #50]: https://github.com/louisbaudry/cat-tool-project/issues/50
-[issue #51]: https://github.com/louisbaudry/cat-tool-project/issues/51
-[issue #52]: https://github.com/louisbaudry/cat-tool-project/issues/52
-[issue #53]: https://github.com/louisbaudry/cat-tool-project/issues/53
-[issue #54]: https://github.com/louisbaudry/cat-tool-project/issues/54
-[issue #55]: https://github.com/louisbaudry/cat-tool-project/issues/55
-[issue #56]: https://github.com/louisbaudry/cat-tool-project/issues/56
-[issue #57]: https://github.com/louisbaudry/cat-tool-project/issues/57
-[issue #65]: https://github.com/louisbaudry/cat-tool-project/issues/65
-[issue #97]: https://github.com/louisbaudry/cat-tool-project/issues/97
-[issue #98]: https://github.com/louisbaudry/cat-tool-project/issues/98
-[issue #99]: https://github.com/louisbaudry/cat-tool-project/issues/99
-[issue #100]: https://github.com/louisbaudry/cat-tool-project/issues/100
+[issue #1]: https://github.com/louisbaudry/tessera/issues/1
+[issue #2]: https://github.com/louisbaudry/tessera/issues/2
+[issue #3]: https://github.com/louisbaudry/tessera/issues/3
+[issue #4]: https://github.com/louisbaudry/tessera/issues/4
+[issue #5]: https://github.com/louisbaudry/tessera/issues/5
+[issue #11]: https://github.com/louisbaudry/tessera/issues/11
+[issue #6]: https://github.com/louisbaudry/tessera/issues/6
+[issue #7]: https://github.com/louisbaudry/tessera/issues/7
+[issue #8]: https://github.com/louisbaudry/tessera/issues/8
+[issue #9]: https://github.com/louisbaudry/tessera/issues/9
+[issue #10]: https://github.com/louisbaudry/tessera/issues/10
+[issue #20]: https://github.com/louisbaudry/tessera/issues/20
+[issue #21]: https://github.com/louisbaudry/tessera/issues/21
+[issue #22]: https://github.com/louisbaudry/tessera/issues/22
+[issue #23]: https://github.com/louisbaudry/tessera/issues/23
+[issue #24]: https://github.com/louisbaudry/tessera/issues/24
+[issue #12]: https://github.com/louisbaudry/tessera/issues/12
+[issue #13]: https://github.com/louisbaudry/tessera/issues/13
+[issue #14]: https://github.com/louisbaudry/tessera/issues/14
+[issue #15]: https://github.com/louisbaudry/tessera/issues/15
+[issue #25]: https://github.com/louisbaudry/tessera/issues/25
+[issue #34]: https://github.com/louisbaudry/tessera/issues/34
+[issue #35]: https://github.com/louisbaudry/tessera/issues/35
+[issue #36]: https://github.com/louisbaudry/tessera/issues/36
+[issue #37]: https://github.com/louisbaudry/tessera/issues/37

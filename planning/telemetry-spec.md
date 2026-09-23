@@ -248,7 +248,7 @@ Why derive rather than collect:
   contract, and live in the project file with its confidentiality and
   retention, not in an ops store with a 30-day horizon.
 - **Access control for free.** A vendor's numbers are visible to whoever
-  may see the project (issue #84), not to whoever can read the ops
+  may see the project (issue #17), not to whoever can read the ops
   dashboards.
 
 **Accepted limitation:** "time per segment" is *time between confirms*,

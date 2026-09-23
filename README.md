@@ -43,7 +43,7 @@ packages/
 planning/      specs and backlog
 fixtures/      real-world DOCX structure with synthetic content (docx/), used by every gate test; the golden end-to-end job's memory and transcript (golden/)
 site/          public landing page, deployed to GitHub Pages
-scripts/       fixture synthesis; public-snapshot tooling
+scripts/       fixture synthesis (synthesize-fixtures.py)
 ```
 
 (Two directories share the name `tm/` for two different things: `core/tm/`
