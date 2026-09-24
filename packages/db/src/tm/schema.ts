@@ -180,4 +180,23 @@ const v1: Migration = {
   },
 };
 
-export const TM_MIGRATIONS: readonly Migration[] = [v1];
+const v2: Migration = {
+  version: 2,
+  description: 'tm_import: import runs, their progress and incomplete state (§2.9)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE tm_import (
+        id            INTEGER PRIMARY KEY,
+        format        TEXT    NOT NULL CHECK (format IN ('tmx')),
+        source_name   TEXT    NOT NULL,
+        source_bytes  INTEGER NOT NULL,
+        started_at    TEXT    NOT NULL,
+        finished_at   TEXT,
+        units_done    INTEGER NOT NULL DEFAULT 0,
+        variants_done INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+  },
+};
+
+export const TM_MIGRATIONS: readonly Migration[] = [v1, v2];

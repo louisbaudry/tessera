@@ -242,6 +242,51 @@ describe('cat-tool: refusals', () => {
     expect(existsSync(join(dir, 'broken.ctm'))).toBe(false);
   });
 
+  it('an interrupted TMX import keeps its committed units, and running it again resumes', () => {
+    const project = join(dir, 'project.catdb');
+    run('init', project, '--src', 'en', '--tgt', 'de');
+    // Big enough to span several 1 MiB chunks and fill one default
+    // 10,000-unit batch before the malformed unit arrives.
+    const units = Array.from(
+      { length: 20_000 },
+      (_, n) =>
+        `<tu tuid="${n}"><tuv xml:lang="en"><seg>Sentence number ${n}</seg></tuv>` +
+        `<tuv xml:lang="de"><seg>Satz Nummer ${n}</seg></tuv></tu>`,
+    );
+    const body = (last: string): string =>
+      `<tmx version="1.4"><header srclang="en"/><body>\n${units.join('\n')}\n${last}\n</body></tmx>`;
+    const path = join(dir, 'big.tmx');
+    writeFileSync(
+      path,
+      body('<tu><tuv xml:lang="en"><seg>x<ept i="1"/></seg></tuv></tu>'),
+    );
+
+    const failed = run('add-tm', project, path);
+    expect(failed.code).toBe(1);
+    expect(failed.err).toContain('import stopped after 10000 units');
+    expect(existsSync(join(dir, 'big.ctm'))).toBe(true);
+
+    // Same length, so the resume's size guard accepts it as the same file.
+    writeFileSync(
+      path,
+      body('<tu><tuv xml:lang="en"><seg>x<ph x="12"/></seg></tuv></tu>'),
+    );
+    const resumed = run('add-tm', project, path);
+    expect(resumed.err).toBe(
+      'warning: TMX-sourced units carry no context (prev_hash/next_hash) — they can never be ICE matches.',
+    );
+    expect(resumed.code).toBe(0);
+    expect(resumed.out).toContain('Resuming the import of');
+    expect(resumed.out).toContain('after unit 10000');
+    expect(resumed.out).toContain(': 10001 units, 20001 variants');
+
+    const again = run('add-tm', project, path);
+    expect(again.err).toContain('already exists');
+    // Two real 10,000-unit batches: 1.6 s locally, past the default 5 s
+    // on a Windows CI runner — the same headroom db/project/files.test.ts
+    // gives its bulk insert, for the same reason.
+  }, 30_000);
+
   it('--file must name a file the project has; export needs one', () => {
     const project = join(dir, 'project.catdb');
     run('init', project, '--src', 'en', '--tgt', 'de');

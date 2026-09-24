@@ -334,15 +334,26 @@ Both TMX (interchange) and native Trados `.sdltm` (SQLite) follow a
 three-layer pattern, split across `core` and `db` to respect the headless
 constraint and dependency isolation:
 
-- **`core/tm/parse*.ts`** — Pure parsing logic, no I/O. `parseTmx(xmlString)`
-  accepts a string; `parseSdltm(db)` accepts a Database handle (not a file
+- **`core/tm/parse*.ts`** — Pure parsing logic, no I/O. `TmxStreamParser`
+  takes a TMX document in string chunks and returns each `<tu>` as it
+  completes; `parseTmx(xmlString)` is its one-push convenience, not a
+  second reader. `parseSdltm(db)` accepts a Database handle (not a file
   path). These return strongly-typed interfaces (`ParsedTmx`, `ParsedSdltm`).
   Tests in this layer use synthetic data (hand-built XML, in-memory SQLite).
-- **`db/tm/import-*.ts`** — Database integration layer. `importTmx` opens
-  files, calls `parseTmx`, and writes the result into `.ctm` as one
-  transaction. This is where real-file I/O, schema decisions, and error
-  handling live. Tests here validate against real pseudonymised fixtures
-  (see `fixtures/` and `planning/tm-format-spec.md` §2).
+- **`db/tm/import-*.ts`** — Database integration layer. `importTmxFile`
+  reads a file in chunks and writes batches, each its own transaction
+  that also advances the file's `tm_import` row; `importTmx` is the
+  in-memory, one-transaction case. This is where real-file I/O, schema
+  decisions, and error handling live. Tests here validate against real
+  pseudonymised fixtures (see `fixtures/` and
+  `planning/tm-format-spec.md` §2).
+- **An import is bounded by a batch, never by the file** (backlog #18c).
+  A TMX importer that needs the whole document as one string cannot
+  read an agency memory at all: V8 caps a string at 2^29 characters.
+  A batch ends on a unit boundary, so an interrupted import leaves whole
+  units and an incomplete `tm_import` row (`finished_at IS NULL`), which
+  `resume` continues. Why an import may be incomplete when a merge may
+  not is `tm-format-spec.md` §12.4; don't "restore" one transaction.
 - **Schema and repository** — `db/tm/schema.ts` owns `.ctm` schema versioning
   and writes through the shared migration runner. Pair retrieval
   (`retrievePair`) lives in `db/tm/retrieve.ts`, not in `core`.

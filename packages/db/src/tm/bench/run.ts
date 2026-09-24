@@ -12,6 +12,7 @@
  *
  *   pnpm bench:tm                                  # 100k, 1M, 5M
  *   pnpm bench:tm --sizes 100000 --budget 20       # quick pass
+ *   pnpm bench:tm --sizes 5000000 --probe-only     # the import alone (#18c)
  *   pnpm bench:tm --sdltm ~/client.sdltm --src en --tgt es
  *
  * `--sdltm` measures a real Trados memory instead of synthetic sizes:
@@ -41,6 +42,10 @@ const { values } = parseArgs({
     dir: { type: 'string', default: join(tmpdir(), 'cat-tool-tm-bench') },
     budget: { type: 'string', default: '60' },
     'probe-max': { type: 'string', default: '5000000' },
+    // The import probe's V8 heap cap: 2048 MiB is a 2 GB server (#18c).
+    'probe-heap-mib': { type: 'string', default: '2048' },
+    // Import probe only: skip the hour-long, 7.5 GiB-at-5M measure step.
+    'probe-only': { type: 'boolean', default: false },
     sdltm: { type: 'string' },
     src: { type: 'string', default: 'en' },
     tgt: { type: 'string' },
@@ -54,10 +59,10 @@ const sizes = values.sizes.split(',').map(Number);
 const dir = values.dir;
 mkdirSync(dir, { recursive: true });
 
-function child(script: string, args: string[]): unknown {
+function child(script: string, args: string[], nodeArgs: string[] = []): unknown {
   const r = spawnSync(
     process.execPath,
-    [...process.execArgv, join(here, script), ...args],
+    [...process.execArgv, ...nodeArgs, join(here, script), ...args],
     {
       stdio: ['ignore', 'pipe', 'inherit'],
       maxBuffer: 64 * 2 ** 20,
@@ -118,18 +123,29 @@ for (const size of values.sdltm !== undefined ? [] : sizes) {
     writeTmxFile(tmxPath, size);
     const tmxBytes = statSync(tmxPath).size;
     const tmxWriteMs = msSince(t);
-    process.stderr.write(`[${size.toLocaleString('en')}] single-file importTmx\n`);
+    process.stderr.write(`[${size.toLocaleString('en')}] streaming importTmxFile\n`);
     importProbe = {
       tmxBytes,
       tmxWriteMs,
-      ...(child('import-probe.ts', [
-        '--tmx',
-        tmxPath,
-        '--ctm',
-        join(dir, `bench-${size}.probe.ctm`),
-      ]) as object),
+      ...(child(
+        'import-probe.ts',
+        ['--tmx', tmxPath, '--ctm', join(dir, `bench-${size}.probe.ctm`)],
+        [`--max-old-space-size=${values['probe-heap-mib']}`],
+      ) as object),
     };
     rmSync(tmxPath, { force: true });
+  }
+  if (values['probe-only']) {
+    results.push({
+      size,
+      importProbe,
+      measured: { ok: false, error: 'not run (--probe-only)' },
+    });
+    writeFileSync(
+      join(dir, 'results.json'),
+      JSON.stringify({ machine, results }, null, 2),
+    );
+    continue;
   }
   const measured = child('measure.ts', [
     '--size',

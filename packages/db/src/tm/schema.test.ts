@@ -1,5 +1,12 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -8,12 +15,13 @@ import { pathToFileURL } from 'node:url';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { MigrationError } from '../migrate.js';
+import { MigrationError, openAndMigrate } from '../migrate.js';
 import {
   createTm,
   openTm,
   TmError,
   TM_APPLICATION_ID,
+  TM_MIGRATIONS,
   NORMALIZER_VERSION,
 } from './index.js';
 
@@ -81,6 +89,7 @@ describe('createTm / openTm', () => {
       [
         'seg_profile',
         'tm',
+        'tm_import',
         'tu',
         'tu_attr',
         'tuv',
@@ -100,6 +109,32 @@ describe('createTm / openTm', () => {
     const bytes = readFileSync(path);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     expect(view.getUint32(68, false)).toBe(TM_APPLICATION_ID);
+  });
+});
+
+describe('format version 2 (tm_import, backlog #18c)', () => {
+  it('upgrades a version-1 file on open, backing it up first, with its units intact', () => {
+    const path = dbPath();
+    const v1 = openAndMigrate(path, {
+      applicationId: TM_APPLICATION_ID,
+      migrations: TM_MIGRATIONS.slice(0, 1),
+    });
+    v1.prepare(
+      `INSERT INTO tm (id, uuid, name, langs, created_at, format_version, generator,
+                       normalizer_version, tokenizer_version)
+       VALUES (1, 'u', 'old', '[]', '2026-01-01', 1, 'test', 1, 1)`,
+    ).run();
+    v1.prepare(
+      "INSERT INTO tu (uuid, created_at, updated_at) VALUES ('t', '2026-01-01', '2026-01-01')",
+    ).run();
+    v1.close();
+
+    const db = openTm(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(2);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM tm_import').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM tu').get()).toEqual({ n: 1 });
+    db.close();
+    expect(readdirSync(dir).some((f) => f.startsWith('memory.ctm.bak-v1-'))).toBe(true);
   });
 });
 

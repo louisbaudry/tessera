@@ -460,27 +460,48 @@ function extractCatmUnitProps(props: readonly ParsedTmxProp[]): {
  * than once, keyed by prop type. A real Trados export can do this on
  * nearly every unit (SDL's `x-Context` bookkeeping), so a warning per
  * *occurrence* would flood a large import's report with thousands of
- * near-identical lines — {@link parseTmx} flushes this into one summary
+ * near-identical lines — {@link TmxStreamParser} reports one summary
  * line per prop type instead.
  */
-type DuplicatePropTally = Map<string, number>;
+type Tally = Map<string, number>;
 
-function recordDuplicates(tally: DuplicatePropTally, types: readonly string[]): void {
-  for (const type of types) tally.set(type, (tally.get(type) ?? 0) + 1);
+/**
+ * Everything a parse reports, tallied rather than listed: a 5M-unit
+ * file with one bad `xml:lang` on every variant must produce one line,
+ * not ten million strings held until the end (backlog #18c).
+ */
+interface ParseTallies {
+  /** Per `<prop type>`, how many units/variants repeated it. */
+  readonly duplicateProps: Tally;
+  /** Per unparseable `xml:lang` value, how many variants carried it. */
+  readonly badLangs: Tally;
 }
 
-function parseTuv(
-  tuv: XmlElement,
-  warnings: string[],
-  duplicatePropTally: DuplicatePropTally,
-): ParsedTmxTuv {
-  const lang = tuv.attrs['xml:lang'] ?? tuv.attrs['lang'];
-  if (!lang) throw new TmxError('<tuv> has no xml:lang');
-  if (!looksLikeBcp47(lang)) {
-    warnings.push(
-      `<tuv xml:lang="${lang}"> does not look like a valid BCP-47 tag — imported as-is`,
+function bump(tally: Tally, key: string): void {
+  tally.set(key, (tally.get(key) ?? 0) + 1);
+}
+
+function tallyWarnings(tallies: ParseTallies): string[] {
+  const out: string[] = [];
+  for (const [lang, count] of tallies.badLangs) {
+    out.push(
+      `${count} <tuv> variant(s) have xml:lang="${lang}", which does not look like a ` +
+        'valid BCP-47 tag — imported as-is',
     );
   }
+  for (const [type, count] of tallies.duplicateProps) {
+    out.push(
+      `${count} unit(s)/variant(s) repeat <prop type="${type}"> more than once — only the ` +
+        'last value is kept for each',
+    );
+  }
+  return out;
+}
+
+function parseTuv(tuv: XmlElement, tallies: ParseTallies): ParsedTmxTuv {
+  const lang = tuv.attrs['xml:lang'] ?? tuv.attrs['lang'];
+  if (!lang) throw new TmxError('<tuv> has no xml:lang');
+  if (!looksLikeBcp47(lang)) bump(tallies.badLangs, lang);
   const seg = childElements(tuv, 'seg')[0];
   if (!seg) throw new TmxError(`<tuv xml:lang="${lang}"> has no <seg>`);
 
@@ -502,7 +523,7 @@ function parseTuv(
       if (Number.isInteger(n)) rev = n;
     }
   }
-  recordDuplicates(duplicatePropTally, duplicateTypes);
+  for (const type of duplicateTypes) bump(tallies.duplicateProps, type);
 
   return {
     lang,
@@ -520,22 +541,16 @@ function parseTuv(
   };
 }
 
-function parseTu(
-  tu: XmlElement,
-  warnings: string[],
-  duplicatePropTally: DuplicatePropTally,
-): ParsedTmxTu {
+function parseTu(tu: XmlElement, tallies: ParseTallies): ParsedTmxTu {
   const note = childElements(tu, 'note')[0];
   const { props: rawProps, duplicateTypes } = directProps(tu);
   const allProps = note
     ? [...rawProps, { type: 'note', value: textContent(note) }]
     : rawProps;
   const { uuid, rev, remaining } = extractCatmUnitProps(allProps);
-  recordDuplicates(duplicatePropTally, duplicateTypes);
+  for (const type of duplicateTypes) bump(tallies.duplicateProps, type);
 
-  const variants = childElements(tu, 'tuv').map((v) =>
-    parseTuv(v, warnings, duplicatePropTally),
-  );
+  const variants = childElements(tu, 'tuv').map((v) => parseTuv(v, tallies));
   if (variants.length === 0) {
     throw new TmxError(`<tu tuid="${tu.attrs['tuid'] ?? ''}"> has no <tuv> variants`);
   }
@@ -561,30 +576,219 @@ function parseTu(
  * no `<tuv>`, an `<ept>` with no matching `<bpt>`) — anything narrower,
  * like a malformed `xml:lang`, is reported in `warnings` instead so one
  * bad unit never fails an otherwise-good import.
+ *
+ * The whole-string convenience over {@link TmxStreamParser}: one push,
+ * then end. There is one TMX reader, not two.
  */
 export function parseTmx(xml: string): ParsedTmx {
-  const root = parseXmlDocument(xml);
-  if (root.name !== 'tmx') {
-    throw new TmxError(`root element is <${root.name}>, expected <tmx>`);
+  const parser = new TmxStreamParser();
+  const units = parser.push(xml);
+  parser.end();
+  return { srcLang: parser.srcLang, units, warnings: parser.warnings() };
+}
+
+// ---------------------------------------------------------------------
+// Streaming (backlog #18c)
+// ---------------------------------------------------------------------
+
+/** Where `from` starts an XML name ending in one of `\s`, `/`, `>`, or at the buffer's end. */
+function startsTag(buf: string, from: number, name: string): boolean {
+  if (!buf.startsWith(name, from)) return false;
+  const next = buf[from + name.length];
+  return next === undefined || /[\s/>]/.test(next);
+}
+
+/** Index just past the `>` closing the tag that opens at `from`, quote-aware; -1 if not in `buf` yet. */
+function tagEnd(buf: string, from: number): number {
+  let quote: string | null = null;
+  for (let i = from + 1; i < buf.length; i++) {
+    const c = buf[i]!;
+    if (quote) {
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === '>') {
+      return i + 1;
+    }
   }
-  const header = childElements(root, 'header')[0];
-  const body = childElements(root, 'body')[0];
-  if (!body) throw new TmxError('<tmx> has no <body>');
+  return -1;
+}
 
-  const warnings: string[] = [];
-  const duplicatePropTally: DuplicatePropTally = new Map();
-  const units = childElements(body, 'tu').map((tu) =>
-    parseTu(tu, warnings, duplicatePropTally),
-  );
+/**
+ * Index just past the `</tu>` closing the unit whose start tag ends at
+ * `from`; -1 if it is not in `buf` yet. `<tu>` never nests, and `<` is
+ * illegal unescaped in attribute values and text, so the only places a
+ * literal `</tu>` can hide are CDATA sections and comments — skipped.
+ */
+function unitEnd(buf: string, from: number): number {
+  let i = from;
+  for (;;) {
+    const lt = buf.indexOf('<', i);
+    if (lt === -1) return -1;
+    if (buf.startsWith('<![CDATA[', lt)) {
+      const close = buf.indexOf(']]>', lt + 9);
+      if (close === -1) return -1;
+      i = close + 3;
+    } else if (buf.startsWith('<!--', lt)) {
+      const close = buf.indexOf('-->', lt + 4);
+      if (close === -1) return -1;
+      i = close + 3;
+    } else if (buf.startsWith('</tu', lt) && /[\s>]/.test(buf[lt + 4] ?? '')) {
+      const gt = buf.indexOf('>', lt + 4);
+      return gt === -1 ? -1 : gt + 1;
+    } else {
+      i = lt + 1;
+    }
+  }
+}
 
-  for (const [type, count] of duplicatePropTally) {
-    warnings.push(
-      `${count} unit(s)/variant(s) repeat <prop type="${type}"> more than once — only the ` +
-        'last value is kept for each',
+/**
+ * An incremental TMX reader: feed it the document in chunks of any size,
+ * get back each `<tu>` as soon as its closing tag has arrived
+ * (tm-format-spec.md §8, backlog #18c). What it holds between pushes is
+ * the unfinished tail of the input — at most one unit's text — plus the
+ * warning tallies, never the document or the units already returned.
+ * That is what lets a 2 GiB TMX import on a 2 GB server; a single
+ * string of it cannot even exist in V8.
+ *
+ * Pure string in, units out: no file, no stream API, no clock. The
+ * caller owns reading and decoding (a chunk boundary may split a
+ * multi-byte character, so decode with a streaming decoder first).
+ *
+ * The prolog up to `<body>` is parsed as one small document (for the
+ * root-element check and `srclang`); each unit is parsed on its own by
+ * the same generic parser `parseTmx` always used, so a unit reads the
+ * same whichever way it arrives. `<body>` may hold `<tu>` elements and
+ * comments only — anything else is a {@link TmxError}, because an
+ * element the reader cannot recognise is one it cannot skip safely.
+ */
+export class TmxStreamParser {
+  private buf = '';
+  private state: 'prolog' | 'body' | 'done' = 'prolog';
+  private started = false;
+  private lang: string | undefined;
+  private readonly tallies: ParseTallies = {
+    duplicateProps: new Map(),
+    badLangs: new Map(),
+  };
+
+  /** `<header srclang>`, once the prolog has been read. */
+  get srcLang(): string | undefined {
+    return this.lang;
+  }
+
+  /** Appends a chunk; returns every unit it completed, in document order. */
+  push(chunk: string): ParsedTmxTu[] {
+    if (!this.started && chunk.length > 0) {
+      this.started = true;
+      if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
+    }
+    this.buf += chunk;
+    const units: ParsedTmxTu[] = [];
+    let pos = 0;
+    if (this.state === 'prolog') {
+      pos = this.readProlog();
+      if (pos === -1) return units;
+    }
+    if (this.state === 'body') pos = this.readBody(pos, units);
+    this.buf = this.state === 'done' ? '' : this.buf.slice(pos);
+    return units;
+  }
+
+  /** Declares the input finished; throws if the document is incomplete. */
+  end(): void {
+    if (this.state === 'prolog') {
+      // Parse what there is, so a wrong root or a missing <body> gets
+      // the same message whole-document parsing always gave.
+      const root = parseXmlDocument(this.buf);
+      if (root.name !== 'tmx') {
+        throw new TmxError(`root element is <${root.name}>, expected <tmx>`);
+      }
+      throw new TmxError('<tmx> has no <body>');
+    }
+    if (this.state === 'body') {
+      throw new TmxError(
+        /\S/.test(this.buf) ? 'unterminated element <tu>' : 'unterminated element <body>',
+      );
+    }
+  }
+
+  /** Summary warnings for everything pushed so far — one line per distinct cause. */
+  warnings(): string[] {
+    return tallyWarnings(this.tallies);
+  }
+
+  /** Returns the offset just past `<body>`, or -1 if it has not arrived yet. */
+  private readProlog(): number {
+    const buf = this.buf;
+    let at = -1;
+    for (let i = 0; ;) {
+      const lt = buf.indexOf('<', i);
+      if (lt === -1) return -1;
+      // A `<body` inside a comment or CDATA in the header is not the body.
+      const skipTo = buf.startsWith('<!--', lt)
+        ? '-->'
+        : buf.startsWith('<![CDATA[', lt)
+          ? ']]>'
+          : null;
+      if (skipTo !== null) {
+        const close = buf.indexOf(skipTo, lt + 4);
+        if (close === -1) return -1;
+        i = close + skipTo.length;
+      } else if (startsTag(buf, lt, '<body')) {
+        at = lt;
+        break;
+      } else {
+        i = lt + 1;
+      }
+    }
+    const end = tagEnd(buf, at);
+    if (end === -1) return -1;
+    const selfClosing = buf[end - 2] === '/';
+    const root = parseXmlDocument(
+      buf.slice(0, end) + (selfClosing ? '</tmx>' : '</body></tmx>'),
     );
+    if (root.name !== 'tmx') {
+      throw new TmxError(`root element is <${root.name}>, expected <tmx>`);
+    }
+    this.lang = childElements(root, 'header')[0]?.attrs['srclang'];
+    this.state = selfClosing ? 'done' : 'body';
+    return end;
   }
 
-  return { srcLang: header?.attrs['srclang'], units, warnings };
+  /** Reads whole units from `pos`; returns where the unread tail starts. */
+  private readBody(pos: number, units: ParsedTmxTu[]): number {
+    const buf = this.buf;
+    for (;;) {
+      while (pos < buf.length && /\s/.test(buf[pos]!)) pos++;
+      if (pos >= buf.length) return pos;
+      if (buf.startsWith('<!--', pos)) {
+        const close = buf.indexOf('-->', pos + 4);
+        if (close === -1) return pos;
+        pos = close + 3;
+      } else if (buf.startsWith('</body', pos)) {
+        if (buf.indexOf('>', pos) === -1) return pos;
+        this.state = 'done';
+        return buf.length;
+      } else if (startsTag(buf, pos, '<tu')) {
+        const open = tagEnd(buf, pos);
+        if (open === -1) return pos;
+        const end = buf[open - 2] === '/' ? open : unitEnd(buf, open);
+        if (end === -1) return pos;
+        units.push(parseTu(parseXmlDocument(buf.slice(pos, end)), this.tallies));
+        pos = end;
+      } else if (buf.length - pos < 6) {
+        return pos; // too short yet to tell "<tu" / "</body" / "<!--" apart
+      } else {
+        const found = /^<([^\s/>]+)/.exec(buf.slice(pos, pos + 64));
+        throw new TmxError(
+          found
+            ? `unexpected <${found[1]}> in <body> — TMX 1.4b allows only <tu> there`
+            : `unexpected text in <body>: "${buf.slice(pos, pos + 20)}"`,
+        );
+      }
+    }
+  }
 }
 
 /** TMX's `CCYYMMDDThhmmssZ` date form → ISO 8601. `undefined` if absent or malformed. */

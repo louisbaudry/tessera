@@ -7,6 +7,8 @@ import {
   serializeTmx,
   tmxDateToIso,
   TmxError,
+  TmxStreamParser,
+  type ParsedTmxTu,
   type TmxExportDoc,
   type TmxExportTu,
   type TmxExportTuv,
@@ -542,5 +544,89 @@ describe('serializeTmx', () => {
     const xml = serializeTmx(doc([]));
     const parsed = parseTmx(xml);
     expect(parsed.units).toHaveLength(0);
+  });
+});
+
+describe('TmxStreamParser', () => {
+  /** Units in a CDATA/comment/entity-heavy body — every hazard the unit scanner skips. */
+  const doc =
+    '\uFEFF' +
+    tmx(
+      `
+<!-- a comment with </tu> in it -->
+<tu tuid="1" creationid='a>b'>
+  <prop type="x-Note">&lt;/tu&gt; is text here</prop>
+  <tuv xml:lang="en"><seg><![CDATA[a </tu> inside CDATA]]></seg></tuv>
+  <tuv xml:lang="fr"><seg>caf\u00E9 <bpt i="1">&lt;b&gt;</bpt>gras<ept i="1">&lt;/b&gt;</ept></seg></tuv>
+</tu>
+<tu tuid="2"><tuv xml:lang="bad lang"><seg>two</seg></tuv></tu>
+<tu tuid="3"><!-- </tu> --><tuv xml:lang="bad lang"><seg>three</seg></tuv></tu>`,
+      '<header srclang="en-US"><!-- <body> in a comment is not the body --><prop type="x-h">&lt;body&gt;</prop></header>',
+    );
+
+  function streamed(chunks: readonly string[]): {
+    units: ParsedTmxTu[];
+    srcLang: string | undefined;
+    warnings: string[];
+  } {
+    const parser = new TmxStreamParser();
+    const units = chunks.flatMap((c) => parser.push(c));
+    parser.end();
+    return { units, srcLang: parser.srcLang, warnings: parser.warnings() };
+  }
+
+  it("gives parseTmx's exact result whichever offset the input is split at", () => {
+    const whole = parseTmx(doc);
+    expect(whole.units.map((u) => u.tuid)).toEqual(['1', '2', '3']);
+    expect(whole.units[0]!.variants[0]!.tokens).toEqual([
+      { t: 'text', v: 'a </tu> inside CDATA' },
+    ]);
+    for (let at = 0; at <= doc.length; at++) {
+      const got = streamed([doc.slice(0, at), doc.slice(at)]);
+      expect(got.units, `split at ${at}`).toEqual(whole.units);
+      expect(got.srcLang, `split at ${at}`).toBe('en-US');
+      expect(got.warnings, `split at ${at}`).toEqual(whole.warnings);
+    }
+  });
+
+  it('survives one character at a time', () => {
+    expect(streamed([...doc]).units).toEqual(parseTmx(doc).units);
+  });
+
+  it('returns each unit as soon as its closing tag arrives, and holds nothing after', () => {
+    const parser = new TmxStreamParser();
+    const cut = doc.indexOf('<tu tuid="2"');
+    expect(parser.push(doc.slice(0, cut)).map((u) => u.tuid)).toEqual(['1']);
+    expect(parser.push(doc.slice(cut)).map((u) => u.tuid)).toEqual(['2', '3']);
+    parser.end();
+  });
+
+  it('reports a bad xml:lang once per distinct value, with a count', () => {
+    const lines = parseTmx(doc).warnings.filter((w) => w.includes('bad lang'));
+    expect(lines).toEqual([
+      expect.stringMatching(/^2 <tuv> variant\(s\) have xml:lang="bad lang"/),
+    ]);
+  });
+
+  it('refuses an element other than <tu> in <body> rather than skipping it', () => {
+    expect(() =>
+      parseTmx(tmx('<tu><tuv xml:lang="en"><seg>x</seg></tuv></tu><note>n</note>')),
+    ).toThrow(/unexpected <note> in <body>/);
+  });
+
+  it('throws on a document that stops inside a unit or before </body>', () => {
+    const full = tmx('<tu><tuv xml:lang="en"><seg>x</seg></tuv></tu>');
+    const parser = new TmxStreamParser();
+    parser.push(full.slice(0, full.indexOf('</seg>')));
+    expect(() => parser.end()).toThrow(/unterminated element <tu>/);
+    const noClose = new TmxStreamParser();
+    noClose.push(full.slice(0, full.indexOf('</body>')));
+    expect(() => noClose.end()).toThrow(/unterminated element <body>/);
+  });
+
+  it('accepts an empty self-closing <body/>', () => {
+    const parsed = parseTmx('<tmx version="1.4"><header srclang="en"/><body/></tmx>');
+    expect(parsed.units).toEqual([]);
+    expect(parsed.srcLang).toBe('en');
   });
 });
