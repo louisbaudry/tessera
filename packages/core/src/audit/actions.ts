@@ -102,15 +102,23 @@ export interface AuditDetail {
     readonly to: JsonValue;
   };
   'ai.requested': AiProvenance;
-  // platform.sqlite / portal.sqlite: shapes fixed by backlog #57/#58.
+  // platform.sqlite (backlog #57, spec §2.5). Nothing personal in a
+  // detail: it is hashed, so erasure could never reach it.
   'auth.login': null;
-  'auth.login_failed': null;
+  /** Kept in the log, never told apart in the HTTP response. */
+  'auth.login_failed': { readonly reason: 'unknown_email' | 'wrong_password' };
   'auth.logout': null;
   'account.created': null;
   'authorization.granted': null;
   'authorization.revoked': null;
   'project.created': null;
   'project.deleted': null;
-  'file.downloaded': null;
+  /** The file's id and name where it lives, and the digest of the bytes sent. */
+  'file.downloaded': {
+    readonly file_id: number;
+    readonly name: string;
+    readonly sha256: string;
+  };
+  // portal.sqlite: fixed by backlog #58.
   'file.delivered': null;
 }

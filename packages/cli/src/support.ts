@@ -5,11 +5,10 @@
  */
 
 import { existsSync } from 'node:fs';
-import { userInfo } from 'node:os';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 
-import { formatActor, type AuditActor, type Project } from '@cat-tool/core';
-import { getProject, openProjectDb } from '@cat-tool/db';
+import type { AuditActor, Project } from '@cat-tool/core';
+import { getProject, openProjectDb, osUserActor, OsUserError } from '@cat-tool/db';
 
 /** Output goes through this rather than `console` so tests can capture it. */
 export interface CliIo {
@@ -83,26 +82,12 @@ export function openExistingProject(path: string): { db: ProjectDb; project: Pro
   return { db, project };
 }
 
-/**
- * The CLI's audit actor: `cli:<OS user name>` (audit-spec.md §2.1) —
- * self-asserted, since the CLI has no login, and labelled with the same
- * name. A process with no user name to give (no passwd entry, no
- * `USER`) is refused rather than logged as someone made up.
- */
+/** `cli:<OS user>` (audit-spec.md §2.1), or a user-facing refusal. */
 export function cliActor(): AuditActor {
-  let name: string | undefined;
   try {
-    name = userInfo().username;
-  } catch {
-    name = process.env['USER'] ?? process.env['USERNAME'];
+    return osUserActor();
+  } catch (err) {
+    if (err instanceof OsUserError) throw new CliError(err.message);
+    throw err;
   }
-  const actor = { kind: 'cli', name: name ?? '' } as const;
-  try {
-    formatActor(actor);
-  } catch {
-    throw new CliError(
-      `cannot record who is running this: no usable OS user name (${JSON.stringify(name ?? null)})`,
-    );
-  }
-  return { actor, label: actor.name };
 }

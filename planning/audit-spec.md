@@ -1,7 +1,7 @@
 # Auditability — spec
 
-Status: design, 2026-09-23. `#55` (`core/audit`) and `#56` (`project.catdb`)
-built 2026-09-24; `#57`–`#58` not yet
+Status: design, 2026-09-23. `#55` (`core/audit`), `#56` (`project.catdb`)
+and `#57` (`platform.sqlite`) built 2026-09-24; `#58` not yet
 (`v1-backlog.md`, "Cross-cutting — Auditability"). Written now, ahead of
 the epics that need it, for the same reason the `.ctm` context columns
 were populated before any feature read them (`v1-spec.md` §4.3): **history
@@ -229,10 +229,10 @@ the actions that can happen *in that file*; `auth.login` in a
 lists (`file.downloaded`) has one detail type. `AuditDetail` maps each
 action to its detail shape; keys are snake_case because they are
 stored JSON, not TypeScript. The `project.catdb` details are the table
-above. The `platform.sqlite` and `portal.sqlite` details are typed
-`null` until `#57`/`#58` fix them — the subject and actor already say
-who and what, and `detail` is JSON `TEXT`, so giving one a shape later
-is a type change, not a migration.
+above; the `platform.sqlite` ones are fixed in §2.5. The
+`portal.sqlite` details are typed `null` until `#58` fixes them — the
+subject and actor already say who and what, and `detail` is JSON
+`TEXT`, so giving one a shape later is a type change, not a migration.
 
 Snapshotting the full target after each change (not a diff) is
 deliberate: a segment is a few hundred bytes of JSON, a diff format would
@@ -296,6 +296,66 @@ rather than re-decide:
   dismissals. `project.setting_changed` exists in the vocabulary, but
   its `key` names are a design of their own; recorded as a follow-up
   rather than guessed here.
+
+### 2.5 In `platform.sqlite` (backlog #57)
+
+Platform schema v3 adds the same table through `auditEventDdl`, its
+`CHECK` generated from `PLATFORM_AUDIT_ACTIONS`. No baseline: nothing
+before v3 recorded who created an account, and §6's rule is never to
+invent an author. What the second file to carry the log settled:
+
+- **Nothing personal goes in `detail` or `subject_id`.** Both are
+  inside the chain, and erasure (§5) can only touch `actor_label`. An
+  email in a hashed column could never be erased without breaking the
+  chain. So `account.created` is subject `account`, id the account's
+  row id, detail `null`: the email is in the `account` row, which the
+  erasure feature can delete. The same holds for every file that
+  gains the log.
+- **A failed login has no authenticated principal**, so its actor is
+  `system:login` (label `NULL`), the gate that refused it. It is never
+  the account the request named: that would record the attacker as
+  the victim. The subject is that account when the email matched one,
+  `NULL` otherwise. Detail is `{ reason: 'unknown_email' |
+  'wrong_password' }`, which the log keeps but the HTTP response never
+  distinguishes. The email that was tried is not recorded (see the
+  first bullet).
+- **Login and logout are the account's own acts**: actor and subject
+  are both `account:<id>`. Each is written inside the same transaction
+  as the session row it creates or deletes. A logout that finds no
+  session writes nothing.
+- **A project in this file is `subject_type` `project`, `subject_id`
+  `<account id>/<name>`**: the two coordinates its path is built from.
+  It is never the storage root, which is a capability, not a name. A
+  name reused after a deletion is the same subject by design: it is
+  the history of that slot.
+- **`file.downloaded` is `{ file_id, name, sha256 }`**: the file's id
+  and name in the file it came from, and the digest of the bytes sent.
+  A download from a project also leaves `project.exported` in the
+  project's own log (the document was produced), and `file.downloaded`
+  here (it left, to whom). These are two facts in two files, not one
+  fact recorded twice. `#58`'s portal downloads reuse the same shape.
+- **Across two files, the event is written before the effect is
+  visible.** A project's creation or deletion is a filesystem change
+  that no SQLite transaction covers. So `recordProjectChange` appends
+  the event and then makes the change *inside* the platform
+  transaction: if the change throws, the event rolls back. The one
+  unrecorded window left is a failed `COMMIT` after a successful
+  change. A download commits `file.downloaded` before the first byte
+  is sent, so a failed write means the bytes never leave.
+- **The server resolves the actor once.** The session gate sets the
+  request's account, and `auditActor(account)` is the one place an
+  `AuditActor` is built from it: `account:<id>`, labelled with the
+  email. Every route passes that to the `db` write it wraps. The
+  failed-login actor is the one other constant in the file.
+- **The segment-write route writes into the project's log, never
+  this one** (decision 5). `PUT /api/projects/:name/segments/:id` is
+  `setSegmentTarget` with the session's actor. Fastify's request
+  logging carries method, URL and status, never a body. A test pins
+  that: it writes a target through the route with a logger attached
+  and asserts the target's text is absent from every line.
+- **`authorization.granted` / `.revoked`** stay in the vocabulary
+  unwritten until `#45` (`project_authorization`) exists. Whichever of
+  the two lands second writes them.
 
 ## 3. The chain, and what it proves
 

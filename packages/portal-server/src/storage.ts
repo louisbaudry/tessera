@@ -53,13 +53,5 @@ export function readStoredFilePath(storageRoot: string, relativePath: string): s
   return join(storageRoot, relativePath);
 }
 
-/**
- * `Content-Disposition` for a download: RFC 6266's `attachment`, with an
- * ASCII-only `filename` for old clients and the real name in RFC 8187
- * `filename*` for everyone else. Quotes, backslashes and control
- * characters can't appear in the quoted fallback, so they become `_`.
- */
-export function attachmentDisposition(filename: string): string {
-  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/gu, '_');
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
+/** One definition, in `@cat-tool/core`, shared with the CAT server's downloads. */
+export { attachmentDisposition } from '@cat-tool/portal-core';

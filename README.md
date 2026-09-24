@@ -141,7 +141,9 @@ pnpm cat-tool audit-verify job.catdb                    # exit 1 if the audit ha
 
 Every write records an append-only, hash-chained `audit_event` in the
 project file, naming who made it — `cli:<OS user>` from the CLI, the
-session's account from the server (`planning/audit-spec.md`).
+session's account from the server (`planning/audit-spec.md`). The
+server's own `platform.sqlite` keeps the same log for logins, projects
+created and deleted, and downloads.
 
 The API server (`v1-spec.md` §2.5) keeps `platform.sqlite` and a storage
 volume under `./data` by default; a deployment overrides `CAT_PORT`,

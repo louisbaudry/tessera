@@ -312,9 +312,9 @@ together.
 ## The API server (`@cat-tool/server`)
 
 Backlog #27 (`v1-spec.md` §2.5) is the shell everything after #8 runs
-behind: Fastify, `platform.sqlite` (accounts and sessions, never
-translation data) and the storage volume, with `core` and `db`
-in-process and JSON to the SPA. Three things to keep true:
+behind: Fastify, `platform.sqlite` (accounts, sessions and their audit
+log, never translation data) and the storage volume, with `core` and
+`db` in-process and JSON to the SPA. Four things to keep true:
 
 - **No function takes a path from a request.** `server/src/storage.ts`
   builds every path from the account's minted `storage_root` and a
@@ -330,6 +330,12 @@ in-process and JSON to the SPA. Three things to keep true:
   (§2.4) again. `countSegments` is the model: when a route needs
   something `db` lacks, add it to `db`, where the CLI and the editor
   reach it too.
+- **A route's actor is `sessionActor(req)`, never built in the
+  handler** (`audit-spec.md` §2.5). A write in the project goes to the
+  project's log; one about the platform (login, a project's creation or
+  deletion, a download) to `platform.sqlite`'s, and nothing personal
+  goes in either log's hashed `detail` — erasure can only reach
+  `actor_label`.
 
 Tests drive the app through Fastify's `inject` — no port, no browser:
 `buildApp({ config, logger: false })`, then `app.inject(...)`. A WHATWG
