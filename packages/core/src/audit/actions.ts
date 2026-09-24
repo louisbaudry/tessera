@@ -119,6 +119,12 @@ export interface AuditDetail {
     readonly name: string;
     readonly sha256: string;
   };
-  // portal.sqlite: fixed by backlog #58.
-  'file.delivered': null;
+  // portal.sqlite (backlog #58, spec §2.6). A file the portal stores is
+  // the subject itself (`source_file` / `delivered_file`, its row id).
+  /** A translated file stored for the client: which order, and exactly what bytes. */
+  'file.delivered': {
+    readonly order_id: number;
+    readonly name: string;
+    readonly sha256: string;
+  };
 }

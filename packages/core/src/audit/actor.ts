@@ -15,7 +15,11 @@ export type Actor =
   | { readonly kind: 'account'; readonly id: number }
   /** `portal.sqlite` `admin_user.id` — an authenticated session. */
   | { readonly kind: 'admin'; readonly id: number }
-  /** A portal order id: whoever holds the private link, not a person. */
+  /**
+   * A portal `client.id`: whoever holds that client's private link, not
+   * a person. The link is the client's `access_token`, so the client row
+   * is the one principal it proves (spec §2.1, backlog #58).
+   */
   | { readonly kind: 'client'; readonly id: number }
   /** An OS user name, self-asserted — the CLI has no login. */
   | { readonly kind: 'cli'; readonly name: string }

@@ -2227,8 +2227,40 @@ Sized issues:
     flag, not a refusal.
   - `authorization.*` stays unwritten until `#45` exists, and whichever
     lands second adds it.
-- **#58 · Portal: actor on `order_event`, append-only triggers, portal
-  `audit_event` · S** · [issue #37].
+- ~~**#58 · Portal: actor on `order_event`, append-only triggers, portal
+  `audit_event` · S**~~ — **DONE** — portal schema v3
+  (`db/portal/schema.ts`) rebuilds `order_event` with a `NOT NULL`
+  `actor` and an `actor_label`, backfilled `system:migration`/`NULL`,
+  plus `BEFORE UPDATE`/`BEFORE DELETE` triggers. It also adds the shared
+  `audit_event`. `createOrder` and `setStatus` take a required actor.
+  `createAdminSession` logs `auth.login` in the session's transaction,
+  and `insertDeliveredFile` logs `file.delivered` in its row's.
+  `db/portal/audit.ts` holds `recordFailedAdminLogin` and
+  `recordFileDownload`. In `portal-server`, `adminActor`/`clientActor`
+  are the only places a route's actor is built, and the admin gate now
+  keeps the session's admin on the request. What building it decided
+  (spec §2.6):
+  - **`client:` is the client's id, not the order's.** The spec's
+    table said "order id", but the private link is
+    `client.access_token`, one per client. An order id would give one
+    link-holder a different actor on each of their orders: two
+    spellings of one principal, the thing §2.1's grammar forbids. The
+    actor carries no label, because a name would claim a person the
+    link cannot prove.
+  - **`order_event` was rebuilt, not `ALTER`ed.** SQLite can only add
+    a `NOT NULL` column with a default, and a default would let a
+    writer that forgot its actor through. The update trigger permits
+    one change, erasing `actor_label` (§5), the same exception
+    `audit_event` makes.
+  - **A portal file is its own subject** (`source_file` /
+    `delivered_file`, row id). The two tables' ids overlap, so an order
+    subject plus `file_id` could not say which file left.
+  - **A download reads the whole file before sending it.** Streaming
+    would mean hashing one read and sending another. With a single
+    buffer, the logged digest is exactly the bytes that left. The
+    upload cap is 100 MB.
+  - A client's view of an order's history drops `actorLabel`: it shows
+    who acted (`admin:1`), never an admin's email.
 
 Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration
@@ -2268,4 +2300,3 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
 [issue #36]: https://github.com/louisbaudry/tessera/issues/36
-[issue #37]: https://github.com/louisbaudry/tessera/issues/37

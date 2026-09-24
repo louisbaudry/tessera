@@ -51,7 +51,10 @@ submitted -> approved -> in_progress -> delivered
 Every transition is recorded as an `order_event` row (append-only status
 history) — this is what "order status" in the UI reads from, and it's the
 hook a future notification-on-every-transition feature needs without a
-schema change.
+schema change. Since schema v3 (backlog #58) each row names its actor,
+`client:<id>` or `admin:<id>`, and triggers enforce the append-only
+rule. Logins, deliveries and downloads go to `audit_event`
+(`audit-spec.md` §2.6).
 
 Legal transitions are enforced in `@cat-tool/portal-core`
 (`transitionOrder`), not scattered across route handlers — the same
@@ -134,7 +137,9 @@ SMTP provider shouldn't fail the order-submit/deliver API call itself.
 - `delivered_file` — id, order_id, filename, content_type, byte_size,
   storage_path, uploaded_at
 - `order_event` — id, order_id, from_status (nullable, null for the
-  creation event), to_status, note, created_at
+  creation event), to_status, note, created_at, actor, actor_label
+  (v3; append-only by trigger)
+- `audit_event` — the shared audit log (v3, `audit-spec.md` §2, §2.6)
 
 Files are stored on local disk under a configurable storage root
 (mirrors the existing `account.storage_root` pattern in

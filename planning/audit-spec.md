@@ -1,7 +1,7 @@
 # Auditability — spec
 
-Status: design, 2026-09-23. `#55` (`core/audit`), `#56` (`project.catdb`)
-and `#57` (`platform.sqlite`) built 2026-09-24; `#58` not yet
+Status: design, 2026-09-23. `#55` (`core/audit`), `#56` (`project.catdb`),
+`#57` (`platform.sqlite`) and `#58` (`portal.sqlite`) built 2026-09-24
 (`v1-backlog.md`, "Cross-cutting — Auditability"). Written now, ahead of
 the epics that need it, for the same reason the `.ctm` context columns
 were populated before any feature read them (`v1-spec.md` §4.3): **history
@@ -161,7 +161,7 @@ A string `kind:id`, parsed and formatted only by `core/audit/actor.ts`
 |---|---|---|
 | `account` | `platform.sqlite` `account.id` | authenticated session |
 | `admin` | `portal.sqlite` `admin_user.id` | authenticated session |
-| `client` | portal order id | **the private link, not a person** — whoever holds it (`portal-v0-spec.md` §7) |
+| `client` | portal `client.id` | **the private link, not a person** — whoever holds it (`portal-v0-spec.md` §7) |
 | `cli` | OS user name | **self-asserted** — the CLI has no login |
 | `system` | a named job, e.g. `system:migration` | unattended; the job's name is the answer |
 
@@ -182,6 +182,13 @@ principal would be two actors to every query that groups by `actor`:
 
 Anything else — an unknown kind, an empty id, `account:0` — is rejected
 by `parseActor`, which throws rather than returning a best guess.
+
+**`client` is the client's id, not an order's** (backlog #58). The
+first draft of this table said "portal order id". But the private link
+is `client.access_token`, one per client, and it opens every order that
+client has. An order id would give one link-holder a different actor
+on each order: two spellings of one principal. It would also leave a
+new order's creation with no id to name until the row existed.
 
 The table says what each identity is worth rather than pretending they
 are equal: a `cli:` actor is a claim, a `client:` actor is a link. An
@@ -229,10 +236,8 @@ the actions that can happen *in that file*; `auth.login` in a
 lists (`file.downloaded`) has one detail type. `AuditDetail` maps each
 action to its detail shape; keys are snake_case because they are
 stored JSON, not TypeScript. The `project.catdb` details are the table
-above; the `platform.sqlite` ones are fixed in §2.5. The
-`portal.sqlite` details are typed `null` until `#58` fixes them — the
-subject and actor already say who and what, and `detail` is JSON
-`TEXT`, so giving one a shape later is a type change, not a migration.
+above; the `platform.sqlite` ones are fixed in §2.5, the
+`portal.sqlite` ones in §2.6.
 
 Snapshotting the full target after each change (not a diff) is
 deliberate: a segment is a few hundred bytes of JSON, a diff format would
@@ -356,6 +361,54 @@ invent an author. What the second file to carry the log settled:
 - **`authorization.granted` / `.revoked`** stay in the vocabulary
   unwritten until `#45` (`project_authorization`) exists. Whichever of
   the two lands second writes them.
+
+### 2.6 In `portal.sqlite` (backlog #58)
+
+Portal schema v3 does two things. It gives `order_event` its actor and
+the append-only triggers. It also adds `audit_event` through
+`auditEventDdl`, with a `CHECK` generated from `PORTAL_AUDIT_ACTIONS`.
+The third file to carry the log settled these points:
+
+- **`order_event` is rebuilt, not `ALTER`ed.** `actor` is `NOT NULL`
+  with no default. SQLite adds a `NOT NULL` column only with a default,
+  and a default would let a writer that forgot its actor through
+  silently (decision 3). Rows from before v3 get `system:migration`
+  with a `NULL` label (§6). The update trigger rejects every change
+  except `actor_label` becoming `'[erased]'`, the same single
+  exception `audit_event` makes (§5).
+- **Transitions are recorded once**, in `order_event` (decision 7).
+  There is no `audit_event` baseline for them and no second copy.
+  `createOrder` and `setStatus` take a required actor: `client:<id>`
+  when the client submits or approves, `admin:<id>` for every admin
+  move.
+- **Actors.** An admin is `admin:<admin_user.id>`, labelled with its
+  email, the same as an `account:` in §2.5. A client is
+  `client:<client.id>` (§2.1) with a `NULL` label. It stands for whoever
+  holds the link, and a name would claim more than that. A refused admin
+  login is `system:login`, the gate, as in §2.5.
+- **Subjects.** Logins name `admin_user` (with a `NULL` id when the
+  email matched nobody). A file names its own row: `source_file` or
+  `delivered_file`, with the row id. The two tables' ids overlap, so an
+  `order` subject with a `file_id` in the detail could not say which
+  file left. An order's file events are one join away through the file
+  row's `order_id`.
+- **`file.downloaded`** reuses §2.5's `{ file_id, name, sha256 }`, where
+  `name` is the display filename. It covers a client fetching a
+  delivered file and an admin fetching either kind. The server reads
+  the stored file whole, hashes it, commits the event, and only then
+  sends those same bytes. Hashing a read and then streaming a second
+  read could log a digest of something other than what left.
+- **`file.delivered`** is `{ order_id, name, sha256 }`: the digest of
+  the stored bytes, written in the same transaction as the
+  `delivered_file` row. It records what exactly the client was given
+  and who put it there. Marking the order `delivered` is a separate
+  fact, and a transition, so it is in `order_event`.
+- **Source uploads are not events.** Content arriving is not content
+  leaving (decision 9). The order's creation, with its actor, already
+  says who submitted it.
+- **A client's view of an order's history carries `actor` and drops
+  `actor_label`.** It shows that `admin:1` moved the order, never the
+  admin's email.
 
 ## 3. The chain, and what it proves
 
