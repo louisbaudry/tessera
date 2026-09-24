@@ -146,7 +146,12 @@ CREATE TABLE tm (
 
 There is no `src_lang` / `tgt_lang`. `langs` is a denormalised convenience
 listing the languages actually present, maintained on write — it lets a UI
-show what a memory contains without scanning it.
+show what a memory contains without scanning it. It is recomputed from
+`tuv` on every write rather than edited incrementally, so it cannot drift,
+and that recomputation seeks `tuv_lookup` once per language instead of
+reading it whole (§11.2, backlog #20a). Lookups never read it: they take
+the languages from `tuv`'s index directly (#19a), so even a stale `langs`
+could only mislead a display, never hide a match.
 
 `normalizer_version` is the field most formats forget. Every `hash` in the
 file is a function of the normalisation rules that produced it. If those
@@ -1059,6 +1064,16 @@ change.
   the whole index on every confirm: 24 ms at 100k units, 247 ms at 1M
   and 1.3 s at 5M. At 5M, each segment confirm would stall for more
   than a second.
+
+  *Fixed by backlog #20a (2026-09-24).* `tm.langs` stays a projection
+  recomputed from `tuv` on every write, as §2.1 says, but the read is
+  now `distinctLangs` (`db/lang-match.ts`): the same recursive loose
+  index scan `retrievePair` uses (#19a), one seek on `tuv_lookup` per
+  distinct language instead of a walk of every entry. Re-measured at
+  1M units, `writeBack` is 1.1 ms p50 / 25 ms p99, against 247 ms /
+  314 ms before. The p99 tail is no longer `refreshLangs`, whose plan
+  is now seeks only (a test pins it); it has not been profiled, and a
+  WAL checkpoint landing on a confirm is the likeliest cause.
 - **Single-file `importTmx` cannot take an agency-sized TMX.** It needs
   the whole document as one string plus the whole parse tree in memory.
   At 1M units (a 395 MiB TMX) it peaked at **4.1 GiB RSS**, twice a

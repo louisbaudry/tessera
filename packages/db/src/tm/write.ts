@@ -17,6 +17,7 @@ import { normalizeTokens } from '@cat-tool/core';
 import type { TagKind, TmToken } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
+import { distinctLangs } from '../lang-match.js';
 import { qualifySchema } from '../schema-alias.js';
 import { QUALITY } from './schema.js';
 
@@ -255,16 +256,19 @@ export interface RefreshLangsOptions {
  * Recomputes `tm.langs` (tm-format-spec.md §2.1) from what `tuv`
  * actually contains — a projection, never hand-maintained
  * incrementally, so it can never drift. Shared by `writeBack` and
- * `importTmx` (backlog #18) rather than each keeping its own copy.
+ * the importers (backlog #18) rather than each keeping its own copy.
+ *
+ * It runs on every confirm, so it must not grow with the memory: the
+ * languages come from `distinctLangs`'s one-seek-per-language walk of
+ * `tuv_lookup`, never `SELECT DISTINCT lang`, which read every index
+ * entry — 247 ms per confirm at 1M units (backlog #20a).
  */
 export function refreshLangs(
   db: Database.Database,
   options: RefreshLangsOptions = {},
 ): void {
   const q = qualifySchema(options.schema);
-  const rows = db
-    .prepare(`SELECT DISTINCT lang FROM ${q}tuv ORDER BY lang`)
-    .all() as Array<{
+  const rows = db.prepare(distinctLangs(`${q}tuv`)).all() as Array<{
     lang: string;
   }>;
   db.prepare(`UPDATE ${q}tm SET langs = ? WHERE id = 1`).run(
