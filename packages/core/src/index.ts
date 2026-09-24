@@ -28,3 +28,6 @@ export * from './project/assemble.js';
 export * from './project/parts.js';
 export * from './project/export.js';
 export * from './auth/credentials.js';
+export * from './audit/actor.js';
+export * from './audit/actions.js';
+export * from './audit/chain.js';

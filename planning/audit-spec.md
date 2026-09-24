@@ -1,6 +1,6 @@
 # Auditability — spec
 
-Status: design, 2026-09-23. Not yet built — broken into backlog `#55`–`#58`
+Status: design, 2026-09-23. `#55` (`core/audit`) built 2026-09-24; `#56`–`#58` not yet
 (`v1-backlog.md`, "Cross-cutting — Auditability"). Written now, ahead of
 the epics that need it, for the same reason the `.ctm` context columns
 were populated before any feature read them (`v1-spec.md` §4.3): **history
@@ -165,6 +165,24 @@ A string `kind:id`, parsed and formatted only by `core/audit/actor.ts`
 | `cli` | OS user name | **self-asserted** — the CLI has no login |
 | `system` | a named job, e.g. `system:migration` | unattended; the job's name is the answer |
 
+**The grammar** (backlog #55, `core/audit/actor.ts`). The string splits
+on its *first* `:`, so a `cli:` user name may itself contain one. Each
+kind's id has exactly one spelling, because two spellings of one
+principal would be two actors to every query that groups by `actor`:
+
+- `account`, `admin`, `client`: a positive decimal integer, no sign, no
+  leading zero (`account:3`, never `account:03`) — they are all
+  `INTEGER PRIMARY KEY`s.
+- `cli`: any non-empty name with no control character and no leading
+  or trailing whitespace. Windows user names contain spaces; the CLI
+  passes what the OS gives it and `core` refuses only what could not
+  be a name at all.
+- `system`: `[a-z][a-z0-9._-]*` — a job name is this codebase's own
+  constant, never input, so it gets the narrow alphabet.
+
+Anything else — an unknown kind, an empty id, `account:0` — is rejected
+by `parseActor`, which throws rather than returning a best guess.
+
 The table says what each identity is worth rather than pretending they
 are equal: a `cli:` actor is a claim, a `client:` actor is a link. An
 audit trail that overstates its own certainty is worse than one that
@@ -202,6 +220,19 @@ their `*_by` columns have always been free text; writers pass the
 `file.downloaded` (by client or admin), `file.delivered`. Order
 transitions stay in `order_event` (decision 7), which gains `actor` and
 `actor_label` columns and the same append-only triggers.
+
+**In code** (backlog #55, `core/audit/actions.ts`): one list per
+database — `PROJECT_AUDIT_ACTIONS`, `PLATFORM_AUDIT_ACTIONS`,
+`PORTAL_AUDIT_ACTIONS` — because each file's `CHECK` should admit only
+the actions that can happen *in that file*; `auth.login` in a
+`project.catdb` is a write path that should not exist. An action in two
+lists (`file.downloaded`) has one detail type. `AuditDetail` maps each
+action to its detail shape; keys are snake_case because they are
+stored JSON, not TypeScript. The `project.catdb` details are the table
+above. The `platform.sqlite` and `portal.sqlite` details are typed
+`null` until `#57`/`#58` fix them — the subject and actor already say
+who and what, and `detail` is JSON `TEXT`, so giving one a shape later
+is a type change, not a migration.
 
 Snapshotting the full target after each change (not a diff) is
 deliberate: a segment is a few hundred bytes of JSON, a diff format would
@@ -242,6 +273,34 @@ from some point on. Anchoring the head hash outside the file (in
 and is deferred until a real need names where the anchor should live.
 The chain is written now because it is the part that cannot be added
 retroactively; the anchor can.
+
+### 3.1 The bytes (backlog #55)
+
+The formula above leaves four choices open; `core/audit/chain.ts` fixes
+them, and this is their record:
+
+- **Hashes are lowercase hex**, and `‖` is string concatenation: the
+  hash input is the UTF-8 encoding of `prev_chain_hash` (64 hex
+  characters) followed by `canonical(row)`.
+- **`application_id` is written in decimal** — the integer
+  `PRAGMA application_id` returns, as `String(n)` spells it. The
+  genesis therefore differs per kind of database, so a chain lifted
+  from a `platform.sqlite` into a `project.catdb` fails at its first
+  row.
+- **`canonical(row)` is `JSON.stringify` of the eight-element array**,
+  with SQL `NULL` as JSON `null`. `detail` goes in as the *string*
+  stored in the column, never re-parsed: re-serialising a parsed object
+  could reorder its keys, and the chain must depend only on bytes that
+  are actually in the file. The writer hashes the exact string it
+  stores.
+- **`verifyAuditChain` reads rows in ascending `id`** and reports the
+  first row whose stored `chain_hash` differs from the recomputed one,
+  or whose `id` does not exceed the previous row's. An edited row is
+  reported as itself; a deleted row as the row after it (whose hash was
+  chained from the missing one); an inserted row as itself, or as the
+  row after it if the insert was hashed correctly. **Removing rows from
+  the end is invisible** — the surviving prefix is a valid chain — which
+  is exactly the gap the deferred anchor closes.
 
 ## 4. AI provenance (a requirement on Epic 8)
 
