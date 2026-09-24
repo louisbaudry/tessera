@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { capturePlans, scansOf } from '../query-plan.fixture.js';
 import { SchemaAliasError } from '../schema-alias.js';
 import {
   addVariant,
@@ -274,6 +275,26 @@ describe('findRendering', () => {
     const found = findRendering(db, { srcLang: 'en', srcText: 'invoice', tgtLang: 'es' });
     expect(found.map((r) => r.termId)).toEqual([a.id, b.id]);
     expect(listVariants(db, b.id).map((v) => v.text)).toEqual(['invoice', 'facturar']);
+    db.close();
+  });
+
+  it('seeks the (lang, plain) index for the source term (backlog #19a)', () => {
+    const db = open();
+    seed(db);
+    const plans = capturePlans(db, () =>
+      findRendering(db, { srcLang: 'en-GB', srcText: 'invoice', tgtLang: 'es' }),
+    );
+    expect(plans[0]).toContain(
+      'SEARCH v USING INDEX term_variant_lookup (lang=? AND plain=?)',
+    );
+    expect(
+      scansOf(plans, ['term_variant', 'term', 'term_decision', 'v', 't', 'd']),
+    ).toEqual([]);
+    // Language lookups come from the table, not the glossary.langs projection.
+    db.prepare(`UPDATE glossary SET langs = '[]' WHERE id = 1`).run();
+    expect(
+      findRendering(db, { srcLang: 'en', srcText: 'invoice', tgtLang: 'es' }),
+    ).toHaveLength(1);
     db.close();
   });
 

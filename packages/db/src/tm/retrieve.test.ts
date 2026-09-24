@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { capturePlans, scansOf } from '../query-plan.fixture.js';
+
 import { createTm } from './index.js';
 import { retrievePair } from './retrieve.js';
 
@@ -247,5 +249,101 @@ describe('retrievePair', () => {
       }
     }).not.toThrow();
     db.close();
+  });
+
+  // Backlog #19a: `primary_subtag(s.lang) = …` scanned every `tuv` row,
+  // calling into JS per row — 1.7 s a lookup at 1M units
+  // (tm-format-spec.md §11.2), invisible at test scale. The plan is the
+  // only thing a dozen-row test can see.
+  describe('index use', () => {
+    // `tuv_lookup` or `tuv_ctx` — both lead with (lang, hash), and
+    // which one SQLite picks is its business; a seek on either is fine.
+    const SEEKS_LANG_HASH =
+      /^SEARCH s USING INDEX tuv_(lookup|ctx) \(lang=\? AND hash=\?/;
+    const seeded = (path = dbPath()) => {
+      const db = createTm(path, { name: 'x', generator: 'test' });
+      insertUnit(db, 'u1', [
+        { lang: 'en-US', plain: 'Hello' },
+        { lang: 'es', plain: 'Hola' },
+        { lang: 'de', plain: 'Hallo' },
+      ]);
+      return db;
+    };
+
+    it('seeks the (lang, hash) index and never scans tuv, tu or their aliases', () => {
+      const db = seeded();
+      const plans = capturePlans(db, () =>
+        retrievePair(db, { srcLang: 'en', srcHash: 'hash:Hello', tgtLang: 'es-ES' }),
+      );
+      expect(plans).toHaveLength(1);
+      expect(plans[0]).toContainEqual(expect.stringMatching(SEEKS_LANG_HASH));
+      expect(scansOf(plans, ['tuv', 'tu', 's', 't', 'u'])).toEqual([]);
+      db.close();
+    });
+
+    it('seeks the index on an ATTACHed TM too', () => {
+      const tmPath = dbPath();
+      seeded(tmPath).close();
+      const otherDir = mkdtempSync(join(tmpdir(), 'cat-retrieve-other-'));
+      const other = createTm(join(otherDir, 'other.ctm'), {
+        name: 'y',
+        generator: 'test',
+      });
+      other.prepare(`ATTACH DATABASE ? AS tm_1`).run(tmPath);
+      const plans = capturePlans(other, () =>
+        retrievePair(
+          other,
+          { srcLang: 'en', srcHash: 'hash:Hello', tgtLang: 'es' },
+          { schema: 'tm_1' },
+        ),
+      );
+      expect(plans[0]).toContainEqual(expect.stringMatching(SEEKS_LANG_HASH));
+      expect(scansOf(plans, ['tuv', 'tu', 's', 't', 'u'])).toEqual([]);
+      other.close();
+      rmSync(otherDir, { recursive: true, force: true });
+    });
+
+    it('reads the languages from tuv itself, not from the tm.langs projection', () => {
+      const db = seeded();
+      // A stale projection must not hide a stored variant.
+      db.prepare(`UPDATE tm SET langs = '[]' WHERE id = 1`).run();
+      expect(
+        retrievePair(db, { srcLang: 'en', srcHash: 'hash:Hello', tgtLang: 'de' }),
+      ).toHaveLength(1);
+      db.close();
+    });
+
+    it('matches every stored spelling of the primary subtag, not just a prefix', () => {
+      const db = createTm(dbPath(), { name: 'x', generator: 'test' });
+      insertUnit(db, 'u1', [
+        { lang: 'EN_gb', plain: 'Colour' },
+        { lang: 'fr', plain: 'Couleur' },
+      ]);
+      insertUnit(db, 'u2', [
+        { lang: 'en-US', plain: 'Colour' },
+        { lang: 'fr', plain: 'Couleur US' },
+      ]);
+      // A lookalike that shares a prefix but not the primary subtag.
+      insertUnit(db, 'u3', [
+        { lang: 'eng', plain: 'Colour' },
+        { lang: 'fr', plain: 'Couleur eng' },
+      ]);
+      const matches = retrievePair(db, {
+        srcLang: 'en',
+        srcHash: 'hash:Colour',
+        tgtLang: 'fr',
+      });
+      expect(matches.map((m) => m.tokens[0])).toHaveLength(2);
+      expect(matches.map((m) => m.tuId).sort()).toEqual([1, 2]);
+      db.close();
+    });
+
+    it('returns nothing from an empty memory', () => {
+      const db = createTm(dbPath(), { name: 'x', generator: 'test' });
+      expect(
+        retrievePair(db, { srcLang: 'en', srcHash: 'hash:x', tgtLang: 'es' }),
+      ).toEqual([]);
+      db.close();
+    });
   });
 });

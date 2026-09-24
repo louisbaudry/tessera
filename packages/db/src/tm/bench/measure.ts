@@ -298,10 +298,12 @@ const exactCurrent = timeLookups(
   { max: 10_000, min: 20 },
 );
 
-// Not a repository change — an index-friendly rewrite of the same
-// query, timed here to show what the fix is worth. The language set
-// comes from tm.langs, so `lang` can be matched by equality and the
-// (lang, hash) index seeks instead of scanning.
+// Not a repository change — the index-friendly rewrite as first
+// measured, before backlog #19a shipped one: the language set comes
+// from tm.langs, so `lang` can be matched by equality and the
+// (lang, hash) index seeks instead of scanning. `retrievePair` now
+// reads the set from tuv's own index instead (`matchingLangs`,
+// db/lang-match.ts); kept as a column so the two stay comparable.
 log('exact lookups: index-friendly candidate');
 ensurePrimarySubtagFn(db);
 const candidateSql = `

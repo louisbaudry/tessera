@@ -10,9 +10,9 @@
 
 import type Database from 'better-sqlite3';
 
-import { primarySubtag } from '@cat-tool/core';
 import type { TmToken } from '@cat-tool/core';
 
+import { ensurePrimarySubtagFn, matchingLangs } from '../lang-match.js';
 import { qualifySchema } from '../schema-alias.js';
 
 export interface RetrievePairParams {
@@ -44,24 +44,6 @@ export interface PairMatch {
   readonly updatedAt: string;
 }
 
-const registeredPrimarySubtagFn = new WeakSet<Database.Database>();
-
-/**
- * `primary_subtag(lang)` as a SQL scalar function, so the region-
- * insensitive match condition can live in the query instead of pulling
- * every candidate row into JS to filter. Registered once per connection
- * — `better-sqlite3` throws if the same function name is registered
- * twice on one `Database`. Exported so the glossary repository shares
- * this one guard rather than registering the same name a second time.
- */
-export function ensurePrimarySubtagFn(db: Database.Database): void {
-  if (registeredPrimarySubtagFn.has(db)) return;
-  db.function('primary_subtag', { deterministic: true }, (lang: unknown) =>
-    primarySubtag(String(lang)),
-  );
-  registeredPrimarySubtagFn.add(db);
-}
-
 interface Row {
   tu_id: number;
   tuv_id: number;
@@ -80,6 +62,12 @@ interface Row {
  * (tm-format-spec.md §12.2 — "fine for one translator", the case this is
  * built for). Both `srcLang` and `tgtLang` get the same treatment, so a
  * document tagged `en-GB` still finds a memory built with bare `en`.
+ *
+ * The source side seeks the `(lang, hash)` index (`matchingLangs`,
+ * backlog #19a) — it must never go back to wrapping `s.lang` in a
+ * function, which scans every `tuv` row. The target side can: it is
+ * reached through `(tu_id, lang)` and only filters a unit's own few
+ * variants.
  */
 export function retrievePair(
   db: Database.Database,
@@ -96,7 +84,7 @@ export function retrievePair(
        JOIN   ${q}tuv t ON t.tu_id = s.tu_id
                     AND primary_subtag(t.lang) = primary_subtag(@tgtLang)
        JOIN   ${q}tu  u ON u.id = s.tu_id AND u.deleted = 0
-       WHERE  primary_subtag(s.lang) = primary_subtag(@srcLang)
+       WHERE  s.lang IN ${matchingLangs(`${q}tuv`, '@srcLang')}
          AND  s.hash = @srcHash
        ORDER  BY t.quality DESC, t.updated_at DESC`,
     )
