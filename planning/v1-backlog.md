@@ -2159,8 +2159,20 @@ segment. It stops being harmless the moment vendors (Epic 9) and AI drafts
 
 Sized issues:
 
-- **#55 · `core/audit`: actor, event shape, hash chain · S** ·
-  [issue #34] — pure TS, the one definition the rest import.
+- ~~**#55 · `core/audit`: actor, event shape, hash chain · S**~~ —
+  **DONE** — `packages/core/src/audit/`: `actor.ts` (`parseActor`/
+  `formatActor`), `actions.ts` (one action list per database, and
+  `AuditDetail`, each action's detail shape), `chain.ts`
+  (`chainHash`, `genesisHash`, `verifyAuditChain`). Writing it forced
+  the four byte-level choices spec §3 had left open — hex, the decimal
+  `application_id` in the genesis, `detail` hashed as the stored string
+  rather than a re-serialised object, ids required to ascend — now
+  recorded as §3.1, along with the one thing the chain cannot see:
+  rows cut from the end. The actor grammar (§2.1) gives each id exactly
+  one spelling, since `account:03` beside `account:3` would be two
+  actors to every query that groups by actor. The actions are three
+  lists rather than one, so a `project.catdb` `CHECK` cannot admit
+  `auth.login`.
 - **#56 · `audit_event` in `project.catdb` (schema v5), actor required
   on every segment write · M** · [issue #35] — `setSegmentTarget` is
   already the single segment writer, so this is one chokepoint, plus a
@@ -2208,7 +2220,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
-[issue #34]: https://github.com/louisbaudry/tessera/issues/34
 [issue #35]: https://github.com/louisbaudry/tessera/issues/35
 [issue #36]: https://github.com/louisbaudry/tessera/issues/36
 [issue #37]: https://github.com/louisbaudry/tessera/issues/37
