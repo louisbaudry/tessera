@@ -123,3 +123,52 @@ export function plainText(tokens: readonly AnyToken[]): string {
   }
   return out;
 }
+
+export class TokenShapeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TokenShapeError';
+  }
+}
+
+const isIndex = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+
+/**
+ * Checks that `value` — JSON from outside, e.g. a request body — is a
+ * `Token[]` whose every `fmt` indexes `formats`, and returns it typed.
+ * Shape only: a well-formed target with the wrong tags is QA's to flag
+ * (`tag.*`), not a refusal, but a `fmt` pointing nowhere is a target
+ * export could not render at all.
+ */
+export function parseTokens(value: unknown, formats: readonly FormatEntry[]): Token[] {
+  if (!Array.isArray(value)) throw new TokenShapeError('tokens must be an array');
+  const fmtIds = new Set(formats.map((f) => f.id));
+  return value.map((raw: unknown, i): Token => {
+    const token = raw as Record<string, unknown> | null;
+    const where = `token ${i}`;
+    if (typeof token !== 'object' || token === null) {
+      throw new TokenShapeError(`${where} is not an object`);
+    }
+    switch (token['t']) {
+      case 'text':
+        if (typeof token['v'] !== 'string') {
+          throw new TokenShapeError(`${where}: text needs a string "v"`);
+        }
+        return { t: 'text', v: token['v'] };
+      case 'close':
+        if (!isIndex(token['id'])) throw new TokenShapeError(`${where}: bad "id"`);
+        return { t: 'close', id: token['id'] };
+      case 'open':
+      case 'ph': {
+        const { id, fmt } = token;
+        if (!isIndex(id)) throw new TokenShapeError(`${where}: bad "id"`);
+        if (!isIndex(fmt) || !fmtIds.has(fmt)) {
+          throw new TokenShapeError(`${where}: "fmt" is not in this file's format table`);
+        }
+        return token['t'] === 'open' ? { t: 'open', id, fmt } : { t: 'ph', id, fmt };
+      }
+      default:
+        throw new TokenShapeError(`${where}: unknown kind ${JSON.stringify(token['t'])}`);
+    }
+  });
+}

@@ -327,6 +327,12 @@ in-process and JSON to the SPA. Three things to keep true:
   (§2.4) again. `countSegments` is the model: when a route needs
   something `db` lacks, add it to `db`, where the CLI and the editor
   reach it too.
+- **A route's actor is `sessionActor(req)`, never built in the
+  handler** (`audit-spec.md` §2.5). A write in the project goes to the
+  project's log; one about the platform (login, a project's creation or
+  deletion, a download) to `platform.sqlite`'s, and nothing personal
+  goes in either log's hashed `detail` — erasure can only reach
+  `actor_label`.
 
 Tests drive the app through Fastify's `inject` — no port, no browser:
 `buildApp({ config, logger: false })`, then `app.inject(...)`. A WHATWG

@@ -36,4 +36,17 @@ describe('openPlatformDb', () => {
     expect(() => insert.run('other@example.com', 'hash', 'u/1', '2026-01-01')).toThrow();
     db.close();
   });
+
+  it('carries the shared, append-only audit_event from v3 (backlog #57)', () => {
+    const db = openPlatformDb(dbPath());
+    expect(db.pragma('user_version', { simple: true })).toBe(3);
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name")
+      .all();
+    expect(triggers).toEqual([
+      { name: 'audit_event_no_delete' },
+      { name: 'audit_event_no_update' },
+    ]);
+    db.close();
+  });
 });

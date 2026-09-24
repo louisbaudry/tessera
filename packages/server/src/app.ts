@@ -12,32 +12,45 @@
  * discipline the CLI set (§2.4): logic the server would need that
  * `core`/`db` lack goes there, not here.
  */
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import {
   assembleFile,
+  attachmentDisposition,
   generateSessionToken,
+  parseTokens,
   rulesFor,
+  SEGMENT_STATUSES,
+  TokenShapeError,
   verifyPassword,
   type AuditActor,
   type Project,
   type SegmenterRules,
+  type SegmentStatus,
 } from '@cat-tool/core';
 import {
   countSegments,
   createAccountSession,
   createProject,
   deleteAccountSession,
+  exportFile,
   getAccountByEmail,
   getAccountBySessionToken,
   getFile,
   getProject,
+  getSegment,
   insertFile,
   listFiles,
   listSegments,
   openPlatformDb,
   openProjectDb,
+  ProjectExportError,
+  recordDownload,
+  recordFailedLogin,
+  recordProjectChange,
+  SegmentRepoError,
+  setSegmentTarget,
   type Account,
 } from '@cat-tool/db';
 import multipart from '@fastify/multipart';
@@ -45,6 +58,7 @@ import Fastify, {
   type FastifyInstance,
   type FastifyReply,
   type FastifyRequest,
+  type FastifyServerOptions,
 } from 'fastify';
 
 import type { ServerConfig } from './config.js';
@@ -59,8 +73,12 @@ declare module 'fastify' {
 
 export interface BuildAppOptions {
   readonly config: ServerConfig;
-  /** Off in tests; a running server logs every request. */
-  readonly logger?: boolean;
+  /**
+   * Off in tests; a running server logs every request. Method, URL and
+   * status only — never a body, which may be segment text
+   * (audit-spec.md §5; a test pins it).
+   */
+  readonly logger?: FastifyServerOptions['logger'];
 }
 
 /**
@@ -87,11 +105,29 @@ function bearerToken(req: FastifyRequest): string | null {
 /**
  * The session's account as an audit actor (audit-spec.md §2.1), its
  * email snapshotted as the label so the record still reads after the
- * account is gone.
+ * account is gone. The one place a route's actor is built (spec §2.5):
+ * every handler behind the gate passes `sessionActor(req)` to the write
+ * it wraps.
  */
 function auditActor(account: Account): AuditActor {
   return { actor: { kind: 'account', id: account.id }, label: account.email };
 }
+
+const sessionActor = (req: FastifyRequest): AuditActor => auditActor(owner(req));
+
+/**
+ * A refused login has no authenticated principal: the gate that refused
+ * it is the actor, never the account the request named (spec §2.5).
+ */
+const LOGIN_GATE: AuditActor = { actor: { kind: 'system', name: 'login' }, label: null };
+
+/** What a segment write may set; confirming and locking are their own acts. */
+const WRITABLE_STATUSES: readonly SegmentStatus[] = SEGMENT_STATUSES.filter(
+  (s) => s !== 'confirmed' && s !== 'locked',
+);
+
+const DOCX_TYPE =
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 /** What a client sees of an account: never the password hash or the storage root. */
 function publicAccount(account: Account) {
@@ -142,17 +178,26 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       const { email, password } = req.body ?? {};
       const account = email ? getAccountByEmail(platform, email) : null;
       if (!account || !password || !verifyPassword(password, account.passwordHash)) {
+        // Told apart in the log, never in the response.
+        recordFailedLogin(platform, {
+          actor: LOGIN_GATE,
+          accountId: account?.id ?? null,
+          reason: account ? 'wrong_password' : 'unknown_email',
+        });
         return reply.code(401).send({ error: 'invalid email or password' });
       }
       const token = generateSessionToken();
-      const { expiresAt } = createAccountSession(platform, account.id, token);
+      const { expiresAt } = createAccountSession(platform, account.id, token, {
+        actor: auditActor(account),
+      });
       return { token, expiresAt, account: publicAccount(account) };
     },
   );
 
   app.post('/api/logout', async (req) => {
     const token = bearerToken(req);
-    if (token !== null) deleteAccountSession(platform, token);
+    if (token !== null)
+      deleteAccountSession(platform, token, { actor: sessionActor(req) });
     return { ok: true };
   });
 
@@ -226,14 +271,43 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (existsSync(path)) {
       return reply.code(409).send({ error: `a project named "${name}" already exists` });
     }
-    mkdirSync(dirname(path), { recursive: true });
-    const db = openProjectDb(path);
-    try {
-      const project = createProject(db, { name: title ?? name, srcLang, tgtLang });
-      return reply.code(201).send({ name, project, fileCount: 0 });
-    } finally {
-      db.close();
-    }
+    const project = recordProjectChange(
+      platform,
+      'project.created',
+      { actor: sessionActor(req), project: { accountId: owner(req).id, name } },
+      () => {
+        mkdirSync(dirname(path), { recursive: true });
+        const db = openProjectDb(path);
+        try {
+          return createProject(db, { name: title ?? name, srcLang, tgtLang });
+        } finally {
+          db.close();
+        }
+      },
+    );
+    return reply.code(201).send({ name, project, fileCount: 0 });
+  });
+
+  // Deleting a project deletes its file, and with it the project's own
+  // log; `platform.sqlite` keeps that it happened (spec §5).
+  app.delete<{ Params: { name: string } }>('/api/projects/:name', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    const { db, path } = opened;
+    db.close();
+    recordProjectChange(
+      platform,
+      'project.deleted',
+      {
+        actor: sessionActor(req),
+        project: { accountId: owner(req).id, name: req.params.name },
+      },
+      () => {
+        for (const suffix of ['', '-wal', '-shm'])
+          rmSync(`${path}${suffix}`, { force: true });
+      },
+    );
+    return reply.code(204).send();
   });
 
   app.get<{ Params: { name: string } }>('/api/projects/:name', async (req, reply) => {
@@ -283,9 +357,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         const assembled = assembleFile(bytes, rules);
         let fileId: number;
         try {
-          fileId = insertFile(db, relPath, assembled, {
-            actor: auditActor(owner(req)),
-          }).id;
+          fileId = insertFile(db, relPath, assembled, { actor: sessionActor(req) }).id;
         } catch (err) {
           if (
             err instanceof Error &&
@@ -326,6 +398,102 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }
     },
   );
+
+  // The delivered DOCX: `exportFile`, exactly the CLI's `export`. The
+  // project's log records it produced (`project.exported`); this file's
+  // records it left, to whom (`file.downloaded`) — before the first byte.
+  app.get<{ Params: { name: string; fileId: string } }>(
+    '/api/projects/:name/files/:fileId/export',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      const actor = sessionActor(req);
+      let exported: ReturnType<typeof exportFile>;
+      try {
+        const fileId = Number(req.params.fileId);
+        if (!Number.isInteger(fileId)) {
+          return reply.code(404).send({ error: `no file #${req.params.fileId}` });
+        }
+        exported = exportFile(db, fileId, { actor });
+      } catch (err) {
+        if (err instanceof ProjectExportError) {
+          return reply.code(404).send({ error: err.message });
+        }
+        throw err;
+      } finally {
+        db.close();
+      }
+      const name = exported.file.relPath.split(/[\\/]/).pop() || exported.file.relPath;
+      recordDownload(platform, {
+        actor,
+        project: { accountId: owner(req).id, name: req.params.name },
+        fileId: exported.file.id,
+        name: exported.file.relPath,
+        sha256: exported.sha256,
+      });
+      return reply
+        .header('content-type', DOCX_TYPE)
+        .header('content-disposition', attachmentDisposition(name))
+        .send(Buffer.from(exported.bytes));
+    },
+  );
+
+  // One segment's target, status and origin: `setSegmentTarget` with the
+  // session's actor, so the edit lands in the *project's* log (spec
+  // decision 5). The tokens are shape-checked against the segment's own
+  // format table; which tags they use is QA's to judge, not a refusal.
+  app.put<{
+    Params: { name: string; segmentId: string };
+    Body: { targetTokens?: unknown; status?: string; origin?: string | null };
+  }>('/api/projects/:name/segments/:segmentId', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    const { db } = opened;
+    try {
+      const id = Number(req.params.segmentId);
+      const segment = Number.isInteger(id) ? getSegment(db, id) : null;
+      if (!segment) {
+        return reply.code(404).send({ error: `no segment #${req.params.segmentId}` });
+      }
+      const { targetTokens, status, origin } = req.body ?? {};
+      if (!WRITABLE_STATUSES.includes(status as SegmentStatus)) {
+        return reply
+          .code(400)
+          .send({ error: `status must be one of ${WRITABLE_STATUSES.join(', ')}` });
+      }
+      if (origin === undefined || (origin !== null && typeof origin !== 'string')) {
+        return reply.code(400).send({ error: 'origin must be a string or null' });
+      }
+      let tokens;
+      try {
+        tokens =
+          targetTokens === null ? null : parseTokens(targetTokens, segment.formatTable);
+      } catch (err) {
+        if (err instanceof TokenShapeError) {
+          return reply.code(400).send({ error: `targetTokens: ${err.message}` });
+        }
+        throw err;
+      }
+      let changed: boolean;
+      try {
+        changed = setSegmentTarget(db, id, {
+          targetTokens: tokens,
+          status: status as SegmentStatus,
+          origin,
+          actor: sessionActor(req),
+        });
+      } catch (err) {
+        if (err instanceof SegmentRepoError) {
+          return reply.code(409).send({ error: err.message });
+        }
+        throw err;
+      }
+      return { segment: getSegment(db, id), changed };
+    } finally {
+      db.close();
+    }
+  });
 
   return app;
 }

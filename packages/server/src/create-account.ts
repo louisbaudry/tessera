@@ -9,12 +9,15 @@
  * Running it again with another email is how a second account would
  * be added: §4.1a scoped storage by account from the first row so that
  * this is additive, not a migration.
+ *
+ * Its `account.created` event names whoever ran it, `cli:<OS user>` —
+ * the same self-asserted actor as the CLI (audit-spec.md §2.1, §2.5).
  */
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { hashPassword } from '@cat-tool/core';
-import { createAccount, openPlatformDb } from '@cat-tool/db';
+import { createAccount, openPlatformDb, osUserActor } from '@cat-tool/db';
 
 import { loadConfig } from './config.js';
 
@@ -30,11 +33,17 @@ if (!email || !password || !email.includes('@')) {
   process.exit(1);
 }
 
+// Resolved before anything is written: no user name, no account.
+const actor = osUserActor();
 const config = loadConfig();
 mkdirSync(dirname(config.dbPath), { recursive: true });
 const db = openPlatformDb(config.dbPath);
 try {
-  const account = createAccount(db, { email, passwordHash: hashPassword(password) });
+  const account = createAccount(db, {
+    email,
+    passwordHash: hashPassword(password),
+    actor,
+  });
   console.log(
     `Created account #${account.id} <${account.email}>, storage root ${account.storageRoot}`,
   );

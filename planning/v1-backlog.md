@@ -2196,9 +2196,37 @@ Sized issues:
   plain text hid. Left for a follow-up: `project.setting_changed` from
   the settings writes (QA switches, TM/glossary refs), whose `key`
   names are a design of their own.
-- **#57 · `audit_event` in `platform.sqlite`; the server passes the
-  session's actor into every write · M** · [issue #36] — auth and
-  download events; `authorization.*` joins once `#45` lands.
+- ~~**#57 · `audit_event` in `platform.sqlite`; the server passes the
+  session's actor into every write · M**~~ — **DONE** — platform schema
+  v3 (`db/platform/schema.ts`) adds the shared table. `createAccount`,
+  `createAccountSession` and `deleteAccountSession` take a required
+  actor and log `account.created`/`auth.login`/`auth.logout` in their
+  own transaction. `db/platform/audit.ts` covers the events whose change
+  is not a row in this file: `recordFailedLogin`, `recordProjectChange`
+  and `recordDownload`. In the server, `sessionActor(req)` is the one
+  place a route's actor comes from. The new routes are
+  `DELETE /api/projects/:name`, `GET …/files/:id/export` and
+  `PUT …/segments/:id`, the last one's edit landing in the project's
+  log. A test with a logger attached proves no segment text reaches
+  the request log. `create-account` names its OS user through
+  `osUserActor` (`db/audit/os-user.ts`), now the CLI's `cliActor` too.
+  `attachmentDisposition` moved to `core/delivery/` so both servers
+  share it. What building it decided (spec §2.5):
+  - **Nothing personal goes in a hashed column.** Erasure can reach
+    only `actor_label`, so `account.created` carries no email and a
+    failed login never records the email tried.
+  - **A failed login's actor is `system:login`, the gate.** Using the
+    named account would record the attacker as the victim.
+  - **Across two files, the event is written before the effect is
+    visible.** A project's file is created or deleted inside the
+    platform transaction, after its event, so a failed change rolls the
+    event back.
+  - **Tokens from a request are shape-checked** (`parseTokens`,
+    `core/model/token.ts`) against the segment's format table. A `fmt`
+    pointing nowhere is refused; which tags a target uses is QA's to
+    flag, not a refusal.
+  - `authorization.*` stays unwritten until `#45` exists, and whichever
+    lands second adds it.
 - **#58 · Portal: actor on `order_event`, append-only triggers, portal
   `audit_event` · S** · [issue #37].
 

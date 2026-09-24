@@ -31,3 +31,4 @@ export * from './auth/credentials.js';
 export * from './audit/actor.js';
 export * from './audit/actions.js';
 export * from './audit/chain.js';
+export * from './delivery/content-disposition.js';

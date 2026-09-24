@@ -31,6 +31,8 @@ export class ProjectExportError extends Error {
 
 export interface ExportFileResult extends ExportedFile {
   readonly file: ProjectFile;
+  /** The digest `project.exported` recorded — for a caller that records the bytes leaving too. */
+  readonly sha256: string;
 }
 
 export interface ExportFileOptions {
@@ -54,13 +56,14 @@ export function exportFile(
       throw new ProjectExportError(`no file with id ${fileId}`);
     }
     const exported = exportProjectFile(file, listSegments(db, fileId));
+    const sha256 = createHash('sha256').update(exported.bytes).digest('hex');
     appendAuditEvent(db, {
       actor: options.actor,
       action: 'project.exported',
       subjectType: 'file',
       subjectId: String(fileId),
-      detail: { sha256: createHash('sha256').update(exported.bytes).digest('hex') },
+      detail: { sha256 },
     });
-    return { file, ...exported };
+    return { file, ...exported, sha256 };
   })();
 }
