@@ -6,6 +6,8 @@ import { hashOf } from '@cat-tool/core';
 import type { TmToken } from '@cat-tool/core';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { capturePlans, scansOf } from '../query-plan.fixture.js';
+
 import { createTm } from './index.js';
 import { retrievePair } from './retrieve.js';
 import { refreshLangs, writeBack, WriteBackError } from './write.js';
@@ -235,6 +237,57 @@ describe('refreshLangs', () => {
     refreshLangs(db);
     const langs = db.prepare('SELECT langs FROM tm').get() as { langs: string };
     expect(JSON.parse(langs.langs)).toEqual(['en', 'es']);
+    db.close();
+  });
+
+  it('matches SELECT DISTINCT exactly: every tag, each once, in binary order', () => {
+    const db = createTm(dbPath(), { name: 'x', generator: 'test' });
+    // Case and region variants are distinct stored tags, and binary
+    // collation sorts uppercase first — the projection keeps both facts.
+    for (const [src, tgt] of [
+      ['en-US', 'fr'],
+      ['en-US', 'de'],
+      ['EN', 'fr-CA'],
+      ['en', 'fr'],
+    ] as const) {
+      writeBack(db, {
+        source: { lang: src, tokens: text(`Hello ${src}`) },
+        target: { lang: tgt, tokens: text(`Bonjour ${tgt}`) },
+      });
+    }
+    const distinct = (
+      db.prepare('SELECT DISTINCT lang FROM tuv ORDER BY lang').all() as Array<{
+        lang: string;
+      }>
+    ).map((r) => r.lang);
+    const langs = db.prepare('SELECT langs FROM tm').get() as { langs: string };
+    expect(JSON.parse(langs.langs)).toEqual(distinct);
+    expect(distinct).toEqual(['EN', 'de', 'en', 'en-US', 'fr', 'fr-CA']);
+    db.close();
+  });
+
+  it('writes an empty list for an empty memory', () => {
+    const db = createTm(dbPath(), { name: 'x', generator: 'test' });
+    refreshLangs(db);
+    const langs = db.prepare('SELECT langs FROM tm').get() as { langs: string };
+    expect(JSON.parse(langs.langs)).toEqual([]);
+    db.close();
+  });
+
+  // Backlog #20a: `SELECT DISTINCT lang FROM tuv` read every index entry
+  // on every confirm — 247 ms at 1M units, and green at every test size.
+  // Its plan was `SCAN tuv USING COVERING INDEX tuv_lookup`; the loose
+  // index scan reads tuv only by `SEARCH`.
+  it('reads tuv by seeks only, never a walk of the whole index', () => {
+    const db = createTm(dbPath(), { name: 'x', generator: 'test' });
+    writeBack(db, {
+      source: { lang: 'en', tokens: text('Save') },
+      target: { lang: 'es', tokens: text('Guardar') },
+    });
+    const plans = capturePlans(db, () => refreshLangs(db));
+    const tuvReads = plans.flat().filter((d) => /^(SCAN|SEARCH) tuv\b/.test(d));
+    expect(tuvReads.length).toBeGreaterThan(0);
+    expect(scansOf(plans, ['tuv'])).toEqual([]);
     db.close();
   });
 });

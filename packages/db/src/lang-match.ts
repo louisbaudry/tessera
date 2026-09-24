@@ -35,31 +35,45 @@ export function ensurePrimarySubtagFn(db: Database.Database): void {
 }
 
 /**
- * A parenthesised subquery yielding every distinct `lang` stored in
- * `table` whose primary subtag equals that of the bound parameter
- * `param` — for use as `col IN ${matchingLangs(…)}`.
- *
- * The distinct languages are read from the table's own index by a
- * loose index scan (one seek per distinct language, not one row per
- * stored variant), so the result is always exactly what the table
- * holds. That is deliberate: `tm.langs`/`glossary.langs` already list
- * the same thing, but they are a denormalised projection maintained by
- * the write paths, and a lookup that trusted one would silently miss
- * every row a stale projection left out. The cost of not trusting it
- * is a few extra seeks per lookup.
+ * A `SELECT` yielding every distinct `lang` stored in `table`, one row
+ * each, in ascending order — read from the table's own index by a
+ * recursive loose index scan: one seek per distinct language, so its
+ * cost is O(languages × log rows) however large the table grows, where
+ * `SELECT DISTINCT lang` walks every index entry (backlog #20a: 247 ms
+ * at 1M TM units). The ordering is the recursion's own: each step seeks
+ * the smallest `lang` above the previous one.
  *
  * `table` must already be schema-qualified (`qualifySchema`) and must
- * have an index whose first column is `lang`; `param` is a named
- * parameter such as `@srcLang`. Both are this codebase's own strings,
- * never request input. Call `ensurePrimarySubtagFn` on the connection
- * first.
+ * have an index whose first column is `lang` — without one each step is
+ * a full scan, which is worse than `DISTINCT`, not better. It is this
+ * codebase's own string, never request input.
  */
-export function matchingLangs(table: string, param: string): string {
-  return `(WITH RECURSIVE present(lang) AS (
+export function distinctLangs(table: string): string {
+  return `WITH RECURSIVE present(lang) AS (
              SELECT MIN(lang) FROM ${table}
              UNION ALL
              SELECT (SELECT MIN(lang) FROM ${table} WHERE lang > present.lang)
              FROM   present WHERE present.lang IS NOT NULL)
-           SELECT lang FROM present
-           WHERE  lang IS NOT NULL AND primary_subtag(lang) = primary_subtag(${param}))`;
+           SELECT lang FROM present WHERE lang IS NOT NULL`;
+}
+
+/**
+ * A parenthesised subquery yielding every distinct `lang` stored in
+ * `table` whose primary subtag equals that of the bound parameter
+ * `param` — for use as `col IN ${matchingLangs(…)}`.
+ *
+ * The distinct languages come from `distinctLangs`, so the result is
+ * always exactly what the table holds. That is deliberate:
+ * `tm.langs`/`glossary.langs` already list the same thing, but they are
+ * a denormalised projection maintained by the write paths, and a lookup
+ * that trusted one would silently miss every row a stale projection
+ * left out. The cost of not trusting it is a few extra seeks per lookup.
+ *
+ * `table` has `distinctLangs`'s requirements; `param` is a named
+ * parameter such as `@srcLang`, again this codebase's own string. Call
+ * `ensurePrimarySubtagFn` on the connection first.
+ */
+export function matchingLangs(table: string, param: string): string {
+  return `(${distinctLangs(table)}
+             AND primary_subtag(lang) = primary_subtag(${param}))`;
 }

@@ -401,7 +401,7 @@ pattern.
   registered twice on one `Database` — guard a per-connection custom SQL
   function's registration (e.g. with a module-level `WeakSet<Database>`),
   or a second call on an already-open connection blows up. See
-  `db/tm/retrieve.ts`'s `primary_subtag` registration for the pattern.
+  `db/lang-match.ts`'s `primary_subtag` registration for the pattern.
 - **`packages/db` cannot typecheck or build against `@cat-tool/core`
   until `core` has been built.** `core`'s `package.json` resolves its own
   types through `"./dist/index.d.ts"`, which only exists once `tsc` has

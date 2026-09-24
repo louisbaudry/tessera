@@ -1449,11 +1449,30 @@ any table or alias; both fail against the old query. SQLite picks
 `tuv_ctx` over `tuv_lookup` without statistics, since both lead with
 `(lang, hash)`, so the assertion accepts either.
 
-**#20a · Stop `refreshLangs` scanning `tuv` on every confirm · S** · [issue #39]
-`writeBack` recomputes `tm.langs` with a full `DISTINCT` on every
-confirm: 247 ms at 1M units, 1.3 s at 5M. Keep it a projection (§2.1),
-but compute it cheaply. *Done when:* a confirm at 1M units takes low
-single-digit milliseconds in `pnpm bench:tm`.
+**#20a · ~~Stop `refreshLangs` scanning `tuv` on every confirm~~ · DONE —
+`distinctLangs` in `db/lang-match.ts`, used by `db/tm/write.ts`'s
+`refreshLangs`**
+`writeBack` recomputed `tm.langs` with `SELECT DISTINCT lang FROM tuv`
+on every confirm, which read the whole `tuv_lookup` index: 247 ms at 1M
+units, 1.3 s at 5M. `tm.langs` is still a projection recomputed from
+`tuv` on every write (§2.1). Only the read changed: it is now the same
+loose index scan #19a built for lookups, factored out of
+`matchingLangs` as `distinctLangs`, one seek per language. In
+`pnpm bench:tm --sizes 1000000`, `writeBack` went from 247 ms to 1.1 ms
+p50 and from 314 ms to 25 ms p99. The importers call `refreshLangs`
+too, so they get the same saving once per import.
+
+**The p99 is not zero, and it isn't this.** 25 ms at p99 against 1.1 ms
+at p50 is a tail, but the new plan reads `tuv` by `SEARCH` only, and a
+test pins that (it fails on the old query's
+`SCAN tuv USING COVERING INDEX tuv_lookup`). The tail wasn't profiled.
+A WAL checkpoint landing on a confirm is the likeliest cause, and that
+is a question for the editor's autosave (#31), not for `refreshLangs`.
+
+Two more `refreshLangs` tests pin the ordering contract. The projection
+equals `SELECT DISTINCT lang … ORDER BY lang` exactly, including
+case-distinct tags (`EN` sorts before `de` under binary collation),
+and an empty memory writes `[]`.
 
 ---
 
