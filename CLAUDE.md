@@ -55,6 +55,9 @@ already settled differently.
    there, in entries neither was editing on purpose. Phased work across
    several sessions has its own protocol:
    `planning/multi-session-workflow.md`.
+6. **When asking questions to Louis, always propose multiple choices
+   and a recommendation.** Never an open-ended question alone — lay
+   out the options and say which one you'd pick and why.
 
 ## Non-negotiable invariants
 
