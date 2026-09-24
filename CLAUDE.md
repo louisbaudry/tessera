@@ -56,9 +56,8 @@ already settled differently.
    several sessions has its own protocol:
    `planning/multi-session-workflow.md`.
 6. **When asking questions to Louis, always propose multiple choices
-   and a recommendation.** Offer the options you see, with their
-   trade-offs, and say which one you would pick and why, rather than an
-   open question.
+   and a recommendation.** Never an open-ended question alone — lay
+   out the options and say which one you'd pick and why.
 
 ## Non-negotiable invariants
 
