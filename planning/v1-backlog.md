@@ -1417,13 +1417,37 @@ into bounded transactions, with a resume point, and a recorded answer
 to §12.4's all-or-nothing question. Running it off-thread stays #16a.
 *Done when:* a 5M-unit TMX imports under a 2 GB-capped Node heap.
 
-**#19a · Make exact lookup seek the `(lang, hash)` index · S** · [issue #38]
-`retrievePair`'s `primary_subtag(s.lang) = …` scans all of `tuv` on
-every lookup: 1.7 s at 1M units, and 214 ms on the real 86k memory. An
-index-friendly rewrite (languages taken from `tm.langs`, matched by
-equality) measured 0.04 ms and returned the same rows. The glossary's
-`findRendering` has the same pattern. *Done when:* both plans show
-`SEARCH`, and a test asserts it.
+**#19a · ~~Make exact lookup seek the `(lang, hash)` index~~ · DONE —
+`db/lang-match.ts` (`matchingLangs`), used by `db/tm/retrieve.ts` and
+`db/glossary/terms.ts`**
+`retrievePair`'s `primary_subtag(s.lang) = …` scanned all of `tuv` on
+every lookup: 1.7 s at 1M units, 214 ms on the real 86k memory. Both it
+and `findRendering` now match `lang IN (…)` over the stored tags whose
+primary subtag matches, and both plans are `SEARCH`: 0.16 ms p50 /
+0.33 ms p99 at 1M in `pnpm bench:tm --sizes 1000000`
+(tm-format-spec.md §11.2 has the note). `ensurePrimarySubtagFn` moved
+into the same module — it was a TM function the glossary reached into.
+
+**The rewrite that was measured was not the one that shipped, on
+purpose.** The bench's candidate read the language list from
+`tm.langs` and ran in 0.03 ms. But `tm.langs` is a projection the write
+paths maintain, and #20a is about to rework how. A lookup that trusted
+it would silently return nothing for any language a stale projection
+left out, and no test of the lookup would notice, since every one
+inserts rows directly. So `matchingLangs` reads the distinct tags off
+the index itself with a recursive loose index scan (one seek per
+language). It costs about 0.13 ms more and can't disagree with the
+table. A test sets `tm.langs`/`glossary.langs` to `[]` and still finds
+the match. The bench keeps the `tm.langs` column for comparison.
+
+**The plan is the only thing a dozen-row test can see**, so it is now
+under test. `query-plan.fixture.ts` records every statement a
+repository call runs with its bound parameters and returns
+`EXPLAIN QUERY PLAN` for each. Tests assert the `(lang, hash)` seek
+(own file and `ATTACH`ed), the `(lang, plain)` seek, and no `SCAN` of
+any table or alias; both fail against the old query. SQLite picks
+`tuv_ctx` over `tuv_lookup` without statistics, since both lead with
+`(lang, hash)`, so the assertion accepts either.
 
 **#20a · Stop `refreshLangs` scanning `tuv` on every confirm · S** · [issue #39]
 `writeBack` recomputes `tm.langs` with a full `DISTINCT` on every

@@ -1037,6 +1037,23 @@ change.
   belongs as a complement to the rewrite rather than a substitute. The
   same pattern is in the glossary's `findRendering`
   (`term_variant_lookup`).
+
+  *Fixed by backlog #19a (2026-09-24), differently from the rewrite
+  above in one respect.* `retrievePair` and `findRendering` now match
+  `lang IN (…)`, where the list is built by `matchingLangs`
+  (`db/lang-match.ts`): a recursive loose index scan that reads the
+  distinct stored tags straight off the `(lang, …)` index, one seek per
+  language, and keeps those whose `primary_subtag` matches. It does not
+  read `tm.langs`. That column is a projection the write paths maintain
+  (§2.1), and a lookup that trusted it would silently miss every row a
+  stale projection left out — a failure no test on the lookup itself
+  would see, and one #20a's rework of `refreshLangs` could introduce.
+  The price is a few seeks per lookup: re-measured at 1M units, 0.16 ms
+  p50 / 0.33 ms p99, against 0.03 ms for the `tm.langs` version and
+  1.7 s before. Both plans are now `SEARCH`, and tests pin them
+  (`retrieve.test.ts`, `terms.test.ts`, via `query-plan.fixture.ts`).
+  The target side keeps `primary_subtag(t.lang)`: it is reached through
+  `(tu_id, lang)` and only filters one unit's few variants.
 - **`writeBack` gets slower with every unit already in the memory.**
   It calls `refreshLangs`, whose `SELECT DISTINCT lang FROM tuv` walks
   the whole index on every confirm: 24 ms at 100k units, 247 ms at 1M
@@ -1250,7 +1267,7 @@ What it says:
    real memory before choosing (§11.3).
 6. **Query statistics.** Nothing ever runs `ANALYZE` or
    `PRAGMA optimize`, so the planner never has statistics. §11.2 shows
-   that statistics alone turn the shipped `retrievePair` from a table
+   that statistics alone turned the pre-#19a `retrievePair` from a table
    scan into an index skip-scan. Worth deciding whether imports and
    `VACUUM` should end with `PRAGMA optimize` as a safety net, even
    once every hot query seeks its index by construction.

@@ -467,7 +467,10 @@ pattern.
   1.7 s at 1M (tm-format-spec.md §11). Every unit test was green
   because every unit test had a dozen rows. Read `EXPLAIN QUERY PLAN`
   for any new query on a table that grows with the customer, and look
-  for `SCAN` where you expected `SEARCH`.
+  for `SCAN` where you expected `SEARCH`. Region-insensitive language
+  matching against an indexed `lang` goes through `matchingLangs`
+  (`db/lang-match.ts`, backlog #19a), and `query-plan.fixture.ts`
+  lets a test assert the plan rather than trusting a green run.
 - **A matrix job's real check name is the expanded one.**
   `name: 🚦 roundtrip gate` with a two-OS matrix produces
   `🚦 roundtrip gate (ubuntu-latest)` and `(windows-latest)`; the bare

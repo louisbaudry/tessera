@@ -16,8 +16,8 @@ import type Database from 'better-sqlite3';
 import { termKey } from '@cat-tool/core';
 import type { DecisionKind, Term, TermDecision, TermVariant } from '@cat-tool/core';
 
+import { ensurePrimarySubtagFn, matchingLangs } from '../lang-match.js';
 import { qualifySchema } from '../schema-alias.js';
-import { ensurePrimarySubtagFn } from '../tm/retrieve.js';
 
 export class TermError extends Error {
   constructor(message: string) {
@@ -404,10 +404,10 @@ export function findRendering(
     .prepare(
       `SELECT v.* FROM ${s}term_variant v
        JOIN ${s}term t ON t.id = v.term_id AND t.deleted = 0
-       WHERE primary_subtag(v.lang) = primary_subtag(?) AND v.plain = ?
+       WHERE v.lang IN ${matchingLangs(`${s}term_variant`, '@srcLang')} AND v.plain = @plain
        ORDER BY v.term_id, v.id`,
     )
-    .all(params.srcLang, termKey(params.srcText)) as VariantRow[];
+    .all({ srcLang: params.srcLang, plain: termKey(params.srcText) }) as VariantRow[];
   const out: Rendering[] = [];
   const seen = new Set<number>();
   for (const src of rows) {

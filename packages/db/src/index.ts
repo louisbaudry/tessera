@@ -1,5 +1,6 @@
 export * from './migrate.js';
 export * from './schema-alias.js';
+export * from './lang-match.js';
 export * from './project/index.js';
 export * from './platform/index.js';
 export * from './tm/index.js';
