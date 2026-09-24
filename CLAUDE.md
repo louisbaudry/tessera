@@ -272,8 +272,8 @@ through. Those rules also need the project's language pair
 
 Backlog #25 (`v1-spec.md` §2.4) is the headless driver §2.3 promised —
 `init`, `add-file`, `add-tm`, `pretranslate`, `qa`, `export`, and since
-backlog #56 `history`/`audit-verify` — and the proof that `core` and `db` are complete on their own. Two rules keep it
-that:
+backlog #56 `history`/`audit-verify` — and the proof that `core` and
+`db` are complete on their own. Two rules keep it that:
 
 - **Each command is one repository call, never a second implementation
   of one.** The CLI parses arguments, opens the database, prints, and

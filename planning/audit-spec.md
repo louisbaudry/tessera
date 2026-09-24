@@ -73,9 +73,8 @@ spec exists to close first.
 3. **The actor is required, never defaulted.** Every repository function
    that writes an audited change takes an `actor` — a required field, not
    an optional one filled with `'unknown'`. A write path that forgets its
-   actor must fail to compile, not produce an anonymous row. (Today's
-   `confirmSegment(..., { confirmedBy? })` is exactly the optional shape
-   this rules out.)
+   actor must fail to compile, not produce an anonymous row. (`confirmSegment(..., { confirmedBy? })`, as it stood before
+   backlog #56, was exactly the optional shape this rules out.)
 4. **Actor and origin are different facts, kept in different fields.**
    The *actor* is the accountable principal who caused the change — a
    person, or a named unattended job. The *origin* is the mechanism that

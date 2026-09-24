@@ -194,6 +194,8 @@ cat-tool add-tm       <project.catdb> <memory.ctm|file.tmx|file.sdltm>
 cat-tool pretranslate <project.catdb> [--file <id>]
 cat-tool qa           <project.catdb> [--file <id>]
 cat-tool export       <project.catdb> [--out <dir>] [--file <id>]
+cat-tool history      <project.catdb> <segment-id>
+cat-tool audit-verify <project.catdb>
 ```
 
 Decisions, so they are not re-derived:
@@ -203,7 +205,8 @@ Decisions, so they are not re-derived:
   `insertFile`; `add-tm` is `addTmRef` (plus `createTm`/`importTmx`/
   `importSdltm` when the memory has to be made first); `pretranslate`
   is `pretranslate`; `qa` is `runQaRules` over every segment; `export`
-  is `exportFile` (§3.4). The CLI parses arguments, opens the database,
+  is `exportFile` (§3.4); `history` is `listEvents` and `audit-verify`
+  is `verifyAudit` (`audit-spec.md` §7, backlog #56). The CLI parses arguments, opens the database,
   prints, and sets the exit status — nothing else. Any logic it would
   need that `core`/`db` lack goes into `core`/`db`, where the editor
   (Epic 6) can reach it too.
@@ -233,8 +236,14 @@ Decisions, so they are not re-derived:
   every part of the source byte for byte — the roundtrip gate's own
   per-part property (the zip container around them is rewritten, as it
   is in the gate), now holding through the database.
+- **Every write names its actor, `cli:<OS user>`** (backlog #56,
+  `audit-spec.md` §2.1) — self-asserted, since the CLI has no login, and
+  refused outright when the process has no user name to give rather than
+  logged as someone made up. `history` prints one line per event (id,
+  time, actor, action, the state it recorded, tags marked `{1}`…`{/1}`);
+  `audit-verify` exits 1 when the hash chain is broken.
 - **No CLI framework.** Arguments go through `node:util`'s `parseArgs`;
-  a dependency for six subcommands would be the first non-workspace
+  a dependency for eight subcommands would be the first non-workspace
   dependency outside `core`'s `fflate` and `db`'s `better-sqlite3`.
   Human-readable lines on stdout, one per outcome; errors on stderr with
   exit status 1.
@@ -255,7 +264,8 @@ tag-diff draft and confirming it, dismissing a false positive — are done
 through the repository, since the CLI has no `confirm` by the decision
 above; and everything the job prints, plus the text of every segment of
 the delivered document, is compared to a committed transcript, byte for
-byte. A golden file rather than a list of assertions on purpose: a
+byte. Since backlog #56 the transcript ends with the reviewed segment's
+`history` and an `audit-verify` of the whole job. A golden file rather than a list of assertions on purpose: a
 change to what the pipeline says or delivers becomes a diff to read and
 approve, not a test nobody wrote. `UPDATE_GOLDEN=1 pnpm test:golden`
 regenerates it; the diff is the review. Its own CI job, for the gate's
@@ -523,6 +533,12 @@ CREATE TABLE qa_issue (
   run_at        TEXT NOT NULL
 );
 ```
+
+Beyond the tables above: `glossary_ref` (v2), `qa_rule_setting` (v3),
+`qa_untranslated_allowlist` (v4) and `audit_event` (v5) — the
+append-only, hash-chained history of every change, specified in
+`audit-spec.md` §2 and written by the same repository call as the
+change it records (backlog #56).
 
 Multiple TMs with `priority` is what "projects, multiple TMs" buys: on a
 tie between two exact hits, lowest `priority` wins. Exactly one TM may be
