@@ -331,6 +331,40 @@ Empty in v1. Declared now because `transformers.js` semantic matching is
 already in the locked stack, and multilingual embedding models make
 cross-language retrieval genuinely interesting later.
 
+### 2.9 `tm_import` — import runs (format version 2)
+
+```sql
+CREATE TABLE tm_import (
+  id            INTEGER PRIMARY KEY,
+  format        TEXT    NOT NULL CHECK (format IN ('tmx')),
+  source_name   TEXT    NOT NULL,   -- the file's base name, display only
+  source_bytes  INTEGER NOT NULL,   -- its size; a resume refuses a different one
+  started_at    TEXT    NOT NULL,
+  finished_at   TEXT,               -- NULL: incomplete
+  units_done    INTEGER NOT NULL DEFAULT 0,
+  variants_done INTEGER NOT NULL DEFAULT 0
+);
+```
+
+One row per TMX import, written in the same transaction as the units it
+counts (backlog #18c; the decision is §12.4). `finished_at IS NULL` is
+the **visible incomplete state**: a memory holding a prefix of a file,
+whole units only, with `units_done` saying how many. A reader shows it;
+nothing hides it. `units_done` is also the resume point — the ordinal
+of the next `<tu>` in document order — which is why it is a count, not
+a byte offset: a count is independent of encoding and chunking, and
+re-parsing the skipped prefix costs a fraction of writing it.
+
+`source_bytes` is a guard, not an identity. Resuming against a file of
+a different size is refused; the same size with different content is
+not caught. A content hash would catch it, at the price of reading the
+whole file once more before the import starts, and the realistic
+failure (a crash, then the same command again) does not need it.
+
+`format` is `'tmx'` only. `.sdltm` import is still one transaction
+(§12.3, §12.4), so it has no incomplete state to record; widening the
+`CHECK` is how it joins, never free text.
+
 ---
 
 ## 3. Token model in the TM
@@ -524,6 +558,23 @@ here; this does not.
   telling the user once, at import.
 - `quality` defaults to 2 (confirmed); TMX carries no quality signal.
 - `uuid` generated fresh; `tuid` preserved in `tu_attr` when present.
+- **Streamed, never held whole** (backlog #18c). The reader takes the
+  document in chunks and yields one `<tu>` at a time, so memory is
+  bounded by one unit plus one batch, not by the file: a 2 GiB TMX is a
+  string V8 cannot even hold. Units are written in batches (default
+  10,000), each batch one transaction that also advances the file's
+  `tm_import` row (§2.9). A batch boundary is always a unit boundary, so
+  an interrupted import leaves whole units only, and says so.
+- An import from a string (`importTmx(db, xml)`) is the single-batch
+  case: one transaction, all-or-nothing, and its `tm_import` row is
+  finished in that same transaction.
+- `<body>` holds `<tu>` elements and comments, nothing else (TMX 1.4b's
+  content model). Anything else there is a `TmxError`, not skipped:
+  the streaming reader cannot skip an element it does not know without
+  parsing it, and a silently skipped element is a lost unit.
+- A malformed `xml:lang` is reported once per distinct value with a
+  count, not once per variant (the "warning per occurrence" gotcha in
+  `CLAUDE.md`, at 5M-unit scale).
 
 ### Export (`.ctm` → TMX 1.4b)
 
@@ -1084,6 +1135,26 @@ change.
   between slices, not live data, and it is still unproven under a
   capped heap.
 
+  *Fixed by backlog #18c (2026-09-24).* `importTmxFile` streams the
+  file through `TmxStreamParser` and commits every 10,000 units (the
+  contract is §12.4). Measured by `pnpm bench:tm --probe-only`, in a
+  process capped at a 2 GB heap (`--max-old-space-size=2048`):
+
+  | Units | TMX | Time | Peak RSS | Before (whole string) |
+  |---|---|---|---|---|
+  | 100k | 40 MiB | 26 s | 293 MiB | 26 s, 530 MiB |
+  | 1M | 395 MiB | 407 s | 243 MiB | 363 s, 4,119 MiB |
+  | 5M | 1,975 MiB | 2,676 s | 288 MiB | fails: string too long |
+
+  Peak memory no longer grows with the file. The price is time: at 1M
+  the import is 12% slower than one transaction, and at 5M it is 17%
+  slower than the 50k-unit slices in §11.1 (2,282 s). That is 100 and
+  500 extra commits, each with a `tm_import` update and a
+  `refreshLangs` (one seek per language since #20a). It has not been
+  tuned: a larger batch, or `synchronous = NORMAL` during a bulk import,
+  are the obvious levers, and §10 says why the second needs arguing
+  first.
+
 *Comfortable* — fine for a 2 GB server as measured:
 
 - Exact lookup once it seeks the index: under 0.25 ms at p99 at every
@@ -1273,6 +1344,30 @@ What it says:
    all-or-nothing) when it takes 38 minutes, or whether resumable
    slices plus a visible "incomplete import" state are the honest
    contract.
+   **Decided 2026-09-24 (backlog #18c), for TMX: resumable batches with
+   a visible incomplete state, not one transaction.** Four reasons:
+   - *All-or-nothing protects a merge, not an import.* §7's guarantee is
+     there because a half-applied merge leaves units whose variants were
+     resolved against a memory that no longer exists. An import only
+     appends new units, and every batch ends on a unit boundary, so any
+     prefix of it is a consistent memory. It is incomplete, never
+     inconsistent. The risk is *not knowing* it is incomplete, which is
+     what `tm_import.finished_at IS NULL` answers (§2.9).
+   - *One 38-minute transaction holds the write lock for 38 minutes.*
+     The memory being imported into may be a project's write target;
+     every confirm against it would wait (or time out) for the whole
+     import.
+   - *It costs a second file's worth of disk.* The WAL cannot be
+     checkpointed past an open transaction, so a 5M-unit import grows
+     it to the size of the finished memory (7+ GiB, §11.1) before the
+     commit can shrink it.
+   - *A crash at minute 37 loses 37 minutes.* With batches it loses at
+     most one batch, and running the same import again resumes after
+     the last committed unit.
+
+   What stays all-or-nothing: an import from a string (one batch), and
+   `.sdltm` import, until its reader is paged too. Off-thread execution
+   is still #16a.
 5. **Fuzzy candidate retrieval at scale (§11.2).** In the synthetic
    corpus, a top-50 FTS shortlist lost the best edit-distance match
    10% of the time at 100k units and a third of the time at 1M. Open:

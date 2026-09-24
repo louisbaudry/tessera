@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,7 +7,7 @@ import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createTm } from './index.js';
-import { importTmx } from './import-tmx.js';
+import { importTmx, importTmxFile, listTmImports } from './import-tmx.js';
 import { retrievePair } from './retrieve.js';
 
 const dirs: string[] = [];
@@ -334,5 +334,127 @@ describe('importTmx', () => {
     expect(() => importTmx(db, '<notTmx/>')).toThrow();
     expect(db.prepare('SELECT COUNT(*) AS n FROM tu').get()).toEqual({ n: 0 });
     db.close();
+  });
+});
+
+describe('importTmxFile (backlog #18c)', () => {
+  /** Writes `text` beside a fresh memory; returns both. */
+  function withFile(text: string): { db: Database.Database; path: string } {
+    const db = newTm();
+    const path = join(dirs[dirs.length - 1]!, 'memory.tmx');
+    writeFileSync(path, text, 'utf8');
+    return { db, path };
+  }
+
+  const unit = (n: number, fr = `Bonjour ${n}`): string =>
+    `<tu tuid="${n}"><tuv xml:lang="en"><seg>Hello ${n}</seg></tuv>` +
+    `<tuv xml:lang="fr"><seg>${fr}</seg></tuv></tu>`;
+
+  /** Every unit's (tuid, lang, plain), in insertion order — what an import is judged by. */
+  function contents(db: Database.Database): unknown[] {
+    return db
+      .prepare(
+        `SELECT a.value AS tuid, v.lang, v.plain FROM tuv v
+         JOIN tu_attr a ON a.tu_id = v.tu_id AND a.key = 'tuid'
+         ORDER BY v.tu_id, v.lang`,
+      )
+      .all();
+  }
+
+  it('writes in batches exactly what a single-transaction import writes', () => {
+    const doc = tmx([1, 2, 3, 4, 5].map((n) => unit(n)).join('\n'));
+    const { db, path } = withFile(doc);
+    const result = importTmxFile(db, path, { batchSize: 2 });
+    expect(result).toMatchObject({ tuCount: 5, tuvCount: 10 });
+
+    const reference = newTm();
+    importTmx(reference, doc);
+    expect(contents(db)).toEqual(contents(reference));
+    expect(
+      JSON.parse((db.prepare('SELECT langs FROM tm').get() as { langs: string }).langs),
+    ).toEqual(['en', 'fr']);
+
+    const [run] = listTmImports(db);
+    expect(run).toMatchObject({
+      id: result.importId,
+      format: 'tmx',
+      sourceName: 'memory.tmx',
+      unitsDone: 5,
+      variantsDone: 10,
+    });
+    expect(run!.finishedAt).not.toBeNull();
+  });
+
+  it('decodes a multi-byte character split across chunk boundaries', () => {
+    const text = 'caf\u00E9 \u65E5\u672C\u8A9E \u{1F600}';
+    const { db, path } = withFile(tmx(unit(1, text)));
+    for (const chunkBytes of [1, 2, 3, 5, 7]) {
+      const target = newTm();
+      importTmxFile(target, path, { chunkBytes });
+      expect(contents(target), `chunkBytes ${chunkBytes}`).toContainEqual({
+        tuid: '1',
+        lang: 'fr',
+        plain: text,
+      });
+    }
+    db.close();
+  });
+
+  it('keeps whole committed batches when a later unit is malformed, and resumes after them', () => {
+    // Unit 4 has an <ept> with no <bpt>: a TmxError at parse time. The
+    // fix is the same length, so the resumed file passes the size guard.
+    const bad = unit(4, 'Bon<ept i="9"/>jour 4');
+    const good = unit(4, 'Bon<ph x="99"/>jour 4');
+    expect(good.length).toBe(bad.length);
+    const units = [1, 2, 3, 4, 5].map((n) => unit(n));
+    const { db, path } = withFile(tmx([...units.slice(0, 3), bad, units[4]].join('\n')));
+
+    // Small chunks, so units 1-3 arrive before the bad one does, as they
+    // would in a real multi-megabyte file; a unit is only ever committed
+    // once its batch fills, whatever chunk it came in.
+    expect(() => importTmxFile(db, path, { batchSize: 2, chunkBytes: 64 })).toThrow(
+      /no matching <bpt>/,
+    );
+    const [interrupted] = listTmImports(db);
+    expect(interrupted).toMatchObject({
+      unitsDone: 2,
+      variantsDone: 4,
+      finishedAt: null,
+    });
+    expect(contents(db)).toHaveLength(4); // units 1 and 2 only: unit 3 was never committed
+
+    writeFileSync(path, tmx([...units.slice(0, 3), good, units[4]].join('\n')), 'utf8');
+    const resumed = importTmxFile(db, path, { batchSize: 2, resume: interrupted!.id });
+    expect(resumed).toMatchObject({ importId: interrupted!.id, tuCount: 3, tuvCount: 6 });
+    expect(
+      contents(db).filter((r) => (r as { lang: string }).lang === 'en'),
+    ).toHaveLength(5);
+    expect(listTmImports(db)).toEqual([
+      expect.objectContaining({ id: interrupted!.id, unitsDone: 5, variantsDone: 10 }),
+    ]);
+    expect(listTmImports(db)[0]!.finishedAt).not.toBeNull();
+  });
+
+  it('refuses to resume a finished import, a missing one, or a different file', () => {
+    const { db, path } = withFile(tmx(unit(1)));
+    const done = importTmxFile(db, path);
+    expect(() => importTmxFile(db, path, { resume: done.importId })).toThrow(
+      /nothing to resume/,
+    );
+    expect(() => importTmxFile(db, path, { resume: 99 })).toThrow(/no import #99/);
+
+    db.prepare('UPDATE tm_import SET finished_at = NULL, source_bytes = 1').run();
+    expect(() => importTmxFile(db, path, { resume: done.importId })).toThrow(
+      /not resumable/,
+    );
+  });
+
+  it('records a string import as one finished run', () => {
+    const db = newTm();
+    const result = importTmx(db, tmx(unit(1)));
+    expect(listTmImports(db)).toEqual([
+      expect.objectContaining({ id: result.importId, unitsDone: 1, variantsDone: 2 }),
+    ]);
+    expect(listTmImports(db)[0]!.finishedAt).not.toBeNull();
   });
 });

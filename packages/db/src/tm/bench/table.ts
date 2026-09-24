@@ -56,6 +56,8 @@ interface Probe {
   readonly tmxBytes: number;
   readonly totalMs: number;
   readonly peakRssMiB: number;
+  /** V8's heap cap for the probe process (`--probe-heap-mib`); absent in pre-#18c results. */
+  readonly heapLimitMiB?: number;
   readonly error?: string;
 }
 
@@ -106,22 +108,23 @@ export function markdownTables(r: BenchResults): string {
     `Machine: ${String(m['cpu'])}, ${String(m['cores'])} cores, ${String(m['memGiB'])} GiB RAM, ` +
       `${String(m['os'])}, Node ${String(m['node'])}, SQLite ${String(m['sqlite'])}.`,
     '',
-    '| Units | File | After VACUUM (time) | Build (how, peak RSS) | Single-file `importTmx` (TMX size, peak RSS) | Copy | Online backup |',
+    '| Units | File | After VACUUM (time) | Build (how, peak RSS) | Streaming `importTmxFile` (TMX size, peak RSS, heap cap) | Copy | Online backup |',
     '|---|---|---|---|---|---|---|',
   );
   for (const { size, sdltmBytes, importProbe: p, measured: x } of r.results) {
-    if (!measuredOk(x)) {
-      lines.push(`| ${units(size)} | **run failed**: ${x.error} | | | | | |`);
-      continue;
-    }
     const probe =
       sdltmBytes !== undefined
         ? `n/a (source was a ${mib(sdltmBytes)} \`.sdltm\`)`
         : p === null
           ? 'not run'
-          : p.ok
-            ? `${ms(p.totalMs)} (${mib(p.tmxBytes)}, ${Math.round(p.peakRssMiB)} MiB)`
-            : `**fails** after ${ms(p.totalMs)} (${mib(p.tmxBytes)}): ${p.error ?? ''}`;
+          : `${p.ok ? ms(p.totalMs) : `**fails** after ${ms(p.totalMs)}`} ` +
+            `(${mib(p.tmxBytes)}, ${Math.round(p.peakRssMiB)} MiB` +
+            `${p.heapLimitMiB !== undefined ? `, heap cap ${p.heapLimitMiB} MiB` : ''})` +
+            (p.ok ? '' : `: ${p.error ?? ''}`);
+    if (!measuredOk(x)) {
+      lines.push(`| ${units(size)} | **not measured**: ${x.error} | | | ${probe} | | |`);
+      continue;
+    }
     lines.push(
       `| ${label(size, x)} | ${mib(x.sizeBytes)} | ${mib(x.sizeAfterVacuum)} (${ms(x.vacuumMs)}) | ` +
         `${ms(x.build.ms)} (${x.build.method ?? 'importTmx, 50,000-unit slices'}, ` +

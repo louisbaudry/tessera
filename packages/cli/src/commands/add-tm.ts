@@ -1,13 +1,16 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 
 import {
   addTmRef,
   createTm,
   importSdltm,
-  importTmx,
+  importTmxFile,
+  listTmImports,
   listTmRefs,
+  openTm,
   setWriteTarget,
+  type TmImport,
 } from '@cat-tool/db';
 
 import {
@@ -84,28 +87,64 @@ function prepareMemory(path: string, io: CliIo): string {
     throw new CliError(`no such file: ${path}`);
   }
   const ctmPath = path.slice(0, -ext.length) + '.ctm';
+  let tm: ReturnType<typeof createTm>;
+  let resume: TmImport | undefined;
   if (existsSync(ctmPath)) {
-    throw new CliError(
-      `${ctmPath} already exists — attach it directly, or move it aside to import again`,
+    // The one existing memory worth opening: this TMX's own interrupted
+    // import (tm-format-spec.md §12.4), which running the same command
+    // again continues rather than refusing.
+    const refuse = (): CliError =>
+      new CliError(
+        `${ctmPath} already exists — attach it directly, or move it aside to import again`,
+      );
+    if (ext !== '.tmx') throw refuse();
+    tm = openTm(ctmPath);
+    resume = listTmImports(tm).find(
+      (r) => r.finishedAt === null && r.sourceName === basename(path),
     );
+    if (!resume) {
+      tm.close();
+      throw refuse();
+    }
+    io.stdout(`Resuming the import of ${path} after unit ${resume.unitsDone}`);
+  } else {
+    tm = createTm(ctmPath, { name: basename(path, ext), generator: GENERATOR });
   }
-
-  const tm = createTm(ctmPath, { name: basename(path, ext), generator: GENERATOR });
   try {
     const result =
-      ext === '.tmx' ? importTmx(tm, readFileSync(path, 'utf8')) : importSdltm(tm, path);
+      ext === '.tmx'
+        ? importTmxFile(tm, path, { resume: resume?.id })
+        : importSdltm(tm, path);
     for (const warning of result.warnings) io.stderr(`warning: ${warning}`);
     io.stdout(
       `Imported ${path} into ${ctmPath}: ${result.tuCount} units, ${result.tuvCount} variants` +
         (result.warnings.length > 0 ? `, ${result.warnings.length} warnings` : ''),
     );
   } catch (err) {
-    // An import that failed must not leave an empty memory behind for
-    // the next attempt to refuse as "already exists".
+    const kept = ext === '.tmx' ? committedUnits(tm) : 0;
     tm.close();
-    rmSync(ctmPath, { force: true });
+    if (kept > 0) {
+      // Whole units, and a tm_import row that says the file is not all
+      // there: worth keeping, and the same command picks up from here.
+      io.stderr(
+        `error: import stopped after ${kept} units; ${ctmPath} keeps them and is marked ` +
+          'incomplete — run the same add-tm again to resume',
+      );
+    } else {
+      // An import that failed must not leave an empty memory behind for
+      // the next attempt to refuse as "already exists".
+      rmSync(ctmPath, { force: true });
+    }
     throw err;
   }
   tm.close();
   return ctmPath;
+}
+
+/** Units the interrupted TMX import of this memory had committed. */
+function committedUnits(tm: ReturnType<typeof createTm>): number {
+  return listTmImports(tm).reduce(
+    (n, r) => n + (r.finishedAt === null ? r.unitsDone : 0),
+    0,
+  );
 }

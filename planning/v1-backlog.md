@@ -1407,15 +1407,64 @@ hold was code that reads or writes the format. It wasn't caught
 earlier because every unit test has a dozen rows (CLAUDE.md's
 function-around-an-indexed-column gotcha).
 
-**#18c · Streaming TMX import with bounded memory · M** · [issue #40]
-TMX is what translators and language providers actually export, so it
-is the import that has to scale. `.sdltm` is a nice-to-have (§12.3).
-`importTmx(db, xml: string)` peaked at 4.1 GiB RSS at 1M units and
-cannot read a 5M-unit TMX at all (V8's 2^29-character string cap); in
-50k-unit slices it stayed near 1 GiB. The fix is a streaming reader
-into bounded transactions, with a resume point, and a recorded answer
-to §12.4's all-or-nothing question. Running it off-thread stays #16a.
-*Done when:* a 5M-unit TMX imports under a 2 GB-capped Node heap.
+**#18c · ~~Streaming TMX import with bounded memory~~ · DONE —
+`TmxStreamParser` in `core/tm/tmx.ts`; `importTmxFile`/`listTmImports`
+in `db/tm/import-tmx.ts`; `.ctm` format version 2 (`tm_import`)**
+`importTmx(db, xml: string)` needed the whole document as one string
+and the whole parse tree: 4.1 GiB RSS at 1M units, and a 5M-unit TMX
+could not be read at all (V8 caps a string at 2^29 characters). Now
+`TmxStreamParser` takes the document in chunks and returns each `<tu>`
+as its closing tag arrives. `importTmxFile` reads the file 1 MiB at a
+time and commits every 10,000 units. In a process capped at a 2 GB
+heap, the 5M-unit file (1,975 MiB) imported with a 288 MiB peak RSS,
+and 1M peaked at 243 MiB. Memory no longer grows with the file. Time
+did: 12–17% slower than one transaction or 50k slices, from the extra
+commits, and untuned (tm-format-spec.md §11.2 has the table).
+`parseTmx` is now one push into the stream parser, so there is one
+TMX reader, not two, and `add-tm` streams.
+
+**§12.4's question, answered: an import may be incomplete; a merge may
+not.** §7's all-or-nothing protects a merge, whose half-applied state
+would be inconsistent. An import only appends, and every batch ends on
+a unit boundary, so an interrupted one leaves a *prefix*: whole units,
+consistent, just not all of them. The danger is not knowing that, so
+`.ctm` gained a `tm_import` table (schema v2, through the shared
+runner; a v1 file upgrades with a backup on open). An unfinished run
+has `finished_at IS NULL` and `units_done` says how far it got. That
+count is also the resume point. Resuming re-parses and skips that many
+units, which is independent of encoding and chunking, where a byte
+offset would not be. A resume against a file of a different size is
+refused. One transaction would also have held the write lock for 38
+minutes, grown the WAL by a whole memory's worth of disk, and lost
+everything on a crash. `importTmx(db, xml)` stays the single-batch,
+all-or-nothing case. `.sdltm` import is still one transaction.
+`add-tm` keeps an interrupted memory, says so, and running the same
+command again resumes it. The CLI test checks both halves with a
+20,000-unit file.
+
+**Three things only the streaming reader forced into the open:**
+- *A parse error in a chunk loses that chunk's earlier units.* Nothing
+  is lost for good: they were never committed, and a resume re-reads
+  them. But the first test of it, with one small file arriving as a
+  single chunk, expected two committed units and found none. The test
+  now uses 64-byte chunks, as a real file would arrive.
+- *`<body>` may hold `<tu>` and comments, nothing else.* The tree
+  parser silently skipped any other element there. A streaming reader
+  cannot skip an element it does not know without parsing it, and a
+  silently skipped element could be a lost unit, so it is a `TmxError`
+  now.
+- *Every per-occurrence warning had to become a tally*, the CLAUDE.md
+  gotcha again, at a scale where it is a memory bug and not just a
+  noisy report. A bad `xml:lang` was one string per variant, and a
+  reused uuid one per unit. Held until the end of a 5M-unit import,
+  that is tens of millions of strings. Both now report once per cause,
+  with a count.
+
+The resume guard catches a changed size, never changed content of the
+same size. That trade is recorded in §2.9. Hashing the file first
+would cost another full read before every import. The test suite
+found the guard's value on its own: the CLI test's "fixed" file was
+first written one byte short, and the guard refused it.
 
 **#19a · ~~Make exact lookup seek the `(lang, hash)` index~~ · DONE —
 `db/lang-match.ts` (`matchingLangs`), used by `db/tm/retrieve.ts` and
