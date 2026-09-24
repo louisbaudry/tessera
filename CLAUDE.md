@@ -148,7 +148,11 @@ writing any new write path, know these three rules:
   once, in `core/audit/`. A new action widens the `CHECK`; it never
   becomes free text.
 - **The actor is a required parameter, never optional or defaulted.**
-  A write that can't name who caused it shouldn't compile.
+  A write that can't name who caused it shouldn't compile. In `db` it is
+  an `AuditActor` (`core/audit/actor.ts`), written through
+  `appendAuditEvent` (`db/audit/events.ts`) — the one writer every
+  database's log shares; tests pass `TEST_ACTOR`
+  (`db/audit/actor.fixture.ts`).
 - **Actor and `origin` are separate facts.** An AI engine or a TM match
   is an `origin`, never an actor. The accountable human (or a named
   `system:` job) is the actor.
@@ -267,9 +271,9 @@ through. Those rules also need the project's language pair
 ## The CLI (`@cat-tool/cli`)
 
 Backlog #25 (`v1-spec.md` §2.4) is the headless driver §2.3 promised —
-`init`, `add-file`, `add-tm`, `pretranslate`, `qa`, `export` — and the
-proof that `core` and `db` are complete on their own. Two rules keep it
-that:
+`init`, `add-file`, `add-tm`, `pretranslate`, `qa`, `export`, and since
+backlog #56 `history`/`audit-verify` — and the proof that `core` and
+`db` are complete on their own. Two rules keep it that:
 
 - **Each command is one repository call, never a second implementation
   of one.** The CLI parses arguments, opens the database, prints, and

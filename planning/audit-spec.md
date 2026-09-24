@@ -1,6 +1,7 @@
 # Auditability — spec
 
-Status: design, 2026-09-23. `#55` (`core/audit`) built 2026-09-24; `#56`–`#58` not yet
+Status: design, 2026-09-23. `#55` (`core/audit`) and `#56` (`project.catdb`)
+built 2026-09-24; `#57`–`#58` not yet
 (`v1-backlog.md`, "Cross-cutting — Auditability"). Written now, ahead of
 the epics that need it, for the same reason the `.ctm` context columns
 were populated before any feature read them (`v1-spec.md` §4.3): **history
@@ -72,9 +73,8 @@ spec exists to close first.
 3. **The actor is required, never defaulted.** Every repository function
    that writes an audited change takes an `actor` — a required field, not
    an optional one filled with `'unknown'`. A write path that forgets its
-   actor must fail to compile, not produce an anonymous row. (Today's
-   `confirmSegment(..., { confirmedBy? })` is exactly the optional shape
-   this rules out.)
+   actor must fail to compile, not produce an anonymous row. (`confirmSegment(..., { confirmedBy? })`, as it stood before
+   backlog #56, was exactly the optional shape this rules out.)
 4. **Actor and origin are different facts, kept in different fields.**
    The *actor* is the accountable principal who caused the change — a
    person, or a named unattended job. The *origin* is the mechanism that
@@ -249,6 +249,53 @@ child event per segment it changes, each with `batch_id` pointing at the
 parent. That makes "what did this batch touch" one indexed query, and it
 is the foundation a batch undo would stand on, the way `tuv_history`
 already is for the TM.
+
+### 2.4 In `project.catdb` (backlog #56)
+
+What the first file to carry the log settled, for `#57`/`#58` to reuse
+rather than re-decide:
+
+- **One writer, in `db/audit/events.ts`**, shared by every database:
+  the table's DDL (`auditEventDdl(actions)`, the `CHECK` generated from
+  that file's action list), `appendAuditEvent`, `listEvents`,
+  `listBatch` and `verifyAudit`. The genesis reads the file's own
+  `PRAGMA application_id`, so no caller can chain a log against the
+  wrong kind of file. The next id is `max(id) + 1`, read inside the
+  write's transaction — it has to be known before the row is hashed.
+- **The actor travels as `AuditActor { actor, label }`**
+  (`core/audit/actor.ts`): the principal, plus the display label
+  snapshotted into `actor_label`. The label is required-but-nullable:
+  a caller must say it has none (`system:` jobs), not forget it. The
+  `.ctm`'s `updated_by`/`changed_by` receive the label (§2.1).
+- **Subjects**: `segment` and `file` use the row id as decimal text;
+  `project` has `subject_id` `NULL` — the file *is* the project.
+- **A write that changes nothing records nothing.** `setSegmentTarget`
+  compares the new target, status and origin with the stored ones and
+  returns `false` without an `UPDATE` or an event when all three are
+  equal. Without it, every pre-translate re-run would log one event
+  per already-matched segment — thousands of rows saying nothing
+  happened, the warning-storm lesson in a table that can never be
+  pruned. A confirm still logs `segment.confirmed`, because the TM
+  write happened even when the segment's state did not change.
+- **Confirming writes two events**: `segment.target_set` (the state
+  now reads `confirmed` — the snapshot rule needs it) and then
+  `segment.confirmed` with the TM unit's `uuid` and the target
+  variant's `rev`.
+- **Pre-translate plans, then writes.** The parent's `counts` must be
+  in its row before any child can point at it, and a hashed row cannot
+  be amended afterwards. So the run decides every placement first,
+  writes `project.pretranslate` with the final counts and the attached
+  TMs' paths in priority order, then writes the children — all in one
+  transaction, as before. A run that changes nothing still writes its
+  parent: the run happened.
+- **Export records at production.** `exportFile` returns the bytes and
+  writes `project.exported` with their SHA-256; what the caller does
+  with them is outside the file.
+- **Not yet audited**: the settings writes (`qa_rule_setting`,
+  `tm_ref`, `glossary_ref`, the untranslated allowlist) and QA
+  dismissals. `project.setting_changed` exists in the vocabulary, but
+  its `key` names are a design of their own; recorded as a follow-up
+  rather than guessed here.
 
 ## 3. The chain, and what it proves
 

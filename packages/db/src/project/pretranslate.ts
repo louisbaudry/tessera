@@ -18,12 +18,14 @@ import {
   isProtectedFromPretranslate,
   placeMatch,
   toTmTokens,
+  type AuditActor,
   type Segment,
   type TmRef,
   type TmToken,
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
+import { appendAuditEvent } from '../audit/events.js';
 import { retrievePair } from '../tm/retrieve.js';
 import { getProject } from './project.js';
 import { replaceQaIssues } from './qa-issues.js';
@@ -45,6 +47,12 @@ export interface PretranslateOptions {
    * v1-spec.md §6.1 step 4 says "the project", not "the file".
    */
   readonly fileId?: number;
+  /**
+   * Who ran it — required (audit-spec.md decision 3). The run is one
+   * `project.pretranslate` event, and every segment it changes is a
+   * `segment.target_set` child of it (spec §2.3).
+   */
+  readonly actor: AuditActor;
 }
 
 export interface PretranslateSummary {
@@ -64,14 +72,30 @@ const TAGDIFF_MESSAGE = (source: string): string =>
   `Tags from ${source} did not correspond to this segment's source — inserted as ` +
   'plain text; tags need to be reapplied.';
 
+/** One segment's decided placement, written only after the run's parent event. */
+interface Placement {
+  readonly segment: Segment;
+  readonly targetTokens: Segment['targetTokens'];
+  readonly tagsMatched: boolean;
+  readonly origin: 'tm_exact' | 'tm_exact_tagdiff' | 'propagated';
+  readonly status: 'translated' | 'draft';
+  readonly sourceLabel: string;
+}
+
 /**
  * Runs pre-translate over a project's segments, as one transaction: a
  * thrown error (a locked segment slipping through, a corrupt TM row)
  * leaves every segment exactly as it was, never half pre-translated.
+ *
+ * Every placement is decided before anything is written: the run's
+ * `project.pretranslate` event carries the final counts, and it has to
+ * be in the log before any child can point at it (audit-spec.md §2.4).
+ * Deciding first changes no answer — donors are frozen up front and
+ * the TMs are only read.
  */
 export function pretranslate(
   db: Database.Database,
-  options: PretranslateOptions = {},
+  options: PretranslateOptions,
 ): PretranslateSummary {
   const project = getProject(db);
   if (!project) {
@@ -82,54 +106,55 @@ export function pretranslate(
   // refuses ATTACH/DETACH once one is open.
   const attached = attachTms(db, listTmRefs(db)); // already priority order
 
-  const allSegments = listAllSegments(db);
-  const candidates =
-    options.fileId === undefined
-      ? allSegments
-      : allSegments.filter((s) => s.fileId === options.fileId);
+  const run = db.transaction((): PretranslateSummary => {
+    const allSegments = listAllSegments(db);
+    const candidates =
+      options.fileId === undefined
+        ? allSegments
+        : allSegments.filter((s) => s.fileId === options.fileId);
 
-  // Propagation donors: the first confirmed segment encountered
-  // (document order) per source hash. Frozen here, before any writes —
-  // a segment this same run pre-translates via TM match is never itself
-  // eligible as a donor within the same run; only a hash a translator
-  // had *already* confirmed counts (v1-spec.md §6.1's "when one is
-  // confirmed").
-  const donorByHash = new Map<string, Segment>();
-  for (const segment of allSegments) {
-    if (
-      segment.status === 'confirmed' &&
-      segment.targetTokens &&
-      !donorByHash.has(segment.sourceHash)
-    ) {
-      donorByHash.set(segment.sourceHash, segment);
+    // Propagation donors: the first confirmed segment encountered
+    // (document order) per source hash. Frozen here, before any writes —
+    // a segment this same run pre-translates via TM match is never itself
+    // eligible as a donor within the same run; only a hash a translator
+    // had *already* confirmed counts (v1-spec.md §6.1's "when one is
+    // confirmed").
+    const donorByHash = new Map<string, Segment>();
+    for (const segment of allSegments) {
+      if (
+        segment.status === 'confirmed' &&
+        segment.targetTokens &&
+        !donorByHash.has(segment.sourceHash)
+      ) {
+        donorByHash.set(segment.sourceHash, segment);
+      }
     }
-  }
 
-  // Segments sharing a source hash ask the same TM question twice —
-  // cache the answer per hash for this run rather than re-querying
-  // every attached TM again.
-  const tmMatchCache = new Map<string, readonly TmToken[] | null>();
-  const findTmMatch = (srcHash: string): readonly TmToken[] | null => {
-    const cached = tmMatchCache.get(srcHash);
-    if (cached !== undefined) return cached;
-    const found = findExactTmMatch(
-      db,
-      attached,
-      project.srcLang,
-      project.tgtLang,
-      srcHash,
-    );
-    tmMatchCache.set(srcHash, found);
-    return found;
-  };
+    // Segments sharing a source hash ask the same TM question twice —
+    // cache the answer per hash for this run rather than re-querying
+    // every attached TM again.
+    const tmMatchCache = new Map<string, readonly TmToken[] | null>();
+    const findTmMatch = (srcHash: string): readonly TmToken[] | null => {
+      const cached = tmMatchCache.get(srcHash);
+      if (cached !== undefined) return cached;
+      const found = findExactTmMatch(
+        db,
+        attached,
+        project.srcLang,
+        project.tgtLang,
+        srcHash,
+      );
+      tmMatchCache.set(srcHash, found);
+      return found;
+    };
 
-  let exact = 0;
-  let tagdiff = 0;
-  let propagated = 0;
-  let unmatched = 0;
-  let skipped = 0;
+    let exact = 0;
+    let tagdiff = 0;
+    let propagated = 0;
+    let unmatched = 0;
+    let skipped = 0;
+    const placements: Placement[] = [];
 
-  const run = db.transaction(() => {
     for (const segment of candidates) {
       if (isProtectedFromPretranslate(segment)) {
         skipped++;
@@ -139,15 +164,14 @@ export function pretranslate(
       const tmMatch = findTmMatch(segment.sourceHash);
       if (tmMatch) {
         const placed = placeMatch(tmMatch, segment.sourceTokens, segment.formatTable);
-        writePlacement(
-          db,
+        placements.push({
           segment,
-          placed.targetTokens,
-          placed.tagsMatched,
-          placed.tagsMatched ? 'tm_exact' : 'tm_exact_tagdiff',
-          placed.tagsMatched ? 'translated' : 'draft',
-          'a TM match',
-        );
+          targetTokens: placed.targetTokens,
+          tagsMatched: placed.tagsMatched,
+          origin: placed.tagsMatched ? 'tm_exact' : 'tm_exact_tagdiff',
+          status: placed.tagsMatched ? 'translated' : 'draft',
+          sourceLabel: 'a TM match',
+        });
         if (placed.tagsMatched) exact++;
         else tagdiff++;
         continue;
@@ -161,25 +185,35 @@ export function pretranslate(
           segment.sourceTokens,
           segment.formatTable,
         );
-        writePlacement(
-          db,
+        placements.push({
           segment,
-          placed.targetTokens,
-          placed.tagsMatched,
-          'propagated',
-          'draft',
-          'an internal propagation match',
-        );
+          targetTokens: placed.targetTokens,
+          tagsMatched: placed.tagsMatched,
+          origin: 'propagated',
+          status: 'draft',
+          sourceLabel: 'an internal propagation match',
+        });
         propagated++;
         continue;
       }
 
       unmatched++;
     }
-  });
-  run();
 
-  return { exact, tagdiff, propagated, unmatched, skipped };
+    const summary = { exact, tagdiff, propagated, unmatched, skipped };
+    const batch = appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'project.pretranslate',
+      subjectType: 'project',
+      subjectId: null,
+      detail: { tm_refs: attached.map((r) => r.path), counts: summary },
+    });
+    for (const placement of placements) {
+      writePlacement(db, placement, options.actor, batch.id);
+    }
+    return summary;
+  });
+  return run();
 }
 
 /** Queries each attached TM in priority order; the first non-empty hit wins (v1-spec.md §6.1 step 2). */
@@ -210,14 +244,12 @@ function findExactTmMatch(
  */
 function writePlacement(
   db: Database.Database,
-  segment: Segment,
-  targetTokens: Segment['targetTokens'],
-  tagsMatched: boolean,
-  origin: 'tm_exact' | 'tm_exact_tagdiff' | 'propagated',
-  status: 'translated' | 'draft',
-  sourceLabel: string,
+  placement: Placement,
+  actor: AuditActor,
+  batchId: number,
 ): void {
-  setSegmentTarget(db, segment.id, { targetTokens, status, origin });
+  const { segment, targetTokens, tagsMatched, origin, status, sourceLabel } = placement;
+  setSegmentTarget(db, segment.id, { targetTokens, status, origin, actor, batchId });
   replaceQaIssues(
     db,
     segment.id,

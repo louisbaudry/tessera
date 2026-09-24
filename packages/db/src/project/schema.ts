@@ -6,8 +6,17 @@
  * files, `ATTACH`ed at query time, never copied in.
  */
 
-import { QA_RULES, SEGMENT_STATUSES, type QaSeverity } from '@cat-tool/core';
+import {
+  PROJECT_AUDIT_ACTIONS,
+  QA_RULES,
+  SEGMENT_STATUSES,
+  type Origin,
+  type QaSeverity,
+  type SegmentStatus,
+  type Token,
+} from '@cat-tool/core';
 
+import { appendAuditEvent, auditEventDdl } from '../audit/events.js';
 import type { Migration } from '../migrate.js';
 
 /** "CATP" — distinct from `.ctm`'s "CATM" (tm-format-spec.md §1). */
@@ -130,9 +139,49 @@ const v4: Migration = {
   },
 };
 
+/** The actor of everything the migration itself writes (audit-spec.md §6). */
+const MIGRATION_ACTOR = {
+  actor: { kind: 'system', name: 'migration' },
+  label: null,
+} as const;
+
+const v5: Migration = {
+  version: 5,
+  description:
+    'audit_event, and a segment.baseline per segment with a target (audit-spec.md §2, §6; backlog #56)',
+  up: (db) => {
+    db.exec(auditEventDdl(PROJECT_AUDIT_ACTIONS));
+    // "This is what it was when recording began" — never an invented author.
+    const rows = db
+      .prepare(
+        `SELECT id, status, origin, target_tokens FROM segment
+         WHERE target_tokens IS NOT NULL ORDER BY id`,
+      )
+      .all() as Array<{
+      id: number;
+      status: SegmentStatus;
+      origin: Origin | null;
+      target_tokens: string;
+    }>;
+    for (const row of rows) {
+      appendAuditEvent(db, {
+        actor: MIGRATION_ACTOR,
+        action: 'segment.baseline',
+        subjectType: 'segment',
+        subjectId: String(row.id),
+        detail: {
+          status: row.status,
+          origin: row.origin,
+          target_tokens: JSON.parse(row.target_tokens) as readonly Token[],
+        },
+      });
+    }
+  },
+};
+
 /**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
  */
-export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4];
+export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];

@@ -16,6 +16,7 @@ import {
   setSegmentTarget,
   SegmentRepoError,
 } from './segments.js';
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -40,6 +41,7 @@ describe('getSegment / listSegments / listAllSegments', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const segments = listSegments(db, file.id);
     expect(segments.map((s) => s.ord)).toEqual(segments.map((_, i) => i));
@@ -54,6 +56,7 @@ describe('getSegment / listSegments / listAllSegments', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     for (const segment of listSegments(db, file.id)) {
       expect(segment.targetTokens).toBeNull();
@@ -69,11 +72,13 @@ describe('getSegment / listSegments / listAllSegments', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const b = insertFile(
       db,
       'b.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const all = listAllSegments(db);
     expect(all).toHaveLength(
@@ -91,12 +96,14 @@ describe('setSegmentTarget', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const [segment] = listSegments(db, file.id);
     const before = segment!.updatedAt;
 
     await new Promise((resolve) => setTimeout(resolve, 5));
     setSegmentTarget(db, segment!.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Una traducción' }],
       status: 'translated',
       origin: 'tm_exact',
@@ -116,10 +123,12 @@ describe('setSegmentTarget', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const [segment] = listSegments(db, file.id);
     expect(() =>
       setSegmentTarget(db, segment!.id, {
+        actor: TEST_ACTOR,
         targetTokens: [{ t: 'text', v: 'x' }],
         status: 'draft',
         origin: 'tm_fuzzy_85',
@@ -134,11 +143,13 @@ describe('setSegmentTarget', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const locked = listSegments(db, file.id).find((s) => s.locked)!;
     expect(locked).toBeDefined();
     expect(() =>
       setSegmentTarget(db, locked.id, {
+        actor: TEST_ACTOR,
         targetTokens: [{ t: 'text', v: 'x' }],
         status: 'translated',
         origin: null,
@@ -150,7 +161,12 @@ describe('setSegmentTarget', () => {
   it('refuses an unknown segment id', () => {
     const db = openProjectDb(dbPath());
     expect(() =>
-      setSegmentTarget(db, 999_999, { targetTokens: null, status: 'new', origin: null }),
+      setSegmentTarget(db, 999_999, {
+        actor: TEST_ACTOR,
+        targetTokens: null,
+        status: 'new',
+        origin: null,
+      }),
     ).toThrow(SegmentRepoError);
     db.close();
   });

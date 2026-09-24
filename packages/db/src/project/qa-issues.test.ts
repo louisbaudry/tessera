@@ -21,6 +21,7 @@ import {
 import { setRuleEnabled } from './qa-settings.js';
 import { addUntranslatedAllowlistEntry } from './qa-untranslated-allowlist.js';
 import { getSegment, listSegments, setSegmentTarget } from './segments.js';
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -44,6 +45,7 @@ const openWithSegment = () => {
     db,
     'a.docx',
     assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+    { actor: TEST_ACTOR },
   );
   const [segment] = listSegments(db, file.id);
   return { db, segmentId: segment!.id };
@@ -178,6 +180,7 @@ describe('runQaRules', () => {
   const breakTargetTags = (db: Database.Database, segmentId: number) => {
     const source = getSegment(db, segmentId)!.sourceTokens;
     setSegmentTarget(db, segmentId, {
+      actor: TEST_ACTOR,
       targetTokens: [
         ...source,
         { t: 'text', v: ' (translated)' },
@@ -224,6 +227,7 @@ describe('runQaRules', () => {
   it('fires seg.empty for a translated segment with no target', () => {
     const { db, segmentId } = openWithSegment();
     setSegmentTarget(db, segmentId, {
+      actor: TEST_ACTOR,
       targetTokens: null,
       status: 'translated',
       origin: null,
@@ -249,6 +253,7 @@ describe('runQaRules', () => {
     const source = getSegment(db, segmentId)!.sourceTokens;
     db.prepare('UPDATE segment SET locked = 0 WHERE id = ?').run(segmentId);
     setSegmentTarget(db, segmentId, {
+      actor: TEST_ACTOR,
       targetTokens: source,
       status: 'translated',
       origin: null,
@@ -263,6 +268,7 @@ describe('runQaRules', () => {
     const segment = getSegment(db, segmentId)!;
     db.prepare('UPDATE segment SET locked = 0 WHERE id = ?').run(segmentId);
     setSegmentTarget(db, segmentId, {
+      actor: TEST_ACTOR,
       targetTokens: segment.sourceTokens,
       status: 'translated',
       origin: null,
@@ -304,6 +310,7 @@ describe('runQaRules', () => {
     const { db, segmentId } = openWithSegment();
     db.prepare('UPDATE segment SET locked = 0 WHERE id = ?').run(segmentId);
     setSegmentTarget(db, segmentId, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Saludo?' }],
       status: 'translated',
       origin: null,
@@ -354,6 +361,7 @@ describe('runQaRules', () => {
     const segment = getSegment(db, segmentId)!;
     db.prepare('UPDATE segment SET locked = 0 WHERE id = ?').run(segmentId);
     setSegmentTarget(db, segmentId, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Rendering A' }],
       status: 'translated',
       origin: null,
@@ -379,6 +387,7 @@ describe('runQaRules', () => {
     const segment = getSegment(db, segmentId)!;
     db.prepare('UPDATE segment SET locked = 0 WHERE id = ?').run(segmentId);
     setSegmentTarget(db, segmentId, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Shared rendering' }],
       status: 'translated',
       origin: null,

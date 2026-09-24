@@ -6,6 +6,7 @@ import { insertFile } from '@cat-tool/db';
 
 import {
   CliError,
+  cliActor,
   openExistingProject,
   parse,
   positional,
@@ -41,7 +42,7 @@ export function addFile(args: readonly string[], io: CliIo): number {
     const relPath = values['rel-path'] ?? basename(docxPath);
     let fileId: number;
     try {
-      fileId = insertFile(db, relPath, assembled).id;
+      fileId = insertFile(db, relPath, assembled, { actor: cliActor() }).id;
     } catch (err) {
       if (
         err instanceof Error &&

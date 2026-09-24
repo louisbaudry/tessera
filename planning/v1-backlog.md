@@ -2173,10 +2173,29 @@ Sized issues:
   actors to every query that groups by actor. The actions are three
   lists rather than one, so a `project.catdb` `CHECK` cannot admit
   `auth.login`.
-- **#56 · `audit_event` in `project.catdb` (schema v5), actor required
-  on every segment write · M** · [issue #35] — `setSegmentTarget` is
-  already the single segment writer, so this is one chokepoint, plus a
-  `segment.baseline` for existing data and CLI `history`/`audit-verify`.
+- ~~**#56 · `audit_event` in `project.catdb` (schema v5), actor required
+  on every segment write · M**~~ — **DONE** — the table, its writer and
+  its reads live once in `packages/db/src/audit/events.ts`
+  (`auditEventDdl`, `appendAuditEvent`, `listEvents`, `listBatch`,
+  `verifyAudit`) for `#57`/`#58` to reuse; project schema v5
+  (`db/project/schema.ts`) adds it with a `segment.baseline` per
+  existing target. `setSegmentTarget`, `confirmSegment`, `pretranslate`,
+  `insertFile` and `exportFile` each take a required `AuditActor`
+  (`core/audit/actor.ts`), and the compiler found every caller;
+  the CLI is `cli:<OS user>` (`cliActor`), the server the session's
+  `account:<id>`. CLI `history` and `audit-verify` are one repository
+  call each. Three things building it decided (spec §2.4): a write that
+  changes nothing records nothing — or every pre-translate re-run would
+  log a row per already-matched segment, forever; pre-translate now
+  decides every placement before writing, because the parent's counts
+  must be in its hashed row before a child can point at it; and the
+  genesis reads the file's own `application_id`, so no caller can
+  chain against the wrong file type. `history` renders tags by id
+  (`{1}`…`{/1}`): in the golden job the only difference between the
+  pre-translated draft and the reviewer's fix is a reapplied tag, which
+  plain text hid. Left for a follow-up: `project.setting_changed` from
+  the settings writes (QA switches, TM/glossary refs), whose `key`
+  names are a design of their own.
 - **#57 · `audit_event` in `platform.sqlite`; the server passes the
   session's actor into every write · M** · [issue #36] — auth and
   download events; `authorization.*` joins once `#45` lands.
@@ -2220,6 +2239,5 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
-[issue #35]: https://github.com/louisbaudry/tessera/issues/35
 [issue #36]: https://github.com/louisbaudry/tessera/issues/36
 [issue #37]: https://github.com/louisbaudry/tessera/issues/37

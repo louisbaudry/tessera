@@ -15,6 +15,7 @@ import { openProjectDb } from './index.js';
 import { createProject } from './project.js';
 import { getSegment, listSegments, setSegmentTarget } from './segments.js';
 import { addTmRef, tmAlias } from './tm-refs.js';
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -50,6 +51,7 @@ function setUpProject() {
     db,
     'a.docx',
     assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+    { actor: TEST_ACTOR },
   );
   createTm(ctmPath('write-target.ctm'), {
     name: 'write-target',
@@ -68,12 +70,13 @@ describe('confirmSegment', () => {
     const { db, file } = setUpProject();
     const segment = findPlainSegment(db, file.id);
     setSegmentTarget(db, segment.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Texto confirmado' }],
       status: 'translated',
       origin: 'tm_exact',
     });
 
-    const result = confirmSegment(db, segment.id);
+    const result = confirmSegment(db, segment.id, { actor: TEST_ACTOR });
     expect(result.tuId).toBeGreaterThan(0);
     expect(result.sourceHistorized).toBe(false);
     expect(result.targetHistorized).toBe(false);
@@ -97,11 +100,12 @@ describe('confirmSegment', () => {
     const { db, file } = setUpProject();
     const segment = findPlainSegment(db, file.id);
     setSegmentTarget(db, segment.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'x' }],
       status: 'translated',
       origin: null,
     });
-    confirmSegment(db, segment.id);
+    confirmSegment(db, segment.id, { actor: TEST_ACTOR });
 
     const alias = tmAlias(1);
     const row = db.prepare(`SELECT hash FROM ${alias}.tuv WHERE lang = 'en'`).get() as {
@@ -119,17 +123,19 @@ describe('confirmSegment', () => {
     expect(plain.length).toBeGreaterThanOrEqual(2);
     const [first, second] = plain;
     setSegmentTarget(db, first!.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'uno' }],
       status: 'translated',
       origin: null,
     });
     setSegmentTarget(db, second!.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'dos' }],
       status: 'translated',
       origin: null,
     });
 
-    confirmSegment(db, second!.id);
+    confirmSegment(db, second!.id, { actor: TEST_ACTOR });
     const alias = tmAlias(1);
     const row = db
       .prepare(`SELECT prev_hash FROM ${alias}.tuv WHERE lang = 'en'`)
@@ -145,17 +151,19 @@ describe('confirmSegment', () => {
     );
     const [first, second] = plain;
     setSegmentTarget(db, first!.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'uno' }],
       status: 'translated', // not yet confirmed
       origin: null,
     });
     setSegmentTarget(db, second!.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'dos' }],
       status: 'translated',
       origin: null,
     });
 
-    confirmSegment(db, second!.id);
+    confirmSegment(db, second!.id, { actor: TEST_ACTOR });
     const alias = tmAlias(1);
     const row = db
       .prepare(`SELECT prev_hash FROM ${alias}.tuv WHERE lang = 'es'`)
@@ -163,7 +171,7 @@ describe('confirmSegment', () => {
     // "first" was never confirmed, so it is not part of the target chain yet.
     expect(row.prev_hash).toBeNull();
 
-    confirmSegment(db, first!.id);
+    confirmSegment(db, first!.id, { actor: TEST_ACTOR });
     const rowSecond = db
       .prepare(`SELECT prev_hash FROM ${alias}.tuv WHERE lang = 'es'`)
       .get() as { prev_hash: string | null };
@@ -176,7 +184,9 @@ describe('confirmSegment', () => {
   it('throws when the segment has no target to confirm', () => {
     const { db, file } = setUpProject();
     const segment = findPlainSegment(db, file.id);
-    expect(() => confirmSegment(db, segment.id)).toThrow(ConfirmError);
+    expect(() => confirmSegment(db, segment.id, { actor: TEST_ACTOR })).toThrow(
+      ConfirmError,
+    );
     db.close();
   });
 
@@ -184,7 +194,9 @@ describe('confirmSegment', () => {
     const { db, file } = setUpProject();
     const locked = listSegments(db, file.id).find((s) => s.locked)!;
     expect(locked).toBeDefined();
-    expect(() => confirmSegment(db, locked.id)).toThrow(ConfirmError);
+    expect(() => confirmSegment(db, locked.id, { actor: TEST_ACTOR })).toThrow(
+      ConfirmError,
+    );
     db.close();
   });
 
@@ -195,26 +207,32 @@ describe('confirmSegment', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const segment = findPlainSegment(db, file.id);
     setSegmentTarget(db, segment.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'x' }],
       status: 'translated',
       origin: null,
     });
-    expect(() => confirmSegment(db, segment.id)).toThrow(ConfirmError);
+    expect(() => confirmSegment(db, segment.id, { actor: TEST_ACTOR })).toThrow(
+      ConfirmError,
+    );
     db.close();
   });
 
   it('throws when the project has no identity row', () => {
     const db = openProjectDb(dbPath());
-    expect(() => confirmSegment(db, 1)).toThrow(ConfirmError);
+    expect(() => confirmSegment(db, 1, { actor: TEST_ACTOR })).toThrow(ConfirmError);
     db.close();
   });
 
   it('throws when the segment does not exist', () => {
     const { db } = setUpProject();
-    expect(() => confirmSegment(db, 999_999)).toThrow(ConfirmError);
+    expect(() => confirmSegment(db, 999_999, { actor: TEST_ACTOR })).toThrow(
+      ConfirmError,
+    );
     db.close();
   });
 
@@ -222,6 +240,7 @@ describe('confirmSegment', () => {
     const { db, file } = setUpProject();
     const segment = findPlainSegment(db, file.id);
     setSegmentTarget(db, segment.id, {
+      actor: TEST_ACTOR,
       targetTokens: [
         { t: 'open', id: 1, fmt: 1 },
         { t: 'text', v: 'x' },
@@ -230,14 +249,15 @@ describe('confirmSegment', () => {
       status: 'translated',
       origin: null,
     });
-    confirmSegment(db, segment.id);
+    confirmSegment(db, segment.id, { actor: TEST_ACTOR });
 
     setSegmentTarget(db, segment.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'x' }], // tags dropped entirely
       status: 'translated',
       origin: null,
     });
-    const second = confirmSegment(db, segment.id);
+    const second = confirmSegment(db, segment.id, { actor: TEST_ACTOR });
     expect(second.targetHistorized).toBe(true);
 
     const alias = tmAlias(1);
@@ -250,12 +270,13 @@ describe('confirmSegment', () => {
     const { db, file } = setUpProject();
     const segment = findPlainSegment(db, file.id);
     setSegmentTarget(db, segment.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'x' }],
       status: 'translated',
       origin: null,
     });
-    confirmSegment(db, segment.id);
-    expect(() => confirmSegment(db, segment.id)).not.toThrow();
+    confirmSegment(db, segment.id, { actor: TEST_ACTOR });
+    expect(() => confirmSegment(db, segment.id, { actor: TEST_ACTOR })).not.toThrow();
     db.close();
   });
 });

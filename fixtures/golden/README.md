@@ -28,7 +28,10 @@ matches; it is shaped like a memory a job actually inherits:
   cannot place its tags and falls back to text only — `tm_exact_tagdiff`,
   a draft — and `qa` then blocks on the dropped tag. The review step
   reapplies the tag and confirms the segment, which writes it into the
-  job's own memory.
+  job's own memory. The transcript's `history` of that segment is the
+  audit trail of exactly this (backlog #56): pre-translate's tagless
+  draft as a child of its batch, the reapplied tag, the confirm, and
+  the TM unit it wrote — then `audit-verify` over the whole job.
 - **One unit for a sentence the document misspells.** The memory says
   "Your …"; the document, through a run split, says "Y our …". No match, correctly — the segment is delivered in English.
 - **One sentence missing from the memory** (the first of a two-sentence
@@ -75,5 +78,7 @@ change you just made before committing it. Never regenerate to make a
 red run green without reading what moved.
 
 Paths in the transcript are normalised — the job's temp directory as
-`<job>`, the repository as `<repo>`, separators as `/` — so the file is
-the same on every machine and OS.
+`<job>`, the repository as `<repo>`, separators as `/` — and so are the
+audit trail's run-specific values: timestamps as `<at>`, TM unit uuids
+as `<uuid>`, and the CLI's own actor as `cli:<user>` (the review step's
+writes are `cli:golden`). The file is the same on every machine and OS.

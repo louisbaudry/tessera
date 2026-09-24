@@ -35,7 +35,7 @@ packages/
     project/   assembleFile — DOCX import -> persistable file + segments; exportProjectFile — the inverse, segments folded back into DOCX
     qa/        QA rule engine — all thirteen v1-spec.md §6.4 rules, locale tables, numeral matching
   db/          @cat-tool/db     versioned SQLite migration runner; project, platform, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export and .sdltm import
-  cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export (v1-spec.md §2.4)
+  cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export, history, audit-verify (v1-spec.md §2.4)
   server/      @cat-tool/server Fastify API — login, accounts, projects, file import (v1-spec.md §2.5)
   web/         @cat-tool/web    React SPA                            (not started)
   portal-core/ @cat-tool/portal-core   pure TS — pricing, order lifecycle, notification/production-adapter interfaces for the client-facing translation portal (planning/portal-v0-spec.md)
@@ -135,7 +135,13 @@ pnpm cat-tool add-tm job.catdb job.ctm --write-target   # created empty if missi
 pnpm cat-tool pretranslate job.catdb
 pnpm cat-tool qa job.catdb                              # exit 1 while a blocking issue remains
 pnpm cat-tool export job.catdb --out delivery/
+pnpm cat-tool history job.catdb 12                      # who changed segment #12, and to what
+pnpm cat-tool audit-verify job.catdb                    # exit 1 if the audit hash chain is broken
 ```
+
+Every write records an append-only, hash-chained `audit_event` in the
+project file, naming who made it — `cli:<OS user>` from the CLI, the
+session's account from the server (`planning/audit-spec.md`).
 
 The API server (`v1-spec.md` §2.5) keeps `platform.sqlite` and a storage
 volume under `./data` by default; a deployment overrides `CAT_PORT`,

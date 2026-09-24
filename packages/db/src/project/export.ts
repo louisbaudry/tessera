@@ -8,9 +8,17 @@
  * HTTP — is the caller's.
  */
 
-import { exportProjectFile, type ExportedFile, type ProjectFile } from '@cat-tool/core';
+import { createHash } from 'node:crypto';
+
+import {
+  exportProjectFile,
+  type AuditActor,
+  type ExportedFile,
+  type ProjectFile,
+} from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
+import { appendAuditEvent } from '../audit/events.js';
 import { getFile } from './files.js';
 import { listSegments } from './segments.js';
 
@@ -25,11 +33,34 @@ export interface ExportFileResult extends ExportedFile {
   readonly file: ProjectFile;
 }
 
-export function exportFile(db: Database.Database, fileId: number): ExportFileResult {
-  const file = getFile(db, fileId);
-  if (!file) {
-    throw new ProjectExportError(`no file with id ${fileId}`);
-  }
-  const exported = exportProjectFile(file, listSegments(db, fileId));
-  return { file, ...exported };
+export interface ExportFileOptions {
+  /** Who exported it — required (audit-spec.md decision 3). */
+  readonly actor: AuditActor;
+}
+
+/**
+ * Folds a file back into a DOCX and records a `project.exported` event
+ * with the produced bytes' SHA-256 — content leaving the system
+ * (audit-spec.md decision 9), recorded at production (§2.4).
+ */
+export function exportFile(
+  db: Database.Database,
+  fileId: number,
+  options: ExportFileOptions,
+): ExportFileResult {
+  return db.transaction((): ExportFileResult => {
+    const file = getFile(db, fileId);
+    if (!file) {
+      throw new ProjectExportError(`no file with id ${fileId}`);
+    }
+    const exported = exportProjectFile(file, listSegments(db, fileId));
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'project.exported',
+      subjectType: 'file',
+      subjectId: String(fileId),
+      detail: { sha256: createHash('sha256').update(exported.bytes).digest('hex') },
+    });
+    return { file, ...exported };
+  })();
 }

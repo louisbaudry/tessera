@@ -16,6 +16,7 @@ import { listQaIssues } from './qa-issues.js';
 import { pretranslate, PretranslateError } from './pretranslate.js';
 import { getSegment, listSegments, setSegmentTarget } from './segments.js';
 import { addTmRef } from './tm-refs.js';
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -109,7 +110,7 @@ function insertTmUnit(
 describe('pretranslate', () => {
   it('throws when the project has no identity row', () => {
     const db = openProjectDb(dbPath());
-    expect(() => pretranslate(db)).toThrow(PretranslateError);
+    expect(() => pretranslate(db, { actor: TEST_ACTOR })).toThrow(PretranslateError);
     db.close();
   });
 
@@ -120,6 +121,7 @@ describe('pretranslate', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const segment = findPlainSegment(db, file.id);
 
@@ -133,7 +135,7 @@ describe('pretranslate', () => {
     tm.close();
     addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
 
-    const summary = pretranslate(db);
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.exact).toBe(1);
     expect(summary.tagdiff).toBe(0);
 
@@ -152,6 +154,7 @@ describe('pretranslate', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const segment = findTaggedSegment(db, file.id);
 
@@ -167,7 +170,7 @@ describe('pretranslate', () => {
     tm.close();
     addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
 
-    const summary = pretranslate(db);
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.tagdiff).toBe(1);
     expect(summary.exact).toBe(0);
 
@@ -190,6 +193,7 @@ describe('pretranslate', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const segment = findPlainSegment(db, file.id);
 
@@ -216,7 +220,7 @@ describe('pretranslate', () => {
     addTmRef(db, { path: ctmPath('low.ctm'), priority: 2 });
     addTmRef(db, { path: ctmPath('high.ctm'), priority: 1 });
 
-    pretranslate(db);
+    pretranslate(db, { actor: TEST_ACTOR });
     const after = getSegment(db, segment.id)!;
     expect(after.targetTokens).toEqual([{ t: 'text', v: 'De la memoria prioritaria' }]);
     db.close();
@@ -226,20 +230,21 @@ describe('pretranslate', () => {
     const db = openProjectDb(dbPath());
     createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'es' });
     const assembled = assembleFile(loadDocx('form-minimal.docx'), rulesFor('en'));
-    const fileA = insertFile(db, 'a.docx', assembled);
-    const fileB = insertFile(db, 'b.docx', assembled); // identical content -> identical source hashes
+    const fileA = insertFile(db, 'a.docx', assembled, { actor: TEST_ACTOR });
+    const fileB = insertFile(db, 'b.docx', assembled, { actor: TEST_ACTOR }); // identical content -> identical source hashes
 
     const segmentA = findPlainSegment(db, fileA.id);
     const segmentB = listSegments(db, fileB.id).find((s) => s.ord === segmentA.ord)!;
     expect(segmentB.sourceHash).toBe(segmentA.sourceHash);
 
     setSegmentTarget(db, segmentA.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Ya confirmado' }],
       status: 'confirmed',
       origin: 'tm_exact',
     });
 
-    const summary = pretranslate(db);
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.propagated).toBe(1);
 
     const after = getSegment(db, segmentB.id)!;
@@ -253,12 +258,13 @@ describe('pretranslate', () => {
     const db = openProjectDb(dbPath());
     createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'es' });
     const assembled = assembleFile(loadDocx('form-minimal.docx'), rulesFor('en'));
-    const fileA = insertFile(db, 'a.docx', assembled);
-    const fileB = insertFile(db, 'b.docx', assembled);
+    const fileA = insertFile(db, 'a.docx', assembled, { actor: TEST_ACTOR });
+    const fileB = insertFile(db, 'b.docx', assembled, { actor: TEST_ACTOR });
     const segmentA = findPlainSegment(db, fileA.id);
     const segmentB = listSegments(db, fileB.id).find((s) => s.ord === segmentA.ord)!;
 
     setSegmentTarget(db, segmentA.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Confirmado internamente' }],
       status: 'confirmed',
       origin: 'tm_exact',
@@ -274,7 +280,7 @@ describe('pretranslate', () => {
     tm.close();
     addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
 
-    const summary = pretranslate(db);
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.exact).toBe(1);
     expect(summary.propagated).toBe(0);
     expect(getSegment(db, segmentB.id)!.targetTokens).toEqual([
@@ -290,11 +296,13 @@ describe('pretranslate', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const locked = listSegments(db, file.id).find((s) => s.locked)!;
     expect(locked).toBeDefined();
     const plain = findPlainSegment(db, file.id);
     setSegmentTarget(db, plain.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Confirmed by hand' }],
       status: 'confirmed',
       origin: null,
@@ -316,7 +324,7 @@ describe('pretranslate', () => {
     tm.close();
     addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
 
-    const summary = pretranslate(db);
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.skipped).toBeGreaterThanOrEqual(2); // at least the locked + the confirmed segment
     expect(getSegment(db, locked.id)!.targetTokens).toBeNull();
     expect(getSegment(db, plain.id)!.targetTokens).toEqual([
@@ -332,10 +340,11 @@ describe('pretranslate', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const segment = findPlainSegment(db, file.id);
 
-    const summary = pretranslate(db); // no TMs attached, nothing confirmed yet
+    const summary = pretranslate(db, { actor: TEST_ACTOR }); // no TMs attached, nothing confirmed yet
     expect(summary.unmatched).toBeGreaterThan(0);
     expect(getSegment(db, segment.id)!.status).toBe('new');
     db.close();
@@ -348,6 +357,7 @@ describe('pretranslate', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const segment = findPlainSegment(db, file.id);
 
@@ -361,9 +371,9 @@ describe('pretranslate', () => {
     tm.close();
     addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
 
-    pretranslate(db);
+    pretranslate(db, { actor: TEST_ACTOR });
     const firstRun = getSegment(db, segment.id)!;
-    const summary2 = pretranslate(db);
+    const summary2 = pretranslate(db, { actor: TEST_ACTOR });
     const secondRun = getSegment(db, segment.id)!;
 
     expect(secondRun.targetTokens).toEqual(firstRun.targetTokens);
@@ -377,18 +387,19 @@ describe('pretranslate', () => {
     const db = openProjectDb(dbPath());
     createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'es' });
     const assembled = assembleFile(loadDocx('form-minimal.docx'), rulesFor('en'));
-    const fileA = insertFile(db, 'a.docx', assembled);
-    const fileB = insertFile(db, 'b.docx', assembled);
+    const fileA = insertFile(db, 'a.docx', assembled, { actor: TEST_ACTOR });
+    const fileB = insertFile(db, 'b.docx', assembled, { actor: TEST_ACTOR });
     const segmentA = findPlainSegment(db, fileA.id);
     const segmentB = listSegments(db, fileB.id).find((s) => s.ord === segmentA.ord)!;
 
     setSegmentTarget(db, segmentA.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'Confirmado' }],
       status: 'confirmed',
       origin: 'tm_exact',
     });
 
-    const summary = pretranslate(db, { fileId: fileB.id });
+    const summary = pretranslate(db, { actor: TEST_ACTOR, fileId: fileB.id });
     expect(summary.propagated).toBe(1);
     expect(getSegment(db, segmentB.id)!.origin).toBe('propagated');
     db.close();

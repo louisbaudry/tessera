@@ -10,7 +10,9 @@
 
 import { addFile, ADD_FILE_USAGE } from './commands/add-file.js';
 import { addTm, ADD_TM_USAGE } from './commands/add-tm.js';
+import { auditVerify, AUDIT_VERIFY_USAGE } from './commands/audit-verify.js';
 import { exportCommand, EXPORT_USAGE } from './commands/export.js';
+import { history, HISTORY_USAGE } from './commands/history.js';
 import { init, INIT_USAGE } from './commands/init.js';
 import { pretranslate, PRETRANSLATE_USAGE } from './commands/pretranslate.js';
 import { qa, QA_USAGE } from './commands/qa.js';
@@ -28,6 +30,8 @@ const COMMANDS: ReadonlyMap<string, Command> = new Map<string, Command>([
   ['pretranslate', pretranslate],
   ['qa', qa],
   ['export', exportCommand],
+  ['history', history],
+  ['audit-verify', auditVerify],
 ]);
 
 export const USAGE = [
@@ -39,6 +43,8 @@ export const USAGE = [
   `  ${PRETRANSLATE_USAGE}`,
   `  ${QA_USAGE}`,
   `  ${EXPORT_USAGE}`,
+  `  ${HISTORY_USAGE}`,
+  `  ${AUDIT_VERIFY_USAGE}`,
 ].join('\n');
 
 /** Runs one command; returns the process exit status. */
