@@ -51,6 +51,12 @@ What the product records today is uneven:
 | `project.catdb` — `segment` | **current state only**: `target_tokens` is overwritten, `updated_at` is the only trace | **no** | — |
 | `platform.sqlite` | accounts, sessions | — | — |
 
+(That table is the state this spec started from. Since `#56`–`#58`,
+every row it marks "no" has an actor and schema-enforced append-only
+history. `project.catdb` is covered by §2.4, `platform.sqlite` by §2.5,
+and `portal.sqlite` by §2.6. `tuv_history` is the one exception left,
+§8.3.)
+
 `term_decision` is the model to copy (`smart-glossary-spec.md` §3.4): a log
 enforced by the schema, current state derived from or consistent with it.
 The project database — where the translation actually happens — is the

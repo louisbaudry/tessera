@@ -143,7 +143,10 @@ Every write records an append-only, hash-chained `audit_event` in the
 project file, naming who made it — `cli:<OS user>` from the CLI, the
 session's account from the server (`planning/audit-spec.md`). The
 server's own `platform.sqlite` keeps the same log for logins, projects
-created and deleted, and downloads.
+created and deleted, and downloads. The translation portal's
+`portal.sqlite` keeps it too, for admin logins, deliveries and
+downloads. Its `order_event` history names who made each transition,
+and triggers make it append-only.
 
 The API server (`v1-spec.md` §2.5) keeps `platform.sqlite` and a storage
 volume under `./data` by default; a deployment overrides `CAT_PORT`,
