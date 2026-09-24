@@ -20,6 +20,7 @@ import {
   generateSessionToken,
   rulesFor,
   verifyPassword,
+  type AuditActor,
   type Project,
   type SegmenterRules,
 } from '@cat-tool/core';
@@ -81,6 +82,15 @@ function bearerToken(req: FastifyRequest): string | null {
   const header = req.headers.authorization;
   if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null;
   return header.slice('Bearer '.length);
+}
+
+/**
+ * The session's account as an audit actor (audit-spec.md §2.1), its
+ * email snapshotted as the label so the record still reads after the
+ * account is gone.
+ */
+function auditActor(account: Account): AuditActor {
+  return { actor: { kind: 'account', id: account.id }, label: account.email };
 }
 
 /** What a client sees of an account: never the password hash or the storage root. */
@@ -273,7 +283,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         const assembled = assembleFile(bytes, rules);
         let fileId: number;
         try {
-          fileId = insertFile(db, relPath, assembled).id;
+          fileId = insertFile(db, relPath, assembled, {
+            actor: auditActor(owner(req)),
+          }).id;
         } catch (err) {
           if (
             err instanceof Error &&

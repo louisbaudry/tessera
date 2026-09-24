@@ -47,6 +47,18 @@ exit 0
 Wrote <job>/out/prose-short.docx: 9/10 paragraphs rebuilt, 15/18 segments with a target
 exit 0
 
+## $ cat-tool history <job>/job.catdb 15
+#15	<at>	cli:<user>	segment.target_set (batch #2)	draft	tm_exact_tagdiff	"Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimohßen, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimohßen. "
+#18	<at>	cli:golden	segment.target_set	translated	tm_exact_tagdiff	"{1}Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimohßen, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimohßen. {/1}"
+#19	<at>	cli:golden	segment.target_set	confirmed	tm_exact_tagdiff	"{1}Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimohßen, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimohßen. {/1}"
+#20	<at>	cli:golden	segment.confirmed	TM unit <uuid> rev 1
+4 events for segment #15
+exit 0
+
+## $ cat-tool audit-verify <job>/job.catdb
+Audit chain intact: 21 events
+exit 0
+
 ## delivered
 word/document.xml	"Nizßpoce hejo Nafovaf guse der Kifogonan"
 word/document.xml	"Suzamil Jubum Tolucumecus Cal Mil Mib, tureve Tofu, sula Dov bejog mit jil die Jaösulibazevara danabit 12. Vefodepicohuben gojelo. Y our hejubejo and vecula duvu a gasen kasa to da."

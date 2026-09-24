@@ -40,8 +40,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { importDocx, plainText, readDocx, translatableSegments } from '@cat-tool/core';
-import type { Token } from '@cat-tool/core';
+import {
+  formatActor,
+  importDocx,
+  plainText,
+  readDocx,
+  translatableSegments,
+} from '@cat-tool/core';
+import type { AuditActor, Token } from '@cat-tool/core';
 import {
   confirmSegment,
   dismissQaIssue,
@@ -54,11 +60,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runCli } from './cli.js';
+import { cliActor } from './support.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const DOCX = join(ROOT, 'fixtures/docx/prose-short.docx');
 const TMX = join(ROOT, 'fixtures/golden/prose-short.en-de.tmx');
 const EXPECTED = join(ROOT, 'fixtures/golden/prose-short.en-de.expected.txt');
+
+/** The translator whose review the job simulates, through the repository. */
+const REVIEWER: AuditActor = { actor: { kind: 'cli', name: 'golden' }, label: 'golden' };
 
 const digest = (data: Uint8Array): string =>
   createHash('sha256').update(data).digest('hex');
@@ -75,7 +85,8 @@ afterEach(() => {
 
 /**
  * Everything the job prints, in order, with the temp directory it ran in
- * written as `<job>`, the repository as `<repo>` and path separators as
+ * written as `<job>`, the repository as `<repo>`, audit timestamps as
+ * `<at>`, TM unit uuids as `<uuid>`, the CLI's own actor as `cli:<user>` and path separators as
  * `/`, so the transcript is the same on every machine and every OS.
  */
 class Transcript {
@@ -108,6 +119,10 @@ class Transcript {
 
   private scrub(line: string): string {
     return line
+      .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, '<at>')
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, '<uuid>')
+      .split(`${formatActor(cliActor().actor)}\t`)
+      .join('cli:<user>\t')
       .split(this.jobDir)
       .join('<job>')
       .split(ROOT)
@@ -140,6 +155,7 @@ describe('🏁 golden end-to-end', () => {
     // What a translator does with that report, through the repository —
     // there is no CLI for either on purpose (v1-spec.md §2.4).
     t.section('review');
+    let reviewed: number;
     const db = openProjectDb(project);
     try {
       // 1. Reapply the dropped tag on the tag-diff draft and confirm it,
@@ -159,8 +175,10 @@ describe('🏁 golden end-to-end', () => {
         targetTokens: repaired,
         status: 'translated',
         origin: 'tm_exact_tagdiff',
+        actor: REVIEWER,
       });
-      confirmSegment(db, draft!.id, { confirmedBy: 'golden' });
+      confirmSegment(db, draft!.id, { actor: REVIEWER });
+      reviewed = draft!.id;
       t.note(`confirmed #${draft!.id} with its tag reapplied`);
 
       // 2. Dismiss the one false positive: a `(… 14:2)` citation rendered
@@ -190,6 +208,11 @@ describe('🏁 golden end-to-end', () => {
     // after the rule fires again: the job may ship.
     expect(t.run('qa', project)).toBe(0);
     expect(t.run('export', project, '--out', join(dir, 'out'))).toBe(0);
+
+    // Who did what to the segment a human had to fix, and the chain
+    // over everything the job recorded (audit-spec.md §7).
+    expect(t.run('history', project, String(reviewed))).toBe(0);
+    expect(t.run('audit-verify', project)).toBe(0);
 
     // The delivered document, as its reader sees it.
     const delivered = new Uint8Array(readFileSync(join(dir, 'out', 'prose-short.docx')));

@@ -5,6 +5,7 @@ import { exportFile, getFile, listFiles } from '@cat-tool/db';
 
 import {
   CliError,
+  cliActor,
   integer,
   openExistingProject,
   parse,
@@ -40,8 +41,9 @@ export function exportCommand(args: readonly string[], io: CliIo): number {
       throw new CliError('project has no files to export');
     }
 
+    const actor = cliActor();
     for (const id of ids) {
-      const { file, bytes, summary } = exportFile(db, id);
+      const { file, bytes, summary } = exportFile(db, id, { actor });
       const outPath = join(outDir, file.relPath);
       mkdirSync(dirname(outPath), { recursive: true });
       writeFileSync(outPath, bytes);

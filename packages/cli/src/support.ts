@@ -5,9 +5,10 @@
  */
 
 import { existsSync } from 'node:fs';
+import { userInfo } from 'node:os';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 
-import type { Project } from '@cat-tool/core';
+import { formatActor, type AuditActor, type Project } from '@cat-tool/core';
 import { getProject, openProjectDb } from '@cat-tool/db';
 
 /** Output goes through this rather than `console` so tests can capture it. */
@@ -80,4 +81,28 @@ export function openExistingProject(path: string): { db: ProjectDb; project: Pro
     throw new CliError(`${path} is not an initialised project (no identity row)`);
   }
   return { db, project };
+}
+
+/**
+ * The CLI's audit actor: `cli:<OS user name>` (audit-spec.md §2.1) —
+ * self-asserted, since the CLI has no login, and labelled with the same
+ * name. A process with no user name to give (no passwd entry, no
+ * `USER`) is refused rather than logged as someone made up.
+ */
+export function cliActor(): AuditActor {
+  let name: string | undefined;
+  try {
+    name = userInfo().username;
+  } catch {
+    name = process.env['USER'] ?? process.env['USERNAME'];
+  }
+  const actor = { kind: 'cli', name: name ?? '' } as const;
+  try {
+    formatActor(actor);
+  } catch {
+    throw new CliError(
+      `cannot record who is running this: no usable OS user name (${JSON.stringify(name ?? null)})`,
+    );
+  }
+  return { actor, label: actor.name };
 }

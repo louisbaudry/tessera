@@ -7,8 +7,17 @@
  * target.
  */
 
-import type { DocPart, Origin, Segment, SegmentStatus, Token } from '@cat-tool/core';
+import type {
+  AuditActor,
+  DocPart,
+  Origin,
+  Segment,
+  SegmentStatus,
+  Token,
+} from '@cat-tool/core';
 import type Database from 'better-sqlite3';
+
+import { appendAuditEvent } from '../audit/events.js';
 
 export class SegmentRepoError extends Error {
   constructor(message: string) {
@@ -87,12 +96,22 @@ export interface SetTargetOptions {
   readonly targetTokens: readonly Token[] | null;
   readonly status: SegmentStatus;
   readonly origin: Origin | null;
+  /** Who made the change — required, never defaulted (audit-spec.md decision 3). */
+  readonly actor: AuditActor;
+  /** The batch-level event this write belongs to (spec §2.3), e.g. a pre-translate run. */
+  readonly batchId?: number;
 }
 
 /**
  * Sets a segment's target, status, and origin together — the three
  * fields that only ever change as one fact ("this segment is now a
- * confirmed translation from this source"), never independently.
+ * confirmed translation from this source"), never independently — and
+ * records it as a `segment.target_set` event in the same transaction,
+ * with the state *after* the change (audit-spec.md §2.2).
+ *
+ * A write that changes none of the three is not a change: no `UPDATE`,
+ * no event, and `false` is returned. Otherwise every pre-translate
+ * re-run would log a row per already-matched segment (spec §2.4).
  *
  * Refuses on a locked segment: `v1-spec.md` §6.1 forbids pre-translate
  * from touching one, and there is no reason an interactive edit should
@@ -102,24 +121,52 @@ export function setSegmentTarget(
   db: Database.Database,
   id: number,
   options: SetTargetOptions,
-): void {
-  const current = getSegment(db, id);
-  if (!current) {
-    throw new SegmentRepoError(`no segment with id ${id}`);
-  }
-  if (current.locked) {
-    throw new SegmentRepoError(`segment ${id} is locked`);
-  }
-  db.prepare(
-    `UPDATE segment
-     SET target_tokens = @target_tokens, status = @status, origin = @origin,
-         updated_at = @updated_at
-     WHERE id = @id`,
-  ).run({
-    id,
-    target_tokens: options.targetTokens ? JSON.stringify(options.targetTokens) : null,
-    status: options.status,
-    origin: options.origin,
-    updated_at: new Date().toISOString(),
-  });
+): boolean {
+  return db.transaction((): boolean => {
+    const current = db
+      .prepare('SELECT target_tokens, status, origin, locked FROM segment WHERE id = ?')
+      .get(id) as
+      Pick<SegmentRow, 'target_tokens' | 'status' | 'origin' | 'locked'> | undefined;
+    if (!current) {
+      throw new SegmentRepoError(`no segment with id ${id}`);
+    }
+    if (current.locked) {
+      throw new SegmentRepoError(`segment ${id} is locked`);
+    }
+    const targetTokens = options.targetTokens
+      ? JSON.stringify(options.targetTokens)
+      : null;
+    if (
+      current.target_tokens === targetTokens &&
+      current.status === options.status &&
+      current.origin === options.origin
+    ) {
+      return false;
+    }
+    db.prepare(
+      `UPDATE segment
+       SET target_tokens = @target_tokens, status = @status, origin = @origin,
+           updated_at = @updated_at
+       WHERE id = @id`,
+    ).run({
+      id,
+      target_tokens: targetTokens,
+      status: options.status,
+      origin: options.origin,
+      updated_at: new Date().toISOString(),
+    });
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'segment.target_set',
+      subjectType: 'segment',
+      subjectId: String(id),
+      batchId: options.batchId ?? null,
+      detail: {
+        status: options.status,
+        origin: options.origin,
+        target_tokens: options.targetTokens,
+      },
+    });
+    return true;
+  })();
 }

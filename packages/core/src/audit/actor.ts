@@ -22,10 +22,20 @@ export type Actor =
   /** A named unattended job, e.g. `migration`. */
   | { readonly kind: 'system'; readonly name: string };
 
+/**
+ * Who caused a write, as every audited repository call takes it: the
+ * principal, and the human-readable label snapshotted beside it into
+ * `actor_label` (spec §2.1). `label` is required but nullable — a
+ * `system:` job has none, and a caller has to say so rather than forget.
+ */
+export interface AuditActor {
+  readonly actor: Actor;
+  readonly label: string | null;
+}
+
 // One spelling per id: `account:03` and `account:3` would be two actors.
 const ROW_ID = /^[1-9][0-9]*$/;
 const JOB_NAME = /^[a-z][a-z0-9._-]*$/;
-// eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 function rowId(text: string): number | null {

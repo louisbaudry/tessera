@@ -143,6 +143,7 @@ describe('cat-tool: a full job, headless', () => {
       targetTokens: [{ t: 'text', v: 'ohne Tags' }],
       status: 'translated',
       origin: null,
+      actor: { actor: { kind: 'cli', name: 'test' }, label: 'test' },
     });
     db.close();
 
@@ -152,6 +153,51 @@ describe('cat-tool: a full job, headless', () => {
 
     const scoped = run('qa', project, '--file', '1');
     expect(scoped.code).toBe(1);
+  });
+});
+
+describe('cat-tool: the audit trail', () => {
+  it("history lists a segment's events as the CLI user; audit-verify checks the chain", () => {
+    const project = join(dir, 'project.catdb');
+    run('init', project, '--src', 'en', '--tgt', 'de');
+    run('add-file', project, FIXTURE);
+    const { id, text } = plainSegment(project);
+    writeFileSync(join(dir, 'm.tmx'), tmx(text, 'Übersetzt'));
+    run('add-tm', project, join(dir, 'm.tmx'));
+    run('pretranslate', project);
+
+    const history = run('history', project, String(id));
+    expect(history.code, history.err).toBe(0);
+    const lines = history.out.split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(
+      /^#\d+\t\S+\tcli:\S.*\tsegment\.target_set \(batch #\d+\)\ttranslated\ttm_exact\t"Übersetzt"$/,
+    );
+    expect(lines[1]).toBe(`1 events for segment #${id}`);
+
+    const verified = run('audit-verify', project);
+    expect(verified.code, verified.err).toBe(0);
+    expect(verified.out).toMatch(/^Audit chain intact: \d+ events$/);
+
+    // Someone with sqlite3 rewrites the recorded translation.
+    const db = openProjectDb(project);
+    db.exec('DROP TRIGGER audit_event_no_update');
+    db.prepare(
+      `UPDATE audit_event SET detail = replace(detail, 'Übersetzt', 'Anders')
+       WHERE action = 'segment.target_set'`,
+    ).run();
+    db.close();
+    const tampered = run('audit-verify', project);
+    expect(tampered.code).toBe(1);
+    expect(tampered.out).toMatch(/^Audit chain BROKEN at event #\d+ \(\d+ events\)$/);
+  });
+
+  it('history refuses a segment the project does not have', () => {
+    const project = join(dir, 'project.catdb');
+    run('init', project, '--src', 'en', '--tgt', 'de');
+    const missing = run('history', project, '999');
+    expect(missing.code).toBe(1);
+    expect(missing.err).toBe('error: no segment #999 in this project');
   });
 });
 
@@ -179,7 +225,15 @@ describe('cat-tool: refusals', () => {
 
   it('every other command wants a project that init made', () => {
     const missing = join(dir, 'nope.catdb');
-    for (const command of ['add-file', 'add-tm', 'pretranslate', 'qa', 'export']) {
+    for (const command of [
+      'add-file',
+      'add-tm',
+      'pretranslate',
+      'qa',
+      'export',
+      'history',
+      'audit-verify',
+    ]) {
       const result = run(command, missing, 'x');
       expect(result.code, command).toBe(1);
       expect(result.err, command).toContain('run "cat-tool init" first');

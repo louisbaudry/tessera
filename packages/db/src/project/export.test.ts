@@ -18,6 +18,7 @@ import { insertFile } from './files.js';
 import { openProjectDb } from './index.js';
 import { createProject } from './project.js';
 import { listSegments, setSegmentTarget } from './segments.js';
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -39,14 +40,16 @@ function projectWith(name: string) {
   const db = openProjectDb(join(dir, 'project.catdb'));
   createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'fr' });
   const bytes = loadDocx(name);
-  const file = insertFile(db, name, assembleFile(bytes, rulesFor('en')));
+  const file = insertFile(db, name, assembleFile(bytes, rulesFor('en')), {
+    actor: TEST_ACTOR,
+  });
   return { db, file, bytes };
 }
 
 describe('exportFile', () => {
   it('reproduces the original bytes part for part when nothing is translated', () => {
     const { db, file, bytes } = projectWith('form-minimal.docx');
-    const result = exportFile(db, file.id);
+    const result = exportFile(db, file.id, { actor: TEST_ACTOR });
     expect(result.file.relPath).toBe('form-minimal.docx');
     expect(result.summary.paragraphsRendered).toBe(0);
     expect(partDigests(result.bytes)).toEqual(partDigests(bytes));
@@ -59,12 +62,13 @@ describe('exportFile', () => {
       (s) => !s.locked && s.sourceTokens.every((t) => t.t === 'text'),
     )!;
     setSegmentTarget(db, plain.id, {
+      actor: TEST_ACTOR,
       targetTokens: [{ t: 'text', v: 'TRADUIT' }],
       status: 'translated',
       origin: 'tm_exact',
     });
 
-    const { bytes: out, summary } = exportFile(db, file.id);
+    const { bytes: out, summary } = exportFile(db, file.id, { actor: TEST_ACTOR });
     expect(summary.paragraphsRendered).toBe(1);
     expect(summary.segmentsWithTarget).toBe(1);
     const texts = translatableSegments(importDocx(out)).map((s) => s.text);
@@ -75,7 +79,9 @@ describe('exportFile', () => {
 
   it('refuses an unknown file id', () => {
     const { db, file } = projectWith('form-minimal.docx');
-    expect(() => exportFile(db, file.id + 1)).toThrow(ProjectExportError);
+    expect(() => exportFile(db, file.id + 1, { actor: TEST_ACTOR })).toThrow(
+      ProjectExportError,
+    );
     db.close();
   });
 });

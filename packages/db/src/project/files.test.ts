@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getFile, insertFile, listFiles } from './files.js';
 import { openProjectDb } from './index.js';
 import { listSegments } from './segments.js';
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -43,7 +44,7 @@ describe('insertFile / getFile / listFiles', () => {
       const bytes = loadDocx('footnotes-manuscript.docx');
       const assembled = assembleFile(bytes, rulesFor('es'));
 
-      const file = insertFile(db, 'manuscript.docx', assembled);
+      const file = insertFile(db, 'manuscript.docx', assembled, { actor: TEST_ACTOR });
       expect(file.id).toBeGreaterThan(0);
       expect(file.relPath).toBe('manuscript.docx');
       expect(file.originalBlob).toEqual(bytes);
@@ -64,7 +65,7 @@ describe('insertFile / getFile / listFiles', () => {
   it('getFile and listFiles agree with what was inserted', () => {
     const db = openProjectDb(dbPath());
     const assembled = assembleFile(loadDocx('prose-short.docx'), rulesFor('en'));
-    const file = insertFile(db, 'prose-short.docx', assembled);
+    const file = insertFile(db, 'prose-short.docx', assembled, { actor: TEST_ACTOR });
 
     expect(getFile(db, file.id)).toEqual(file);
     expect(getFile(db, 999_999)).toBeNull();
@@ -78,11 +79,13 @@ describe('insertFile / getFile / listFiles', () => {
       db,
       'a.docx',
       assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     const b = insertFile(
       db,
       'b.docx',
       assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
     );
     expect(
       listFiles(db)
@@ -97,8 +100,8 @@ describe('insertFile / getFile / listFiles', () => {
   it("rejects a second file at the same rel_path (the schema's own UNIQUE)", () => {
     const db = openProjectDb(dbPath());
     const assembled = assembleFile(loadDocx('prose-short.docx'), rulesFor('en'));
-    insertFile(db, 'same.docx', assembled);
-    expect(() => insertFile(db, 'same.docx', assembled)).toThrow();
+    insertFile(db, 'same.docx', assembled, { actor: TEST_ACTOR });
+    expect(() => insertFile(db, 'same.docx', assembled, { actor: TEST_ACTOR })).toThrow();
     db.close();
   });
 });

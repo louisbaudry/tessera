@@ -19,9 +19,12 @@ import {
   confirmedTargetContext,
   sourceDocumentContext,
   toTmTokens,
+  type AuditActor,
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
+import { appendAuditEvent } from '../audit/events.js';
+import { qualifySchema } from '../schema-alias.js';
 import { writeBack, type WriteBackResult } from '../tm/write.js';
 import { getProject } from './project.js';
 import { getSegment, listSegments, setSegmentTarget } from './segments.js';
@@ -35,7 +38,12 @@ export class ConfirmError extends Error {
 }
 
 export interface ConfirmSegmentOptions {
-  readonly confirmedBy?: string;
+  /**
+   * Who confirmed it — required (audit-spec.md decision 3). Its label is
+   * what the `.ctm` records as `updated_by`/`changed_by`, since a TM is
+   * portable and an installation-local id would mean nothing there.
+   */
+  readonly actor: AuditActor;
 }
 
 export interface ConfirmSegmentResult {
@@ -52,7 +60,7 @@ export interface ConfirmSegmentResult {
 export function confirmSegment(
   db: Database.Database,
   segmentId: number,
-  options: ConfirmSegmentOptions = {},
+  options: ConfirmSegmentOptions,
 ): ConfirmSegmentResult {
   const project = getProject(db);
   if (!project) {
@@ -98,14 +106,14 @@ export function confirmSegment(
           tokens: toTmTokens(segment.sourceTokens, segment.formatTable),
           prevHash: sourceContext.prevHash,
           nextHash: sourceContext.nextHash,
-          updatedBy: options.confirmedBy ?? null,
+          updatedBy: options.actor.label,
         },
         target: {
           lang: project.tgtLang,
           tokens: toTmTokens(segment.targetTokens!, segment.formatTable),
           prevHash: targetContext.prevHash,
           nextHash: targetContext.nextHash,
-          updatedBy: options.confirmedBy ?? null,
+          updatedBy: options.actor.label,
         },
       },
       { schema },
@@ -115,6 +123,17 @@ export function confirmSegment(
       targetTokens: segment.targetTokens,
       status: 'confirmed',
       origin: segment.origin,
+      actor: options.actor,
+    });
+    const { uuid } = db
+      .prepare(`SELECT uuid FROM ${qualifySchema(schema)}tu WHERE id = ?`)
+      .get(result.tuId) as { uuid: string };
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'segment.confirmed',
+      subjectType: 'segment',
+      subjectId: String(segment.id),
+      detail: { tm_write: { tu_uuid: uuid, rev: result.target.rev } },
     });
 
     return {

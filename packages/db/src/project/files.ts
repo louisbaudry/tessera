@@ -8,8 +8,12 @@
  * partial or missing segment set.
  */
 
-import type { AssembledFile, ProjectFile } from '@cat-tool/core';
+import { createHash } from 'node:crypto';
+
+import type { AssembledFile, AuditActor, ProjectFile } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
+
+import { appendAuditEvent } from '../audit/events.js';
 
 interface FileRow {
   id: number;
@@ -29,13 +33,20 @@ const fromRow = (row: FileRow): ProjectFile => ({
   importedAt: row.imported_at,
 });
 
+export interface InsertFileOptions {
+  /** Who added it — required (audit-spec.md decision 3). */
+  readonly actor: AuditActor;
+}
+
 /**
- * Persists an assembled file and every segment it produced, atomically.
+ * Persists an assembled file and every segment it produced, atomically,
+ * with a `file.added` event carrying the original's SHA-256.
  */
 export function insertFile(
   db: Database.Database,
   relPath: string,
   assembled: AssembledFile,
+  options: InsertFileOptions,
 ): ProjectFile {
   const insertFileStmt = db.prepare(
     `INSERT INTO file (rel_path, original_blob, skeleton, part_map, imported_at)
@@ -76,6 +87,17 @@ export function insertFile(
         updated_at: importedAt,
       });
     }
+
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'file.added',
+      subjectType: 'file',
+      subjectId: String(fileId),
+      detail: {
+        rel_path: relPath,
+        sha256: createHash('sha256').update(assembled.originalBlob).digest('hex'),
+      },
+    });
 
     return {
       id: fileId,

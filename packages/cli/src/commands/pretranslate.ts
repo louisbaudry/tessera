@@ -2,6 +2,7 @@ import { getFile, pretranslate as runPretranslate } from '@cat-tool/db';
 
 import {
   CliError,
+  cliActor,
   integer,
   openExistingProject,
   parse,
@@ -22,7 +23,10 @@ export function pretranslate(args: readonly string[], io: CliIo): number {
     if (fileId !== undefined && !getFile(db, fileId)) {
       throw new CliError(`no file #${fileId} in this project`);
     }
-    const s = runPretranslate(db, fileId === undefined ? {} : { fileId });
+    const s = runPretranslate(db, {
+      actor: cliActor(),
+      ...(fileId === undefined ? {} : { fileId }),
+    });
     io.stdout(
       `Pre-translated: ${s.exact} exact, ${s.tagdiff} tag-diff (draft), ` +
         `${s.propagated} propagated, ${s.unmatched} unmatched, ` +
