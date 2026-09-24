@@ -282,7 +282,10 @@ describe('cat-tool: refusals', () => {
 
     const again = run('add-tm', project, path);
     expect(again.err).toContain('already exists');
-  });
+    // Two real 10,000-unit batches: 1.6 s locally, past the default 5 s
+    // on a Windows CI runner — the same headroom db/project/files.test.ts
+    // gives its bulk insert, for the same reason.
+  }, 30_000);
 
   it('--file must name a file the project has; export needs one', () => {
     const project = join(dir, 'project.catdb');
