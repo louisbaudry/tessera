@@ -6,7 +6,10 @@
  * `packages/portal-server/src/storage.ts` for where files are written.
  */
 
+import type { AuditActor } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
+
+import { appendAuditEvent } from '../audit/events.js';
 
 export interface StoredFile {
   readonly id: number;
@@ -98,6 +101,37 @@ function getFrom(table: 'source_file' | 'delivered_file') {
 export const insertSourceFile = insertInto('source_file');
 export const listSourceFiles = listFor('source_file');
 export const getSourceFile = getFrom('source_file');
-export const insertDeliveredFile = insertInto('delivered_file');
+
+export interface DeliverFileOptions {
+  /** Who delivered it — required (audit-spec.md decision 3). */
+  readonly actor: AuditActor;
+  /** SHA-256 of exactly the bytes stored: what the client was given. */
+  readonly sha256: string;
+}
+
+const insertDeliveredRow = insertInto('delivered_file');
+
+/**
+ * Stores a delivered file's row and records `file.delivered` in the same
+ * transaction (audit-spec.md §2.6): "what exactly did we send them, and
+ * who" is then a question for the log, not anyone's memory.
+ */
+export function insertDeliveredFile(
+  db: Database.Database,
+  file: NewFile,
+  options: DeliverFileOptions,
+): StoredFile {
+  return db.transaction((): StoredFile => {
+    const stored = insertDeliveredRow(db, file);
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'file.delivered',
+      subjectType: 'delivered_file',
+      subjectId: String(stored.id),
+      detail: { order_id: stored.orderId, name: stored.filename, sha256: options.sha256 },
+    });
+    return stored;
+  })();
+}
 export const listDeliveredFiles = listFor('delivered_file');
 export const getDeliveredFile = getFrom('delivered_file');

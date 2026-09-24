@@ -6,8 +6,14 @@
  * so status history can never drift from the current status, and it
  * always checks `assertValidTransition` first, so an illegal transition
  * can't reach the database from any caller.
+ *
+ * Every `order_event` names its actor (audit-spec.md §2.6; backlog #58),
+ * a required parameter on both writers: `admin:<id>` for an admin's
+ * session, `client:<id>` for whoever holds a client's private link.
+ * Transitions are recorded here and nowhere else (spec decision 7).
  */
 
+import { formatActor, type AuditActor } from '@cat-tool/core';
 import { assertValidTransition, type OrderStatus } from '@cat-tool/portal-core';
 import type Database from 'better-sqlite3';
 
@@ -31,6 +37,10 @@ export interface OrderEvent {
   readonly toStatus: OrderStatus;
   readonly note: string | null;
   readonly createdAt: string;
+  /** `kind:id` (audit-spec.md §2.1); `system:migration` for rows older than the column. */
+  readonly actor: string;
+  /** Display snapshot at the time of the event; `[erased]` after an erasure (spec §5). */
+  readonly actorLabel: string | null;
 }
 
 interface OrderRow {
@@ -74,8 +84,39 @@ export interface NewOrder {
   readonly notes?: string | null;
 }
 
+export interface OrderWriteOptions {
+  /** Who caused it — required (audit-spec.md decision 3). */
+  readonly actor: AuditActor;
+}
+
+function insertOrderEvent(
+  db: Database.Database,
+  event: {
+    orderId: number;
+    fromStatus: OrderStatus | null;
+    toStatus: OrderStatus;
+    note: string | null;
+    createdAt: string;
+    actor: AuditActor;
+  },
+): void {
+  db.prepare(
+    `INSERT INTO order_event
+       (order_id, from_status, to_status, note, created_at, actor, actor_label)
+     VALUES (@orderId, @fromStatus, @toStatus, @note, @createdAt, @actor, @actorLabel)`,
+  ).run({
+    ...event,
+    actor: formatActor(event.actor.actor),
+    actorLabel: event.actor.label,
+  });
+}
+
 /** Creates an order in `submitted` status, plus its creation `order_event`. */
-export function createOrder(db: Database.Database, order: NewOrder): TranslationOrder {
+export function createOrder(
+  db: Database.Database,
+  order: NewOrder,
+  options: OrderWriteOptions,
+): TranslationOrder {
   return db.transaction((): TranslationOrder => {
     const now = new Date().toISOString();
     const info = db
@@ -99,10 +140,14 @@ export function createOrder(db: Database.Database, order: NewOrder): Translation
       insertTgt.run(id, tgtLang);
     }
 
-    db.prepare(
-      `INSERT INTO order_event (order_id, from_status, to_status, note, created_at)
-       VALUES (?, NULL, 'submitted', 'order created', ?)`,
-    ).run(id, now);
+    insertOrderEvent(db, {
+      orderId: id,
+      fromStatus: null,
+      toStatus: 'submitted',
+      note: 'order created',
+      createdAt: now,
+      actor: options.actor,
+    });
 
     return withTgtLangs(db, {
       id,
@@ -147,11 +192,15 @@ export function listOrdersForClient(
  * `InvalidTransitionError` (from `@cat-tool/portal-core`) rather than
  * writing an illegal state.
  */
+export interface SetStatusOptions extends OrderWriteOptions {
+  readonly note?: string;
+}
+
 export function setStatus(
   db: Database.Database,
   orderId: number,
   toStatus: OrderStatus,
-  note?: string,
+  options: SetStatusOptions,
 ): TranslationOrder {
   return db.transaction((): TranslationOrder => {
     const current = getOrder(db, orderId);
@@ -164,10 +213,14 @@ export function setStatus(
     db.prepare(
       'UPDATE translation_order SET status = ?, updated_at = ? WHERE id = ?',
     ).run(toStatus, now, orderId);
-    db.prepare(
-      `INSERT INTO order_event (order_id, from_status, to_status, note, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(orderId, current.status, toStatus, note ?? null, now);
+    insertOrderEvent(db, {
+      orderId,
+      fromStatus: current.status,
+      toStatus,
+      note: options.note ?? null,
+      createdAt: now,
+      actor: options.actor,
+    });
 
     return getOrder(db, orderId)!;
   })();
@@ -201,6 +254,8 @@ export function listOrderEvents(db: Database.Database, orderId: number): OrderEv
     to_status: OrderStatus;
     note: string | null;
     created_at: string;
+    actor: string;
+    actor_label: string | null;
   }>;
   return rows.map((r) => ({
     id: r.id,
@@ -209,5 +264,7 @@ export function listOrderEvents(db: Database.Database, orderId: number): OrderEv
     toStatus: r.to_status,
     note: r.note,
     createdAt: r.created_at,
+    actor: r.actor,
+    actorLabel: r.actor_label,
   }));
 }

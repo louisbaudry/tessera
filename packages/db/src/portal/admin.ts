@@ -5,9 +5,15 @@
  * functions in `@cat-tool/portal-core` (`auth.ts`); this module only
  * stores and looks up the results — same split as the rest of the
  * portal (pricing logic in `portal-core`, order rows in `db/portal`).
+ *
+ * A login records `auth.login` in the session's own transaction
+ * (audit-spec.md §2.6; backlog #58); a refused one is `audit.ts`'s.
  */
+import type { AuditActor } from '@cat-tool/core';
 import { hashSessionToken, SESSION_TTL_MS } from '@cat-tool/portal-core';
 import type Database from 'better-sqlite3';
+
+import { appendAuditEvent } from '../audit/events.js';
 
 export interface AdminUser {
   readonly id: number;
@@ -54,23 +60,40 @@ export function getAdminUserByEmail(
   return row ? userFromRow(row) : null;
 }
 
+export interface AdminSessionOptions {
+  /** The admin itself (`admin:<id>`): logging in is its own act. */
+  readonly actor: AuditActor;
+  readonly now?: Date;
+}
+
+/** Stores a new session and records `auth.login` with it. */
 export function createAdminSession(
   db: Database.Database,
   adminUserId: number,
   token: string,
-  now: Date = new Date(),
+  options: AdminSessionOptions,
 ): { readonly expiresAt: string } {
+  const now = options.now ?? new Date();
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + SESSION_TTL_MS).toISOString();
-  db.prepare(
-    `INSERT INTO admin_session (admin_user_id, token_hash, created_at, expires_at)
-     VALUES (@admin_user_id, @token_hash, @created_at, @expires_at)`,
-  ).run({
-    admin_user_id: adminUserId,
-    token_hash: hashSessionToken(token),
-    created_at: createdAt,
-    expires_at: expiresAt,
-  });
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO admin_session (admin_user_id, token_hash, created_at, expires_at)
+       VALUES (@admin_user_id, @token_hash, @created_at, @expires_at)`,
+    ).run({
+      admin_user_id: adminUserId,
+      token_hash: hashSessionToken(token),
+      created_at: createdAt,
+      expires_at: expiresAt,
+    });
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'auth.login',
+      subjectType: 'admin_user',
+      subjectId: String(adminUserId),
+      detail: null,
+    });
+  })();
   return { expiresAt };
 }
 

@@ -6,6 +6,7 @@
  * decides where bytes land).
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,8 +14,11 @@ import { join } from 'node:path';
 import {
   createAdminUser,
   createClient,
+  listEvents,
+  listOrderEvents,
   openPortalDb,
   setRate,
+  verifyAudit,
   type Client,
 } from '@cat-tool/db';
 import { hashPassword } from '@cat-tool/portal-core';
@@ -237,6 +241,174 @@ describe('one order, end to end', () => {
     });
     expect(again.statusCode).toBe(200);
     expect(again.body).toBe('hola mundo');
+  });
+});
+
+/** Reads the portal's two logs through a second connection, as an auditor would. */
+function readLogs<T>(read: (db: ReturnType<typeof openPortalDb>) => T): T {
+  const db = openPortalDb(config.dbPath);
+  try {
+    return read(db);
+  } finally {
+    db.close();
+  }
+}
+
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+describe('the audit trail (backlog #58)', () => {
+  it('gives every transition its actor, and each download one event naming who took it', async () => {
+    const { order, files } = await submitOrder(ada.accessToken, [
+      { name: 'brief.txt', body: 'hello world' },
+    ]);
+    const admin = await adminLogin();
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/client/orders/${order.id}/approve`,
+      headers: auth(ada.accessToken),
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${order.id}`,
+      headers: auth(admin),
+      payload: { status: 'in_progress' },
+    });
+    expect(started.statusCode, started.body).toBe(200);
+    const { deliveredFiles } = await deliver(
+      admin,
+      order.id,
+      [{ name: 'brief.es.txt', body: 'hola mundo' }],
+      true,
+    );
+    const deliveredId = deliveredFiles[0]!.id;
+    const sourceId = files[0]!.id;
+
+    const clientDownload = await app.inject({
+      method: 'GET',
+      url: `/api/client/orders/${order.id}/delivered-files/${deliveredId}`,
+      headers: auth(ada.accessToken),
+    });
+    expect(clientDownload.statusCode).toBe(200);
+    const adminDownload = await app.inject({
+      method: 'GET',
+      url: `/api/admin/orders/${order.id}/source-files/${sourceId}`,
+      headers: auth(admin),
+    });
+    expect(adminDownload.statusCode).toBe(200);
+    // A refused download sends nothing, so it records nothing.
+    const refused = await app.inject({
+      method: 'GET',
+      url: `/api/client/orders/${order.id}/delivered-files/${deliveredId}`,
+      headers: auth(other.accessToken),
+    });
+    expect(refused.statusCode).toBe(404);
+
+    const logs = readLogs((db) => ({
+      transitions: listOrderEvents(db, order.id).map((e) => [
+        e.toStatus,
+        e.actor,
+        e.actorLabel,
+      ]),
+      events: (['admin_user', 'source_file', 'delivered_file'] as const).flatMap((t) =>
+        listEvents(db, { subjectType: t }).map((e) => ({
+          action: e.action,
+          actor: e.actor,
+          label: e.actorLabel,
+          subject: `${e.subjectType}:${e.subjectId}`,
+          detail: e.detail === null ? null : (JSON.parse(e.detail) as unknown),
+        })),
+      ),
+      verified: verifyAudit(db),
+    }));
+
+    const adminLabel = 'admin@example.com';
+    expect(logs.transitions).toEqual([
+      ['submitted', `client:${ada.id}`, null],
+      ['approved', `client:${ada.id}`, null],
+      ['in_progress', 'admin:1', adminLabel],
+      ['delivered', 'admin:1', adminLabel],
+    ]);
+    expect(logs.events).toEqual([
+      {
+        action: 'auth.login',
+        actor: 'admin:1',
+        label: adminLabel,
+        subject: 'admin_user:1',
+        detail: null,
+      },
+      {
+        action: 'file.downloaded',
+        actor: 'admin:1',
+        label: adminLabel,
+        subject: `source_file:${sourceId}`,
+        detail: { file_id: sourceId, name: 'brief.txt', sha256: sha256('hello world') },
+      },
+      {
+        action: 'file.delivered',
+        actor: 'admin:1',
+        label: adminLabel,
+        subject: `delivered_file:${deliveredId}`,
+        detail: {
+          order_id: order.id,
+          name: 'brief.es.txt',
+          sha256: sha256('hola mundo'),
+        },
+      },
+      {
+        action: 'file.downloaded',
+        actor: `client:${ada.id}`,
+        label: null,
+        subject: `delivered_file:${deliveredId}`,
+        detail: {
+          file_id: deliveredId,
+          name: 'brief.es.txt',
+          sha256: sha256('hola mundo'),
+        },
+      },
+    ]);
+    expect(logs.verified).toEqual({ events: 4, brokenAt: null });
+  });
+
+  it('records a refused admin login as the gate, telling the reasons apart only in the log', async () => {
+    for (const payload of [
+      { email: 'admin@example.com', password: 'wrong' },
+      { email: 'nobody@example.com', password: 'admin-pw' },
+    ]) {
+      const res = await app.inject({ method: 'POST', url: '/api/admin/login', payload });
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toEqual({ error: 'invalid email or password' });
+    }
+    const events = readLogs((db) =>
+      listEvents(db, { subjectType: 'admin_user' }).map((e) => [
+        e.actor,
+        e.subjectId,
+        e.detail,
+      ]),
+    );
+    expect(events).toEqual([
+      ['system:login', '1', '{"reason":"wrong_password"}'],
+      ['system:login', null, '{"reason":"unknown_email"}'],
+    ]);
+  });
+
+  it('shows a client who acted on its order, never the admin behind the label', async () => {
+    const { order } = await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'a' }]);
+    const admin = await adminLogin();
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${order.id}`,
+      headers: auth(admin),
+      payload: { status: 'cancelled' },
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/client/orders/${order.id}`,
+      headers: auth(ada.accessToken),
+    });
+    const { events } = res.json() as { events: Array<Record<string, unknown>> };
+    expect(events.map((e) => e['actor'])).toEqual([`client:${ada.id}`, 'admin:1']);
+    expect(events.every((e) => !('actorLabel' in e))).toBe(true);
   });
 });
 

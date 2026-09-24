@@ -223,6 +223,13 @@ engine, but follows the same discipline:
   via `pnpm --filter @cat-tool/portal-server run create-admin`, not an
   HTTP endpoint. Client auth is still a private-link `access_token`,
   deliberately — see `portal-v0-spec.md` §7 before changing either.
+- **Every portal write names its actor** (backlog #58,
+  `audit-spec.md` §2.6). `adminActor`/`clientActor` in
+  `portal-server/src/app.ts` are where a route's actor is built.
+  `client:` is the client's id with no label, because the link proves
+  the link and not a person. `order_event` is append-only by trigger
+  and is the only record of a transition. Logins, deliveries and
+  downloads go to `audit_event`.
 
 ## The QA engine
 

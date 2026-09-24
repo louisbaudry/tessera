@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { hashPassword } from '@cat-tool/portal-core';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
+
 import {
   createAdminSession,
   createAdminUser,
@@ -48,7 +50,7 @@ describe('admin_user / admin_session repository', () => {
   it('resolves a valid session token to its admin user', () => {
     const db = openPortalDb(dbPath());
     const admin = createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
-    createAdminSession(db, admin.id, 'a-session-token');
+    createAdminSession(db, admin.id, 'a-session-token', { actor: TEST_ACTOR });
     expect(getAdminUserBySessionToken(db, 'a-session-token')).toMatchObject({
       id: admin.id,
     });
@@ -60,7 +62,10 @@ describe('admin_user / admin_session repository', () => {
     const db = openPortalDb(dbPath());
     const admin = createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
     const past = new Date('2020-01-01T00:00:00Z');
-    createAdminSession(db, admin.id, 'a-session-token', past);
+    createAdminSession(db, admin.id, 'a-session-token', {
+      actor: TEST_ACTOR,
+      now: past,
+    });
     expect(
       getAdminUserBySessionToken(db, 'a-session-token', new Date('2026-01-01T00:00:00Z')),
     ).toBeNull();
@@ -70,7 +75,7 @@ describe('admin_user / admin_session repository', () => {
   it('revokes a session on logout', () => {
     const db = openPortalDb(dbPath());
     const admin = createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
-    createAdminSession(db, admin.id, 'a-session-token');
+    createAdminSession(db, admin.id, 'a-session-token', { actor: TEST_ACTOR });
     deleteAdminSession(db, 'a-session-token');
     expect(getAdminUserBySessionToken(db, 'a-session-token')).toBeNull();
     db.close();

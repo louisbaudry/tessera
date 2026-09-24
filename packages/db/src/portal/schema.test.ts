@@ -14,6 +14,7 @@ import {
   setStatus,
   setWordCountAndPrice,
 } from './index.js';
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
 import { PORTAL_APPLICATION_ID } from './schema.js';
 import { PLATFORM_APPLICATION_ID } from '../platform/schema.js';
 
@@ -35,6 +36,21 @@ describe('openPortalDb', () => {
     db.close();
   });
 
+  it('carries append-only order_event and audit_event from v3 (backlog #58)', () => {
+    const db = openPortalDb(dbPath());
+    expect(db.pragma('user_version', { simple: true })).toBe(3);
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name")
+      .all();
+    expect(triggers).toEqual([
+      { name: 'audit_event_no_delete' },
+      { name: 'audit_event_no_update' },
+      { name: 'order_event_no_delete' },
+      { name: 'order_event_no_update' },
+    ]);
+    db.close();
+  });
+
   it('enforces one client per email and one access token per client', () => {
     const db = openPortalDb(dbPath());
     createClient(db, 'Ada', 'ada@client.example', 'tok-1');
@@ -48,12 +64,16 @@ describe('openPortalDb', () => {
   it('creates an order with target languages and a creation event', () => {
     const db = openPortalDb(dbPath());
     const client = createClient(db, 'Ada', 'ada@client.example', 'tok-1');
-    const order = createOrder(db, {
-      clientId: client.id,
-      srcLang: 'en',
-      tgtLangs: ['fr', 'es'],
-      notes: 'brochure text',
-    });
+    const order = createOrder(
+      db,
+      {
+        clientId: client.id,
+        srcLang: 'en',
+        tgtLangs: ['fr', 'es'],
+        notes: 'brochure text',
+      },
+      { actor: TEST_ACTOR },
+    );
     expect(order.status).toBe('submitted');
     expect(order.tgtLangs).toEqual(['es', 'fr']);
     expect(order.wordCount).toBeNull();
@@ -68,16 +88,20 @@ describe('openPortalDb', () => {
   it('records a status transition as an order_event and rejects illegal ones', () => {
     const db = openPortalDb(dbPath());
     const client = createClient(db, 'Ada', 'ada@client.example', 'tok-1');
-    const order = createOrder(db, {
-      clientId: client.id,
-      srcLang: 'en',
-      tgtLangs: ['fr'],
-    });
+    const order = createOrder(
+      db,
+      {
+        clientId: client.id,
+        srcLang: 'en',
+        tgtLangs: ['fr'],
+      },
+      { actor: TEST_ACTOR },
+    );
 
-    const approved = setStatus(db, order.id, 'approved');
+    const approved = setStatus(db, order.id, 'approved', { actor: TEST_ACTOR });
     expect(approved.status).toBe('approved');
 
-    expect(() => setStatus(db, order.id, 'delivered')).toThrow();
+    expect(() => setStatus(db, order.id, 'delivered', { actor: TEST_ACTOR })).toThrow();
 
     const events = listOrderEvents(db, order.id);
     expect(events).toHaveLength(2);
@@ -89,11 +113,15 @@ describe('openPortalDb', () => {
     const db = openPortalDb(dbPath());
     setRate(db, { srcLang: 'en', tgtLang: 'fr', ratePerWord: 0.12, minimumPrice: 50 });
     const client = createClient(db, 'Ada', 'ada@client.example', 'tok-1');
-    const order = createOrder(db, {
-      clientId: client.id,
-      srcLang: 'en',
-      tgtLangs: ['fr'],
-    });
+    const order = createOrder(
+      db,
+      {
+        clientId: client.id,
+        srcLang: 'en',
+        tgtLangs: ['fr'],
+      },
+      { actor: TEST_ACTOR },
+    );
 
     const priced = setWordCountAndPrice(db, order.id, 1000, 120);
     expect(priced.wordCount).toBe(1000);
