@@ -10,7 +10,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
-    "test": "vitest run --exclude '**/*.gate.test.ts' --exclude '**/*.golden.test.ts'",
+    "test": "vitest run --exclude '**/*.gate.test.ts' --exclude '**/golden.test.ts'",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",

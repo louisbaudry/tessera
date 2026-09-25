@@ -1810,6 +1810,14 @@ Smaller things settled:
   resetting state inside its effect (a cascading render per load). The
   result is tagged with the load it answers instead, so a stale one
   reads as loading without a second render.
+- **`pnpm test` had been running the golden test all along.** Its
+  exclude was `**/*.golden.test.ts`; the file is `golden.test.ts`, so
+  the glob matched nothing and the end-to-end job ran inside the
+  parallel unit suite under vitest's 5 s default. It passed on `main`
+  by margin only, and this PR's Windows run went over. The exclude is
+  now `**/golden.test.ts`, which is what `CLAUDE.md` always said it
+  was. An exclude that matches nothing looks exactly like one that
+  works; `vitest list` with the script's flags is how to check one.
 - **The 11 MB segments payload is a known cost, not fixed here.** 35 %
   of it is each segment's format table, raw XML the grid only needs
   `kind` and `visible` from. Worth a slimmer projection when a real
