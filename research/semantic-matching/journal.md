@@ -134,5 +134,16 @@ implicit:
   is also in the memory would score as a perfect retrieval without
   testing anything.
 
-Product fuzzy matching reverses a v1 scope cut. Where it sits against
-Ring 0 is still the owner's call, recorded as open on `#61`.
+Product fuzzy matching reverses a v1 scope cut. **Decided by the owner
+the same day: after `#37`, the real dogfood job.** Three options were
+put: after `#37`, before it, or in parallel with the editor cards. Why
+this one:
+
+- v1 ships as planned, without an L-sized card added to its path.
+- E-001 and E-002 don't need product fuzzy, so the research is not held
+  up.
+- The fuzzy shortlist is then designed with E-001's results in hand,
+  not before them.
+
+The cost for the paper: H4 (real use) moves further out, since the
+semantic match type (S4) needs product fuzzy first.

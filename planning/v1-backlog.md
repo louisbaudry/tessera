@@ -2296,8 +2296,10 @@ Sized issues:
   `#59`, harness work can start in parallel.
 - **#61 · Fuzzy matching in the product · L** · [issue #52] — the
   prerequisite for the semantic match type (S4) and for `#49`'s rate
-  tiers. Reverses a v1 cut, so where it sits against `#37` is the
-  owner's call before it is picked up. Spec first.
+  tiers. Reverses a v1 cut. **Sequenced after `#37`** (owner,
+  2026-09-25): v1 ships as planned, and `#59`/`#60` need no product
+  fuzzy, so their results can inform the shortlist design first. Spec
+  first.
 
 S4 (the semantic match type in the editor), S5 (LLM context, with Epic
 8) and S6 (real-use data) are not carded yet: each waits on the editor,
