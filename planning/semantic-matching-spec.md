@@ -296,7 +296,9 @@ collect more than §7 allows.
 ## 8. Phases (proposed, not yet cards)
 
 Each would become a backlog entry and issue once the owner approves
-this spec.
+this spec. **Approved 2026-09-25:** S1, S2 and S3 are carded as backlog
+`#59`, `#60` and `#61`. S4–S6 wait on the editor, Epic 8, or a shipped
+feature.
 
 - **S0. Protocol and scaffold.** This spec and `research/semantic-matching/`.
 - **S1. Offline recall (H1).** Extend `pnpm bench:tm` with an embedding
@@ -311,7 +313,10 @@ this spec.
 - **S3. Fuzzy matching in the product.** A prerequisite, not part of
   this feature: product fuzzy matching is a v1 cut (`v1-spec.md` §1,
   §4.3) and needs its own card and scorer decision (FS-2, §2). Step 1
-  (§3.1) lands with it or right after.
+  (§3.1) lands with it or right after. **Sequenced after `#37`, the
+  real dogfood job** (owner, 2026-09-25): v1 ships as planned, and S1
+  and S2's results then inform the shortlist design instead of
+  following it.
 - **S4. The semantic match type (§3.2).** Needs the editor (Epic 6) and
   the §9.2 decision.
 - **S5. LLM context (H3).** With Ring 0.5 (Epic 8).

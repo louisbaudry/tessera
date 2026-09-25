@@ -111,3 +111,39 @@ or documented product", not "nobody".
   S1 and S2.
 - E-001's setup (models, corpora, query sets, latency budget, metric
   keys) is to be written and committed before its first run.
+
+---
+
+## 2026-09-25 — Spec merged, first cards
+
+The spec and this folder were merged into `main` (PR #49) on the
+owner's go-ahead. Three phases became cards:
+
+- backlog `#59`, issue #50: E-001, offline shortlist recall (H1);
+- backlog `#60`, issue #51: E-002, usefulness below the fuzzy
+  threshold (H2);
+- backlog `#61`, issue #52: product fuzzy matching, the prerequisite.
+
+Nothing measured. Two things fixed in the cards that the spec left
+implicit:
+
+- **E-001 must include paraphrase queries**, not only E-000's lexical
+  edits (see the scoping notes in the previous entry).
+- **E-002 must exclude exact and near-duplicate queries from the
+  memory** it retrieves from. DGT-TM repeats heavily, and a query that
+  is also in the memory would score as a perfect retrieval without
+  testing anything.
+
+Product fuzzy matching reverses a v1 scope cut. **Decided by the owner
+the same day: after `#37`, the real dogfood job.** Three options were
+put: after `#37`, before it, or in parallel with the editor cards. Why
+this one:
+
+- v1 ships as planned, without an L-sized card added to its path.
+- E-001 and E-002 don't need product fuzzy, so the research is not held
+  up.
+- The fuzzy shortlist is then designed with E-001's results in hand,
+  not before them.
+
+The cost for the paper: H4 (real use) moves further out, since the
+semantic match type (S4) needs product fuzzy first.
