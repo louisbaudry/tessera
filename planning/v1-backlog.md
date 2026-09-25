@@ -2000,7 +2000,7 @@ Two things this fixed on the way, both worth remembering:
 Still manual: the word count (the `.txt` auto-count `portal-core` ships
 is not yet called by the server), and a client-side cancel.
 
-### Epic 8a — Smart glossary (spec'd 2026-09-14, not started)
+### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)
 
 Design in `planning/smart-glossary-spec.md`. A term the AI draft renders
 inconsistently is detected _after_ drafting, surfaced in a non-blocking
@@ -2131,7 +2131,7 @@ any of this to render into until those land:
 - **#54 · Capacity status toggle UI · S** · [issue #33] — after
   `#28`–`#35`.
 
-### Cross-cutting — Auditability (spec'd 2026-09-23, not started)
+### Cross-cutting — Auditability (spec'd 2026-09-23, done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the
 epics that need it, for the reason the `.ctm` context columns were: history
