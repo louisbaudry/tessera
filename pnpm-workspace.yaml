@@ -7,6 +7,9 @@ onlyBuiltDependencies:
   - better-sqlite3
   - electron
   - esbuild
+  # The bench's approximate vector index (E-001's `hnsw` arm), built by
+  # node-gyp.
+  - hnswlib-node
 
 # Blocked on purpose. onnxruntime-node (via @huggingface/transformers,
 # the bench's embedder) ships its CPU binaries in the package; its

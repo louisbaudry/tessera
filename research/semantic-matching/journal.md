@@ -241,3 +241,47 @@ what "sample 400 pairs" meant.
 
 Throughput on real text matches the probe: `minilm` embedded 268
 units/s on the DGT slice.
+
+---
+
+## 2026-09-25 — First confirmatory run: synthetic-100k; exact search misses the budget
+
+`synthetic-100k` ran on commit 479ce51, clean tree: all three models,
+400 `lex` queries. Results `2026-09-25-479ce51-1` to `-4`. Synthetic
+recall is descriptive only (E-001), so this entry reports cost. Recall
+waits for DGT.
+
+**Exact vector search misses the budget already at 100k.** A dot
+product against every stored vector, in plain JS, takes about 100 ms
+p99 at 384 dimensions (`e5s`, `minilm`) and 183 ms at 768 (`labse`).
+The `union` arm's p99 is 111–127 ms against `fts50`'s 9.8 ms for the
+384-dimension models, and 196–208 ms for `labse`. That is over
+`fts50` + 100 ms at every _m_. Exact search is linear in the memory, so
+at 1M it will be about ten times slower. E-001 fixed what happens in
+that case before any run: measure `hnsw` (`hnswlib-node`, M = 16,
+efConstruction = 200, efSearch = 128) as a separate arm. I did not
+speed up the exact loop: after seeing it miss the budget, that would
+be a change made to pass the test.
+
+The `hnsw` arm is now in the harness (`--search hnsw`). A shakedown at
+20k (exploratory, scratch, not kept) returned 100% (_m_ = 10) and 99.6%
+(_m_ = 25) of exact's top-_m_, with a p99 search of 5 ms.
+
+**One metric key added after the setup:** `hnsw.build_ms`, the index
+build time. It is descriptive cost, like `embed.ms`, and nothing is
+tested on it. It is listed here because E-001 says keys are never
+invented after the fact, and this one was.
+
+**Run plan changed, not the setup.** The first driver deleted each
+`.ctm` after its exact run, which would have thrown away the vectors
+the `hnsw` arm needs (DGT-1M alone is about 4.5 hours of embedding). I
+stopped it between corpora; the DGT-1M exact run it had started
+continues untouched. From now on each corpus runs `exact`, then
+`hnsw` on the same kept memory. `synthetic-100k` gets re-embedded for
+its `hnsw` run.
+
+Embedding throughput at 100k: `e5s` 248 units/s, `minilm` 263, `labse` 184.
+
+Housekeeping: results JSON is now excluded from prettier. The files are
+machine-written and never edited, so reformatting them would break
+rule 2's "never edited".

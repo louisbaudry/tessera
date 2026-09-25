@@ -55,6 +55,7 @@ import {
   type VectorSet,
 } from '@cat-tool/db';
 import Database from 'better-sqlite3';
+import hnswlib from 'hnswlib-node';
 
 import { prng, syntheticUnits, tmxDocument, type SyntheticUnit } from './corpus.ts';
 import { transformersEmbedder } from './embedder.ts';
@@ -99,6 +100,9 @@ const { values } = parseArgs({
     reuse: { type: 'boolean', default: false },
     keep: { type: 'boolean', default: false },
     exploratory: { type: 'boolean', default: false },
+    // `exact`, the reference; `hnsw` only where exact misses the budget
+    // (E-001, "Vector search").
+    search: { type: 'string', default: 'exact' },
     notes: { type: 'string', default: '' },
   },
   // `pnpm run x -- args` forwards the `--` itself (CLAUDE.md).
@@ -114,6 +118,11 @@ const CORPUS_ID =
   values['corpus-id'] ?? (CORPUS === 'synthetic' ? syntheticId(SIZE) : undefined);
 if (CORPUS_ID === undefined) throw new Error('--corpus-id is required for this corpus');
 const M_VALUES = values.m.split(',').map(Number);
+const SEARCH = values.search as 'exact' | 'hnsw';
+if (SEARCH !== 'exact' && SEARCH !== 'hnsw')
+  throw new Error('--search must be exact or hnsw');
+// E-001's fixed HNSW parameters.
+const HNSW = { M: 16, efConstruction: 200, efSearch: 128, seed: 100 } as const;
 const MODEL_KEYS = values.models.split(',') as E001ModelKey[];
 for (const k of MODEL_KEYS) {
   if (!(k in E001_MODELS)) throw new Error(`unknown model "${k}"`);
@@ -686,6 +695,43 @@ async function runModel(
   const embedMs: number[] = [];
   const searchMs: number[] = [];
 
+  // The vector top-m, by the method under test.
+  let search = (vec: Float32Array, m: number): Array<{ tuvId: number }> =>
+    topByDot(set, vec, m);
+  const overlap: Record<number, number[]> = {};
+  if (SEARCH === 'hnsw') {
+    log(`${key}: building HNSW over ${set.ids.length} vectors`);
+    const n = set.ids.length;
+    const index = new hnswlib.HierarchicalNSW('ip', set.dim);
+    const [, buildMs] = timed(() => {
+      index.initIndex(n, HNSW.M, HNSW.efConstruction, HNSW.seed);
+      for (let r = 0; r < n; r++) {
+        index.addPoint(Array.from(set.data.subarray(r * set.dim, (r + 1) * set.dim)), r);
+      }
+    });
+    index.setEf(HNSW.efSearch);
+    metrics['hnsw.build_ms'] = buildMs;
+    search = (vec, m) =>
+      index.searchKnn(Array.from(vec), Math.min(m, n)).neighbors.map((r) => ({
+        tuvId: set.ids[r]!,
+      }));
+    // hnsw.recall_vs_exact: every query of every set, untimed.
+    for (const queries of Object.values(querySets)) {
+      for (const q of queries) {
+        const [vec] = await embedder.embed([q.text]);
+        for (const m of M_VALUES) {
+          const exact = new Set(topByDot(set, vec!, m).map((r) => r.tuvId));
+          const got = search(vec!, m).filter((r) => exact.has(r.tuvId)).length;
+          (overlap[m] ??= []).push(exact.size === 0 ? 1 : got / exact.size);
+        }
+      }
+    }
+    for (const m of M_VALUES) {
+      const xs = overlap[m] ?? [];
+      metrics[`hnsw.recall_vs_exact.m${m}`] = xs.reduce((a, b) => a + b, 0) / xs.length;
+    }
+  }
+
   for (const [qs, queries] of Object.entries(querySets)) {
     log(`${key}: ${qs} vector arms`);
     const best = free.best[qs]!;
@@ -699,7 +745,7 @@ async function runModel(
         const [u, uMs] = await timedAsync(async () => {
           const fts = ftsArm(q, FTS_K);
           const [[vec], eMs] = await timedAsync(() => embedder.embed([q.text]));
-          const [top, sMs] = timed(() => topByDot(set, vec!, m));
+          const [top, sMs] = timed(() => search(vec!, m));
           embedMs.push(eMs);
           searchMs.push(sMs);
           const ids = new Set(fts.ids);
@@ -719,7 +765,7 @@ async function runModel(
           const [vec] = await embedder.embed([q.text]);
           const ids = new Set<number>();
           let bestV = 0;
-          for (const { tuvId } of topByDot(set, vec!, m)) {
+          for (const { tuvId } of search(vec!, m)) {
             ids.add(tuvId);
             const s = fuzzyScore(q.words, words(plainOf.get(tuvId)!.plain), scratch);
             if (s > bestV) bestV = s;
@@ -763,7 +809,7 @@ async function runModel(
     }
   }
   metrics['latency_ms.embed_query'] = summarize(embedMs);
-  metrics['latency_ms.vector_search.exact'] = summarize(searchMs);
+  metrics[`latency_ms.vector_search.${SEARCH}`] = summarize(searchMs);
   return { metrics, notes };
 }
 
@@ -813,7 +859,8 @@ function writeResult(
       fts_k: FTS_K,
       vec_m: M_VALUES,
       fuzzy_scorer: 'FS-1',
-      vector_search: 'exact',
+      vector_search: SEARCH,
+      hnsw: SEARCH === 'hnsw' ? HNSW : null,
       seed: SEED,
       budget_ms: BUDGET_MS,
       max_units: values['max-units'] === undefined ? null : Number(values['max-units']),
