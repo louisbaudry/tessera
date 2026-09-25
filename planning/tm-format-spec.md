@@ -331,6 +331,11 @@ Empty in v1. Declared now because `transformers.js` semantic matching is
 already in the locked stack, and multilingual embedding models make
 cross-language retrieval genuinely interesting later.
 
+The feature that will fill it is designed in
+`planning/semantic-matching-spec.md`. That spec (§3.3) fixes what a
+`model` value must name before the first vector is written, and the
+contract lands here in the same change.
+
 ### 2.9 `tm_import` — import runs (format version 2)
 
 ```sql
@@ -1375,6 +1380,11 @@ What it says:
    similarity, n-gram rather than word terms, or embeddings
    (`tuv_vec`, §2.8) as a second candidate source. Measure against a
    real memory before choosing (§11.3).
+   **Embeddings taken up 2026-09-25** as a second candidate source,
+   and as a separate unpriced match type:
+   `planning/semantic-matching-spec.md`. The other levers stay open;
+   that spec's experiment E-001 measures the embedding one against FTS
+   alone.
 6. **Query statistics.** Nothing ever runs `ANALYZE` or
    `PRAGMA optimize`, so the planner never has statistics. §11.2 shows
    that statistics alone turned the pre-#19a `retrievePair` from a table
