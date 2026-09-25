@@ -111,3 +111,28 @@ or documented product", not "nobody".
   S1 and S2.
 - E-001's setup (models, corpora, query sets, latency budget, metric
   keys) is to be written and committed before its first run.
+
+---
+
+## 2026-09-25 — Spec merged, first cards
+
+The spec and this folder were merged into `main` (PR #49) on the
+owner's go-ahead. Three phases became cards:
+
+- backlog `#59`, issue #50: E-001, offline shortlist recall (H1);
+- backlog `#60`, issue #51: E-002, usefulness below the fuzzy
+  threshold (H2);
+- backlog `#61`, issue #52: product fuzzy matching, the prerequisite.
+
+Nothing measured. Two things fixed in the cards that the spec left
+implicit:
+
+- **E-001 must include paraphrase queries**, not only E-000's lexical
+  edits (see the scoping notes in the previous entry).
+- **E-002 must exclude exact and near-duplicate queries from the
+  memory** it retrieves from. DGT-TM repeats heavily, and a query that
+  is also in the memory would score as a perfect retrieval without
+  testing anything.
+
+Product fuzzy matching reverses a v1 scope cut. Where it sits against
+Ring 0 is still the owner's call, recorded as open on `#61`.

@@ -2266,10 +2266,50 @@ Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration
 (spec §8.2).
 
+### Cross-cutting — Semantic matching (spec'd 2026-09-25, not started)
+
+Design in `planning/semantic-matching-spec.md`. TM matches found by
+embeddings, built in two steps: a vector candidate source that widens
+the fuzzy shortlist, then a separately labelled semantic match. It is
+also the subject of an empirical paper, so it carries a research record
+(`research/semantic-matching/`) whose protocol (spec §6) binds every
+card below. The decisions worth carrying forward:
+
+- **A semantic match has no percentage and counts as a no-match** in
+  analysis and pay (spec §4). Fuzzy bands set prices; a cosine similarity
+  shown as a percentage would be priced as one.
+- **Hypotheses are committed before the runs that test them**, and
+  every run is recorded, failures included. §11's recall figures
+  predate the protocol and are kept as prior observations (E-000) that
+  cannot confirm anything.
+- **Embeddings are computed locally** (`transformers.js`), so no client
+  text leaves the process. `core` gets the `Embedder` interface; the
+  model-loading implementation lives in a shell.
+
+Sized issues:
+
+- **#59 · Semantic matching E-001: offline shortlist recall (H1) · L** ·
+  [issue #50] — buildable now: bench only, no product code. Writes the
+  `tuv_vec` contract into `tm-format-spec.md` §2.8 with the first vector.
+- **#60 · Semantic matching E-002: usefulness below the fuzzy threshold
+  (H2) · M** · [issue #51] — public corpora only; model choice from
+  `#59`, harness work can start in parallel.
+- **#61 · Fuzzy matching in the product · L** · [issue #52] — the
+  prerequisite for the semantic match type (S4) and for `#49`'s rate
+  tiers. Reverses a v1 cut, so where it sits against `#37` is the
+  owner's call before it is picked up. Spec first.
+
+S4 (the semantic match type in the editor), S5 (LLM context, with Epic
+8) and S6 (real-use data) are not carded yet: each waits on the editor,
+Epic 8, or a shipped feature.
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,
 auto-localisation, collaboration. See spec §1.
+
+**Fuzzy matching is now carded** as `#61`, the prerequisite of
+semantic matching (above), not as part of Epics 0–7.
 
 **No longer true of the product as a whole** — MT, a cloud tier, and
 licensing are now Epics 8 and 11 and the commercial horizon in

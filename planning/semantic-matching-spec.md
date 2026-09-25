@@ -296,7 +296,9 @@ collect more than §7 allows.
 ## 8. Phases (proposed, not yet cards)
 
 Each would become a backlog entry and issue once the owner approves
-this spec.
+this spec. **Approved 2026-09-25:** S1, S2 and S3 are carded as backlog
+`#59`, `#60` and `#61`. S4–S6 wait on the editor, Epic 8, or a shipped
+feature.
 
 - **S0. Protocol and scaffold.** This spec and `research/semantic-matching/`.
 - **S1. Offline recall (H1).** Extend `pnpm bench:tm` with an embedding
