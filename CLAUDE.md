@@ -183,6 +183,25 @@ format for glossaries, through the same shared migration runner —
   (`tm-format-spec.md` §4) — the two are different facts, kept as two
   functions.
 
+## Semantic matching is research-tracked
+
+`planning/semantic-matching-spec.md` (embeddings in TM retrieval, and a
+semantic match type with no percentage) is also the subject of an
+empirical paper. Its evidence lives in `research/semantic-matching/`,
+and the protocol in the spec's §6 binds any session that touches it:
+
+- **A hypothesis is committed before the run that tests it.** A result
+  seen first is exploratory, never confirmatory.
+- **Every run gets a results file, failures included**, with the commit,
+  corpus digest, model and parameters. No client text in `research/`,
+  ever: private memories give numbers only, under opaque ids.
+- **`journal.md` and `hypotheses.md` are append-only.** End every
+  session on this feature with a journal entry, even when nothing was
+  measured.
+- **A semantic match never gets a percentage and never counts in
+  analysis or pay** (spec §4). Fuzzy bands set prices; a cosine
+  similarity shown as one would be priced as one.
+
 ## The translation portal (`portal-core`/`portal-server`)
 
 Epic 10a (`planning/portal-v0-spec.md`) pulled a client-facing intake/
