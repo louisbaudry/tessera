@@ -17,6 +17,27 @@ implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
 
+## This repository is public
+
+Everything pushed here — code, fixtures, planning docs, research
+results, commit messages, branch names, PR and issue text — is
+readable by anyone. **No personal data and no client data, ever, in
+any form.** That means no real names, email addresses, phone numbers
+or postal addresses; no client names, client documents, translation
+memories, glossaries or any text taken from them; no credentials,
+tokens or internal hostnames; and nothing that would let a reader
+identify a client or a person behind a pseudonym. It applies to test
+fixtures and to "just a snippet" in an example or a log alike.
+
+The existing rules are how this is kept, not exceptions to it: a real
+document becomes a fixture only through
+`scripts/synthesize-fixtures.py` (see _Fixture corpus_ below — a hand
+scrub has leaked before); a real memory contributes numbers only,
+under opaque ids (`research/`, `pnpm bench:tm --sdltm`). When unsure
+whether something identifies someone, leave it out and ask. Deleting a
+file in a later commit does not unpublish it — history keeps it — so
+the check happens before the push, not after.
+
 ## The working rhythm
 
 1. **Spec before code.** A design decision (a new data model, a new file
