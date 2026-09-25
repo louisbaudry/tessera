@@ -68,10 +68,13 @@ export function words(plain: string): string[] {
  * Word-level Levenshtein distance. Word- rather than character-level
  * because that is what a TM fuzzy scorer compares; a character-level
  * one costs roughly (chars/words)^2 ≈ 30× more per comparison.
+ *
+ * Takes words or interned word ids (`e001.ts`'s naive scan): only
+ * equality is compared, so the distance is the same either way.
  */
 export function wordDistance(
-  a: readonly string[],
-  b: readonly string[],
+  a: ArrayLike<string | number>,
+  b: ArrayLike<string | number>,
   row: Int32Array,
 ): number {
   const n = b.length;
@@ -95,10 +98,27 @@ export function wordDistance(
 
 /** Fuzzy score in [0, 1]: 1 − distance / longer length. */
 export function fuzzyScore(
-  a: readonly string[],
-  b: readonly string[],
+  a: ArrayLike<string | number>,
+  b: ArrayLike<string | number>,
   row: Int32Array,
 ): number {
   const longer = Math.max(a.length, b.length);
   return longer === 0 ? 1 : 1 - wordDistance(a, b, row) / longer;
+}
+
+/**
+ * Exact one-sided McNemar test on paired outcomes: `b` pairs where only
+ * the tested arm succeeded, `c` where only the control did. Returns
+ * P(X ≥ b) for X ~ Binomial(b + c, 1/2) — E-001's test.
+ */
+export function mcnemarOneSided(b: number, c: number): number {
+  const n = b + c;
+  if (n === 0) return 1;
+  let logC = 0; // log C(n, k), starting at k = 0
+  let p = 0;
+  for (let k = 0; k <= n; k++) {
+    if (k >= b) p += Math.exp(logC - n * Math.LN2);
+    logC += Math.log(n - k) - Math.log(k + 1);
+  }
+  return Math.min(1, p);
 }

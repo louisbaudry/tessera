@@ -192,6 +192,13 @@ function upsertVariant(
     );
   }
 
+  // A vector is of one `plain` (tm-format-spec.md §2.8): once the text
+  // changes it describes something that is no longer there.
+  db.prepare(
+    `DELETE FROM ${q}tuv_vec
+     WHERE tuv_id = ? AND (SELECT plain FROM ${q}tuv WHERE id = ?) IS NOT ?`,
+  ).run(existing.id, existing.id, plain);
+
   const rev = existing.rev + 1;
   const quality = Math.max(existing.quality, QUALITY.confirmed);
   db.prepare(

@@ -336,6 +336,36 @@ The feature that will fill it is designed in
 `model` value must name before the first vector is written, and the
 contract lands here in the same change.
 
+**The contract (2026-09-25, backlog `#59`, with the first vectors ever
+written, by E-001's bench):**
+
+1. **`model` is spelled by `embeddingModelKey` (`core/tm/embedding.ts`)
+   and nothing else.** It names the model repository and the commit its
+   weights came from (never a branch), the weight precision, the
+   pooling, the text prefix, the dimension, L2 normalisation, and what
+   was embedded: `tuv.plain` under the current `NORMALIZER_VERSION`.
+   For example:
+   `Xenova/multilingual-e5-small@761b726…;q8;mean;prefix="query: ";dim=384;l2;plain/nv1`.
+   The repository functions (`db/tm/vectors.ts`) take an
+   `EmbeddingModel`, never a key string, so no caller can spell one.
+2. **Vectors under different `model` values are never compared**, and a
+   vector is never written under a key other than the one that
+   produced it. A search loads one key's vectors (`loadVectors`).
+   Changing any field, including a re-quantised copy of the same
+   weights, is a new key, and its vectors are recomputed.
+3. **A vector describes one `plain`.** A write that changes a variant's
+   `plain` deletes that variant's vectors in the same transaction.
+   `writeBack` is the only such write today (`db/tm/write.ts`), and a
+   new one must do the same. A missing vector is always safe to
+   recompute; a stale one is silently wrong.
+4. **`vec` is float32 little-endian, `dim × 4` bytes, L2-normalised**, so
+   cosine similarity is a dot product. `dim` repeats the key's dimension
+   so a reader can check a blob's length without parsing the key.
+5. **Derived data, like `tuv_fts`.** Not exported (§8), not audited, and
+   recomputable at any time from `tuv.plain`. Vectors are computed
+   locally. A hosted embedding API would need its own decision
+   (semantic-matching-spec.md §3.3).
+
 ### 2.9 `tm_import` — import runs (format version 2)
 
 ```sql

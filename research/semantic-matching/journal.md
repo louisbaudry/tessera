@@ -200,3 +200,44 @@ them tests a hypothesis):
 
 **Open:** the harness itself (embedding pass, `tuv_vec` writes,
 vector search, arms, results files), then the runs.
+
+---
+
+## 2026-09-25 — E-001 harness built; shakedown runs
+
+The harness is `pnpm bench:e001` (`db/tm/bench/e001.ts`). It rests on
+three new pieces: the `tuv_vec` contract (`tm-format-spec.md` §2.8), its
+one key definition (`embeddingModelKey`, `core/tm/embedding.ts`), and
+the vector repository (`db/tm/vectors.ts`). Nothing in the product
+calls them yet.
+
+A decision made while writing the contract: `writeBack` rewrites a
+variant's `plain` in place, so a vector can go stale. `writeBack` now
+deletes that variant's vectors in the same transaction. A schema
+trigger would enforce it for every future write path too, but it
+needs a format-version bump for every user's `.ctm` over a table the
+product leaves empty. Revisit when the product writes vectors.
+
+**Shakedown runs: exploratory, and not results.** Two runs checked the
+plumbing, with output written to scratch and not kept:
+
+- `synthetic` at 20k units, `e5s`, _m_ = 10, 30 `lex` queries;
+- the first 50,000 DGT line pairs (48,483 units), `minilm`, _m_ = 10,
+  20 `lex` and 50 `para` queries.
+
+I saw their recall numbers. On the DGT slice the `para` set drew 246
+eligible pairs, and partner recall was about a third in every arm. They
+are exploratory under rule 1, on an ad-hoc corpus id, and they
+changed nothing in E-001's setup, which was committed before them. The
+DGT slice is a subset of `dgt-tm-v2019-en-fr-1M`; the paper should say
+so.
+
+One implementation detail the setup left open, fixed from the
+shakedown: when a drawn `para` pair conflicted with an earlier one (its
+partner already deleted, or its query's deletion would remove a kept
+partner), the first version skipped it and came out short: 48 of 50.
+It now keeps drawing in the shuffled order until 400 are kept, which is
+what "sample 400 pairs" meant.
+
+Throughput on real text matches the probe: `minilm` embedded 268
+units/s on the DGT slice.

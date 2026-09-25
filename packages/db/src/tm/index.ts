@@ -75,3 +75,4 @@ export * from './import-tmx.js';
 export * from './import-sdltm.js';
 export * from './export-tmx.js';
 export * from './write.js';
+export * from './vectors.js';
