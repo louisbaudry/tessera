@@ -147,3 +147,56 @@ this one:
 
 The cost for the paper: H4 (real use) moves further out, since the
 semantic match type (S4) needs product fuzzy first.
+
+---
+
+## 2026-09-25 — E-001 set up (card `#59`, issue #50)
+
+Picked up issue #50. Before writing any harness code, I fixed E-001's
+setup in `experiments/E-001-shortlist-recall.md` and committed it. No
+measured run has happened.
+
+**Found while writing the setup: H1 cannot fail on recall.** The union
+contains the FTS top-50, so it can never find less than FTS top-50
+alone. Stated as written, H1 would be "confirmed" by adding any
+candidates at all. H1 stays as it is (rule 5). The new **H1b** compares
+against FTS top-(50 + _m_), the same number of candidates, and that is
+the verdict E-001 will report. Worth a sentence in the paper: the
+pre-registration caught a hypothesis that could not fail before any
+data could have been bent to it.
+
+**Feasibility checks, not measurements** (not results files; none of
+them tests a hypothesis):
+
+- Embedding throughput on this container (4 vCPU, 15 GiB), 1,024
+  English-like word-list sentences, batch 32, int8 weights,
+  `@huggingface/transformers` 3.8.1:
+  - `multilingual-e5-small`: 227 sentences/s (121 in fp32);
+  - `paraphrase-multilingual-MiniLM-L12-v2`: 230 sentences/s;
+  - `LaBSE`: 156 sentences/s;
+  - `embeddinggemma-300m`: 30 sentences/s.
+
+  That excluded EmbeddingGemma on cost, and put `synthetic-5M` on one
+  model (about six hours per 5M pass).
+
+- OPUS DGT v2019 en-fr downloads (Moses zip, 295 MB, 4,938,565 line
+  pairs; digest in E-001). In its first 1M pairs, 81,756 distinct French
+  sentences occur more than once. That is where the `para` query set
+  (units sharing an identical target) comes from, so the set will not
+  be short of candidates. This count describes the corpus; it is not a
+  result.
+
+**Decided in the setup, with reasons in E-001:**
+
+- Three models: `e5s`, `minilm`, `labse`. All int8 and local.
+- _m_ ∈ {10, 25, 50}.
+- Latency budget is relative: `union` p99 ≤ `fts50` p99 + 100 ms at the
+  same size, on the same machine.
+- Synthetic corpora count for cost only. Pseudo-words mean nothing to
+  an embedding model.
+- The `para` queries are natural paraphrases found in the data (the
+  same target sentence, different sources). They are not generated, so
+  there is no LLM in the loop and no generation prompt to defend.
+
+**Open:** the harness itself (embedding pass, `tuv_vec` writes,
+vector search, arms, results files), then the runs.

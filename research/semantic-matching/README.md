@@ -35,9 +35,10 @@ matching.
 
 ## Experiments
 
-| Id                                               | Question                                       | Hypotheses          | Status      |
-| ------------------------------------------------ | ---------------------------------------------- | ------------------- | ----------- |
-| [E-000](experiments/E-000-prior-observations.md) | What was measured before this protocol existed | none (motivates H1) | Record only |
+| Id                                               | Question                                                              | Hypotheses          | Status          |
+| ------------------------------------------------ | --------------------------------------------------------------------- | ------------------- | --------------- |
+| [E-000](experiments/E-000-prior-observations.md) | What was measured before this protocol existed                        | none (motivates H1) | Record only     |
+| [E-001](experiments/E-001-shortlist-recall.md)   | Does a vector top-_m_ recover fuzzy matches the FTS shortlist misses? | H1, H1b             | Set up, not run |
 
 Status lives in this table and in the experiment file, not in the
 journal: the journal says what happened, this says where things stand.
