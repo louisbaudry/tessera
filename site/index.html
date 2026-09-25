@@ -423,7 +423,7 @@
 
       .why {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
         gap: 28px 36px;
       }
       .why article {
@@ -809,7 +809,8 @@
                   <td class="st"><span class="pill ok">Confirmed</span></td>
                   <td class="tgt">
                     <span class="mono"
-                      >init · add-file · add-tm · pretranslate · qa · export</span
+                      >init · add-file · add-tm · pretranslate · qa · export · history ·
+                      audit-verify</span
                     >
                     — a whole job, headless, checked against a golden transcript.
                   </td>
@@ -819,7 +820,8 @@
                   <td class="src">API server</td>
                   <td class="st"><span class="pill ok">Confirmed</span></td>
                   <td class="tgt">
-                    Accounts, projects, file import — the engine behind HTTP.
+                    Accounts, projects, file import — the engine behind HTTP, with every
+                    write recorded under the account that made it.
                   </td>
                 </tr>
                 <tr>
@@ -874,6 +876,15 @@
               Every change runs against a roundtrip gate: if exporting an untouched
               document alters a single byte, the build fails. Tags are placed by kind and
               order, in the <em>receiving</em> document's formatting.
+            </p>
+          </article>
+          <article>
+            <h3>Every change has a name</h3>
+            <p>
+              Each edit is logged with the person who made it, in the same write, to a
+              history nothing can rewrite — and a hash chain lets
+              <code>audit-verify</code> prove it. An AI draft or a TM match is where the
+              text came from, never who signed it off.
             </p>
           </article>
           <article>
