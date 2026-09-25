@@ -79,6 +79,9 @@ the check happens before the push, not after.
 6. **When asking questions to Louis, always propose multiple choices
    and a recommendation.** Never an open-ended question alone — lay
    out the options and say which one you'd pick and why.
+7. **After each merge, ask Louis if the public GitHub website is worth
+   updating with the new developments.** Same form as the rule above:
+   options and a recommendation, not an open question.
 
 ## Non-negotiable invariants
 
