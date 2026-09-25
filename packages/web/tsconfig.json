@@ -1,0 +1,16 @@
+// The SPA is bundled by Vite, so tsc only checks it: `noEmit`, the DOM
+// lib the headless packages deliberately lack, and React's JSX runtime.
+// Tests are excluded here (the build) and included by tsconfig.check.json.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/**/*.test.ts"]
+}

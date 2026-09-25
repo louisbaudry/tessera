@@ -367,6 +367,29 @@ Tests drive the app through Fastify's `inject` — no port, no browser:
 `buildApp({ config, logger: false })`, then `app.inject(...)`. A WHATWG
 `FormData` is accepted as the payload for a multipart upload.
 
+## The SPA (`@cat-tool/web`)
+
+Backlog #28 (`v1-spec.md` §7.1): Vite + React, `/api/` only, no router
+or state library until a screen needs one. Three things to keep true:
+
+- **`@cat-tool/core` is a type-only import here**, enforced by
+  `@typescript-eslint/no-restricted-imports` in `eslint.config.js`.
+  `core`'s runtime (credentials, the DOCX filter) is not a browser
+  dependency. A display table keyed by a `core` union is a `Record`
+  over that union, so a new value in `core` fails this typecheck.
+- **Logic worth testing is a `.ts` module, not a component.** The root
+  vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
+  `gutter.ts` and `layout.ts` are pure and tested there. A component
+  holds rendering and nothing that needs a DOM to prove.
+- **A screen that is slow is usually the server.** Both fixes #28's
+  10k-segment bar needed were in `db` (a missing index, a listing that
+  read every DOCX blob), found through the browser's resource timing.
+  Measure a real run against the fixture corpus plus a synthetic 10k
+  file before optimising a component.
+
+Develop with the server running (`pnpm --filter @cat-tool/server start`,
+port 3400) and `pnpm --filter @cat-tool/web dev`, which proxies `/api`.
+
 ## TM-format parsers (TMX and native formats)
 
 Both TMX (interchange) and native Trados `.sdltm` (SQLite) follow a

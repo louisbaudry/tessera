@@ -7,10 +7,17 @@ import { fileURLToPath } from 'node:url';
 import { assembleFile, rulesFor } from '@cat-tool/core';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { getFile, insertFile, listFiles } from './files.js';
+import {
+  getFile,
+  getFileSummary,
+  insertFile,
+  listFileSummaries,
+  listFiles,
+} from './files.js';
 import { openProjectDb } from './index.js';
 import { listSegments } from './segments.js';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
+import { capturePlans } from '../query-plan.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -102,6 +109,57 @@ describe('insertFile / getFile / listFiles', () => {
     const assembled = assembleFile(loadDocx('prose-short.docx'), rulesFor('en'));
     insertFile(db, 'same.docx', assembled, { actor: TEST_ACTOR });
     expect(() => insertFile(db, 'same.docx', assembled, { actor: TEST_ACTOR })).toThrow();
+    db.close();
+  });
+});
+
+describe('listFileSummaries / getFileSummary', () => {
+  it('summarise each file with its segment count, and never read a blob', () => {
+    const db = openProjectDb(dbPath());
+    const a = insertFile(
+      db,
+      'a.docx',
+      assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
+    );
+    const b = insertFile(
+      db,
+      'b.docx',
+      assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
+    );
+    const summary = (f: typeof a) => ({
+      id: f.id,
+      relPath: f.relPath,
+      importedAt: f.importedAt,
+      segmentCount: listSegments(db, f.id).length,
+    });
+
+    expect(listFileSummaries(db)).toEqual([summary(a), summary(b)]);
+    expect(getFileSummary(db, b.id)).toEqual(summary(b));
+    expect(getFileSummary(db, 999)).toBeNull();
+
+    const sql: string[] = [];
+    const original = db.prepare.bind(db);
+    (db as { prepare: unknown }).prepare = (text: string) => {
+      sql.push(text);
+      return original(text);
+    };
+    listFileSummaries(db);
+    getFileSummary(db, a.id);
+    (db as { prepare: unknown }).prepare = original;
+    for (const text of sql)
+      expect(text).not.toMatch(/SELECT \*|\bf\.\*|original_blob|skeleton|part_map/);
+    db.close();
+  });
+
+  it('counts segments by index, never by scanning them', () => {
+    const db = openProjectDb(dbPath());
+    insertFile(db, 'a.docx', assembleFile(loadDocx('prose-short.docx'), rulesFor('en')), {
+      actor: TEST_ACTOR,
+    });
+    const plans = capturePlans(db, () => listFileSummaries(db));
+    expect(plans.flat().filter((d) => /^SCAN s\b/.test(d))).toEqual([]);
     db.close();
   });
 });

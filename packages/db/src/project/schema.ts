@@ -179,9 +179,18 @@ const v5: Migration = {
   },
 };
 
+const v6: Migration = {
+  version: 6,
+  description:
+    "qa_issue_segment — an index on qa_issue(segment_id); every read of a segment's issues scanned the table (v1-spec.md §4.1, backlog #28)",
+  up: (db) => {
+    db.exec('CREATE INDEX qa_issue_segment ON qa_issue(segment_id);');
+  },
+};
+
 /**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
  */
-export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];
+export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];
