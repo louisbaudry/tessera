@@ -1756,8 +1756,76 @@ where they get a caller, and each is one repository call away.
 tests moved with their module). Full gate green; the server smoke-run as
 a real process with `create-account` then `start`.
 
-**#28 · Virtualised segment grid · L** · [issue #5]
-Two columns, status/origin/QA gutter, smooth at 10k+ segments.
+**#28 · ~~Virtualised segment grid~~ · DONE — `@cat-tool/web`
+(`packages/web`) + `GET …/files/:id/qa-issues` + `db`'s
+`listFileQaIssues`/`listFileSummaries`**
+The SPA starts here, as #27 said it would: Vite + React, a login, a
+project/file picker that opens and nothing else (#32 manages), and the
+grid — source left, target right, a gutter of position, status, origin
+and QA mark, rows virtualised with measured variable heights
+(`@tanstack/react-virtual`). Read-only; the editable target is #29.
+Decisions in `v1-spec.md` §7.1.
+
+**The card's bar was met on a 10,800-segment file, and meeting it was
+two server fixes, not a frontend one.** The smoke run (a real server,
+the whole fixture corpus plus a synthetic 10,800-segment DOCX, seeded
+targets and QA, Chromium through Playwright) first painted in 2.6 s.
+Resource timing put nearly all of it on the server:
+- **`qa_issue` had no index on `segment_id`.** The file-wide QA read was
+  a nested loop — for each of the file's segments, scan every issue —
+  875 ms at 10,800 segments and 2,176 issues; 7 ms with the index
+  (project schema v6, `qa_issue_segment`). The same scan sat under every
+  per-segment read since backlog #16: `replaceQaIssues` on each confirm
+  and `listQaIssues(db, id)`. Invisible at unit-test scale, like
+  `retrievePair`'s (the `EXPLAIN QUERY PLAN` gotcha in `CLAUDE.md`), and
+  now pinned by a plan test the same way.
+- **`listFiles` decodes every file's original DOCX and skeleton**, and
+  the project route called it to print names — a 23-file project took
+  749 ms to list. `getFile`, used as a 404 check in front of the
+  segments route, read one blob for nothing. `listFileSummaries` /
+  `getFileSummary` read `id`, `rel_path`, `imported_at` and a per-file
+  count, and a test asserts their SQL never names a blob column. Now
+  under 0.1 s; `listFiles` stays what export uses.
+
+After both, the built bundle first paints the 10,800-segment grid in
+~0.8 s, of which 0.45 s is the 11 MB segments response. Wheel scrolling
+holds a 15 ms median frame (p95 20 ms, headless software rendering) with
+23–35 rows in the DOM at any moment; jumping a whole screen per frame
+from top to bottom, the worst case, stays under 46 ms.
+
+Smaller things settled:
+- **`core` is a type-only dependency of the SPA, enforced by lint**
+  (`@typescript-eslint/no-restricted-imports` with `allowTypeImports`).
+  `core`'s index reaches `node:crypto` and the DOCX filter; the gutter's
+  tables are `Record`s keyed by `core`'s unions instead, so a new status
+  fails the web typecheck rather than rendering blank. The bundle was
+  checked for `core` code: none.
+- **An origin the gutter does not know is shown verbatim**
+  (`tm_fuzzy_85` renders as itself, not as nothing) — origin is a
+  widened string on purpose (§4.3).
+- **Stripes go by segment index, not `:nth-child`.** The first rendered
+  row's DOM position changes parity as the window scrolls, so
+  `nth-child` stripes flicker; caught in the smoke run's screenshots.
+- **`eslint-plugin-react-hooks` v7 flagged the first `useLoad`** for
+  resetting state inside its effect (a cascading render per load). The
+  result is tagged with the load it answers instead, so a stale one
+  reads as loading without a second render.
+- **`pnpm test` had been running the golden test all along.** Its
+  exclude was `**/*.golden.test.ts`; the file is `golden.test.ts`, so
+  the glob matched nothing and the end-to-end job ran inside the
+  parallel unit suite under vitest's 5 s default. It passed on `main`
+  by margin only, and this PR's Windows run went over. The exclude is
+  now `**/golden.test.ts`, which is what `CLAUDE.md` always said it
+  was. An exclude that matches nothing looks exactly like one that
+  works; `vitest list` with the script's flags is how to check one.
+- **The 11 MB segments payload is a known cost, not fixed here.** 35 %
+  of it is each segment's format table, raw XML the grid only needs
+  `kind` and `visible` from. Worth a slimmer projection when a real
+  file makes it matter; #29 needs the table's shape first.
+
+Not here: the editable target and tag insertion (#29), keyboard (#30),
+autosave (#31), serving the built SPA from the server (#36's container),
+dark mode (#35 — colours are already CSS tokens for it).
 
 **#29 · Tag-aware target editor · L** · [issue #11]
 Atomic tag chips, insert-next-tag, tag list, full-tag toggle. Tags never
@@ -2324,7 +2392,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #2]: https://github.com/louisbaudry/tessera/issues/2
 [issue #3]: https://github.com/louisbaudry/tessera/issues/3
 [issue #4]: https://github.com/louisbaudry/tessera/issues/4
-[issue #5]: https://github.com/louisbaudry/tessera/issues/5
 [issue #11]: https://github.com/louisbaudry/tessera/issues/11
 [issue #6]: https://github.com/louisbaudry/tessera/issues/6
 [issue #7]: https://github.com/louisbaudry/tessera/issues/7

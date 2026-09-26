@@ -30,18 +30,18 @@ import {
   type SegmentStatus,
 } from '@cat-tool/core';
 import {
-  countSegments,
   createAccountSession,
   createProject,
   deleteAccountSession,
   exportFile,
   getAccountByEmail,
   getAccountBySessionToken,
-  getFile,
+  getFileSummary,
   getProject,
   getSegment,
   insertFile,
-  listFiles,
+  listFileQaIssues,
+  listFileSummaries,
   listSegments,
   openPlatformDb,
   openProjectDb,
@@ -132,19 +132,6 @@ const DOCX_TYPE =
 /** What a client sees of an account: never the password hash or the storage root. */
 function publicAccount(account: Account) {
   return { id: account.id, email: account.email, createdAt: account.createdAt };
-}
-
-/** What a client sees of a project file: never the original bytes or the skeleton. */
-function fileSummary(
-  db: ReturnType<typeof openProjectDb>,
-  file: { id: number; relPath: string; importedAt: string },
-) {
-  return {
-    id: file.id,
-    relPath: file.relPath,
-    importedAt: file.importedAt,
-    segmentCount: countSegments(db, file.id),
-  };
 }
 
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
@@ -245,7 +232,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return listProjectNames(config.storageRoot, account).map((name) => {
       const db = openProjectDb(projectPath(config.storageRoot, account, name));
       try {
-        return { name, project: getProject(db), fileCount: listFiles(db).length };
+        return {
+          name,
+          project: getProject(db),
+          fileCount: listFileSummaries(db).length,
+        };
       } finally {
         db.close();
       }
@@ -318,7 +309,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return {
         name: req.params.name,
         project,
-        files: listFiles(db).map((f) => fileSummary(db, f)),
+        files: listFileSummaries(db),
       };
     } finally {
       db.close();
@@ -369,9 +360,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           }
           throw err;
         }
-        const file = getFile(db, fileId)!;
         return reply.code(201).send({
-          file: fileSummary(db, file),
+          file: getFileSummary(db, fileId),
           locked: assembled.segments.filter((s) => s.locked).length,
         });
       } finally {
@@ -388,11 +378,32 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       const { db } = opened;
       try {
         const fileId = Number(req.params.fileId);
-        const file = Number.isInteger(fileId) ? getFile(db, fileId) : null;
+        const file = Number.isInteger(fileId) ? getFileSummary(db, fileId) : null;
         if (!file) {
           return reply.code(404).send({ error: `no file #${req.params.fileId}` });
         }
-        return { file: fileSummary(db, file), segments: listSegments(db, fileId) };
+        return { file, segments: listSegments(db, fileId) };
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  // Every QA issue on the file's segments, dismissed ones included: the
+  // grid's gutter hides those, the QA panel (#33) lists them (spec §7.1).
+  app.get<{ Params: { name: string; fileId: string } }>(
+    '/api/projects/:name/files/:fileId/qa-issues',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      try {
+        const fileId = Number(req.params.fileId);
+        const file = Number.isInteger(fileId) ? getFileSummary(db, fileId) : null;
+        if (!file) {
+          return reply.code(404).send({ error: `no file #${req.params.fileId}` });
+        }
+        return { issues: listFileQaIssues(db, fileId) };
       } finally {
         db.close();
       }

@@ -81,6 +81,24 @@ export function listQaIssues(db: Database.Database, segmentId?: number): QaIssue
   return rows.map(fromRow);
 }
 
+/**
+ * Every issue on one file's segments, dismissed ones included, in
+ * document order — the grid's QA gutter and the QA panel (backlog #28,
+ * #33). Dismissed issues are the caller's to hide: the gutter does, the
+ * panel lists them.
+ */
+export function listFileQaIssues(db: Database.Database, fileId: number): QaIssue[] {
+  const rows = db
+    .prepare(
+      `SELECT q.* FROM qa_issue q
+         JOIN segment s ON s.id = q.segment_id
+        WHERE s.file_id = ?
+        ORDER BY s.ord, q.id`,
+    )
+    .all(fileId) as QaIssueRow[];
+  return rows.map(fromRow);
+}
+
 export function dismissQaIssue(db: Database.Database, id: number): void {
   db.prepare('UPDATE qa_issue SET dismissed = 1 WHERE id = ?').run(id);
 }
