@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-26-bcba11e-1",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-26T08:47:15.885Z",
+  "finished_at": "2026-09-26T08:56:09.560Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "bcba11ece393f781c7963c98ed498b6f2d6fa98b",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "dgt-tm-v2019-en-fr-1M",
+    "sha256": "d1d720a395915ae1b8e36347ca3acbe1284a8c3e73e699b63ad1c233a6dd1ff2",
+    "units": 991812,
+    "langs": [
+      "en",
+      "fr"
+    ],
+    "para_eligible": 25647
+  },
+  "model": null,
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "hnsw",
+    "hnsw": {
+      "M": 16,
+      "efConstruction": 200,
+      "efSearch": 128,
+      "seed": 100
+    },
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": 1000000
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "latency_ms.lex.fts50": {
+      "n": 400,
+      "p50": 43.15613,
+      "p99": 599.48957,
+      "max": 833.148793
+    },
+    "latency_ms.lex.ftsK_m10": {
+      "n": 400,
+      "p50": 44.114447,
+      "p99": 606.210329,
+      "max": 763.93893
+    },
+    "latency_ms.lex.ftsK_m25": {
+      "n": 400,
+      "p50": 41.286408,
+      "p99": 592.893336,
+      "max": 812.996605
+    },
+    "latency_ms.lex.ftsK_m50": {
+      "n": 400,
+      "p50": 42.744841,
+      "p99": 645.036157,
+      "max": 776.705899
+    },
+    "latency_ms.lex.naive": {
+      "n": 400,
+      "p50": 42.964813,
+      "p99": 225.680267,
+      "max": 238.396371
+    },
+    "latency_ms.para.fts50": {
+      "n": 400,
+      "p50": 35.899902,
+      "p99": 383.683086,
+      "max": 993.933631
+    },
+    "latency_ms.para.ftsK_m10": {
+      "n": 400,
+      "p50": 35.529238,
+      "p99": 382.804674,
+      "max": 982.16244
+    },
+    "latency_ms.para.ftsK_m25": {
+      "n": 400,
+      "p50": 38.632822,
+      "p99": 393.465871,
+      "max": 1004.135881
+    },
+    "latency_ms.para.ftsK_m50": {
+      "n": 400,
+      "p50": 36.172474,
+      "p99": 376.802343,
+      "max": 983.106473
+    },
+    "latency_ms.para.naive": {
+      "n": 400,
+      "p50": 44.357692,
+      "p99": 4362.524234,
+      "max": 4670.289259
+    },
+    "partner_recall.para.fts50": 0.0925,
+    "partner_recall.para.ftsK_m10": 0.0925,
+    "partner_recall.para.ftsK_m25": 0.105,
+    "partner_recall.para.ftsK_m50": 0.12,
+    "queries.lex.n": 400,
+    "queries.lex.sha256": "809d7146e302b255a27a7c6368da7b12e54061cbb078e42b90c9ddf8edae527c",
+    "queries.para.n": 400,
+    "queries.para.sha256": "5097db43c9ca98f3aac61e3a73c8e6aad52be49892fc229e60355074cb2aaaae",
+    "recall.lex.fts50": 0.9175,
+    "recall.lex.ftsK_m10": 0.9175,
+    "recall.lex.ftsK_m25": 0.9225,
+    "recall.lex.ftsK_m50": 0.9275,
+    "recall.para.fts50": 0.8625,
+    "recall.para.ftsK_m10": 0.87,
+    "recall.para.ftsK_m25": 0.8825,
+    "recall.para.ftsK_m50": 0.8925
+  },
+  "notes": ""
+}

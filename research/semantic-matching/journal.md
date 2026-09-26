@@ -285,3 +285,95 @@ Embedding throughput at 100k: `e5s` 248 units/s, `minilm` 263, `labse` 184.
 Housekeeping: results JSON is now excluded from prettier. The files are
 machine-written and never edited, so reformatting them would break
 rule 2's "never edited".
+
+---
+
+## 2026-09-26 — DGT-1M: H1b supported (with HNSW); storage is 3× the estimate
+
+All of `dgt-tm-v2019-en-fr-1M` is in, on clean trees:
+
+- **exact**, commit 479ce51, results `2026-09-25-479ce51-5` to `-8`;
+- **hnsw**, commit bcba11e, results `2026-09-26-bcba11e-1` to `-4`.
+
+The corpus has 991,812 units after empty sides were dropped. The
+`para` set had 25,647 eligible pairs; 400 were drawn, and 400 were
+drawn for `lex` too.
+
+**The pre-registered test** is `analysis/e001.py`, which reads only
+confirmatory, completed, clean-tree results. Its output is the source
+for every number here.
+
+- **Exact search misses the budget at every model × _m_**, on both
+  query sets. A search takes 825 ms (384 dimensions) to 1.5 s (768
+  dimensions) at p99.
+- **The `hnsw` arm meets the budget on `para` at all 9 model × _m_.**
+  It takes 2–3 ms per search at p99 and returns 92–95% of exact's
+  top-_m_. Every comparison favours `union`:
+
+  | model  | _m_ = 10                               | _m_ = 25                        | _m_ = 50                        |
+  | ------ | -------------------------------------- | ------------------------------- | ------------------------------- |
+  | e5s    | 0.870 → 0.922 (22 vs 1), Holm p 2.6e-5 | 0.882 → 0.930 (23 vs 4), 9.7e-4 | 0.892 → 0.938 (21 vs 3), 9.7e-4 |
+  | labse  | 0.870 → 0.912 (19 vs 2), 8.9e-4        | 0.882 → 0.920 (18 vs 3), 3.0e-3 | 0.892 → 0.930 (20 vs 5), 6.1e-3 |
+  | minilm | 0.870 → 0.907 (17 vs 2), 1.8e-3        | 0.882 → 0.912 (16 vs 4), 1.2e-2 | 0.892 → 0.917 (16 vs 6), 2.6e-2 |
+
+  Each cell reads `ftsK` recall → `union` recall (queries only
+  `union` found vs only `ftsK` found), then the Holm-adjusted p.
+
+**H1b: supported**, by E-001's criterion (at least one comparison with
+an adjusted p < 0.05). In fact all nine are.
+
+**H1 as written: supported**, which it could not have failed (see
+2026-09-25). `union` recall is above `fts50` in every cell.
+
+What the verdict does and does not say:
+
+- **The gain is real but modest.** Asking a vector index for the extra
+  _m_ candidates instead of FTS finds the best fuzzy match for about 4–5
+  more queries in 100. The FTS shortlist already found 87–89% of them.
+- **It holds only with an approximate index.** The claim is FTS top-50
+  plus an HNSW top-_m_. Exact search in JS does not meet the budget
+  from 100k units up.
+- **The budget is relative to a slow baseline.** On real DGT text the
+  FTS top-50 lookup itself takes 370 ms (`para`) to 600 ms (`lex`) at
+  p99 at 1M, much slower than on synthetic text (E-000: 186 ms at
+  1M). "+100 ms" is measured on top of that.
+- **`lex` is secondary.** It favours `union` at every model × _m_ that
+  met the budget. Three cells missed it (`labse` _m_ = 10 and 50,
+  `minilm` _m_ = 25) by small margins on a p99 near 650 ms. That is
+  noise around the budget line, reported as measured.
+- **e5s is best on both sets, at the lowest cost** (384 dimensions,
+  fastest to embed). That is evidence for spec §9.1, not the decision
+  itself: the private memories and the synthetic scaling runs are
+  still to come.
+
+**Found, not tested: vectors cost about 4.7 KB per unit on disk, three
+times the 1.5 KiB estimate** (spec §3.4). This held at 384 dimensions
+and at 768 alike (`storage.bytes_per_unit`, about 4,690 bytes). The
+likely cause is the schema, not the vectors. `tuv_vec` is a WITHOUT
+ROWID table, which SQLite's own documentation advises against for
+rows larger than about a twentieth of a page. A 1.5 KB blob spills to
+an overflow page, so each vector costs about one 4 KiB page, plus the
+model key repeated in every row. That is an input for the product
+schema before it writes vectors (a rowid table, or a small integer
+model id), not something to change under E-001. At 1M units it is
+4.7 GB per model.
+
+**Found, exploratory: the paraphrase partner is rarely a candidate.**
+`partner_recall.para` is 9–13% in every arm, vectors included, at
+_m_ = 25. The best FS-1 match is usually another near-duplicate in
+this repetitive memory, not B. For H2 this means "the semantic
+candidate is more useful" has to be measured against the reference
+translation, as H2 already says, and not by whether B is found.
+
+Cost at 1M on this machine:
+
+- embedding: `e5s` 125 units/s (2.2 h), `minilm` 92 (3.0 h), `labse` 68
+  (4.0 h). DGT sentences are long, so this is slower than synthetic
+  text.
+- HNSW build: 12–14 min for the 384-dimension models, 26 min for
+  `labse`.
+
+**Still to run:** synthetic 1M and 5M (cost and scaling; recall
+descriptive), synthetic-100k `hnsw`, and the private memories on the
+owner's machine. The card's "done when" also needs spec §9.1 settled
+or deferred with a reason.

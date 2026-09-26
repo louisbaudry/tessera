@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-26-bcba11e-2",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-26T08:47:15.885Z",
+  "finished_at": "2026-09-26T09:53:21.385Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "bcba11ece393f781c7963c98ed498b6f2d6fa98b",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "dgt-tm-v2019-en-fr-1M",
+    "sha256": "d1d720a395915ae1b8e36347ca3acbe1284a8c3e73e699b63ad1c233a6dd1ff2",
+    "units": 991812,
+    "langs": [
+      "en",
+      "fr"
+    ],
+    "para_eligible": 25647
+  },
+  "model": {
+    "id": "Xenova/multilingual-e5-small",
+    "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+    "dim": 384,
+    "pooling": "mean",
+    "dtype": "q8",
+    "prefix": "query: "
+  },
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "hnsw",
+    "hnsw": {
+      "M": 16,
+      "efConstruction": 200,
+      "efSearch": 128,
+      "seed": 100
+    },
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": 1000000
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "budget_met.lex.union_m10": true,
+    "budget_met.lex.union_m25": true,
+    "budget_met.lex.union_m50": true,
+    "budget_met.para.union_m10": true,
+    "budget_met.para.union_m25": true,
+    "budget_met.para.union_m50": true,
+    "discordant.lex.union_m10": {
+      "union_only": 27,
+      "ftsK_only": 0
+    },
+    "discordant.lex.union_m25": {
+      "union_only": 25,
+      "ftsK_only": 0
+    },
+    "discordant.lex.union_m50": {
+      "union_only": 25,
+      "ftsK_only": 2
+    },
+    "discordant.para.union_m10": {
+      "union_only": 22,
+      "ftsK_only": 1
+    },
+    "discordant.para.union_m25": {
+      "union_only": 23,
+      "ftsK_only": 4
+    },
+    "discordant.para.union_m50": {
+      "union_only": 21,
+      "ftsK_only": 3
+    },
+    "embed.ms": 98462.573612,
+    "embed.peak_rss_mib": 2059.0390625,
+    "embed.units": 0,
+    "embed.units_per_sec": null,
+    "hnsw.build_ms": 811408.630436,
+    "hnsw.recall_vs_exact.m10": 0.9246249999999993,
+    "hnsw.recall_vs_exact.m25": 0.9326000000000004,
+    "hnsw.recall_vs_exact.m50": 0.9250750000000019,
+    "latency_ms.embed_query": {
+      "n": 2400,
+      "p50": 6.100906,
+      "p99": 19.308347,
+      "max": 386.19282
+    },
+    "latency_ms.lex.union_m10": {
+      "n": 400,
+      "p50": 53.737638,
+      "p99": 678.265979,
+      "max": 800.772163
+    },
+    "latency_ms.lex.union_m25": {
+      "n": 400,
+      "p50": 52.632489,
+      "p99": 660.251283,
+      "max": 792.360717
+    },
+    "latency_ms.lex.union_m50": {
+      "n": 400,
+      "p50": 51.694847,
+      "p99": 658.94231,
+      "max": 821.168304
+    },
+    "latency_ms.lex.vecOnly_m10": {
+      "n": 400,
+      "p50": 6.860921,
+      "p99": 22.688659,
+      "max": 38.169773
+    },
+    "latency_ms.lex.vecOnly_m25": {
+      "n": 400,
+      "p50": 6.523254,
+      "p99": 21.730185,
+      "max": 46.727468
+    },
+    "latency_ms.lex.vecOnly_m50": {
+      "n": 400,
+      "p50": 6.413826,
+      "p99": 19.078322,
+      "max": 38.594793
+    },
+    "latency_ms.para.union_m10": {
+      "n": 400,
+      "p50": 45.336522,
+      "p99": 395.265352,
+      "max": 1092.157457
+    },
+    "latency_ms.para.union_m25": {
+      "n": 400,
+      "p50": 44.222617,
+      "p99": 435.390702,
+      "max": 1005.967274
+    },
+    "latency_ms.para.union_m50": {
+      "n": 400,
+      "p50": 46.329104,
+      "p99": 410.323193,
+      "max": 1025.682964
+    },
+    "latency_ms.para.vecOnly_m10": {
+      "n": 400,
+      "p50": 6.220389,
+      "p99": 17.075916,
+      "max": 21.282717
+    },
+    "latency_ms.para.vecOnly_m25": {
+      "n": 400,
+      "p50": 6.626314,
+      "p99": 18.748059,
+      "max": 31.211394
+    },
+    "latency_ms.para.vecOnly_m50": {
+      "n": 400,
+      "p50": 6.752132,
+      "p99": 20.831351,
+      "max": 22.995243
+    },
+    "latency_ms.vector_search.hnsw": {
+      "n": 2400,
+      "p50": 0.989146,
+      "p99": 2.12454,
+      "max": 9.10731
+    },
+    "mcnemar_p.lex.union_m10": 7.4505805969237975e-9,
+    "mcnemar_p.lex.union_m25": 2.9802322387695405e-8,
+    "mcnemar_p.lex.union_m50": 0.0000028237700462341232,
+    "mcnemar_p.para.union_m10": 0.000002861022949218749,
+    "mcnemar_p.para.union_m25": 0.0001553744077682491,
+    "mcnemar_p.para.union_m50": 0.00013858079910278345,
+    "partner_recall.para.union_m10": 0.1075,
+    "partner_recall.para.union_m25": 0.1125,
+    "partner_recall.para.union_m50": 0.1275,
+    "partner_recall.para.vecOnly_m10": 0.08,
+    "partner_recall.para.vecOnly_m25": 0.095,
+    "partner_recall.para.vecOnly_m50": 0.11,
+    "recall.lex.union_m10": 0.985,
+    "recall.lex.union_m25": 0.985,
+    "recall.lex.union_m50": 0.985,
+    "recall.lex.vecOnly_m10": 0.9225,
+    "recall.lex.vecOnly_m25": 0.9275,
+    "recall.lex.vecOnly_m50": 0.9275,
+    "recall.para.union_m10": 0.9225,
+    "recall.para.union_m25": 0.93,
+    "recall.para.union_m50": 0.9375,
+    "recall.para.vecOnly_m10": 0.8125,
+    "recall.para.vecOnly_m25": 0.8475,
+    "recall.para.vecOnly_m50": 0.8725,
+    "storage.bytes_per_unit": null,
+    "storage.ctm_bytes_after": 15514075136,
+    "storage.ctm_bytes_before": 15514075136,
+    "storage.tuv_vec_bytes": 0
+  },
+  "notes": "embed.peak_rss_mib is the whole process, naive-scan index included; embedding resumed: embed.* covers this process only"
+}
