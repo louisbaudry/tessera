@@ -17,6 +17,10 @@ implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
 
+## Working with Louis
+
+Be concise. Skip explanations unless asked. No summaries after routine edits.
+
 ## This repository is public
 
 Everything pushed here — code, fixtures, planning docs, research
