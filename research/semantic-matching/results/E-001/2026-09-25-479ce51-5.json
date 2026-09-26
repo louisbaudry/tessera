@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-25-479ce51-5",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-25T18:04:22.754Z",
+  "finished_at": "2026-09-25T18:56:14.953Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "479ce5149f6e3085b4f17b54ec5636192a3f69c0",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "dgt-tm-v2019-en-fr-1M",
+    "sha256": "d1d720a395915ae1b8e36347ca3acbe1284a8c3e73e699b63ad1c233a6dd1ff2",
+    "units": 991812,
+    "langs": [
+      "en",
+      "fr"
+    ],
+    "para_eligible": 25647
+  },
+  "model": null,
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "exact",
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": 1000000
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "latency_ms.lex.fts50": {
+      "n": 400,
+      "p50": 43.206814,
+      "p99": 620.919298,
+      "max": 811.240821
+    },
+    "latency_ms.lex.ftsK_m10": {
+      "n": 400,
+      "p50": 45.10981,
+      "p99": 632.161188,
+      "max": 732.601912
+    },
+    "latency_ms.lex.ftsK_m25": {
+      "n": 400,
+      "p50": 43.288223,
+      "p99": 620.704708,
+      "max": 755.892297
+    },
+    "latency_ms.lex.ftsK_m50": {
+      "n": 400,
+      "p50": 44.468242,
+      "p99": 639.244825,
+      "max": 749.321676
+    },
+    "latency_ms.lex.naive": {
+      "n": 400,
+      "p50": 66.624744,
+      "p99": 354.460524,
+      "max": 386.278483
+    },
+    "latency_ms.para.fts50": {
+      "n": 400,
+      "p50": 35.677745,
+      "p99": 370.65094,
+      "max": 967.017828
+    },
+    "latency_ms.para.ftsK_m10": {
+      "n": 400,
+      "p50": 36.364454,
+      "p99": 384.578575,
+      "max": 943.251035
+    },
+    "latency_ms.para.ftsK_m25": {
+      "n": 400,
+      "p50": 35.404828,
+      "p99": 417.153999,
+      "max": 979.328956
+    },
+    "latency_ms.para.ftsK_m50": {
+      "n": 400,
+      "p50": 36.346535,
+      "p99": 382.065754,
+      "max": 1060.482081
+    },
+    "latency_ms.para.naive": {
+      "n": 400,
+      "p50": 65.86122,
+      "p99": 6770.657963,
+      "max": 7350.564141
+    },
+    "partner_recall.para.fts50": 0.0925,
+    "partner_recall.para.ftsK_m10": 0.0925,
+    "partner_recall.para.ftsK_m25": 0.105,
+    "partner_recall.para.ftsK_m50": 0.12,
+    "queries.lex.n": 400,
+    "queries.lex.sha256": "809d7146e302b255a27a7c6368da7b12e54061cbb078e42b90c9ddf8edae527c",
+    "queries.para.n": 400,
+    "queries.para.sha256": "5097db43c9ca98f3aac61e3a73c8e6aad52be49892fc229e60355074cb2aaaae",
+    "recall.lex.fts50": 0.9175,
+    "recall.lex.ftsK_m10": 0.9175,
+    "recall.lex.ftsK_m25": 0.9225,
+    "recall.lex.ftsK_m50": 0.9275,
+    "recall.para.fts50": 0.8625,
+    "recall.para.ftsK_m10": 0.87,
+    "recall.para.ftsK_m25": 0.8825,
+    "recall.para.ftsK_m50": 0.8925
+  },
+  "notes": ""
+}
