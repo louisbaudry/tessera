@@ -39,7 +39,7 @@ pool) rides on top later and is out of scope here.
 | CJK, Cyrillic, Nordic, Eastern European | Different tokenizer (CJK) or more abbreviation lists; neither is needed. |
 | Auto-localisation of numbers/dates | Real Trados feature, but it interacts with matching in ways worth designing once fuzzy exists. |
 | Cloud tier, licensing, collaboration | Separate product surface; a prototype already exists (§2.1). |
-| Track changes, comments | Comment text and tracked-change content are not extracted. Footnote/endnote **bodies** *are* extracted — see §3.5. |
+| Track changes, comments | Comment text and tracked deletions (a move's origin included) are not extracted; a tracked insertion's text, or a move's destination's, is. Footnote/endnote **bodies** *are* extracted — see §3.5. |
 
 ### Definition of done
 
@@ -164,7 +164,7 @@ packages/
     segment/     SRX-lite segmenter + abbreviation lists
     tm/          TMX read/write, exact matcher
     qa/          QA rule engine
-    model/       shared types
+    model/       shared types, tag rules; the SPA's @cat-tool/core/model
   db/            @cat-tool/db         better-sqlite3, migrations, repos
   cli/           @cat-tool/cli        headless driver — the test harness
   server/        @cat-tool/server     Fastify API — auth, uploads, project/TM
@@ -367,18 +367,23 @@ styles, numbering, tables, images, and everything else v1 never models.
 
 ### 3.2 Paragraph → tagged text
 
-Within a paragraph, adjacent runs sharing identical `w:rPr` are merged.
-A change in `w:rPr` opens a tag pair. Concretely:
+Within a paragraph, each run with properties becomes a tag pair, one
+per run: the tokenizer merges nothing. Adjacent runs sharing identical
+`w:rPr` are merged when a target is rendered (§3.4), and the editor
+places look-alike neighbours as one (§7.2). Concretely:
 
 | DOCX construct | Becomes |
 |---|---|
 | `w:rPr` change (b, i, u, vertAlign, color, rStyle, …) | paired tag `<g id=n>` … `</g>` |
 | Hyperlink (`w:hyperlink`) | paired tag, target URL held in format table |
 | Footnote / endnote reference | standalone `<ph id=n>` |
-| Field (`w:fldSimple`, `w:instrText` runs) | standalone `<ph id=n>` |
-| Bookmark start/end, comment anchors | standalone `<ph id=n>` |
-| Inline drawing / image | standalone `<ph id=n>` |
-| `w:br`, `w:tab` | standalone `<ph id=n>` |
+| Field (`w:fldSimple`, `w:instrText`/`w:fldChar` runs, `w:pgNum`, date elements) | standalone `<ph id=n>` |
+| Bookmark start/end, comment anchors, proofing marks | standalone `<ph id=n>`, hidden (§3.3) |
+| Inline drawing / image, `w:contentPart`, equation (`m:oMath`, `m:oMathPara`), ruby | standalone `<ph id=n>` |
+| `w:customXml`, `w:dir`, `w:bdo`, `w:subDoc` (not walked) | standalone `<ph id=n>`; the text inside is not translated |
+| `w:br`, `w:cr`, `w:tab` | standalone `<ph id=n>` |
+| Tracked insertion or move destination (`w:ins`, `w:moveTo`), content control (`w:sdt`) | paired tag, hidden; the text inside is translated |
+| Tracked deletion or move origin (`w:del`, `w:moveFrom`), floating shape | standalone `<ph id=n>`, hidden, kept whole (§3.5) |
 | Soft hyphen, non-breaking space | literal characters, not tags |
 
 Tag ids are numbered per segment, starting at 1, in source order. They are
@@ -403,11 +408,17 @@ Rules the editor and validator both enforce:
 - `open`/`close` are matched pairs and must nest, never interleave.
 - The target's tag multiset must equal the source's (§6.1).
 - Target tag *order* may differ from source — word order changes between
-  languages. Only nesting validity and multiset equality are enforced.
+  languages. Order is never enforced; nesting validity and multiset
+  equality are, and the editor also nests a pair only as a source's do
+  — no formatting in formatting, no link in a link (§7.2).
 - Tags are atomic in the editor: never editable as text, deleted whole.
 - Hidden tags (`FormatEntry.visible` false) are never a writer's to
   place: every stored target carries its source's by one rule, and any
   structurally valid stream renders to valid OOXML — both §7.2.
+- A tag's `fmt` is its own id, its role fits its format (a pair is a
+  `run` or `inline` tag, a placeholder `in-run` or `block`), and text
+  holds nothing XML cannot carry (`xmlIllegalChar`): `parseTokens`
+  refuses anything else at the door (§7.2).
 
 ### 3.4 Paragraph vs segment
 
@@ -472,9 +483,12 @@ Ordering: footnote bodies sort after all body segments, in note-number
 order, so the editor presents the document then its notes rather than
 interleaving them mid-sentence.
 
-Still not extracted in v1: comment text, tracked-change content, document
+Still not extracted in v1: comment text, tracked deletions (`w:del`, and
+a move's origin, `w:moveFrom` — kept whole, hidden), document
 properties, embedded objects. Each is a known gap, listed here so it is a
-decision rather than a surprise.
+decision rather than a surprise. A tracked insertion (`w:ins`) or a
+move's destination (`w:moveTo`) is current text, and is extracted
+inside a hidden tag that keeps the revision (§3.2).
 
 Skipped as untranslatable: paragraphs whose extracted text, with tags
 removed, is empty or contains no letter in any supported language
@@ -766,8 +780,9 @@ On pre-translate, for each unlocked segment:
 1. Compute `source_hash`.
 2. Query each enabled TM in `priority` order; first hit wins.
 3. If found:
-   - Tag multiset of the TM hit's source equals the segment's source →
-     insert target as-is, `origin = 'tm_exact'`, `status = 'translated'`.
+   - Tag multiset of the TM hit, by `(kind, role)`, equals that of the
+     segment's *visible* source tags → insert target as-is,
+     `origin = 'tm_exact'`, `status = 'translated'`.
      The hit's tags take the receiving segment's own *visible* tags' ids
      by `(kind, role, order)` (`core/tm/mapping.ts`; a placeholder only
      ever takes a placeholder's id — backlog #29 found a kind-only match
@@ -900,9 +915,9 @@ each had a false-positive trap the table alone did not settle:
   only (OQLF); `fr-CH` nothing. Outside French, `,` `.` `;` `:` take no
   space; with no target language known, only `,` and `.` are judged. A
   mark inside a token (`10:30`, `http://`, `?id=`) is not a sentence
-  mark. Placeholders are opaque characters for every rule here, not
-  dropped, so `word<tab>word` is not a double space and `1<tab>000` is
-  not one number.
+  mark. Visible placeholders are opaque characters for every rule here,
+  not dropped, so `word<tab>word` is not a double space and `1<tab>000`
+  is not one number; a hidden one is read as nothing (above).
 - The rules take the project's language pair through
   `QaCheckContext.srcLang`/`tgtLang` (from the `project` row); with no
   pair known, `num.*`, `punct.inverted` and the locale-specific half of
@@ -922,7 +937,7 @@ behaviours v1 cannot ship without:
   origin, and QA flag in a gutter.
 - `Ctrl+Enter` confirm and advance to next unconfirmed.
 - `Ctrl+,` insert next unplaced tag; `Ctrl+Shift+,` tag list (bound by
-  #29 with the editor itself, §7.2; the rest of this list is #30's).
+  #29 with the editor itself, §7.2; the other keys here are #30's).
 - `Ctrl+Ins` copy source to target.
 - `Ctrl+M` merge with next segment, `Ctrl+Shift+M` split at cursor
   (both within one paragraph only).
@@ -933,8 +948,11 @@ behaviours v1 cannot ship without:
 - Progress: segments confirmed / total, words confirmed / total.
 - Dark mode, and no layout shift when the QA panel opens.
 
-Autosave on every keystroke, debounced. There is no "save" action; a crash
-must never cost more than a few seconds.
+Autosave on every keystroke, debounced (#31). There is no "save"
+action; a crash must never cost more than a few seconds. The audited
+write stays at segment boundaries — audit-spec §2.2; the editor saves
+when it leaves a segment and on `pagehide` (§7.2) — so keystroke drafts
+need a home outside it, or §2.2 amended first.
 
 ### 7.1 The segment grid (`@cat-tool/web`, backlog #28)
 
@@ -991,10 +1009,12 @@ they are not re-derived:
   grid fetches both and joins by `segmentId` in the browser.
 - **Tags render as read-only chips, numbered by their tag id; invisible
   ones are not rendered** (`FormatEntry.visible`, §3.3). A paired tag is
-  two chips, `‹1` and `1›`; a placeholder is one, `⟨2⟩`, titled with its
-  `kind`. Editing them — atomic chips in an editable target, insert-next-
-  tag — is #29; the grid only shows them, and a missing target shows
-  empty, never the source.
+  two chips, `‹1` and `1›`; a placeholder is one, `⟨2⟩`, titled with what
+  it stands for (`describeFormat`), as every chip is. Editing them —
+  atomic chips in an editable target, insert-next-tag — is #29's
+  (§7.2), which also shows a run of look-alike pairs as one chip pair,
+  `‹1–31`, here as there; a row not being edited only shows them, and a
+  missing target shows empty, never the source.
 
 
 ### 7.2 The target editor (`@cat-tool/web`, backlog #29)
@@ -1082,8 +1102,9 @@ route only parsing around it (the CLI rule, §2.4):
   later an MT draft) will be its own write naming its origin, not this
   one (audit-spec §4).
 - *A stale write is refused.* `baseUpdatedAt` is the segment as the page
-  last saw it; a write over a newer one — another tab — is a 409 with
-  the segment as it is, shown on the row, never a silent overwrite. The
+  last saw it; a write over a newer one — another tab — is a 409 carrying
+  the segment as it is; the row is marked not saved, with a note to
+  reload the file — never a silent overwrite. The
   page keeps one write per segment in flight (`save-queue.ts`), each
   sent with the version the last answer returned. An answer for a write
   a later one has superseded updates the row's version, status and

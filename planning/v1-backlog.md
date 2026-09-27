@@ -68,7 +68,7 @@ container's Node, chosen once (TM format spec §1.1).
 
 **#4 · ~~Core domain types~~ · DONE**
 `Token`, `TmToken`, `TagKind`, `Segment`, `SegmentStatus`, `Origin`,
-`QaRule`, `QaIssue` in `@cat-tool/core/model`. Tag invariants as pure
+`QaRule`, `QaIssue` in `core/model/`. Tag invariants as pure
 predicates — `validateTagStructure` (nesting, interleaving, duplicate ids,
 unclosed), `tagSignature` / `tagsMatch` (order-independent multiset),
 `missingTags` / `extraTags` (feeding QA rules `tag.missing` / `tag.extra`).
@@ -1285,16 +1285,21 @@ call sites for what is still "one finding per rule per segment" against
 the same `qa_issue` table, for no isolation benefit — nothing about
 `consistency.*` needs a different persistence shape, only richer input.
 
-`db/project/qa-issues.ts` computes `siblings` per call with two plain
+`db/project/qa-issues.ts` computed `siblings` per call with two plain
 queries against `segment` (one by `source_hash`, one full scan comparing
-rendered target plain text — there is no target-text index) and decodes
-tokens to plain text in JS. This is O(n) per segment, run fresh on every
-`runQaRules` call; acceptable at v1's single-translator project scale,
-same "wholesale, not diffed" simplicity `replaceQaIssues` already
-established. If a future project-wide QA sweep over many thousand
-segments makes this the bottleneck, build the index once (map by
+rendered target plain text — there is no target-text index) and decoded
+tokens to plain text in JS. That was O(n) per segment, run fresh on
+every `runQaRules` call; acceptable at v1's single-translator project
+scale, same "wholesale, not diffed" simplicity `replaceQaIssues` already
+established. The plan, if a project-wide QA sweep over many thousand
+segments made it the bottleneck, was to build the index once (map by
 `source_hash` and by target text) and reuse it across all segments in
-that sweep, rather than adding a project-scoped registry.
+that sweep, rather than adding a project-scoped registry. #29 built it,
+and a single save needed it first: rerunning QA over a segment's 500
+repetitions took 7 s. `readTranslated` reads the project once per pass,
+`runQaRulesFor` checks any set of segments against it (the editor's
+rerun and `cat-tool qa`'s sweep alike), and `runQaRules` is that call
+for one segment.
 
 **`seg.empty` does not use `SEGMENT_STATUSES`' array order as "≥
 translated"**, despite the table's wording. `locked` sorts after
@@ -1819,9 +1824,13 @@ Smaller things settled:
   was. An exclude that matches nothing looks exactly like one that
   works; `vitest list` with the script's flags is how to check one.
 - **The 11 MB segments payload is a known cost, not fixed here.** 35 %
-  of it is each segment's format table, raw XML the grid only needs
+  of it is each segment's format table, raw XML the grid then read only
   `kind` and `visible` from. Worth a slimmer projection when a real
-  file makes it matter; #29 needs the table's shape first.
+  file makes it matter. #29 has since settled what the SPA reads, and
+  it is more: chip titles, full tags and look-alike pairs are all
+  `describeFormat` (`web/tag-label.ts`) over each entry's `placement`
+  and `open`, so a slimmer projection has to carry that description,
+  not drop it.
 
 Not here: the editable target and tag insertion (#29), keyboard (#30),
 autosave (#31), serving the built SPA from the server (#36's container),
@@ -2346,8 +2355,9 @@ forward once implementation starts:
 
 Broken into sized issues 2026-09-23, split the same way Epic 8a was so
 the headless part doesn't wait on Epic 6's editor UI — none of backlog
-`#28`–`#35` has shipped yet, so there is no authenticated UI shell for
-any of this to render into until those land:
+`#28`–`#35` had shipped then. The SPA's login and grid (#28) and its
+target editor (#29) have since; the screens below still wait on the
+rest of that range:
 
 - **#45 · Account role + `project_authorization` model · M** ·
   [issue #17] — foundational, everything else depends on it; also where
@@ -2570,7 +2580,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #2]: https://github.com/louisbaudry/tessera/issues/2
 [issue #3]: https://github.com/louisbaudry/tessera/issues/3
 [issue #4]: https://github.com/louisbaudry/tessera/issues/4
-[issue #11]: https://github.com/louisbaudry/tessera/issues/11
 [issue #6]: https://github.com/louisbaudry/tessera/issues/6
 [issue #7]: https://github.com/louisbaudry/tessera/issues/7
 [issue #8]: https://github.com/louisbaudry/tessera/issues/8

@@ -88,8 +88,12 @@ It also serves §5: the translator receives **only the matches for their
 job, never the client's memory**. Minimisation falls out of the
 performance design rather than being bolted on.
 
-**When:** decide before Epic 6 (#28–#35) is built. It shapes the
-editor's data flow, and retrofitting it after is a rewrite.
+**When:** decide before the rest of Epic 6 (#30–#35) is built. It
+shapes the editor's data flow, and retrofitting it after is a rewrite.
+#28's grid and #29's editor were built without it: tag rules already
+run in the browser (`@cat-tool/core/model`), but every save is a `PUT`
+per segment the editor leaves, with QA rerun on the server inside that
+write (`v1-spec.md` §7.2).
 
 ---
 

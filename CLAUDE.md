@@ -56,10 +56,10 @@ the check happens before the push, not after.
    `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
    `pnpm test`, `pnpm test:gate` if anything under
    `packages/core/src/docx` changed, and `pnpm test:golden` if anything
-   under `packages/cli`, `core/qa`, `core/project`, `core/tm`,
-   `db/project`, `db/tm` or `fixtures/golden` changed (its transcript
-   is what those deliver, so a change there is a diff to read, not a
-   red run to regenerate away). Rewrite the backlog entry as
+   under `packages/cli`, `core/model`, `core/qa`, `core/project`,
+   `core/tm`, `db/project`, `db/tm` or `fixtures/golden` changed (its
+   transcript is what those deliver, so a change there is a diff to
+   read, not a red run to regenerate away). Rewrite the backlog entry as
    _record_ in the same change — strike the title through, say where the
    code lives, keep what it taught (a bug caught, a design choice made),
    and drop the issue link. Its **status** is the issue's job, never the
@@ -125,12 +125,19 @@ the check happens before the push, not after.
   (backlog #29). A client sends what the translator placed, nothing
   more. `renderTokens` renders any structurally valid stream to valid
   OOXML (a run tag nested in one: innermost wins), so no writer shapes
-  nesting for the renderer either. Before #29, pre-translate's
+  nesting for the renderer either. What it refuses is a tag in a role
+  its format doesn't fit and text XML cannot carry (`xmlIllegalChar`),
+  which is why `placeMatch` makes a match's text legal first
+  (`xmlLegalText`). Before #29, pre-translate's
   tag-diff fallback stored text with no hidden tags at all, and exports
   lost fonts, bookmarks and drawings, flagged only as a `tag.missing`
-  naming tags nobody could see. A memory holds no hidden tags either
-  (`toTmTokens`): where the carrying rule put them is not a position
-  worth learning, and a remap by order once took it for one.
+  naming tags nobody could see. A memory this tool writes holds no
+  hidden tags either (`toTmTokens`): where the carrying rule put them
+  is not a position worth learning, and a remap by order once took it
+  for one. A unit that does hold them, written before #29 or by another
+  tool, is matched against all of the source's tags when the visible
+  ones do not correspond, and keeps only the visible ones it placed
+  (`remapTmTokens`).
 - **A column with a frozen contract never receives a value computed some
   other way — carry the foreign value as provenance instead.**
   `prev_hash`/`next_hash` mean "SHA-256 of the normalised neighbouring
@@ -298,6 +305,10 @@ Backlog #22 (`v1-spec.md` §6.4) is another instance of the core/db split
 above, not a new pattern: `core/qa/rules.ts` holds pure `QaCheck`s (tokens
 in, `QaFinding[]` out, no DB); `db/project/qa-issues.ts`'s `runQaRules`
 is the orchestration (load the segment, run the registry, persist);
+`runQaRulesFor` is the same for many segments, reading the project
+once, not once per segment (that cost seconds for one save of a
+much-repeated segment, backlog #29), and `rerunQaAfterEdit` reruns an
+edit and every segment whose `consistency.*` findings it can move;
 `db/project/qa-settings.ts` is the per-project switches. All thirteen
 §6.4 rules are in the one `QA_CHECKS` registry (backlog #22 the tag
 rules, #23 `seg.*`/`consistency.*`, #24 `num.*`/`punct.*`); a new rule
@@ -429,8 +440,9 @@ or state library until a screen needs one. Three things to keep true:
   union, so a new value in `core` fails this typecheck.
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
-  `gutter.ts` and `layout.ts` are pure and tested there. A component
-  holds rendering and nothing that needs a DOM to prove.
+  `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
+  `tag-label.ts` and `save-queue.ts` are pure and tested there. A
+  component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
   read every DOCX blob), found through the browser's resource timing.
