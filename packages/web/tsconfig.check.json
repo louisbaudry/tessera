@@ -1,0 +1,11 @@
+// Typecheck config. Unlike tsconfig.json (which drives the build), this
+// includes test files and the Vite config — vitest only transpiles, so
+// without this a type error in a test would go unnoticed.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+  "exclude": []
+}

@@ -13,7 +13,9 @@ import { createHash } from 'node:crypto';
 
 import { hashPassword, type AuditActor, type Token } from '@cat-tool/core';
 import {
+  addQaIssue,
   createAccount,
+  dismissQaIssue,
   listEvents,
   openPlatformDb,
   openProjectDb,
@@ -396,6 +398,59 @@ async function firstSegment(token: string, fileId: number) {
   ).segments;
   return segments.find((s) => !s.locked)!;
 }
+
+describe('QA issues for the grid', () => {
+  it("serves one file's issues, dismissed ones included, and 404s an unknown file", async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const segment = await firstSegment(token, fileId);
+
+    const db = openProjectDb(projectFile(alice, 'job'));
+    const kept = addQaIssue(db, {
+      segmentId: segment.id,
+      rule: 'seg.empty',
+      severity: 'error',
+      message: 'empty',
+    });
+    const dismissed = addQaIssue(db, {
+      segmentId: segment.id,
+      rule: 'seg.untranslated',
+      severity: 'warning',
+      message: 'untranslated',
+    });
+    dismissQaIssue(db, dismissed.id);
+    db.close();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/projects/job/files/${fileId}/qa-issues`,
+      headers: auth(token),
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toEqual({ issues: [kept, { ...dismissed, dismissed: true }] });
+
+    for (const bad of ['99', 'x']) {
+      const missing = await app.inject({
+        method: 'GET',
+        url: `/api/projects/job/files/${bad}/qa-issues`,
+        headers: auth(token),
+      });
+      expect(missing.statusCode).toBe(404);
+    }
+  });
+
+  it("is another account's 404, not its data", async () => {
+    const aliceToken = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(aliceToken);
+    const bobToken = await login('bob@example.com', 'bob-pw');
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/projects/job/files/${fileId}/qa-issues`,
+      headers: auth(bobToken),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
 
 describe('the audit trail (audit-spec.md §2.5)', () => {
   it('records a login as the account itself, exactly once', async () => {

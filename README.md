@@ -37,7 +37,7 @@ packages/
   db/          @cat-tool/db     versioned SQLite migration runner; project, platform, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export and .sdltm import
   cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export, history, audit-verify (v1-spec.md §2.4)
   server/      @cat-tool/server Fastify API — login, accounts, projects, file import (v1-spec.md §2.5)
-  web/         @cat-tool/web    React SPA                            (not started)
+  web/         @cat-tool/web    React SPA — login, project/file picker, the virtualised segment grid (v1-spec.md §7.1); `pnpm --filter @cat-tool/web dev` against a running server
   portal-core/ @cat-tool/portal-core   pure TS — pricing, order lifecycle, notification/production-adapter interfaces for the client-facing translation portal (planning/portal-v0-spec.md)
   portal-server/ @cat-tool/portal-server Fastify API + minimal static UI for the translation portal (client intake/approval, admin order management, SMTP email notifications)
 planning/      specs and backlog

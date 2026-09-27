@@ -288,6 +288,7 @@ browser never touches SQLite.
 | `GET /api/projects/:name` | identity plus files (`id`, `relPath`, `importedAt`, `segmentCount`) |
 | `POST /api/projects/:name/files` (multipart: one DOCX, optional `relPath` field) | `assembleFile` + `insertFile`, exactly `add-file` (§2.4); 409 on a duplicate `rel_path`, 422 on a source language `rulesFor` refuses |
 | `GET /api/projects/:name/files/:id/segments` | the file's `Segment[]` as stored |
+| `GET /api/projects/:name/files/:id/qa-issues` | every `QaIssue` on the file's segments, dismissed ones included — the grid's QA gutter (backlog #28), and #33's panel |
 | `DELETE /api/projects/:name` | deletes the `.catdb` (and its log with it); 204 — backlog #57 |
 | `GET /api/projects/:name/files/:id/export` | the delivered DOCX, `exportFile`, exactly `export` (§2.4) — backlog #57 |
 | `PUT /api/projects/:name/segments/:id` `{targetTokens, status, origin}` | `setSegmentTarget`; tokens shape-checked (`parseTokens`) against the segment's format table; `confirmed`/`locked` refused (their own acts); 409 on a locked segment — backlog #57 |
@@ -551,6 +552,13 @@ Beyond the tables above: `glossary_ref` (v2), `qa_rule_setting` (v3),
 append-only, hash-chained history of every change, specified in
 `audit-spec.md` §2 and written by the same repository call as the
 change it records (backlog #56).
+
+v6 adds no table: `qa_issue_segment`, an index on `qa_issue(segment_id)`
+(backlog #28). Every read of a segment's issues — the rerun on each
+confirm, the grid's file-wide list — was a scan of the whole table
+without it; the file-wide one, a nested loop over the file's segments,
+took 0.9 s at 10,800 segments and 2,176 issues, where the index makes it
+a lookup per segment.
 
 Multiple TMs with `priority` is what "projects, multiple TMs" buys: on a
 tie between two exact hits, lowest `priority` wins. Exactly one TM may be
@@ -902,6 +910,66 @@ behaviours v1 cannot ship without:
 
 Autosave on every keystroke, debounced. There is no "save" action; a crash
 must never cost more than a few seconds.
+
+### 7.1 The segment grid (`@cat-tool/web`, backlog #28)
+
+The first screen of the SPA and the reason it exists: two columns, a
+gutter, and nothing re-rendered that is not on screen. Decisions, so
+they are not re-derived:
+
+- **A Vite + React SPA, `packages/web`, talking only to `/api/`.** No
+  router library, no state library, no component kit: three screens
+  (login, project/file picker, grid) are a hash (`#/p/<name>/f/<id>`)
+  and a `useState`. Each earns its dependency when a screen needs it.
+  In development Vite proxies `/api` to the server on `:3400`; serving
+  the built SPA from the server process is #36's, where the container
+  image is.
+- **`@cat-tool/web` imports `core` for types only.** `core`'s index
+  pulls in `node:crypto` (credentials), the DOCX filter and the
+  segmenter; none of it belongs in a browser bundle, and a runtime
+  import would drag it there. What the grid needs at runtime — a
+  status's label, an origin's abbreviation — is a `Record` keyed by
+  `core`'s union types, so a status added in `core` fails the web
+  typecheck instead of rendering blank.
+- **The login and picker are the least that reaches the grid.** Project
+  creation, uploads and TM attachment are #32's; the picker lists and
+  opens, nothing else. The bearer token lives in `localStorage` — the
+  server's session is 30 days, and a token that dies with the tab
+  would make that a lie; a 401 from any call clears it and returns to
+  login.
+- **Virtualised with measured, variable row heights**
+  (`@tanstack/react-virtual`). A segment is one line or twelve; a fixed
+  row height either clips a long sentence or wastes most of the screen
+  on short ones. Rows are estimated from their text length, measured
+  once rendered, and only the visible window plus an overscan is in the
+  DOM — at 10k segments that is a few dozen rows, not ten thousand.
+  The fixture corpus is 2,706 segments across 21 files; 10k is the
+  card's bar, and the smoke run measures it against a synthetic file.
+- **The gutter is three facts, each from one field.** Status from
+  `segment.status` (and `locked`); origin from `segment.origin`, known
+  values abbreviated (`tm_exact` → `TM`, `tm_exact_tagdiff` → `TM≠`,
+  `propagated` → `⇣`), an unknown one shown verbatim rather than hidden
+  — origin is a widened string (§4.3) and a future `tm_fuzzy_85` must
+  not render as nothing; QA from the worst *undismissed* severity among
+  the segment's issues, with the count. A dismissed issue does not
+  colour the gutter — that is what dismissing is for — but is still
+  loaded, because #33's panel lists it.
+- **Listing a file never reads its blob.** The project route and every
+  file-id check use `listFileSummaries`/`getFileSummary` (id, path,
+  import time, segment count); `listFiles`/`getFile` decode the
+  original DOCX and skeleton and are export's. Measured on the smoke
+  run: 749 ms to list a 23-file project before, under 0.1 s after.
+- **QA arrives by its own route, not folded into `/segments`.** The
+  segments route is `listSegments` as stored; the QA route is one
+  `db` call (`listFileQaIssues`), which #33's panel needs anyway. The
+  grid fetches both and joins by `segmentId` in the browser.
+- **Tags render as read-only chips, numbered by their tag id; invisible
+  ones are not rendered** (`FormatEntry.visible`, §3.3). A paired tag is
+  two chips, `‹1` and `1›`; a placeholder is one, `⟨2⟩`, titled with its
+  `kind`. Editing them — atomic chips in an editable target, insert-next-
+  tag — is #29; the grid only shows them, and a missing target shows
+  empty, never the source.
+
 
 ---
 

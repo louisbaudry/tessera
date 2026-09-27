@@ -1,0 +1,344 @@
+/*
+ * Colours are tokens so the visual pass (backlog #35) can add a dark
+ * theme by redefining them, not by touching a rule.
+ */
+:root {
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --row-alt: #f7f7f5;
+  --accent: #2f5fd0;
+  --chip-bg: #e8eefc;
+  --chip-text: #2f4f9e;
+  --status-draft: #b7791f;
+  --status-translated: #2f5fd0;
+  --status-confirmed: #2f855a;
+  --status-locked: #6b7280;
+  --qa-error: #c53030;
+  --qa-warning: #b7791f;
+  --qa-info: #6b7280;
+  --gutter-width: 9.5rem;
+
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--qa-error);
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0;
+}
+
+/* --- login -------------------------------------------------------- */
+
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.login form {
+  display: grid;
+  gap: 0.9rem;
+  width: min(22rem, 100%);
+  padding: 2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.login h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+}
+
+.login label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.login input {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+
+/* --- shell -------------------------------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.brand {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.crumbs {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+.list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 48rem;
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.list h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+/* --- the grid ----------------------------------------------------- */
+
+.grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.grid-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.grid-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* The scrollbar's width must not shift the columns under the header. */
+  scrollbar-gutter: stable;
+}
+
+.grid-body {
+  position: relative;
+  width: 100%;
+}
+
+.row-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--gutter-width) minmax(0, 1fr) minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+
+/* By segment index, not DOM position: the virtual window's first row
+   changes parity as it scrolls, and :nth-child stripes would flicker. */
+.row-slot.odd .row {
+  background: var(--row-alt);
+}
+
+.row.head {
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--surface);
+  scrollbar-gutter: stable;
+  overflow-y: hidden;
+}
+
+.cell {
+  padding: 8px 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.cell.source {
+  border-right: 1px solid var(--border);
+}
+
+.gutter {
+  display: grid;
+  grid-template-columns: 3.5rem 1.5rem 2.25rem 1.5rem;
+  align-items: start;
+  padding: 8px 0.25rem 8px 0.5rem;
+  border-right: 1px solid var(--border);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.row.head .gutter {
+  display: block;
+}
+
+.gutter .ord {
+  text-align: right;
+  padding-right: 0.5rem;
+}
+
+.gutter .status,
+.gutter .origin,
+.gutter .qa {
+  text-align: center;
+  font-weight: 600;
+}
+
+.status-draft .status {
+  color: var(--status-draft);
+}
+
+.status-translated .status {
+  color: var(--status-translated);
+}
+
+.status-confirmed .status {
+  color: var(--status-confirmed);
+}
+
+.status-locked .status {
+  color: var(--status-locked);
+}
+
+.status-locked .cell {
+  color: var(--muted);
+}
+
+.gutter .origin {
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gutter .qa-error,
+.gutter .qa-warning,
+.gutter .qa-info {
+  justify-self: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 1px;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  line-height: 1.25rem;
+  color: #fff;
+}
+
+.gutter .qa-error {
+  background: var(--qa-error);
+}
+
+.gutter .qa-warning {
+  background: var(--qa-warning);
+}
+
+.gutter .qa-info {
+  background: var(--qa-info);
+}
+
+.chip {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 18px;
+  vertical-align: 1px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  white-space: nowrap;
+  user-select: none;
+}

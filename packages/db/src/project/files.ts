@@ -120,3 +120,48 @@ export function listFiles(db: Database.Database): ProjectFile[] {
   const rows = db.prepare('SELECT * FROM file ORDER BY id').all() as FileRow[];
   return rows.map(fromRow);
 }
+
+/**
+ * What a listing needs of a file: never its original bytes, skeleton or
+ * part map. `listFiles` decodes all three for every file, which is right
+ * for export and wrong for a screen — a 23-file project read 48 MB of
+ * blobs to print 23 names (backlog #28).
+ */
+export interface FileSummary {
+  readonly id: number;
+  readonly relPath: string;
+  readonly importedAt: string;
+  readonly segmentCount: number;
+}
+
+interface FileSummaryRow {
+  id: number;
+  rel_path: string;
+  imported_at: string;
+  segment_count: number;
+}
+
+const SUMMARY_SQL = `
+  SELECT f.id, f.rel_path, f.imported_at,
+         (SELECT COUNT(*) FROM segment s WHERE s.file_id = f.id) AS segment_count
+    FROM file f`;
+
+const summaryFromRow = (row: FileSummaryRow): FileSummary => ({
+  id: row.id,
+  relPath: row.rel_path,
+  importedAt: row.imported_at,
+  segmentCount: row.segment_count,
+});
+
+/** Every file's summary, in import order. */
+export function listFileSummaries(db: Database.Database): FileSummary[] {
+  const rows = db.prepare(`${SUMMARY_SQL} ORDER BY f.id`).all() as FileSummaryRow[];
+  return rows.map(summaryFromRow);
+}
+
+/** One file's summary, or null — an existence check that reads no blob. */
+export function getFileSummary(db: Database.Database, id: number): FileSummary | null {
+  const row = db.prepare(`${SUMMARY_SQL} WHERE f.id = ?`).get(id) as
+    FileSummaryRow | undefined;
+  return row ? summaryFromRow(row) : null;
+}

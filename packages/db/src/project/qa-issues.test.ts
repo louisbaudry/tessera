@@ -14,6 +14,7 @@ import { createProject } from './project.js';
 import {
   addQaIssue,
   dismissQaIssue,
+  listFileQaIssues,
   listQaIssues,
   replaceQaIssues,
   runQaRules,
@@ -22,6 +23,7 @@ import { setRuleEnabled } from './qa-settings.js';
 import { addUntranslatedAllowlistEntry } from './qa-untranslated-allowlist.js';
 import { getSegment, listSegments, setSegmentTarget } from './segments.js';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
+import { capturePlans, scansOf } from '../query-plan.fixture.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -74,6 +76,54 @@ describe('addQaIssue / listQaIssues / dismissQaIssue', () => {
       message: 'untranslated',
     });
     expect(listQaIssues(db)).toHaveLength(2);
+    db.close();
+  });
+
+  it("lists one file's issues in document order, dismissed ones included", () => {
+    const { db, segmentId } = openWithSegment();
+    const other = insertFile(
+      db,
+      'b.docx',
+      assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
+    );
+    const [first, second] = listSegments(db, 1);
+    const [elsewhere] = listSegments(db, other.id);
+    const late = addQaIssue(db, {
+      segmentId: second!.id,
+      rule: 'seg.empty',
+      severity: 'error',
+      message: 'empty',
+    });
+    const early = addQaIssue(db, {
+      segmentId,
+      rule: 'seg.untranslated',
+      severity: 'warning',
+      message: 'untranslated',
+    });
+    addQaIssue(db, {
+      segmentId: elsewhere!.id,
+      rule: 'seg.empty',
+      severity: 'error',
+      message: 'empty',
+    });
+    dismissQaIssue(db, early.id);
+
+    expect(first!.id).toBe(segmentId);
+    expect(listFileQaIssues(db, 1)).toEqual([{ ...early, dismissed: true }, late]);
+    expect(listFileQaIssues(db, 999)).toEqual([]);
+    db.close();
+  });
+
+  it('reads issues by index, never by scanning qa_issue (backlog #28)', () => {
+    const { db, segmentId } = openWithSegment();
+    addQaIssue(db, { segmentId, rule: 'seg.empty', severity: 'error', message: 'empty' });
+    const plans = capturePlans(db, () => {
+      listFileQaIssues(db, 1);
+      listQaIssues(db, segmentId);
+    });
+    expect(plans).toHaveLength(2);
+    expect(scansOf(plans, ['q', 'qa_issue'])).toEqual([]);
     db.close();
   });
 
