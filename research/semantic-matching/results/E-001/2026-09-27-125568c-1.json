@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-27-125568c-1",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-27T04:06:00.871Z",
+  "finished_at": "2026-09-27T04:36:07.184Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "125568c9e33707949baed566469b1f556d867010",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "synthetic-5M",
+    "sha256": "de15fcf7e3f130ebd414a4fbc2d6f995c81f0be9f797bb03374bc0ae64db9688",
+    "units": 5000000,
+    "langs": [
+      "en-US",
+      "fr-FR"
+    ],
+    "para_eligible": 0
+  },
+  "model": null,
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "exact",
+    "hnsw": null,
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": null
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "latency_ms.lex.fts50": {
+      "n": 200,
+      "p50": 150.423021,
+      "p99": 477.435352,
+      "max": 495.189326
+    },
+    "latency_ms.lex.ftsK_m10": {
+      "n": 200,
+      "p50": 148.448993,
+      "p99": 479.009657,
+      "max": 529.976635
+    },
+    "latency_ms.lex.ftsK_m25": {
+      "n": 200,
+      "p50": 145.38356,
+      "p99": 440.556939,
+      "max": 516.378409
+    },
+    "latency_ms.lex.ftsK_m50": {
+      "n": 200,
+      "p50": 147.655699,
+      "p99": 444.96005,
+      "max": 501.72784
+    },
+    "latency_ms.lex.naive": {
+      "n": 200,
+      "p50": 769.149162,
+      "p99": 1338.272848,
+      "max": 1378.337526
+    },
+    "queries.lex.n": 200,
+    "queries.lex.sha256": "fc4ef4aac6e8250fbe8bca41e2330dc33b7ea01ecd6b0af2677d24108aa4cd0e",
+    "recall.lex.fts50": 0.855,
+    "recall.lex.ftsK_m10": 0.855,
+    "recall.lex.ftsK_m25": 0.865,
+    "recall.lex.ftsK_m50": 0.865
+  },
+  "notes": ""
+}
