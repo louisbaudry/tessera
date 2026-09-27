@@ -54,8 +54,8 @@ What the product records today is uneven:
 (That table is the state this spec started from. Since `#56`–`#58`,
 every row it marks "no" has an actor and schema-enforced append-only
 history. `project.catdb` is covered by §2.4, `platform.sqlite` by §2.5,
-and `portal.sqlite` by §2.6. `tuv_history` is the one exception left,
-§8.3.)
+and `portal.sqlite` by §2.6. The exceptions left are `tuv_history`
+(§8.3) and the portal's word count and price (§8.4).)
 
 `term_decision` is the model to copy (`smart-glossary-spec.md` §3.4): a log
 enforced by the schema, current state derived from or consistent with it.
@@ -157,6 +157,12 @@ BEGIN SELECT RAISE(ABORT, 'audit_event is append-only'); END;
 list, the way `qa_issue.rule` is generated from `QA_RULES` — adding an
 action is a migration that widens the CHECK, deliberately: an action
 nobody declared is a write path nobody reviewed.
+
+Caveat (2026-09-27): each migration builds that CHECK from the live
+list, so a later member changes what an old migration creates on a
+fresh file while every existing file still rejects it. Backlog `#64`
+freezes the lists and adds the table-rebuild helper that the first
+widening needs (`#63`'s `order.priced`).
 
 ### 2.1 Actor
 
@@ -556,3 +562,8 @@ work, gated behind Epic 6 like every other screen.
    thing, but `.ctm` is a frozen, specified format (`tm-format-spec.md`)
    and triggers are part of the file; it needs a `user_version` bump and
    its own spec change, not a rider on this one.
+4. **Pricing in `portal.sqlite`.** A gap found on 2026-09-27, not a
+   choice made with `#58`. Setting an order's word count and price
+   writes no event, so the price a client approves is unrecorded.
+   Backlog `#63` adds `order.priced` (subject `translation_order`,
+   actor `admin:<id>`), after `#64`.

@@ -683,6 +683,20 @@ translatable ones, all-locked) and against real `Segment[]` shapes via
 context not captured at write time cannot be recovered — so whichever
 of #19/#20 lands first calls this rather than reinventing it.
 
+**#64 · Migrations never read live lists — freeze CHECK lists, rebuild
+helper, guard · M** · [issue #66]
+Every generated `CHECK (x IN (...))` in a migration reads a live
+constant (`QA_RULES`, `SEGMENT_STATUSES`, `DECISION_KINDS`,
+`ORDER_STATUSES`, the audit-action lists). A file keeps the list its
+migration ran with; a fresh file gets today's; so a new member is
+rejected by every existing file, and nothing flags it. Simulated on a
+project file whose QA CHECKs hold only the tag rules: `seg.empty` fails
+the CHECK. Whether that has already happened can't be settled from the
+public history. Freeze the lists as literals, add a rename-first
+table-rebuild helper (it also handles `audit_event`'s self-reference),
+widen the QA tables defensively, and guard with a test plus a lint rule.
+Before `#63` and `#44`.
+
 ---
 
 ## Epic 4 — TM and QA
@@ -2169,7 +2183,7 @@ wait for the ring's own design pass, and Ring 0 finishes first. (Epics
 commercial loss rather than a planned sequence, and the card is where
 that stays visible.)
 
-### Epic 10a — Translation Portal v0 (pulled forward, done 2026-09-11)
+### Epic 10a — Translation Portal v0 (pulled forward, v0 done 2026-09-11)
 
 Not part of the Ring 0/0.5/1/2/3 sequence above — a business need (a
 client-facing intake/delivery surface for Optime Services, one pilot
@@ -2189,7 +2203,8 @@ admin uploads final files and marks delivered -> both notifications fire
 (console-logged in v0).
 
 What's manual in v0: actual translation production, word count for every
-file type except `.txt` (admin enters it by hand), notification delivery
+file type (admin enters it by hand; `portal-core`'s `.txt` estimator is
+not called by the server, see `#62`), notification delivery
 (console log, not real email). `ProductionAdapter` is a named seam
 (`ManualProductionAdapter` today) for the CAT tool to plug into later
 without touching the order model, pricing, or status machine — see
@@ -2255,6 +2270,16 @@ Two things this fixed on the way, both worth remembering:
 Still manual: the word count (the `.txt` auto-count `portal-core` ships
 is not yet called by the server), and a client-side cancel.
 
+Sized issues:
+
+- **#62 · Portal word count through core (advisory) · L** · [issue #61] —
+  computed at submit through `core`, stored per file, pre-filled for the
+  admin to confirm; the client still sees "pending" until then (owner
+  decision, 2026-09-27: §4's principle kept, its "not core" rationale
+  reversed). Spec first: `portal-v0-spec.md` §4, §6, §8, and one
+  definition of a word in `v1-spec.md`, which `#34` and `#49` will read
+  too.
+
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)
 
 Design in `planning/smart-glossary-spec.md`. A term the AI draft renders
@@ -2310,7 +2335,8 @@ Split so the headless part does not wait on the editor:
 - **#43 · Glossary panel · M** · [issue #14] — after #28–#35.
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
-  a CHECK constraint.
+  a CHECK constraint. After `#64`, whose rebuild helper that migration
+  needs.
 
 ### Epic 9 — Language Provider tools (spec'd 2026-09-22, not started)
 
@@ -2387,7 +2413,7 @@ rest of that range:
 - **#54 · Capacity status toggle UI · S** · [issue #33] — after
   `#28`–`#35`.
 
-### Cross-cutting — Auditability (spec'd 2026-09-23, done 2026-09-24)
+### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the
 epics that need it, for the reason the `.ctm` context columns were: history
@@ -2518,6 +2544,12 @@ Sized issues:
   - A client's view of an order's history drops `actorLabel`: it shows
     who acted (`admin:1`), never an admin's email.
 
+- **#63 · Portal: audit the word count and price (`order.priced`) · M** ·
+  [issue #62] — the price a client approves leaves no trace today, and
+  nothing on the server stops an unpriced order being approved. Widens
+  portal's `audit_event` with `#64`'s rebuild helper, so it lands after
+  `#64`.
+
 Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration
 (spec §8.2).
@@ -2595,4 +2627,19 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
-[issue #36]: https://github.com/louisbaudry/tessera/issues/36
+[issue #61]: https://github.com/louisbaudry/tessera/issues/61
+[issue #62]: https://github.com/louisbaudry/tessera/issues/62
+[issue #66]: https://github.com/louisbaudry/tessera/issues/66
+[issue #17]: https://github.com/louisbaudry/tessera/issues/17
+[issue #18]: https://github.com/louisbaudry/tessera/issues/18
+[issue #19]: https://github.com/louisbaudry/tessera/issues/19
+[issue #27]: https://github.com/louisbaudry/tessera/issues/27
+[issue #28]: https://github.com/louisbaudry/tessera/issues/28
+[issue #29]: https://github.com/louisbaudry/tessera/issues/29
+[issue #30]: https://github.com/louisbaudry/tessera/issues/30
+[issue #31]: https://github.com/louisbaudry/tessera/issues/31
+[issue #32]: https://github.com/louisbaudry/tessera/issues/32
+[issue #33]: https://github.com/louisbaudry/tessera/issues/33
+[issue #50]: https://github.com/louisbaudry/tessera/issues/50
+[issue #51]: https://github.com/louisbaudry/tessera/issues/51
+[issue #52]: https://github.com/louisbaudry/tessera/issues/52
