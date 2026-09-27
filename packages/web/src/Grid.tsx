@@ -25,7 +25,7 @@ import {
 import { estimateRowHeight } from './layout.js';
 import { toPieces } from './pieces.js';
 import { loadFullTags, saveFullTags } from './prefs.js';
-import { createSaveQueue } from './save-queue.js';
+import { createPageHide, createSaveQueue } from './save-queue.js';
 import { useSession } from './session-context.js';
 import { pairGroups } from './tags.js';
 import { TargetEditor, type CommitOptions } from './TargetEditor.js';
@@ -161,6 +161,15 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     });
   });
 
+  // One `pagehide` listener, so the open editor's write goes before the
+  // ones still waiting (`createPageHide`), each a `keepalive` request.
+  const [pageHide] = useState(() => createPageHide(queue));
+  useEffect(() => {
+    const onPageHide = () => pageHide.onPageHide();
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [pageHide]);
+
   const activate = useCallback((id: number, at?: { x: number; y: number }) => {
     setClickAt(at);
     setActiveId(id);
@@ -244,6 +253,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
               >
                 <SegmentRow
                   segment={segment}
+                  project={project}
                   position={item.index + 1}
                   mark={marks.get(segment.id)}
                   active={segment.id === activeId}
@@ -254,6 +264,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
                   onActivate={activate}
                   onCommit={commit}
                   onLeave={leave}
+                  registerPageHide={pageHide.register}
                 />
               </div>
             );
@@ -267,6 +278,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
 /** Memoised: scrolling re-renders the slots, not every row's chips. */
 const SegmentRow = memo(function SegmentRow({
   segment,
+  project,
   position,
   mark,
   active,
@@ -277,8 +289,10 @@ const SegmentRow = memo(function SegmentRow({
   onActivate,
   onCommit,
   onLeave,
+  registerPageHide,
 }: {
   segment: Segment;
+  project: string;
   position: number;
   mark: QaMark | undefined;
   active: boolean;
@@ -290,6 +304,7 @@ const SegmentRow = memo(function SegmentRow({
   onActivate: (segmentId: number, at: { x: number; y: number }) => void;
   onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
   onLeave: () => void;
+  registerPageHide: (leaveNow: () => void) => () => void;
 }) {
   const groups = useMemo(
     () => pairGroups(segment.sourceTokens, segment.formatTable),
@@ -344,11 +359,13 @@ const SegmentRow = memo(function SegmentRow({
         {active ? (
           <TargetEditor
             segment={segment}
+            project={project}
             tgtLang={tgtLang}
             clickAt={clickAt}
             failed={unsaved}
             onCommit={onCommit}
             onLeave={onLeave}
+            registerPageHide={registerPageHide}
           />
         ) : (
           segment.targetTokens && (

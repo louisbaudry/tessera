@@ -606,7 +606,12 @@ pattern.
   a key sent the instant after a selection move.** A Playwright script
   that selects with Shift+Arrow and immediately presses a command key
   acts on the old selection and looks flaky; pause ~60 ms after moving
-  the selection, as a person does (backlog #29's smoke run).
+  the selection, as a person does (backlog #29's smoke run). Worse, for
+  200 ms after the editor takes focus ProseMirror undoes a caret moved
+  to the document's start, taking it for the browser resetting the
+  selection (`prosemirror-view`'s `DOMObserver.flush`): a script that
+  opens an editor and presses Ctrl+Home at once types everything after
+  it in the wrong place. Wait 250 ms after an editor opens.
 
 ## Fixture corpus
 

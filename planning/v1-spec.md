@@ -1095,7 +1095,9 @@ route only parsing around it (the CLI rule, §2.4):
   replaces any write still waiting. What that risks is overwriting
   another tab's write that landed just before the one in flight; what
   it saves is the last edit, which a refusal on a closing page would
-  lose with nobody to see it.
+  lose with nobody to see it. The other segments' writes still waiting
+  behind one in flight go then too (`SaveQueue.flush`), after the open
+  editor's, rather than be lost with the page.
 - *A structure export would refuse is refused now* (400), not at
   delivery, where one bad segment would fail the whole file.
 - *QA reruns in the same transaction* (`rerunQaAfterEdit`) for the
@@ -1114,7 +1116,9 @@ route only parsing around it (the CLI rule, §2.4):
 
 **When it saves.** When the editor leaves the segment — blur, Esc, the
 row unmounting, and `pagehide` (a `keepalive` request, which unlike a
-beacon carries the bearer header) — and only if the document changed
+beacon carries the bearer header; the grid holds the one listener, so
+the open editor's write goes before the waiting ones,
+`createPageHide`) — and only if the document changed
 (ProseMirror document equality, so a split text node is not an edit)
 — or if the segment's last write failed, changed or not, so leaving
 the row again is the retry. Signing out blurs the editor and waits for
@@ -1144,15 +1148,18 @@ bold around italic would export as italic alone, silently. Paste from
 elsewhere is one line of plain text (breaks and tabs become spaces;
 what XML cannot carry, `xmlLegalText`, and DEL are dropped). Paste of
 this segment's own copy keeps its chips, so a cut and paste moves a
-tag — the EN→ES adjective-after-noun gesture: only this segment's
-tags, rebuilt from its own format table; only those not still placed
-once the selection is replaced; only whole pairs, and only where they
-nest as a source's do (bold pasted into italic, or a link into a link,
-arrives as its words). A copy names its segment
-(`<span data-segment-copy>`, which also makes ProseMirror mark every
-copy as its own, even one that starts with a word), and a copy from
-another segment's editor is plain text: tag ids are per segment, and
-the same number can be a different tag. Drop is refused.
+tag — the EN→ES adjective-after-noun gesture (`pasteOwn`, one undo step): the
+selection goes first, and with it any pair it took one chip of, as the
+integrity rule would take it; then of the copy's chips, only this
+segment's tags, rebuilt from its own format table; only those not
+still placed; only whole pairs, and only where they nest as a source's
+do (bold pasted into italic, or a link into a link, arrives as its
+words). A copy names its project and segment
+(`<span data-segment-copy="project/id">`, which also makes ProseMirror
+mark every copy as its own, even one that starts with a word), and any
+other copy is plain text — another segment's, or segment 12 of another
+project: tag ids are per segment, and the same number can be a
+different tag. Drop is refused.
 
 **Placing tags.** The palette is the source's visible tags in source
 order. `Ctrl+,` places the first unplaced one — with text selected, the
@@ -1180,6 +1187,10 @@ also hold a group's pairs apart (a TM match places each by its own
 id): then a member the first pair's chip does not carry is a tag of its
 own in the bar and the tag list, placed or to place, and moving the
 first pair never places a member twice (`tagChoices`, `expandGroups`).
+A first pair carrying only some members is saved with exactly those
+following it empty, and loads carrying exactly those
+(`collapseGroups`), so what the bar showed survives a reload and the
+next save; the grid's read-only rows show the same form.
 
 **Full tags** (a grid-wide toggle, remembered per browser): each chip
 says what it stands for — `‹1 bold italic`, `link #_Ref4`, `⟨2 footnote⟩`,
@@ -1197,15 +1208,16 @@ server. `model/` importing nothing but its own `./` siblings — no other
 just a convention, which is what keeps that entry browser-safe; the
 built bundle was checked for `node:crypto` and the DOCX filter.
 
-Measured in a Chromium smoke run against the real server (31 checks):
+Measured in a Chromium smoke run against the real server (35 checks):
 typing, placing and wrapping, refusal notes, the tag list, save on Esc
 with the hidden tags carried and QA rerun, a click-through writing
 nothing, pair deletion and its undo, paste from elsewhere, IME
 composition, full tags, a 15-pair group placed with one keystroke, a
 reload showing what was saved, the caret landing where the click did,
-a cut starting on a word moving its tag, and another segment's copy —
-its tag 1 bold, like this one's — arriving as words; the exported DOCX
-well-formed with no run inside a run.
+a cut starting on a word moving its tag, another segment's copy — its
+tag 1 bold, like this one's — and another project's segment 1 arriving
+as words, and `pagehide` saving the open edit through the grid's
+listener; the exported DOCX well-formed with no run inside a run.
 
 ---
 

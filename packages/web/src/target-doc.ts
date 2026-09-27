@@ -153,7 +153,8 @@ export function chipNode(
 
 /**
  * The editor's document for a visible target (hidden tags already
- * dropped), each group it places whole as one pair (`collapseGroups`).
+ * dropped), each group as one pair carrying the members it was saved
+ * with (`collapseGroups`).
  * A stored target that is not tag-valid — any API client can write one —
  * is repaired the way an edit would be (`chipsToDrop`), and `repaired`
  * says so, so the editor saves the repair rather than show one thing and
@@ -177,10 +178,10 @@ export function docFromTokens(
       if (token.v !== '') nodes.push(schema.text(token.v));
       continue;
     }
-    const members = collapsed.grouped.has(token.id) ? (groups.get(token.id) ?? []) : [];
+    const members = token.t === 'ph' ? [] : (collapsed.carried.get(token.id) ?? []);
     // A close carries no `fmt`; its id is its open's.
     const fmt = token.t === 'close' ? token.id : token.fmt;
-    nodes.push(chipNode(token.t, token.id, fmt, formats, members.slice(1)));
+    nodes.push(chipNode(token.t, token.id, fmt, formats, members));
   }
   return { doc: schema.node('doc', null, nodes), repaired: drop.size > 0 };
 }
@@ -380,18 +381,34 @@ export function pasteText(state: EditorState, text: string): Transaction {
 const COPY_OF = 'data-segment-copy';
 
 /**
+ * What names one segment's copy: its project and its id. The id alone is
+ * not enough — every project numbers its segments from 1, and the
+ * clipboard outlives a move to another project, or is shared by two
+ * tabs — and the project's name is text to keep whole, so it is encoded
+ * (`encodeURIComponent`): no quote to end the attribute early, and no
+ * `/` to make two names one.
+ */
+export function segmentCopyKey(project: string, segmentId: number): string {
+  return `${encodeURIComponent(project)}/${segmentId}`;
+}
+
+/**
  * What one segment's editor puts on the clipboard (its view's
  * `clipboardSerializer`): the copy wrapped in one element naming the
- * segment. ProseMirror marks its own copy (`data-pm-slice`) on the first
- * node only if that is an element, and a copy starting with a word starts
- * with a text node — so it read as anyone's HTML, arrived as plain text,
- * and the tags a cut had taken were lost. Wrapped, every copy is marked,
- * and a paste can tell this segment's copy from another's
- * (`clipboardSegment`), whose tag ids name other tags.
+ * segment (`segmentCopyKey`). ProseMirror marks its own copy
+ * (`data-pm-slice`) on the first node only if that is an element, and a
+ * copy starting with a word starts with a text node — so it read as
+ * anyone's HTML, arrived as plain text, and the tags a cut had taken were
+ * lost. Wrapped, every copy is marked, and a paste can tell this
+ * segment's copy from another's (`clipboardSegment`), whose tag ids name
+ * other tags.
  */
 export class SegmentClipboard extends DOMSerializer {
-  constructor(readonly segmentId: number) {
+  readonly key: string;
+
+  constructor(project: string, segmentId: number) {
     super(DOMSerializer.nodesFromSchema(schema), DOMSerializer.marksFromSchema(schema));
+    this.key = segmentCopyKey(project, segmentId);
   }
 
   override serializeFragment(
@@ -403,7 +420,7 @@ export class SegmentClipboard extends DOMSerializer {
     if (target) return super.serializeFragment(fragment, options, target);
     const dom = options.document ?? document;
     const wrap = dom.createElement('span');
-    wrap.setAttribute(COPY_OF, String(this.segmentId));
+    wrap.setAttribute(COPY_OF, this.key);
     super.serializeFragment(fragment, options, wrap);
     const out = dom.createDocumentFragment();
     out.appendChild(wrap);
@@ -411,28 +428,59 @@ export class SegmentClipboard extends DOMSerializer {
   }
 }
 
-/** The segment whose editor copied this clipboard HTML, or null: anyone else's. */
-export function clipboardSegment(html: string): number | null {
-  const match = new RegExp(`${COPY_OF}="(\\d+)"`).exec(html);
-  return match ? Number(match[1]) : null;
+/**
+ * The segment whose editor copied this clipboard HTML, as its
+ * `segmentCopyKey` — to compare whole — or null: anyone else's.
+ */
+export function clipboardSegment(html: string): string | null {
+  const match = new RegExp(`${COPY_OF}="([^"]*)"`).exec(html);
+  return match ? match[1]! : null;
 }
 
 /**
- * A slice pasted from this segment's own editor, as it may enter the
- * document. A copy and paste copies the words; a cut and paste — whose
- * chips left with the cut — moves the tags with them, the EN→ES
- * adjective-after-noun gesture. So a chip is kept only when it is one of
- * this segment's tags (the palette's, a group's members included) that
- * the document will not still have, as a whole pair, and nesting where
- * it lands the way a source's pairs do (`nestingRefusal`): bold pasted
- * into italic would export as italic alone, which `planInsert` refuses
- * too. Each pair is checked against what will be around it, so of two
- * that may not nest the inner one goes. A kept chip is rebuilt from this
- * segment's format table, never taken as the clipboard describes it.
+ * A paste of this segment's own copy, as one transaction (so one undo).
+ * A copy and paste copies the words; a cut and paste — whose chips left
+ * with the cut — moves the tags with them, the EN→ES adjective-after-noun
+ * gesture. The selection goes first, and with it any pair it took one
+ * chip of — what the integrity rule would do after the paste, done
+ * before it: left to the rule, that pair's other chip would still be
+ * there when the paste brings the pair again, the rule keeps the earlier
+ * of two, and the pasted close would pair with it around whatever came
+ * between — bold around italic, a link in a link. Then the copy is
+ * pasted as it may enter the document that is left (`pastedSlice`).
  */
-export function pastedSlice(
-  slice: Slice,
+export function pasteOwn(
   state: EditorState,
+  slice: Slice,
+  palette: readonly PaletteTag[],
+  formats: readonly FormatEntry[],
+): Transaction {
+  const tr = state.tr.deleteSelection();
+  const left = chipsIn(tr.doc);
+  // From the end, so earlier positions stay put.
+  for (const i of [...chipsToDrop(left)].sort((a, b) => b - a)) {
+    tr.delete(left[i]!.pos, left[i]!.pos + 1);
+  }
+  return tr
+    .replaceSelection(pastedSlice(slice, tr.doc, tr.selection.from, palette, formats))
+    .scrollIntoView();
+}
+
+/**
+ * A copy as it may enter `landing`, a tag-valid document, at `at`. A chip
+ * is kept only when it is one of this segment's tags (the palette's, a
+ * group's members included) that the document does not have, as a whole
+ * pair, and nesting where it lands the way a source's pairs do
+ * (`nestingRefusal`): bold pasted into italic would export as italic
+ * alone, which `planInsert` refuses too. Each pair is checked against
+ * what will be around it, so of two that may not nest the inner one goes.
+ * A kept chip is rebuilt from this segment's format table, never taken as
+ * the clipboard describes it.
+ */
+function pastedSlice(
+  slice: Slice,
+  landing: PmNode,
+  at: number,
   palette: readonly PaletteTag[],
   formats: readonly FormatEntry[],
 ): Slice {
@@ -445,12 +493,7 @@ export function pastedSlice(
     if (tag.members.length > 0) groupOf.set(tag.id, tag.members);
   }
 
-  // The document as the paste lands in it: the selection gone, and with it
-  // any pair the selection took one chip of (the integrity rule).
-  const landing = state.tr.deleteSelection().doc;
-  const left = chipsIn(landing);
-  const cut = chipsToDrop(left);
-  const staying = left.filter((_, i) => !cut.has(i));
+  const staying = chipsIn(landing);
   const present = new Set(staying.map((c) => `${c.role}${c.id}`));
   const placed = new Set<number>();
   for (const c of staying) {
@@ -458,12 +501,7 @@ export function pastedSlice(
     placed.add(c.id);
     for (const id of (landing.nodeAt(c.pos)!.attrs as ChipAttrs).members) placed.add(id);
   }
-  const outer: PairShape[] = [];
-  for (const c of staying) {
-    if (c.pos >= state.selection.from) break;
-    if (c.role === 'open') outer.push(shapeOf(c.fmt, formats));
-    else if (c.role === 'close') outer.pop();
-  }
+  const outer = pairsAround(landing, at).map((c) => shapeOf(c.fmt, formats));
 
   type Pasted = Chip & { readonly members: readonly number[] };
   const items: Array<PmNode | Pasted> = [];

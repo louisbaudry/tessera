@@ -11,11 +11,12 @@ import {
   createTargetState,
   insertTag,
   nextUnplaced,
-  pastedSlice,
+  pasteOwn,
   pasteText,
   planInsert,
   schema,
   SegmentClipboard,
+  segmentCopyKey,
   targetFromDoc,
   tokensFromDoc,
 } from './target-doc.js';
@@ -281,6 +282,100 @@ describe('groups of look-alike pairs', () => {
     });
   });
 
+  describe('placed partly apart, saved and loaded again', () => {
+    // "a b c d" in bold, as four runs: one group of pairs 1 to 4.
+    const fFormats: FormatEntry[] = [1, 2, 3, 4].map((id) => ({ ...formats[0]!, id }));
+    const fSource = [1, 2, 3, 4].flatMap((id) => [
+      open(id),
+      text('abcd'[id - 1]!),
+      close(id),
+    ]);
+    const fGroups = pairGroups(fSource, fFormats);
+    const fPalette = paletteOf(fSource, fFormats);
+    /** Loads what was saved, types one character at the end, saves again. */
+    const resave = (saved: Token[]) => {
+      let state = createTargetState(saved, fFormats, fGroups).state;
+      state = state.apply(state.tr.insertText('!', state.doc.content.size));
+      return targetFromDoc(state.doc);
+    };
+
+    it('keeps the members the first pair carried, placed back beside a member apart', () => {
+      // A memory's match: member 2 apart, 3 and 4 not placed. Backspace the
+      // first pair's open chip, then Ctrl+,.
+      let state = createTargetState(
+        [
+          open(1),
+          text('Hallo'),
+          close(1),
+          text(' und '),
+          open(2),
+          text('Welt'),
+          close(2),
+        ],
+        fFormats,
+        fGroups,
+      ).state;
+      state = state.apply(state.tr.delete(0, 1));
+      const next = nextUnplaced(state, fPalette, fFormats);
+      expect(next).toMatchObject({ id: 1, members: [3, 4] });
+      const plan = planInsert(select(state, 0, after(state, 'Hallo')), next!, fFormats);
+      if (!plan.ok) throw new Error(plan.reason);
+      const saved = targetFromDoc(state.apply(plan.tr).doc);
+      expect(saved).toEqual([
+        open(1),
+        text('Hallo'),
+        close(1),
+        open(3),
+        close(3),
+        open(4),
+        close(4),
+        text(' und '),
+        open(2),
+        text('Welt'),
+        close(2),
+      ]);
+      const loaded = createTargetState(saved, fFormats, fGroups).state;
+      expect(
+        choicesIn(loaded.doc, fPalette, fFormats).map((c) => [
+          c.tag.id,
+          c.tag.members,
+          c.placed,
+        ]),
+      ).toEqual([
+        [1, [3, 4], true],
+        [2, [], true],
+      ]);
+      expect(resave(saved)).toEqual([...saved, text('!')]);
+    });
+
+    it('keeps them with a member not placed at all, which stays one to place', () => {
+      const saved = [
+        open(1),
+        text('Hallo'),
+        close(1),
+        open(4),
+        close(4),
+        text(' und '),
+        open(2),
+        text('Welt'),
+        close(2),
+      ];
+      const loaded = createTargetState(saved, fFormats, fGroups).state;
+      expect(
+        choicesIn(loaded.doc, fPalette, fFormats).map((c) => [
+          c.tag.id,
+          c.tag.members,
+          c.placed,
+        ]),
+      ).toEqual([
+        [1, [4], true],
+        [2, [], true],
+        [3, [], false],
+      ]);
+      expect(resave(saved)).toEqual([...saved, text('!')]);
+    });
+  });
+
   it('keep every saved target tag-valid, however they are placed', () => {
     // Seeded walks over a three-pair group and a pair apart, from a target
     // that places the group piecemeal: type, delete, place the next tag,
@@ -391,26 +486,19 @@ describe('pasting from this editor', () => {
       0,
     );
     // After a cut the document no longer has the pair: it moves.
-    let cut = state;
-    cut = cut.apply(cut.tr.replaceSelection(pastedSlice(clip, cut, palette, formats)));
+    const cut = state.apply(pasteOwn(state, clip, palette, formats));
     expect(tokens(cut)).toEqual([text('el coche'), open(1), text('rojo'), close(1)]);
     // After a copy it still has it: only the words arrive.
     const copied = createTargetState(
       [open(1), text('rojo'), close(1), text(' ')],
       formats,
     ).state;
-    const pasted = copied.apply(
-      copied.tr.replaceSelection(pastedSlice(clip, copied, palette, formats)),
-    );
+    const pasted = copied.apply(pasteOwn(copied, clip, palette, formats));
     expect(tokens(pasted)).toEqual([open(1), text('rojo'), close(1), text(' rojo')]);
   });
 
   const paste = (state: EditorState, nodes: PmNode[], p = palette, f = formats) =>
-    state.apply(
-      state.tr.replaceSelection(
-        pastedSlice(new Slice(Fragment.fromArray(nodes), 0, 0), state, p, f),
-      ),
-    );
+    state.apply(pasteOwn(state, new Slice(Fragment.fromArray(nodes), 0, 0), p, f));
 
   it('keeps no pair where it may not nest: bold pasted into italic arrives as words', () => {
     let state = createTargetState(
@@ -485,6 +573,34 @@ describe('pasting from this editor', () => {
     expect(tokens(state)).toEqual([open(1), text('rot'), close(1)]);
   });
 
+  it('pastes over one chip of a pair as if that pair were gone, its other chip too', () => {
+    // The selection takes bold's close, not its open; the copy holds bold
+    // again, beside italic. Bold's open must not survive to pair with the
+    // pasted close around the italic: that exports as italic alone.
+    let state = createTargetState(
+      [open(1), text('yy'), close(1), text(' z')],
+      formats,
+    ).state;
+    state = select(state, after(state, 'yy'), state.doc.content.size);
+    state = paste(state, [
+      chipNode('open', 3, 3, formats),
+      schema.text('x'),
+      chipNode('close', 3, 3, formats),
+      chipNode('open', 1, 1, formats),
+      schema.text('w'),
+      chipNode('close', 1, 1, formats),
+    ]);
+    expect(tokens(state)).toEqual([
+      text('yy'),
+      open(3),
+      text('x'),
+      close(3),
+      open(1),
+      text('w'),
+      close(1),
+    ]);
+  });
+
   it("moves a group's first pair with the members it carried, less any placed apart", () => {
     const gFormats: FormatEntry[] = [formats[0]!, { ...formats[0]!, id: 2 }];
     const gSource = [open(1), text('Rabu'), close(1), open(2), text(' ho'), close(2)];
@@ -550,6 +666,106 @@ describe('pasting from this editor', () => {
     expect(tokens(pasted)).toEqual([text('Hola y'), ph(2)]);
     expect(pasted.doc.lastChild!.eq(chipNode('ph', 2, 2, formats))).toBe(true);
   });
+
+  it('keeps the document tag-valid and nested as a source nests, whatever a paste replaces', () => {
+    // Every selection of a few documents, each pasted over with a few
+    // copies of this segment's: bold 1 and 6 are one group, 3 is italic,
+    // 4 and 5 are links, 2 a footnote.
+    const link = (id: number): FormatEntry => ({
+      id,
+      kind: 'link',
+      visible: true,
+      placement: 'inline',
+      open: `<w:hyperlink w:anchor="a${id}">`,
+      close: '</w:hyperlink>',
+    });
+    const fmts: FormatEntry[] = [...formats, link(4), link(5), { ...formats[0]!, id: 6 }];
+    const src = [1, 6, 3, 4, 5].flatMap((id) => [open(id), text('abcde'), close(id)]);
+    const pal = paletteOf([...src, ph(2)], fmts);
+    const g = pairGroups(src, fmts);
+    expect([...g]).toEqual([[1, [1, 6]]]);
+    const docs = [
+      [open(1), text('yy'), close(1), text(' z')],
+      [
+        open(4),
+        text('a'),
+        open(1),
+        text('b'),
+        close(1),
+        close(4),
+        text(' '),
+        open(3),
+        text('c'),
+        close(3),
+      ],
+      [
+        open(5),
+        text('x'),
+        close(5),
+        ph(2),
+        text(' '),
+        open(4),
+        text('y'),
+        close(4),
+        open(6),
+        text('v'),
+        close(6),
+      ],
+    ];
+    const chip = (role: 'open' | 'close', id: number) =>
+      chipNode(role, id, id, fmts, id === 1 ? [6] : []);
+    const copies = [
+      [
+        chip('open', 3),
+        schema.text('x'),
+        chip('close', 3),
+        chip('open', 1),
+        schema.text('w'),
+        chip('close', 1),
+      ],
+      [
+        chip('open', 5),
+        schema.text('p'),
+        chip('close', 5),
+        chip('open', 4),
+        schema.text('q'),
+        chip('open', 1),
+        schema.text('r'),
+        chip('close', 1),
+        chip('close', 4),
+      ],
+      [
+        chip('open', 1),
+        schema.text('s'),
+        chipNode('ph', 2, 2, fmts),
+        chip('close', 1),
+        chip('open', 3),
+        schema.text('t'),
+        chip('close', 3),
+        chip('open', 5),
+        schema.text('u'),
+        chip('close', 5),
+      ],
+    ];
+    for (const [d, doc] of docs.entries()) {
+      const start = createTargetState(doc, fmts, g).state;
+      const size = start.doc.content.size;
+      for (const [c, copy] of copies.entries()) {
+        const clip = new Slice(Fragment.fromArray(copy), 0, 0);
+        for (let from = 0; from <= size; from++) {
+          for (let to = from; to <= size; to++) {
+            const state = select(start, from, to);
+            const pasted = state.apply(pasteOwn(state, clip, pal, fmts));
+            const where = `doc ${d} copy ${c} over ${from}-${to}`;
+            expect(validateTagStructureLike(targetFromDoc(pasted.doc)), where).toEqual(
+              [],
+            );
+            expect(nestingProblems(tokens(pasted), fmts), where).toEqual([]);
+          }
+        }
+      }
+    }
+  });
 });
 
 describe('the clipboard', () => {
@@ -593,22 +809,46 @@ describe('the clipboard', () => {
       schema.text('coche'),
       chipNode('close', 1, 1, formats),
     ]);
-    const out = new SegmentClipboard(7).serializeFragment(copy, {
+    const out = new SegmentClipboard('manual', 7).serializeFragment(copy, {
       document: fakeDocument,
     }) as unknown as FakeNode;
     // ProseMirror puts `data-pm-slice` on the first child only if it is an element.
     expect(out.childNodes).toHaveLength(1);
     expect(out.firstChild!.nodeType).toBe(1);
     expect(out.firstChild!.firstChild!.text).toBe('rojo ');
-    expect(clipboardSegment(out.html)).toBe(7);
+    expect(clipboardSegment(out.html)).toBe(segmentCopyKey('manual', 7));
   });
 
   it("tells this segment's copy from another's and from anyone else's HTML", () => {
     expect(
-      clipboardSegment('<span data-segment-copy="12" data-pm-slice="0 0 []">a</span>'),
-    ).toBe(12);
+      clipboardSegment(
+        '<span data-segment-copy="manual/12" data-pm-slice="0 0 []">a</span>',
+      ),
+    ).toBe(segmentCopyKey('manual', 12));
     expect(clipboardSegment('<p data-pm-slice="0 0 []">a</p>')).toBeNull();
     expect(clipboardSegment('')).toBeNull();
+  });
+
+  it('names the project too: segment 12 of another project is not this segment', () => {
+    // Every project numbers its segments from 1, and the clipboard outlives
+    // a move between projects (or is shared by two tabs).
+    const copy = (project: string, id: number) =>
+      clipboardSegment(
+        (
+          new SegmentClipboard(project, id).serializeFragment(
+            Fragment.from(schema.text('Warning')),
+            { document: fakeDocument },
+          ) as unknown as FakeNode
+        ).html,
+      );
+    expect(copy('manual', 12)).toBe(segmentCopyKey('manual', 12));
+    expect(copy('manual', 12)).not.toBe(segmentCopyKey('brochure', 12));
+    expect(copy('manual', 12)).not.toBe(segmentCopyKey('manual', 1));
+    // The name is opaque text: whatever it holds, the key reads back whole.
+    for (const odd of ['a"b/1', 'a"b', 'x y&z<', '1/12']) {
+      expect(copy(odd, 2), odd).toBe(segmentCopyKey(odd, 2));
+    }
+    expect(segmentCopyKey('1/12', 2)).not.toBe(segmentCopyKey('1', 122));
   });
 });
 
@@ -718,6 +958,29 @@ function validateTagStructureLike(stream: readonly Token[]): string[] {
     else if (t.t === 'close' && stack.pop() !== t.id) problems.push(`bad close ${t.id}`);
   }
   if (stack.length) problems.push(`unclosed ${stack.join(',')}`);
+  return problems;
+}
+
+/**
+ * Pairs nested as no source nests them, checked independently of
+ * `tags.ts` too: a pair inside formatting, a link inside a link.
+ */
+function nestingProblems(
+  stream: readonly Token[],
+  fmts: readonly FormatEntry[],
+): string[] {
+  const problems: string[] = [];
+  const stack: FormatEntry[] = [];
+  for (const t of stream) {
+    if (t.t === 'close') stack.pop();
+    if (t.t !== 'open') continue;
+    const f = fmts.find((x) => x.id === t.fmt)!;
+    if (stack.some((s) => s.placement === 'run')) problems.push(`${t.id} in formatting`);
+    if (f.kind === 'link' && stack.some((s) => s.kind === 'link')) {
+      problems.push(`link ${t.id} in a link`);
+    }
+    stack.push(f);
+  }
   return problems;
 }
 

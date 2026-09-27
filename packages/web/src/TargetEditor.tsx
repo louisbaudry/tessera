@@ -36,7 +36,7 @@ import {
   createTargetState,
   docFromTokens,
   nextUnplaced,
-  pastedSlice,
+  pasteOwn,
   pasteText,
   planInsert,
   SegmentClipboard,
@@ -52,6 +52,8 @@ export interface CommitOptions {
 
 interface TargetEditorProps {
   readonly segment: Segment;
+  /** The segment's project, which a copy names with it (`segmentCopyKey`). */
+  readonly project: string;
   /** The target language, for the browser's spell checker. */
   readonly tgtLang: string;
   /** Where the click that opened the editor landed, to put the caret there. */
@@ -66,6 +68,13 @@ interface TargetEditorProps {
   readonly onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
   /** Esc: done with this segment. */
   readonly onLeave: () => void;
+  /**
+   * Hands the grid this editor's leave for the page going away (urgent),
+   * and returns its release. The grid's one `pagehide` listener calls it
+   * before sending the writes still waiting (`createPageHide`), so this
+   * segment's write replaces a waiting one of its own rather than race it.
+   */
+  readonly registerPageHide: (leaveNow: () => void) => () => void;
 }
 
 /** Swallows a key the editor must not pass to the browser. */
@@ -84,11 +93,13 @@ function chipKeys(doc: PmNode): Map<string, string> {
 
 export function TargetEditor({
   segment,
+  project,
   tgtLang,
   clickAt,
   failed,
   onCommit,
   onLeave,
+  registerPageHide,
 }: TargetEditorProps) {
   // The segment as the editor opened it. A save replaces the grid's copy;
   // the editor keeps its own state (caret, undo) rather than restart.
@@ -177,6 +188,7 @@ export function TargetEditor({
       callbacks.current.onCommit(opened.id, targetFromDoc(doc), { urgent });
     };
 
+    const clipboard = new SegmentClipboard(project, opened.id);
     const editor = new EditorView(host.current!, {
       state: loaded.state,
       attributes: {
@@ -201,21 +213,23 @@ export function TargetEditor({
             : null,
         );
       },
-      handlePaste(editorView, event) {
-        // This segment's own copy is parsed, chips and all (`pastedSlice`
-        // filters it); anything else — another segment's copy too, whose
-        // tag ids name other tags — arrives as one line of plain text.
+      handlePaste(editorView, event, slice) {
+        // This segment's own copy arrives parsed, chips and all, and
+        // `pasteOwn` filters it; anything else — another segment's copy
+        // too, whose tag ids name other tags — as one line of plain text.
         const html = event.clipboardData?.getData('text/html') ?? '';
-        if (clipboardSegment(html) === opened.id) return false;
         editorView.dispatch(
-          pasteText(editorView.state, event.clipboardData?.getData('text/plain') ?? ''),
+          clipboardSegment(html) === clipboard.key
+            ? pasteOwn(editorView.state, slice, palette, opened.formatTable)
+            : pasteText(
+                editorView.state,
+                event.clipboardData?.getData('text/plain') ?? '',
+              ),
         );
         return true;
       },
-      transformPasted: (slice, editorView) =>
-        pastedSlice(slice, editorView.state, palette, opened.formatTable),
       // Every copy marked as this segment's (`SegmentClipboard`).
-      clipboardSerializer: new SegmentClipboard(opened.id),
+      clipboardSerializer: clipboard,
       // Dragging would move chips around unchecked; nothing is dropped.
       handleDrop: () => true,
       // Copied text is the words, not the chips' numbers.
@@ -242,15 +256,14 @@ export function TargetEditor({
     }
     editor.focus();
 
-    const onPageHide = () => commit(editor, true);
-    window.addEventListener('pagehide', onPageHide);
+    const release = registerPageHide(() => commit(editor, true));
     return () => {
-      window.removeEventListener('pagehide', onPageHide);
+      release();
       commit(editor);
       editor.destroy();
       view.current = null;
     };
-  }, [opened, groups, palette, tgtLang, firstClick]);
+  }, [opened, project, groups, palette, tgtLang, firstClick, registerPageHide]);
 
   // After the one above: a failed write is sent again on leaving, whether
   // it failed before the editor opened or while it is open.

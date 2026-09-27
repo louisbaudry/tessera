@@ -13,7 +13,9 @@
  * segment is in flight, with no version at all — sent with the stale one
  * it would be a certain conflict, and the edit lost with the page. What
  * that risks is overwriting another tab's write that got in just before
- * the one in flight, which is the smaller loss.
+ * the one in flight, which is the smaller loss. The same holds for every
+ * write still waiting when the page goes (`flush`): its editor has closed,
+ * and nothing else would send it.
  *
  * Every answer says whether it is for the latest write the queue was
  * given for that segment: an earlier one's answer is not what the row
@@ -51,6 +53,13 @@ export interface SaveQueueDeps {
 
 export interface SaveQueue {
   save(segmentId: number, tokens: readonly Token[], urgent?: boolean): void;
+  /**
+   * The page is going away: every waiting write goes now, urgent. Called
+   * after the open editor's own urgent write, which has already replaced
+   * any waiting write of its segment — sent the other way round, the two
+   * would race, and the older could land last.
+   */
+  flush(): void;
 }
 
 export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
@@ -114,6 +123,44 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
         waiting.delete(id);
         start(id, tokens, n, undefined, true);
       }
+    },
+    flush() {
+      for (const [id, next] of [...waiting]) {
+        waiting.delete(id);
+        start(
+          id,
+          next.tokens,
+          next.n,
+          inFlight.has(id) ? undefined : versionOf(id),
+          true,
+        );
+      }
+    },
+  };
+}
+
+/**
+ * The page going away (`pagehide`), in the one order that keeps its
+ * writes from racing: the open editor's leave first — its urgent write
+ * replaces any waiting write of its segment — then every write still
+ * waiting (`flush`). The grid listens once and calls `onPageHide`; the
+ * open editor hands its leave to `register`, which returns the release.
+ */
+export function createPageHide(queue: SaveQueue): {
+  register(leaveNow: () => void): () => void;
+  onPageHide(): void;
+} {
+  let editor: (() => void) | null = null;
+  return {
+    register(leaveNow) {
+      editor = leaveNow;
+      return () => {
+        if (editor === leaveNow) editor = null;
+      };
+    },
+    onPageHide() {
+      editor?.();
+      queue.flush();
     },
   };
 }

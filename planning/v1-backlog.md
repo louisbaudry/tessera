@@ -1937,7 +1937,10 @@ baseUpdatedAt}`; a `status` or `origin` in it is refused.
   final review found a TM match holding a group's pairs apart: moving
   the first pair then saved a member twice, a 400 the row could never
   retry. A member placed apart is now a tag of its own (`tagChoices`),
-  and nothing re-places what the document already holds.
+  and nothing re-places what the document already holds; a first pair
+  carrying only some members saves and loads as exactly that
+  (`collapseGroups`), where a second review found the reload turned
+  them into empty chips the next edit dropped.
 - **Formatting never nests in formatting.** A run tag is a whole `w:rPr`,
   so bold placed around italic exports as italic alone. The editor
   refuses it (and a link in a link) with a note, rather than let a
@@ -1953,7 +1956,11 @@ baseUpdatedAt}`; a `status` or `origin` in it is refused.
   wrapped in one naming its segment); a pasted pair skipped the nesting
   rule (checked now, the inner pair dropped); and a copy from another
   segment's editor brought that segment's ids, which can name a
-  different tag here (it pastes as words now).
+  different tag here (it pastes as words now). A second review found
+  two more: a paste over one chip of a pair left its partner to pair
+  with the pasted copy's chip, around other tags (the paste now removes
+  the selection and its orphans first, `pasteOwn`); and segment ids
+  restart at 1 in every project, so a copy is keyed by project too.
 - **Save when the editor leaves the segment, and on `pagehide`** with a
   `keepalive` request; sign-out waits for it. One write per segment in
   flight, each with the version the last answer returned. The final
@@ -1964,7 +1971,11 @@ baseUpdatedAt}`; a `status` or `origin` in it is refused.
   text on the row, to be edited on top of, and now updates only
   version, status and issues; and a failed write was never retried,
   since reopening the row found nothing changed — leaving a row whose
-  last write failed now always resends.
+  last write failed now always resends. A second review found the
+  `pagehide` write was the open segment's only: a write waiting behind
+  one in flight for another segment died with the page. The grid now
+  holds the one listener, sends the open editor's write, then flushes
+  the queue.
 - **`@cat-tool/core/model`** is the SPA's one runtime `core` import, so
   which tags are hidden is one definition in browser and server; the
   first draft had a second copy in `pieces.ts`. `model/` importing
@@ -1974,7 +1985,12 @@ baseUpdatedAt}`; a `status` or `origin` in it is refused.
 - **The smoke run needed a person's pauses.** ProseMirror reads the
   selection from `selectionchange`, which lags when automation sends a
   key the instant after a selection move; with 60 ms between them all
-  26 checks passed (31 after the final review's clipboard checks). Not a user-visible race at human speed, but a
+  26 checks passed (35 after the final reviews' clipboard and `pagehide`
+  checks). A second trap turned up with those: for 200 ms after focus,
+  ProseMirror undoes a caret moved to the document's start (it takes it
+  for the browser resetting the selection), so a script pressing
+  Ctrl+Home the moment an editor opened typed in the wrong place — in
+  roughly one run in three, which is how it passed three times first. Not a user-visible race at human speed, but a
   Playwright script that looks flaky here is probably this.
 
 Not here, recorded for their cards: field placeholders (begin,
@@ -1985,8 +2001,8 @@ run the verbatim rule protects only when kept verbatim; autosave (#31)
 must respect audit-spec §2.2's "segment boundaries, never per
 keystroke".
 
-49 new tests in web, 14 + 8 in core for the carry rule and its corpus
-run, 8 for `editSegmentTarget`, renderer and remap tests including a
+81 new tests in web, 22 + 9 in core for the carry rule and its corpus
+run, 10 for `editSegmentTarget`, renderer and remap tests including a
 seeded 400-stream nesting property (20,000 checked once); full gate,
 `test:gate` and `test:golden` green, the golden diff read line by line.
 

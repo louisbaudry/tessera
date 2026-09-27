@@ -124,7 +124,7 @@ describe('pair groups', () => {
         text('esto'),
         close(5),
       ],
-      grouped: new Set([1]),
+      carried: new Map([[1, [2, 4]]]),
     });
     const members = new Map([...groups].map(([first, ids]) => [first, ids.slice(1)]));
     const saved = expandGroups([open(1), text('Rabu ho mivo?'), close(1)], members);
@@ -164,6 +164,37 @@ describe('pair groups', () => {
     ]);
   });
 
+  it('carries the members saved empty behind the first pair, whatever the others', () => {
+    // Saved with member 2 placed apart (4 carried), and with member 2 not
+    // placed at all: each loads as it was saved, 4 no chip of its own.
+    const groups = pairGroups(source, formats);
+    const apart = [
+      open(1),
+      text('a'),
+      close(1),
+      open(4),
+      close(4),
+      text(' '),
+      open(2),
+      text('b'),
+      close(2),
+    ];
+    expect(collapseGroups(apart, groups)).toEqual({
+      tokens: [open(1), text('a'), close(1), text(' '), open(2), text('b'), close(2)],
+      carried: new Map([[1, [4]]]),
+    });
+    const absent = [open(1), text('a'), close(1), open(4), close(4)];
+    expect(collapseGroups(absent, groups)).toEqual({
+      tokens: [open(1), text('a'), close(1)],
+      carried: new Map([[1, [4]]]),
+    });
+    // Out of group order, or holding text, is not what the editor saves.
+    const reversed = [open(1), text('a'), close(1), open(4), close(4), open(2), close(2)];
+    expect(collapseGroups(reversed, groups).carried).toEqual(new Map([[1, [4]]]));
+    const full = [open(1), text('a'), close(1), open(4), text('b'), close(4), text(' ')];
+    expect(collapseGroups(full, groups).carried.size).toBe(0);
+  });
+
   it('leaves a group placed piecemeal as separate pairs', () => {
     const groups = pairGroups(source, formats);
     const scattered = [
@@ -175,7 +206,7 @@ describe('pair groups', () => {
       text('b'),
       close(1),
     ];
-    expect(collapseGroups(scattered, groups).grouped.size).toBe(0);
+    expect(collapseGroups(scattered, groups).carried.size).toBe(0);
   });
 });
 

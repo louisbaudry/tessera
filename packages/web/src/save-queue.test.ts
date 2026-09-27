@@ -1,7 +1,7 @@
 import type { Segment, Token } from '@cat-tool/core';
 import { describe, expect, it } from 'vitest';
 
-import { createSaveQueue, type SaveResult } from './save-queue.js';
+import { createPageHide, createSaveQueue, type SaveResult } from './save-queue.js';
 
 const text = (v: string): Token[] => [{ t: 'text', v }];
 
@@ -140,6 +140,42 @@ describe('createSaveQueue', () => {
     expect(h.latest).toEqual([true, false, true]);
   });
 
+  it('flushes every waiting write at once when the page goes away', async () => {
+    // Leave 5 ("a" in flight), reopen and leave it again ("b" waits), move
+    // to 6 and close the tab: 6's editor sends its own, the flush sends "b".
+    const h = harness();
+    h.queue.save(5, text('a'));
+    h.queue.save(5, text('b'));
+    h.queue.save(6, text('c'), true);
+    h.queue.flush();
+    expect(h.sent.map((s) => [s.id, s.v, s.base, s.urgent])).toEqual([
+      [5, 'a', 'v0', false],
+      [6, 'c', 'v0', true],
+      // Its own write is in flight: with that one's base, a certain conflict.
+      [5, 'b', undefined, true],
+    ]);
+    await h.answer();
+    await h.answer();
+    await h.answer();
+    // Nothing waits any more, so "a"'s answer sends nothing after it.
+    expect(h.sent).toHaveLength(3);
+    expect(h.latest).toEqual([false, true, true]);
+    h.queue.flush();
+    expect(h.sent).toHaveLength(3);
+  });
+
+  it("flushes nothing twice: the open editor's urgent write already replaced its waiting one", () => {
+    const h = harness();
+    h.queue.save(5, text('a'));
+    h.queue.save(5, text('b'));
+    h.queue.save(5, text('c'), true);
+    h.queue.flush();
+    expect(h.sent.map((s) => [s.v, s.base])).toEqual([
+      ['a', 'v0'],
+      ['c', undefined],
+    ]);
+  });
+
   it("keeps the newer version when an earlier write's answer comes last", async () => {
     const h = harness();
     h.queue.save(1, text('a'));
@@ -150,5 +186,38 @@ describe('createSaveQueue', () => {
     expect(h.saved).toEqual(['v2', 'v1']);
     h.queue.save(1, text('c'));
     expect(h.sent[2]).toMatchObject({ v: 'c', base: 'v2' });
+  });
+});
+
+describe('createPageHide', () => {
+  it("sends the open editor's write before the waiting ones, and none twice", () => {
+    // 5 left ("a" in flight), left again ("b" waits), reopened and edited
+    // to "c"; 7 left twice ("x" in flight, "y" waits). Then the tab closes.
+    const h = harness();
+    const page = createPageHide(h.queue);
+    h.queue.save(5, text('a'));
+    h.queue.save(5, text('b'));
+    h.queue.save(7, text('x'));
+    h.queue.save(7, text('y'));
+    page.register(() => h.queue.save(5, text('c'), true));
+    page.onPageHide();
+    // Flushed first, "b" and "c" would both be in flight unversioned, racing.
+    expect(h.sent.map((s) => [s.id, s.v, s.base, s.urgent])).toEqual([
+      [5, 'a', 'v0', false],
+      [7, 'x', 'v0', false],
+      [5, 'c', undefined, true],
+      [7, 'y', undefined, true],
+    ]);
+  });
+
+  it('forgets a closed editor, and never the one opened after it', () => {
+    const h = harness();
+    const page = createPageHide(h.queue);
+    const left: string[] = [];
+    const releaseFirst = page.register(() => left.push('first'));
+    page.register(() => left.push('second'));
+    releaseFirst();
+    page.onPageHide();
+    expect(left).toEqual(['second']);
   });
 });

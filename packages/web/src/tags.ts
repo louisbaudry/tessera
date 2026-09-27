@@ -105,52 +105,71 @@ export function paletteOf(
 }
 
 /**
- * A visible target with each group (`pairGroups`) it places whole held as
- * its first pair: a chain of the members' pairs side by side (a copy of
- * the source) becomes the first pair around all their content, and
- * members following it empty (what the editor saves) are dropped.
- * `grouped` says which first ids now stand for their group. A group
- * placed any other way — a member alone, elsewhere — is left as it is,
- * each pair its own chip.
+ * A visible target with each group (`pairGroups`) held as its first pair,
+ * as far as it carries the group: `carried` is the members each first
+ * pair now stands for, by its id. A chain of the members' pairs side by
+ * side (a copy of the source) becomes the first pair around all their
+ * content, and a first pair with no member anywhere stands for them all.
+ * Otherwise the members following it empty, in group order — what the
+ * editor saves (`expandGroups`) — are dropped and carried, whether the
+ * group's other members are placed apart or not placed at all: so a
+ * group placed partly apart loads as it was saved, and the next save
+ * keeps them, rather than showing them as empty pairs of their own that
+ * it would drop. Any other member is left as it is, a chip of its own.
  */
 export function collapseGroups(
   tokens: readonly Token[],
   groups: ReadonlyMap<number, readonly number[]>,
-): { tokens: Token[]; grouped: Set<number> } {
+): { tokens: Token[]; carried: Map<number, readonly number[]> } {
   let out = [...tokens];
-  const grouped = new Set<number>();
+  const carried = new Map<number, readonly number[]>();
   for (const [first, ids] of groups) {
     const at = (t: 'open' | 'close', id: number) =>
       out.findIndex((token) => token.t === t && token.id === id);
     if (at('open', first) < 0 || at('close', first) < 0) continue;
-    const present = ids
-      .slice(1)
-      .filter((id) => at('open', id) >= 0 || at('close', id) >= 0);
+    const members = ids.slice(1);
+    const present = members.filter((id) => at('open', id) >= 0 || at('close', id) >= 0);
     if (present.length === 0) {
-      grouped.add(first);
+      carried.set(first, members);
       continue;
     }
-    if (present.length !== ids.length - 1) continue;
-    const chained = ids.every(
-      (id, i) =>
-        i === ids.length - 1 ||
-        (at('close', id) >= 0 &&
-          out[at('close', id) + 1]?.t === 'open' &&
-          (out[at('close', id) + 1] as { id: number }).id === ids[i + 1]),
-    );
-    if (!chained) continue;
+    const chained =
+      present.length === members.length &&
+      ids.every(
+        (id, i) =>
+          i === ids.length - 1 ||
+          (at('close', id) >= 0 &&
+            out[at('close', id) + 1]?.t === 'open' &&
+            (out[at('close', id) + 1] as { id: number }).id === ids[i + 1]),
+      );
     const drop = new Set<number>();
-    for (let i = 0; i < ids.length - 1; i++) {
-      drop.add(at('close', ids[i]!));
-      drop.add(at('open', ids[i + 1]!));
+    if (chained) {
+      for (let i = 0; i < ids.length - 1; i++) {
+        drop.add(at('close', ids[i]!));
+        drop.add(at('open', ids[i + 1]!));
+      }
+      const last = at('close', ids[ids.length - 1]!);
+      out = out.flatMap((token, i): Token[] =>
+        drop.has(i) ? [] : i === last ? [{ t: 'close', id: first }] : [token],
+      );
+      carried.set(first, members);
+      continue;
     }
-    const last = at('close', ids[ids.length - 1]!);
-    out = out.flatMap((token, i): Token[] =>
-      drop.has(i) ? [] : i === last ? [{ t: 'close', id: first }] : [token],
-    );
-    grouped.add(first);
+    const run: number[] = [];
+    for (let i = at('close', first) + 1, from = 0; ; i += 2) {
+      const [o, c] = [out[i], out[i + 1]];
+      if (o?.t !== 'open' || c?.t !== 'close' || c.id !== o.id) break;
+      const j = members.indexOf(o.id, from);
+      if (j < 0) break;
+      run.push(o.id);
+      drop.add(i).add(i + 1);
+      from = j + 1;
+    }
+    if (run.length === 0) continue;
+    out = out.filter((_, i) => !drop.has(i));
+    carried.set(first, run);
   }
-  return { tokens: out, grouped };
+  return { tokens: out, carried };
 }
 
 /**

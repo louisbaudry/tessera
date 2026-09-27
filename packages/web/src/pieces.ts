@@ -83,7 +83,8 @@ export function tagTitle(words: string, members: readonly number[]): string {
 /**
  * The pieces of a segment's source or target: hidden tags dropped (`core`'s
  * rule), each group of look-alike pairs (`pairGroups`, from the source)
- * shown as one pair, numbered by its first and last id.
+ * shown as one pair as far as the target carries it (`collapseGroups`),
+ * numbered by its first id and its last member's.
  */
 export function toPieces(
   tokens: readonly Token[],
@@ -103,8 +104,8 @@ export function toPieces(
     }
     // A close carries no `fmt`; its id is its open's.
     const format = formats.get(token.t === 'close' ? token.id : token.fmt);
-    const members = collapsed.grouped.has(token.id) ? (groups.get(token.id) ?? []) : [];
-    const lastId = members.length > 1 ? members[members.length - 1] : undefined;
+    const members = token.t === 'ph' ? [] : (collapsed.carried.get(token.id) ?? []);
+    const lastId = members.length > 0 ? members[members.length - 1] : undefined;
     const words = describeFormat(format);
     out.push({
       kind: 'tag',
@@ -113,7 +114,7 @@ export function toPieces(
       tagKind: format?.kind ?? null,
       label: tagLabel(token.t, token.id, lastId),
       full: fullTagLabel(token.t, token.id, words, lastId),
-      title: tagTitle(words, members.slice(1)),
+      title: tagTitle(words, members),
     });
   }
   return out;
