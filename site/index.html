@@ -290,7 +290,7 @@
       }
       .progress .bar .d {
         background: var(--gold);
-        width: 10%;
+        width: 20%;
       }
       .scroll {
         overflow-x: auto;
@@ -712,7 +712,7 @@
           <p class="lede">
             Tessera is an open-source translation environment, grown outward from a
             headless engine by a working translator.
-            <strong>The engine works. The editor doesn't exist yet.</strong> We're looking
+            <strong>The engine works. The editor has just begun.</strong> We're looking
             for translators, reviewers and project managers who also write software — and
             anyone who contributes gets Tessera free for life.
           </p>
@@ -736,10 +736,10 @@
             >
             <span
               class="progress"
-              aria-label="Seven of ten components confirmed, one in draft"
+              aria-label="Seven of ten components confirmed, two in draft"
             >
               <span class="bar"><i class="c"></i><i class="d"></i></span>
-              7 confirmed · 1 draft · 2 empty
+              7 confirmed · 2 draft · 1 empty
             </span>
           </div>
           <div class="scroll">
@@ -833,12 +833,18 @@
                     zero, in pilot.
                   </td>
                 </tr>
-                <tr class="open">
+                <tr>
                   <td class="n">9</td>
                   <td class="src">Web editor</td>
-                  <td class="st"><span class="pill none">Not started</span></td>
+                  <td class="st"><span class="pill draft">Draft</span></td>
                   <td class="tgt">
-                    <span class="caret" aria-hidden="true"></span
+                    A segment grid and a target editor. Tags are chips —
+                    <span class="mono">Ctrl+,</span> places the next one — and the
+                    formatting you never see is carried by the server. Keyboard model,
+                    autosave and QA panel next.<span
+                      class="caret"
+                      aria-hidden="true"
+                    ></span
                     ><span class="you">← you, maybe</span>
                   </td>
                 </tr>
@@ -944,8 +950,8 @@
               <div>
                 <dt>The editor</dt>
                 <dd>
-                  Virtualised segment grid, tag-aware target editor, keyboard model, QA
-                  panel.
+                  Keyboard model, autosave, QA panel — on top of the segment grid and
+                  tag-aware target editor now in place.
                 </dd>
               </div>
               <div>
