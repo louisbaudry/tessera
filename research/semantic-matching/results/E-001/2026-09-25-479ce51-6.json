@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-25-479ce51-6",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-25T18:04:22.754Z",
+  "finished_at": "2026-09-25T22:15:34.551Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "479ce5149f6e3085b4f17b54ec5636192a3f69c0",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "dgt-tm-v2019-en-fr-1M",
+    "sha256": "d1d720a395915ae1b8e36347ca3acbe1284a8c3e73e699b63ad1c233a6dd1ff2",
+    "units": 991812,
+    "langs": [
+      "en",
+      "fr"
+    ],
+    "para_eligible": 25647
+  },
+  "model": {
+    "id": "Xenova/multilingual-e5-small",
+    "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+    "dim": 384,
+    "pooling": "mean",
+    "dtype": "q8",
+    "prefix": "query: "
+  },
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "exact",
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": 1000000
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "budget_met.lex.union_m10": false,
+    "budget_met.lex.union_m25": false,
+    "budget_met.lex.union_m50": false,
+    "budget_met.para.union_m10": false,
+    "budget_met.para.union_m25": false,
+    "budget_met.para.union_m50": false,
+    "discordant.lex.union_m10": {
+      "union_only": 28,
+      "ftsK_only": 0
+    },
+    "discordant.lex.union_m25": {
+      "union_only": 27,
+      "ftsK_only": 0
+    },
+    "discordant.lex.union_m50": {
+      "union_only": 26,
+      "ftsK_only": 1
+    },
+    "discordant.para.union_m10": {
+      "union_only": 23,
+      "ftsK_only": 1
+    },
+    "discordant.para.union_m25": {
+      "union_only": 24,
+      "ftsK_only": 4
+    },
+    "discordant.para.union_m50": {
+      "union_only": 23,
+      "ftsK_only": 3
+    },
+    "embed.ms": 7936479.560716,
+    "embed.peak_rss_mib": 2598.96484375,
+    "embed.units": 991812,
+    "embed.units_per_sec": 124.9687588070248,
+    "latency_ms.embed_query": {
+      "n": 2400,
+      "p50": 6.639626,
+      "p99": 21.515743,
+      "max": 207.058912
+    },
+    "latency_ms.lex.union_m10": {
+      "n": 400,
+      "p50": 794.549361,
+      "p99": 1388.931872,
+      "max": 1475.631831
+    },
+    "latency_ms.lex.union_m25": {
+      "n": 400,
+      "p50": 786.46459,
+      "p99": 1387.140295,
+      "max": 1439.56959
+    },
+    "latency_ms.lex.union_m50": {
+      "n": 400,
+      "p50": 793.666085,
+      "p99": 1394.335769,
+      "max": 1526.617707
+    },
+    "latency_ms.lex.vecOnly_m10": {
+      "n": 400,
+      "p50": 729.919287,
+      "p99": 856.399347,
+      "max": 908.835873
+    },
+    "latency_ms.lex.vecOnly_m25": {
+      "n": 400,
+      "p50": 755.090588,
+      "p99": 1056.010305,
+      "max": 1152.860366
+    },
+    "latency_ms.lex.vecOnly_m50": {
+      "n": 400,
+      "p50": 935.961796,
+      "p99": 1155.90799,
+      "max": 1249.547192
+    },
+    "latency_ms.para.union_m10": {
+      "n": 400,
+      "p50": 780.628691,
+      "p99": 1141.203954,
+      "max": 1690.97223
+    },
+    "latency_ms.para.union_m25": {
+      "n": 400,
+      "p50": 778.189253,
+      "p99": 1135.863605,
+      "max": 1672.471127
+    },
+    "latency_ms.para.union_m50": {
+      "n": 400,
+      "p50": 786.441857,
+      "p99": 1143.529147,
+      "max": 1717.533108
+    },
+    "latency_ms.para.vecOnly_m10": {
+      "n": 400,
+      "p50": 731.104552,
+      "p99": 858.647537,
+      "max": 993.540406
+    },
+    "latency_ms.para.vecOnly_m25": {
+      "n": 400,
+      "p50": 807.982639,
+      "p99": 1049.159944,
+      "max": 1150.287031
+    },
+    "latency_ms.para.vecOnly_m50": {
+      "n": 400,
+      "p50": 931.00214,
+      "p99": 1092.539229,
+      "max": 1254.572187
+    },
+    "latency_ms.vector_search.exact": {
+      "n": 2400,
+      "p50": 723.804763,
+      "p99": 852.281595,
+      "max": 1078.426661
+    },
+    "mcnemar_p.lex.union_m10": 3.725290298461918e-9,
+    "mcnemar_p.lex.union_m25": 7.4505805969237975e-9,
+    "mcnemar_p.lex.union_m50": 2.0861625671386668e-7,
+    "mcnemar_p.para.union_m10": 0.0000014901161193847673,
+    "mcnemar_p.para.union_m25": 0.00008999556303024308,
+    "mcnemar_p.para.union_m50": 0.00004398822784423834,
+    "partner_recall.para.union_m10": 0.1075,
+    "partner_recall.para.union_m25": 0.1125,
+    "partner_recall.para.union_m50": 0.125,
+    "partner_recall.para.vecOnly_m10": 0.0825,
+    "partner_recall.para.vecOnly_m25": 0.0975,
+    "partner_recall.para.vecOnly_m50": 0.11,
+    "recall.lex.union_m10": 0.9875,
+    "recall.lex.union_m25": 0.99,
+    "recall.lex.union_m50": 0.99,
+    "recall.lex.vecOnly_m10": 0.965,
+    "recall.lex.vecOnly_m25": 0.98,
+    "recall.lex.vecOnly_m50": 0.9825,
+    "recall.para.union_m10": 0.925,
+    "recall.para.union_m25": 0.9325,
+    "recall.para.union_m50": 0.9425,
+    "recall.para.vecOnly_m10": 0.835,
+    "recall.para.vecOnly_m25": 0.8725,
+    "recall.para.vecOnly_m50": 0.9025,
+    "storage.bytes_per_unit": 4693.291002730356,
+    "storage.ctm_bytes_after": 6218309632,
+    "storage.ctm_bytes_before": 1565147136,
+    "storage.tuv_vec_bytes": 4654862336
+  },
+  "notes": "embed.peak_rss_mib is the whole process, naive-scan index included"
+}

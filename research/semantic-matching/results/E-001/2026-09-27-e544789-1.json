@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-27-e544789-1",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-27T00:38:26.403Z",
+  "finished_at": "2026-09-27T00:42:03.979Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "e544789bab65d282f80f20119b18a4515c2d2819",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "synthetic-1M",
+    "sha256": "f5bd65e461ebc2ef7c057186f9f6a7041d08fac041939f2549c851add9ecd922",
+    "units": 1000000,
+    "langs": [
+      "en-US",
+      "fr-FR"
+    ],
+    "para_eligible": 0
+  },
+  "model": null,
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "hnsw",
+    "hnsw": {
+      "M": 16,
+      "efConstruction": 200,
+      "efSearch": 128,
+      "seed": 100
+    },
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": null
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "latency_ms.lex.fts50": {
+      "n": 400,
+      "p50": 30.200429,
+      "p99": 100.027031,
+      "max": 134.538523
+    },
+    "latency_ms.lex.ftsK_m10": {
+      "n": 400,
+      "p50": 30.078982,
+      "p99": 107.246103,
+      "max": 123.042109
+    },
+    "latency_ms.lex.ftsK_m25": {
+      "n": 400,
+      "p50": 30.644896,
+      "p99": 101.882384,
+      "max": 150.194517
+    },
+    "latency_ms.lex.ftsK_m50": {
+      "n": 400,
+      "p50": 30.532816,
+      "p99": 114.670103,
+      "max": 140.353623
+    },
+    "latency_ms.lex.naive": {
+      "n": 400,
+      "p50": 156.717244,
+      "p99": 284.700804,
+      "max": 301.369849
+    },
+    "queries.lex.n": 400,
+    "queries.lex.sha256": "2bed51c6d055366c6d5615d550d08ccfbafc59d0044aba5194291248eec59b4c",
+    "recall.lex.fts50": 0.9075,
+    "recall.lex.ftsK_m10": 0.9075,
+    "recall.lex.ftsK_m25": 0.91,
+    "recall.lex.ftsK_m50": 0.91
+  },
+  "notes": ""
+}

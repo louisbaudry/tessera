@@ -69,3 +69,25 @@ for comparable segments.
 
 Precondition: the acceptance-rate denominator (spec §7, §9.2) is decided
 and collecting before measurement starts.
+
+## H1b — Recall at an equal candidate count
+
+**Stated:** 2026-09-25. Revises H1 without replacing it (rule 5).
+
+**Why:** H1 compares FTS top-50 plus the vector top-_m_ against FTS
+top-50 alone. The union contains the FTS top-50, so its recall can
+never be lower, and any extra candidates, even random ones, can only
+raise it. H1 cannot fail on recall by construction. H1b adds the
+control that can fail.
+
+**Statement:** on a natural-language memory of at least 1M bilingual
+units, with paraphrase queries, FTS top-50 plus vector top-_m_ contains
+the naive scan's best FS-1 match more often than FTS top-(50 + _m_), for
+at least one model and _m_ whose p99 lookup latency meets E-001's budget.
+
+Tested on: `dgt-tm-v2019-en-fr-1M`, query set `para`, with the test,
+the correction and the budget fixed in
+`experiments/E-001-shortlist-recall.md` before its first run.
+
+Falsified if: no model × _m_ comparison is significant after correction,
+or none meets the budget.
