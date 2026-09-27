@@ -7,3 +7,16 @@ onlyBuiltDependencies:
   - better-sqlite3
   - electron
   - esbuild
+  # The bench's approximate vector index (E-001's `hnsw` arm), built by
+  # node-gyp. An optional dependency of @cat-tool/db: a machine with no
+  # C++ toolchain (CI's Windows runner) skips it and installs the rest.
+  - hnswlib-node
+
+# Blocked on purpose. onnxruntime-node (via @huggingface/transformers,
+# the bench's embedder) ships its CPU binaries in the package; its
+# postinstall only downloads GPU providers. protobufjs's only prints a
+# notice, and sharp (image input, unused here) is not needed.
+ignoredBuiltDependencies:
+  - onnxruntime-node
+  - protobufjs
+  - sharp

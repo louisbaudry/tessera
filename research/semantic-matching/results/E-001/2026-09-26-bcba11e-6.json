@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-26-bcba11e-6",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-26T12:30:37.912Z",
+  "finished_at": "2026-09-26T15:27:08.723Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "bcba11ece393f781c7963c98ed498b6f2d6fa98b",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "synthetic-1M",
+    "sha256": "f5bd65e461ebc2ef7c057186f9f6a7041d08fac041939f2549c851add9ecd922",
+    "units": 1000000,
+    "langs": [
+      "en-US",
+      "fr-FR"
+    ],
+    "para_eligible": 0
+  },
+  "model": {
+    "id": "Xenova/multilingual-e5-small",
+    "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+    "dim": 384,
+    "pooling": "mean",
+    "dtype": "q8",
+    "prefix": "query: "
+  },
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "exact",
+    "hnsw": null,
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": null
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "budget_met.lex.union_m10": false,
+    "budget_met.lex.union_m25": false,
+    "budget_met.lex.union_m50": false,
+    "discordant.lex.union_m10": {
+      "union_only": 25,
+      "ftsK_only": 0
+    },
+    "discordant.lex.union_m25": {
+      "union_only": 28,
+      "ftsK_only": 0
+    },
+    "discordant.lex.union_m50": {
+      "union_only": 30,
+      "ftsK_only": 0
+    },
+    "embed.ms": 8115469.894734,
+    "embed.peak_rss_mib": 1095.953125,
+    "embed.units": 1000000,
+    "embed.units_per_sec": 123.2214539602795,
+    "latency_ms.embed_query": {
+      "n": 1200,
+      "p50": 8.882803,
+      "p99": 20.714442,
+      "max": 39.041257
+    },
+    "latency_ms.lex.union_m10": {
+      "n": 400,
+      "p50": 826.409642,
+      "p99": 1080.898821,
+      "max": 1190.000327
+    },
+    "latency_ms.lex.union_m25": {
+      "n": 400,
+      "p50": 820.659399,
+      "p99": 975.226854,
+      "max": 1025.825965
+    },
+    "latency_ms.lex.union_m50": {
+      "n": 400,
+      "p50": 857.981892,
+      "p99": 1175.102805,
+      "max": 1365.098028
+    },
+    "latency_ms.lex.vecOnly_m10": {
+      "n": 400,
+      "p50": 787.944241,
+      "p99": 1024.376252,
+      "max": 1111.226048
+    },
+    "latency_ms.lex.vecOnly_m25": {
+      "n": 400,
+      "p50": 796.436345,
+      "p99": 916.91031,
+      "max": 978.305158
+    },
+    "latency_ms.lex.vecOnly_m50": {
+      "n": 400,
+      "p50": 855.232677,
+      "p99": 1291.77494,
+      "max": 1550.700984
+    },
+    "latency_ms.vector_search.exact": {
+      "n": 1200,
+      "p50": 782.075772,
+      "p99": 1046.432986,
+      "max": 1327.915481
+    },
+    "mcnemar_p.lex.union_m10": 2.9802322387695405e-8,
+    "mcnemar_p.lex.union_m25": 3.725290298461918e-9,
+    "mcnemar_p.lex.union_m50": 9.313225746154793e-10,
+    "recall.lex.union_m10": 0.97,
+    "recall.lex.union_m25": 0.98,
+    "recall.lex.union_m50": 0.985,
+    "recall.lex.vecOnly_m10": 0.935,
+    "recall.lex.vecOnly_m25": 0.9525,
+    "recall.lex.vecOnly_m50": 0.96,
+    "storage.bytes_per_unit": 4687.642624,
+    "storage.ctm_bytes_after": 6256263168,
+    "storage.ctm_bytes_before": 1568624640,
+    "storage.tuv_vec_bytes": 4687642624
+  },
+  "notes": "embed.peak_rss_mib is the whole process, naive-scan index included"
+}
