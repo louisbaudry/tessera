@@ -103,19 +103,18 @@ export function editSegmentTarget(
     }
     const empty = isBlankTarget(visible, segment.formatTable);
     const stored = segment.targetTokens;
-    if (
-      (stored === null) === empty &&
-      sameVisibleTarget(visible, stored ?? [], segment.formatTable)
-    ) {
-      return { segment, changed: false, rerun: [], issues: [] };
-    }
+    const unchanged = empty
+      ? stored === null
+      : stored !== null && sameVisibleTarget(visible, stored, segment.formatTable);
+    if (unchanged) return { segment, changed: false, rerun: [], issues: [] };
 
-    setSegmentTarget(db, id, {
+    const written = setSegmentTarget(db, id, {
       targetTokens: empty ? null : visible,
       status: empty ? 'new' : 'translated',
       origin: null,
       actor: options.actor,
     });
+    if (!written) return { segment, changed: false, rerun: [], issues: [] };
     const { rerun, issues } = rerunQaAfterEdit(db, id, stored);
     return { segment: getSegment(db, id)!, changed: true, rerun, issues };
   })();

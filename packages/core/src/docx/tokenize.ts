@@ -34,16 +34,21 @@ const TEXT_NODES = new Set(['w:t']);
  * Elements that are visible, placeable objects: they show something on
  * the page, so where they go in a translation is the translator's call.
  *
- * Anything in neither this list nor {@link HIDDEN_PH} is kept whole and
- * hidden, and a hidden placeholder the carrying rule cannot place trails
- * its sentence (`carryHiddenTags`). So a construct that shows content
- * belongs here, or it moves: a `w:fldSimple` page number, once missing
- * from this list, went to the end of "Page 1 of 3" (backlog #29). The
- * run and paragraph content models (ECMA-376 `EG_RunInnerContent`,
- * `EG_PContent`) are finite; what they allow that shows content is all
- * here. `mc:AlternateContent` is not: every one in the fixture corpus is
- * a floating shape, placed on the page by its anchor rather than by
- * where it sits in the text.
+ * Anything in neither this list nor {@link HIDDEN_PH}, and not walked
+ * ({@link WRAPPERS}, `w:hyperlink`, `w:sdt`), is kept whole and hidden,
+ * and a hidden placeholder the carrying rule cannot place trails its
+ * sentence (`carryHiddenTags`). So a construct that shows content
+ * belongs here or in a walk, or it moves: a `w:fldSimple` page number,
+ * once missing from this list, went to the end of "Page 1 of 3", and a
+ * tracked move's text, once in neither, to the end of its sentence
+ * untranslated (backlog #29). The run and paragraph content models
+ * (ECMA-376 `EG_RunInnerContent`, `EG_PContent`) are finite; what they
+ * allow that shows content is here or walked, but for two things kept
+ * hidden on purpose: a tracked deletion (`w:del`, `w:moveFrom`), which
+ * shows only as struck-through text that is not translated (§3.5), and
+ * `mc:AlternateContent` — every one in the fixture corpus a floating
+ * shape, placed on the page by its anchor rather than by where it sits
+ * in the text.
  */
 const VISIBLE_PH = new Set([
   'w:br',
@@ -102,9 +107,11 @@ const HIDDEN_PH = new Set([
  * itself is kept as a hidden paired tag rather than dropped. Flattening a
  * `w:ins` would silently accept a reviewer's pending insertion, and
  * dropping a `w:sdt` would destroy a content control — neither is a change
- * a translation tool has any business making.
+ * a translation tool has any business making. A tracked move's
+ * destination (`w:moveTo`) is an insertion by another name; its origin
+ * (`w:moveFrom`) is a deletion, kept whole like `w:del`.
  */
-const WRAPPERS = new Set(['w:ins', 'w:smartTag']);
+const WRAPPERS = new Set(['w:ins', 'w:moveTo', 'w:smartTag']);
 
 function kindOfElement(name: string): TagKind {
   switch (name) {

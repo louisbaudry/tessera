@@ -129,6 +129,12 @@ describe('editSegmentTarget', () => {
       actor: TEST_ACTOR,
     });
     expect(result.segment).toMatchObject({ targetTokens: null, status: 'new' });
+    // And spaces over an untranslated segment are no edit at all.
+    const again = editSegmentTarget(db, segment.id, {
+      tokens: [text(' ')],
+      actor: TEST_ACTOR,
+    });
+    expect(again).toMatchObject({ changed: false, rerun: [], issues: [] });
     db.close();
   });
 

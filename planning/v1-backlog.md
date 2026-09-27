@@ -1899,7 +1899,9 @@ source's own hidden tags exactly.
   1 of 3" would have delivered as "Seite von 13", marked `tm_exact`.
   They are visible now (§3.2 always listed fields), with everything else
   the run and paragraph content models allow that shows content; none
-  is in the corpus, which is how it went unseen.
+  is in the corpus, which is how it went unseen. A second review found
+  one more: a tracked move's text (`w:moveTo`), hidden whole and so
+  trailed untranslated, is walked like an insertion now.
 
 **What an edit means is `db`'s, not the client's.** The first draft had
 the SPA decide status and origin and whether anything changed, and the

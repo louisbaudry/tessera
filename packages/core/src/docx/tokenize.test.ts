@@ -166,6 +166,19 @@ describe('tokenizeRegion — tracked changes', () => {
     expect(tokensText(r.tokens)).toBe('added');
   });
 
+  it("treats a tracked move's destination as current text (backlog #29)", () => {
+    // Hidden whole, its words were never offered, and a carried target
+    // put them after the translated sentence, in the source language.
+    const r = tokenizeRegion(
+      '<w:r><w:t xml:space="preserve">Press the button </w:t></w:r>' +
+        '<w:moveTo w:id="1" w:author="R" w:date="2026-01-01T00:00:00Z">' +
+        '<w:r><w:t xml:space="preserve">firmly </w:t></w:r></w:moveTo>' +
+        '<w:r><w:t>and wait.</w:t></w:r>',
+    );
+    expect(tokensText(r.tokens)).toBe('Press the button firmly and wait.');
+    expect(r.formats).toMatchObject([{ visible: false, placement: 'inline' }]);
+  });
+
   it('treats a deletion as opaque and not translatable', () => {
     // Deleted text is struck through — it is not part of what the
     // translator is being asked to translate (spec §3.5).

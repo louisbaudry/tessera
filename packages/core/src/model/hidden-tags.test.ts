@@ -192,6 +192,42 @@ describe('carryHiddenTags', () => {
     ]);
   });
 
+  it('finds a note number after a figure that ends the sentence, and nowhere else', () => {
+    const f = [entry(1, 'run', false), entry(2, 'run', false)];
+    const src = [
+      open(1),
+      text('Output rose 4% between 2019 and 2021.'),
+      close(1),
+      open(2),
+      text('2'),
+      close(2),
+    ];
+    const raised = (v: string) => [
+      open(1),
+      text(v),
+      open(2),
+      text('2'),
+      close(2),
+      close(1),
+    ];
+    expect(carryHiddenTags([text('La production entre 2019 et 2021.2')], src, f)).toEqual(
+      raised('La production entre 2019 et 2021.'),
+    );
+    expect(
+      carryHiddenTags([text('La producción creció un 2 % entre 2019 y 2021.2')], src, f),
+    ).toEqual(raised('La producción creció un 2 % entre 2019 y 2021.'));
+    // The note dropped: the 2 of "2 %" is not it, and the run goes empty.
+    expect(
+      carryHiddenTags([text('La producción creció un 2 % entre 2019 y 2021.')], src, f),
+    ).toEqual([
+      open(1),
+      text('La producción creció un 2 % entre 2019 y 2021.'),
+      open(2),
+      close(2),
+      close(1),
+    ]);
+  });
+
   it('ignores whitespace when judging what a wrapper encloses', () => {
     // A whole-sentence insertion, then the paragraph's trailing space.
     const f = [entry(1, 'inline', false), entry(2, 'run', false)];
@@ -279,6 +315,32 @@ describe('carryHiddenTags', () => {
       open(1),
       close(1),
     ]);
+  });
+
+  it('places a wrapper empty when the target moves a visible tag into it from outside', () => {
+    // A tracked insertion of a link's whole text; a field after the link,
+    // which the translator moves inside it. Wrapping it too would put a
+    // field inside a tracked insertion.
+    const f = [
+      entry(1, 'inline', true, 'link'),
+      entry(2, 'inline', false),
+      entry(3, 'block', true, 'field'),
+    ];
+    const src = [open(1), open(2), text('the manual'), close(2), close(1), ph(3)];
+    expect(
+      carryHiddenTags([open(1), text('das Handbuch, Seite '), ph(3), close(1)], src, f),
+    ).toEqual([
+      open(1),
+      text('das Handbuch, Seite '),
+      ph(3),
+      open(2),
+      close(2),
+      close(1),
+    ]);
+    // Left where it was, the insertion still wraps all of the link.
+    expect(
+      carryHiddenTags([open(1), text('das Handbuch'), close(1), ph(3)], src, f),
+    ).toEqual([open(1), open(2), text('das Handbuch'), close(2), close(1), ph(3)]);
   });
 
   it('dresses a placed visible container from its own source content', () => {

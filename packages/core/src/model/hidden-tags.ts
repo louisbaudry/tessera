@@ -29,17 +29,21 @@
  *    of its own text in the target's text of that container, when the
  *    translator kept it verbatim and it stands apart from the characters
  *    around it (`8` after a word, never inside `18`, nor in `1,8` or
- *    `8.5`): the last occurrence for a run that came after all of the
- *    container's other text, as a note number does, and the first
- *    otherwise.
+ *    `8.5`) — the first such occurrence. A run that came after all of
+ *    the container's other text, as a note number does, wraps only an
+ *    occurrence that ends the container's target text, whatever
+ *    punctuation follows: `2021.1` ends in a note number, not a decimal,
+ *    and a `1` earlier in the sentence is never it.
  * 3. **Wrappers.** A hidden paired tag that is not a run (`w:ins`,
  *    `w:sdt`, `w:smartTag`) and encloses every character and every
  *    visible tag of its container's source encloses all of its target
  *    content — a tracked insertion of a whole sentence stays one in
- *    translation. One that left anything out is placed empty: which
+ *    translation — unless the target places a visible tag there from
+ *    outside it. One that left anything out is placed empty: which
  *    words of a translation "are" the inserted ones is not a question
  *    this can answer, and wrapping what it did not wrap would also put
- *    a link, say, inside a tracked insertion, where OOXML allows none.
+ *    a link or a field, say, inside a tracked insertion, where OOXML
+ *    allows neither.
  * 4. **Placeholders.** A hidden placeholder before all of its container's
  *    source text leads its target content (a bookmark start before a
  *    heading), and so does the start of a range (bookmark, comment,
@@ -209,6 +213,19 @@ function findApart(text: string, needle: string): number[] {
 }
 
 /**
+ * Where `needle` ends `text` — nothing but spaces and punctuation after
+ * it — standing apart from what comes before it, or -1. A separator
+ * does not glue it here: what ends a sentence after `2021.` is not
+ * another digit of 2021.
+ */
+function findEnding(text: string, needle: string): number {
+  const at = text.lastIndexOf(needle);
+  if (at < 0 || !/^[\s\p{P}]*$/u.test(text.slice(at + needle.length))) return -1;
+  const first = charClass(needle[0]);
+  return first !== 'O' && charClass(text[at - 1]) === first ? -1 : at;
+}
+
+/**
  * The target with its source's hidden tags carried by the rule above.
  * `formats` is the segment's format table, which source and target share.
  */
@@ -237,6 +254,8 @@ export function carryHiddenTags(
   const textAt: number[] = [];
   /** Per container: indexes of the visible tags directly in it. */
   const visibleTagsIn = new Map<number, number[]>();
+  /** Each visible tag's index in the source (its open, for a pair). */
+  const visibleAt = new Map<number, number>();
   const noteVisible = (container: number, at: number) =>
     visibleTagsIn.set(container, [...(visibleTagsIn.get(container) ?? []), at]);
 
@@ -289,7 +308,10 @@ export function carryHiddenTags(
       }
       return;
     }
-    if (entry?.visible !== false) noteVisible(visibleChain()[0] ?? TOP, at);
+    if (entry?.visible !== false) {
+      noteVisible(visibleChain()[0] ?? TOP, at);
+      visibleAt.set(token.id, at);
+    }
     if (entry?.visible === false) {
       const chain = visibleChain();
       const record: Hidden = {
@@ -338,6 +360,30 @@ export function carryHiddenTags(
   for (const token of visible) {
     if (token.t === 'open' && pairs.has(token.id)) placed.add(token.id);
   }
+
+  /** Each visible tag the target places, and the container it is directly in. */
+  const targetHome = new Map<number, number>();
+  {
+    const chain: number[] = [TOP];
+    for (const token of visible) {
+      if (token.t === 'text') continue;
+      if (token.t === 'close') {
+        chain.pop();
+        continue;
+      }
+      targetHome.set(token.id, chain[chain.length - 1]!);
+      if (token.t === 'open') {
+        chain.push(placed.has(token.id) ? token.id : chain[chain.length - 1]!);
+      }
+    }
+  }
+  /** Whether every visible tag the target places directly in `home` was inside `tag`. */
+  const holdsWhatTargetPlaces = (tag: Hidden, home: number): boolean =>
+    [...targetHome].every(([id, where]) => {
+      if (where !== home) return true;
+      const at = visibleAt.get(id);
+      return at !== undefined && at > tag.at && at < tag.end;
+    });
 
   interface Plan {
     lead: Token[];
@@ -392,7 +438,8 @@ export function carryHiddenTags(
       span &&
       tag.at < span[0] &&
       tag.end > span[1] &&
-      (visibleTagsIn.get(home) ?? []).every((i) => i > tag.at && i < tag.end)
+      (visibleTagsIn.get(home) ?? []).every((i) => i > tag.at && i < tag.end) &&
+      holdsWhatTargetPlaces(tag, home)
     ) {
       plan.wrappers.push(tag);
     } else {
@@ -428,18 +475,27 @@ export function carryHiddenTags(
       const span = textSpan(container);
       for (const run of plan.minorities) {
         const candidates: Array<{ i: number; at: number }> = [];
+        // Nothing of the container's source text came after this run: a
+        // note number, most likely, which ends its sentence in any
+        // language — so only where the container's target text ends.
+        const trailing = span !== null && span[1] < run.end;
+        let last = -1;
+        visible.forEach((token, i) => {
+          if (token.t === 'text' && containerOf[i] === container) last = i;
+        });
         if (run.text !== '') {
           visible.forEach((token, i) => {
             if (token.t !== 'text' || containerOf[i] !== container || inVisibleRun[i]) {
               return;
             }
-            for (const at of findApart(token.v, run.text)) candidates.push({ i, at });
+            if (!trailing) {
+              for (const at of findApart(token.v, run.text)) candidates.push({ i, at });
+            } else if (i === last) {
+              const at = findEnding(token.v, run.text);
+              if (at >= 0) candidates.push({ i, at });
+            }
           });
         }
-        // Nothing of the container's source text came after this run: a
-        // note number, most likely, which ends its sentence in any
-        // language — so the last occurrence, not a figure earlier on.
-        if (span && span[1] < run.end) candidates.reverse();
         const free = candidates.find(
           ({ i, at }) =>
             !(claims.get(i) ?? []).some(

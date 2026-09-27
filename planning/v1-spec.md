@@ -204,7 +204,7 @@ Decisions, so they are not re-derived:
   of one.** `init` is `createProject`; `add-file` is `assembleFile` +
   `insertFile`; `add-tm` is `addTmRef` (plus `createTm`/`importTmx`/
   `importSdltm` when the memory has to be made first); `pretranslate`
-  is `pretranslate`; `qa` is `runQaRules` over every segment; `export`
+  is `pretranslate`; `qa` is `runQaRulesFor` over every segment; `export`
   is `exportFile` (§3.4); `history` is `listEvents` and `audit-verify`
   is `verifyAudit` (`audit-spec.md` §7, backlog #56). The CLI parses arguments, opens the database,
   prints, and sets the exit status — nothing else. Any logic it would
@@ -830,9 +830,11 @@ acceptance test, not schema validity.
 | `punct.spacing` | warning | Double space, space before `,.;:`, missing FR narrow no-break space |
 
 Rules run per segment on confirm, on every target the editor saves —
-that segment and every segment sharing its source, in the write's own
-transaction (`editSegmentTarget`, §7.2) — and across the project on
-demand. The text rules (`num.*`, `punct.*`) read a hidden placeholder
+that segment and every segment whose consistency findings the edit can
+move (same source, or a target reading as the old or the new one), in
+the write's own transaction (`rerunQaAfterEdit`, via
+`editSegmentTarget`, §7.2) — and across the project on demand
+(`runQaRulesFor`, the project read once). The text rules (`num.*`, `punct.*`) read a hidden placeholder
 as the nothing the reader sees, not as content (`QaCheckContext.formats`):
 where it sits in a target is the carrying rule's doing, not the
 translator's.
@@ -1017,18 +1019,24 @@ plain formatting — the hidden run over the most non-space characters,
 or none — wraps it; a losing hidden run whose text the translator kept
 verbatim, standing apart (a note number raised by hand, a symbol-font
 checkbox), wraps that — never a digit of a number (`1` in `1,5` is
-not apart), and the last occurrence for a run that came after all of
-its container's text, as a note number does; a wrapper (`w:ins`,
-`w:sdt`) around all of the source's text *and every visible tag* wraps
-all of the target's (one that left a link outside would put the link
-inside a tracked insertion, which OOXML does not allow); a placeholder
-before the text, or a range start whose end follows text, leads;
-everything else trails, empty. Trailing is only safe for what shows
-nothing: a `w:fldSimple` page number, a `w:cr` and an equation had been
-hidden by omission from the tokenizer's visible list, and trailed —
-"Page 1 of 3" delivered as "Seite von 13". They are visible now (§3.2
-lists fields), and so is everything else the run and paragraph content
-models allow that shows content (`tokenize.ts`'s `VISIBLE_PH`). Carried tags sit just inside the wrapping ones, so a dressed
+not apart); a run that came after all of its container's text, as a
+note number does, wraps only an occurrence ending the target's text
+there (`2021.1` ends in a note, and a `1` earlier in the sentence is
+never it); a wrapper (`w:ins`, `w:moveTo`, `w:sdt`) around all of the
+source's text *and every visible tag* wraps all of the target's, unless
+the target moves a visible tag into it from outside (either way a link
+or a field would land inside a tracked insertion, which OOXML does not
+allow); a placeholder before the text, or a range start whose end
+follows text, leads; everything else trails, empty. Trailing is only
+safe for what shows nothing: a `w:fldSimple` page number, a `w:cr` and
+an equation had been hidden by omission from the tokenizer's visible
+list, and trailed — "Page 1 of 3" delivered as "Seite von 13" — and a
+tracked move's text trailed untranslated. They are visible now (§3.2
+lists fields), a move's text walked like an insertion's, and so is
+everything else the run and paragraph content models allow that shows
+content, but for what stays hidden on purpose: tracked deletions
+(§3.5) and floating shapes (`tokenize.ts`). Carried tags sit just
+inside the wrapping ones, so a dressed
 target begins with opens and ends with closes, and export's fold fuses
 neighbouring sentences' runs instead of leaving the space between them
 in a bare run. Measured on the corpus: retyping every segment with its
