@@ -196,7 +196,9 @@ writing any new write path, know these three rules:
   transaction**, in the same file as the data it describes. The table is
   append-only by trigger. Its row type, action list and hash chain live
   once, in `core/audit/`. A new action widens the `CHECK`; it never
-  becomes free text.
+  becomes free text. Until backlog `#64` lands, that CHECK is built
+  from the live list (`audit-spec.md` §2), so don't add an action
+  before it.
 - **The actor is a required parameter, never optional or defaulted.**
   A write that can't name who caused it shouldn't compile. In `db` it is
   an `AuditActor` (`core/audit/actor.ts`), written through
@@ -289,13 +291,15 @@ engine, but follows the same discipline:
   via `pnpm --filter @cat-tool/portal-server run create-admin`, not an
   HTTP endpoint. Client auth is still a private-link `access_token`,
   deliberately — see `portal-v0-spec.md` §7 before changing either.
-- **Every portal write names its actor** (backlog #58,
-  `audit-spec.md` §2.6). `adminActor`/`clientActor` in
+- **Every portal transition, login, delivery and download names its
+  actor** (backlog #58, `audit-spec.md` §2.6). `adminActor`/`clientActor` in
   `portal-server/src/app.ts` are where a route's actor is built.
   `client:` is the client's id with no label, because the link proves
   the link and not a person. `order_event` is append-only by trigger
   and is the only record of a transition. Logins, deliveries and
-  downloads go to `audit_event`.
+  downloads go to `audit_event`. Not yet covered: setting an order's
+  word count and price (`setWordCountAndPrice`, backlog `#63`), and
+  rate and client writes.
 
 ## The QA engine
 
@@ -348,9 +352,11 @@ through. Those rules also need the project's language pair
   to `QA_RULES` later is on by default for every existing project with
   no migration touching their data. The CHECKs on `qa_issue.rule` and
   `qa_rule_setting.rule` are a different matter. Old migrations build
-  them from the live list, so an existing file rejects a new rule until
-  a migration widens them. Backlog `#64` fixes that; don't add a rule
-  before it lands.
+  them from the live list, so a fresh file accepts a new rule that
+  every existing file rejects, and no test on a fresh file notices. A
+  new rule needs a migration that widens both CHECKs. Backlog `#64`
+  freezes the lists and adds the rebuild helper that migration uses;
+  don't add a rule before it lands.
 
 ## The CLI (`@cat-tool/cli`)
 

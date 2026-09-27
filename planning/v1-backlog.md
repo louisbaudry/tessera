@@ -2203,7 +2203,8 @@ admin uploads final files and marks delivered -> both notifications fire
 (console-logged in v0).
 
 What's manual in v0: actual translation production, word count for every
-file type except `.txt` (admin enters it by hand), notification delivery
+file type (admin enters it by hand; `portal-core`'s `.txt` estimator is
+not called by the server, see `#62`), notification delivery
 (console log, not real email). `ProductionAdapter` is a named seam
 (`ManualProductionAdapter` today) for the CAT tool to plug into later
 without touching the order model, pricing, or status machine — see
