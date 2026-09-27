@@ -11,15 +11,24 @@
  * from its own justification.
  */
 
-import { DECISION_KINDS, NORMALIZER_VERSION } from '@cat-tool/core';
+import { NORMALIZER_VERSION, type DecisionKind } from '@cat-tool/core';
 
-import type { Migration } from '../migrate.js';
+import { sqlList, type Migration } from '../migrate.js';
 
 /** "CATG" — distinct from `.ctm`'s "CATM", the project's "CATP", the portal's "CATO". */
 export const GLOSSARY_APPLICATION_ID = 0x43415447;
 
-const sqlList = (values: readonly string[]): string =>
-  values.map((v) => `'${v}'`).join(', ');
+/**
+ * `term_decision.kind` since v1: `DECISION_KINDS` as of backlog #39. A
+ * frozen snapshot, never the live constant (`db/migrate.ts`, backlog
+ * #64); a new kind is a new migration, never an edit here.
+ */
+const V1_DECISION_KINDS = [
+  'accepted_suggestion',
+  'custom',
+  'override',
+  'deprecation',
+] as const satisfies readonly DecisionKind[];
 
 const v1: Migration = {
   version: 1,
@@ -84,7 +93,7 @@ const v1: Migration = {
         lang           TEXT    NOT NULL,
         chosen         TEXT    NOT NULL,
         rejected       TEXT    NOT NULL,
-        kind           TEXT    NOT NULL CHECK (kind IN (${sqlList(DECISION_KINDS)})),
+        kind           TEXT    NOT NULL CHECK (kind IN (${sqlList(V1_DECISION_KINDS)})),
         source_project TEXT,
         source_segment INTEGER,
         decided_by     TEXT,

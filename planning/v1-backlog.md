@@ -402,7 +402,11 @@ additions: `application_id = 0x43415450` ("CATP", distinct from `.ctm`'s
 and CHECK constraints on `segment.status` and `qa_issue.{rule,severity}`
 generated from `@cat-tool/core`'s own closed-set constants
 (`SEGMENT_STATUSES`, `QA_RULES`) rather than duplicated as literal SQL —
-one list to keep in sync, not two. `segment.origin` is deliberately left
+"one list to keep in sync, not two". That was wrong, and `#64` reversed
+it: a migration runs once per file, so a list read live means one thing
+in a fresh file and another in every existing one. Each migration now
+holds a frozen literal, guarded against the constant by a test.
+`segment.origin` is deliberately left
 unconstrained, per spec §4.3: a new TM match kind is a value, not a
 migration.
 
@@ -683,19 +687,82 @@ translatable ones, all-locked) and against real `Segment[]` shapes via
 context not captured at write time cannot be recovered — so whichever
 of #19/#20 lands first calls this rather than reinventing it.
 
-**#64 · Migrations never read live lists — freeze CHECK lists, rebuild
-helper, guard · M** · [issue #66]
-Every generated `CHECK (x IN (...))` in a migration reads a live
-constant (`QA_RULES`, `SEGMENT_STATUSES`, `DECISION_KINDS`,
-`ORDER_STATUSES`, the audit-action lists). A file keeps the list its
-migration ran with; a fresh file gets today's; so a new member is
-rejected by every existing file, and nothing flags it. Simulated on a
-project file whose QA CHECKs hold only the tag rules: `seg.empty` fails
-the CHECK. Whether that has already happened can't be settled from the
-public history. Freeze the lists as literals, add a rename-first
-table-rebuild helper (it also handles `audit_event`'s self-reference),
-widen the QA tables defensively, and guard with a test plus a lint rule.
-Before `#63` and `#44`.
+**#64 · ~~Migrations never read live lists — freeze CHECK lists,
+rebuild helper, guard~~ · DONE — `db/migrate.ts` (`rebuildTable`,
+`sqlList`) + every `db/*/schema.ts` + `db/check-lists.test.ts`**
+Every generated `CHECK (x IN (...))` in a migration read a live constant
+(`QA_RULES`, `SEGMENT_STATUSES`, `DECISION_KINDS`, `ORDER_STATUSES`, the
+three audit-action lists). A migration runs once per file, so a file
+keeps the list its migration ran with while a fresh file gets today's.
+A new member is rejected by every existing file, and nothing flags it:
+every test opens a fresh file.
+
+**The rule:** a migration's DDL is a historical snapshot and never reads
+a live list. Each list is now a literal beside its migration (`V1_…`,
+`V3_…`, `V5_…`, `V7_…`), typed `satisfies readonly QaRule[]` and so on.
+That proves each member still exists, never that the list is complete.
+Completeness is `db/check-lists.test.ts`'s job: it reads every
+`CHECK … IN` a fresh file carries from `sqlite_master` and compares each
+to its constant, for all five databases. A CHECK list the test doesn't
+know about fails too (`tm_import.format`'s `'tmx'` is registered as
+itself), so a new closed set can't slip past by being new. Adding
+`term.glossary_mismatch` to `QA_RULES` with no migration was shown to
+fail it on both QA tables, then reverted.
+
+The guard covers only the newest snapshot. A later migration that
+widened a CHECK by reading the constant again would still pass it, so
+an ESLint `no-restricted-imports` entry bars the seven constants from
+`packages/db/src/**/schema.ts` (type imports allowed). The rule is
+recorded in `migrate.ts`'s header and as a CLAUDE.md invariant beside
+the one-definition rule it deliberately doesn't reach. `QA_SEVERITIES`
+moved into `core/model/qa.ts`, with `QaSeverity` derived from it the way
+`QaRule` is. `sqlList`, which had four private copies, is now one export
+of `migrate.ts`.
+
+**`rebuildTable(db, table, ddl)`** widens a CHECK inside a migration's
+transaction. It renames the old table aside, drops its indexes and
+triggers, creates the new table from `ddl`, copies every column by name,
+then drops the old table. It checks the row count and
+`foreign_key_check` afterwards. The order matters for `audit_event`,
+whose `batch_id REFERENCES audit_event(id)`: create-copy-drop-rename
+deletes rows the copy's batch ids still point at. It refuses a table
+another table references (`segment`, `translation_order`): the rename
+would repoint their foreign keys, and turning foreign keys off must
+happen before `BEGIN`, which the runner can't do yet. The first card
+that needs that extends the runner.
+
+**Project v7** rebuilds `qa_issue` and `qa_rule_setting` with the
+thirteen rules and recreates `qa_issue_segment` (v6). Its DDL is written
+out again, not shared with v1/v3 through a function: a helper two
+migrations call is a live definition one level up, the same bug. A first
+draft did exactly that.
+
+**Had it already happened? No.** The private development history
+settles what the public one couldn't. `QA_RULES` held all thirteen rules
+from the scaffold commit (2026-08-16), two weeks before the project
+schema existed. None of the other six lists gained a member after the
+migration that reads it ran. `#22`'s record (corrected here) had said
+`#23`/`#24` would add members; they only added checks. v7 is therefore
+defensive: it repairs nothing known, and gives the helper a real first
+use before `#44` and `#63` depend on it.
+
+**Simulating a drifted file took a second attempt.** `better-sqlite3`
+builds SQLite in defensive mode, which refuses `writable_schema`, so
+the CHECK text can't be edited in place. The test instead runs the real
+v1–v6 with `QA_RULES`' SQL swapped for the three tag rules inside
+`exec`. That is a closer model of the failure anyway: an old migration
+reading a shorter live list. The resulting file rejects `seg.empty` in
+both tables. Opened, it accepts it, keeps every row and id (dismissals
+included), and its QA `sqlite_master` entries equal a fresh file's.
+
+Also corrected: `#15`'s and `#22`'s records, CLAUDE.md's Auditability
+and "The QA engine" bullets, the `qa-settings.ts` header, and the doc
+comments on `DECISION_KINDS` and the audit-action lists.
+`smart-glossary-spec.md` §6 now names the helper. `audit-spec.md` §2's
+CHECK paragraph is left for `#63`, as the card planned. 10 new tests: 5
+guard, 3 helper (the self-reference with batched rows and an intact
+chain afterwards, a refused referenced table, a refused call outside a
+transaction), and 2 for v7.
 
 ---
 
@@ -1198,7 +1265,7 @@ section already flags for #18.
 **#22 · ~~QA engine + tag rules~~ · DONE — `core/qa/rules.ts`
 + `db/project/qa-issues.ts` + `db/project/qa-settings.ts`**
 Rule registry, per-project switches, persisted dismissals. Implements
-`tag.missing`, `tag.extra`, `tag.unbalanced` — the other nine rules in
+`tag.missing`, `tag.extra`, `tag.unbalanced` — the other ten rules in
 spec §6.4's table (`seg.*`, `consistency.*`, `num.*`, `punct.*`) are
 backlog `#23`/`#24`, plugging into the same registry rather than a
 second one.
@@ -1249,11 +1316,14 @@ ones now lock the carry-forward behaviour down directly.
 **Per-project switches are absence-based, not a seeded row per rule.**
 `qa_rule_setting` (project schema migration v3) only ever holds a row for
 a rule someone has explicitly turned *off*; a rule with no row is
-enabled. `QA_RULES` gaining a member later — `#23`/`#24` will do exactly
-this — needs no migration to make it on-by-default for every existing
-project, the same reasoning `origin`'s missing CHECK constraint already
-documents for itself in `schema.ts`, applied to a table instead of a
-column.
+enabled, so a rule added later is on by default for every existing
+project with no row to write — the same reasoning `origin`'s missing
+CHECK constraint already documents for itself in `schema.ts`, applied
+to a table instead of a column. (This record once said such a rule
+"needs no migration" and that `#23`/`#24` would add members to
+`QA_RULES`. Neither held: the list already had all thirteen rules, and
+the `rule` CHECKs on both QA tables are closed sets, so a new rule
+needs the migration that widens them — `#64`.)
 
 23 new tests (12 core, 11 db) plus one existing enumerated-tables test
 updated for the new `qa_rule_setting` table. Full gate green, including

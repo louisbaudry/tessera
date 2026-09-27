@@ -21,13 +21,14 @@ import {
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
-const sqlList = (values: readonly string[]): string =>
-  values.map((v) => `'${v}'`).join(', ');
+import { sqlList } from '../migrate.js';
 
 /**
  * The table, its indexes and its append-only triggers (spec §2), with
  * `action` CHECKed against the actions that can happen in this file.
  * A new action is a migration that widens the CHECK, never free text.
+ * A migration passes its own frozen list, never the live constant
+ * (`db/migrate.ts`, backlog #64).
  */
 export function auditEventDdl(actions: readonly AuditAction[]): string {
   return `

@@ -6,26 +6,79 @@
  * files, `ATTACH`ed at query time, never copied in.
  */
 
-import {
-  PROJECT_AUDIT_ACTIONS,
-  QA_RULES,
-  SEGMENT_STATUSES,
-  type Origin,
-  type QaSeverity,
-  type SegmentStatus,
-  type Token,
+import type {
+  Origin,
+  ProjectAuditAction,
+  QaRule,
+  QaSeverity,
+  SegmentStatus,
+  Token,
 } from '@cat-tool/core';
 
 import { appendAuditEvent, auditEventDdl } from '../audit/events.js';
-import type { Migration } from '../migrate.js';
+import { rebuildTable, sqlList, type Migration } from '../migrate.js';
 
 /** "CATP" — distinct from `.ctm`'s "CATM" (tm-format-spec.md §1). */
 export const PROJECT_APPLICATION_ID = 0x43415450;
 
-const QA_SEVERITIES: readonly QaSeverity[] = ['error', 'warning', 'info'];
+/*
+ * The closed sets below are frozen snapshots, never the live constants
+ * (`db/migrate.ts`, backlog #64): each is exactly the list its migration
+ * created, and `satisfies` only proves every member still exists.
+ * A new member is a new migration, never an edit here.
+ */
 
-const sqlList = (values: readonly string[]): string =>
-  values.map((v) => `'${v}'`).join(', ');
+/** `segment.status` since v1: `SEGMENT_STATUSES` as of 2026-08-30. */
+const V1_SEGMENT_STATUSES = [
+  'new',
+  'draft',
+  'translated',
+  'confirmed',
+  'locked',
+] as const satisfies readonly SegmentStatus[];
+
+/**
+ * `qa_issue.rule` (v1) and `qa_rule_setting.rule` (v3): `QA_RULES` as of
+ * 2026-08-30. It already held all thirteen §6.4 rules then, though only
+ * the tag rules had checks until #23/#24; the private development
+ * history shows no member added after either migration ran.
+ */
+const V1_QA_RULES = [
+  'tag.missing',
+  'tag.extra',
+  'tag.unbalanced',
+  'seg.empty',
+  'seg.untranslated',
+  'consistency.target_differs',
+  'consistency.source_differs',
+  'num.missing',
+  'num.altered',
+  'punct.terminal',
+  'punct.brackets',
+  'punct.inverted',
+  'punct.spacing',
+] as const satisfies readonly QaRule[];
+
+/** `qa_issue.severity` since v1. */
+const V1_QA_SEVERITIES = [
+  'error',
+  'warning',
+  'info',
+] as const satisfies readonly QaSeverity[];
+
+/** `audit_event.action` since v5: `PROJECT_AUDIT_ACTIONS` as of backlog #56. */
+const V5_AUDIT_ACTIONS = [
+  'segment.target_set',
+  'segment.confirmed',
+  'segment.locked',
+  'segment.unlocked',
+  'segment.baseline',
+  'file.added',
+  'project.pretranslate',
+  'project.exported',
+  'project.setting_changed',
+  'ai.requested',
+] as const satisfies readonly ProjectAuditAction[];
 
 const v1: Migration = {
   version: 1,
@@ -61,7 +114,7 @@ const v1: Migration = {
         format_table  TEXT NOT NULL,
         target_tokens TEXT,
         source_hash   TEXT NOT NULL,
-        status        TEXT NOT NULL CHECK (status IN (${sqlList(SEGMENT_STATUSES)})),
+        status        TEXT NOT NULL CHECK (status IN (${sqlList(V1_SEGMENT_STATUSES)})),
         origin        TEXT,
         locked        INTEGER NOT NULL DEFAULT 0,
         updated_at    TEXT NOT NULL,
@@ -82,8 +135,8 @@ const v1: Migration = {
       CREATE TABLE qa_issue (
         id         INTEGER PRIMARY KEY,
         segment_id INTEGER NOT NULL REFERENCES segment(id),
-        rule       TEXT NOT NULL CHECK (rule IN (${sqlList(QA_RULES)})),
-        severity   TEXT NOT NULL CHECK (severity IN (${sqlList(QA_SEVERITIES)})),
+        rule       TEXT NOT NULL CHECK (rule IN (${sqlList(V1_QA_RULES)})),
+        severity   TEXT NOT NULL CHECK (severity IN (${sqlList(V1_QA_SEVERITIES)})),
         message    TEXT NOT NULL,
         dismissed  INTEGER NOT NULL DEFAULT 0,
         run_at     TEXT NOT NULL
@@ -118,7 +171,7 @@ const v3: Migration = {
   up: (db) => {
     db.exec(`
       CREATE TABLE qa_rule_setting (
-        rule    TEXT PRIMARY KEY CHECK (rule IN (${sqlList(QA_RULES)})),
+        rule    TEXT PRIMARY KEY CHECK (rule IN (${sqlList(V1_QA_RULES)})),
         enabled INTEGER NOT NULL DEFAULT 1
       );
     `);
@@ -150,7 +203,7 @@ const v5: Migration = {
   description:
     'audit_event, and a segment.baseline per segment with a target (audit-spec.md §2, §6; backlog #56)',
   up: (db) => {
-    db.exec(auditEventDdl(PROJECT_AUDIT_ACTIONS));
+    db.exec(auditEventDdl(V5_AUDIT_ACTIONS));
     // "This is what it was when recording began" — never an invented author.
     const rows = db
       .prepare(
@@ -189,8 +242,68 @@ const v6: Migration = {
 };
 
 /**
+ * `qa_issue` and `qa_rule_setting` rebuilt with today's thirteen rules
+ * (backlog #64). Defensive: no file is known to hold a narrower list,
+ * but a CHECK built from a live list could have, and this repairs any
+ * that does. It is also {@link rebuildTable}'s first use, ahead of the
+ * widening #44 needs. Every row and id is kept; `qa_issue_segment`
+ * (v6) goes with the old table and is recreated here. The DDL is v1's
+ * and v3's, written out again rather than shared: a function both
+ * migrations called would be a live definition, the bug this fixes.
+ */
+const V7_QA_RULES = [
+  'tag.missing',
+  'tag.extra',
+  'tag.unbalanced',
+  'seg.empty',
+  'seg.untranslated',
+  'consistency.target_differs',
+  'consistency.source_differs',
+  'num.missing',
+  'num.altered',
+  'punct.terminal',
+  'punct.brackets',
+  'punct.inverted',
+  'punct.spacing',
+] as const satisfies readonly QaRule[];
+
+const v7: Migration = {
+  version: 7,
+  description:
+    'qa_issue and qa_rule_setting rebuilt from a frozen rule list (db/migrate.ts, backlog #64)',
+  up: (db) => {
+    rebuildTable(
+      db,
+      'qa_issue',
+      `
+      CREATE TABLE qa_issue (
+        id         INTEGER PRIMARY KEY,
+        segment_id INTEGER NOT NULL REFERENCES segment(id),
+        rule       TEXT NOT NULL CHECK (rule IN (${sqlList(V7_QA_RULES)})),
+        severity   TEXT NOT NULL CHECK (severity IN (${sqlList(V1_QA_SEVERITIES)})),
+        message    TEXT NOT NULL,
+        dismissed  INTEGER NOT NULL DEFAULT 0,
+        run_at     TEXT NOT NULL
+      );
+      CREATE INDEX qa_issue_segment ON qa_issue(segment_id);
+    `,
+    );
+    rebuildTable(
+      db,
+      'qa_rule_setting',
+      `
+      CREATE TABLE qa_rule_setting (
+        rule    TEXT PRIMARY KEY CHECK (rule IN (${sqlList(V7_QA_RULES)})),
+        enabled INTEGER NOT NULL DEFAULT 1
+      );
+    `,
+    );
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
  */
-export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];
+export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];

@@ -12,7 +12,14 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { MigrationError, openAndMigrate, type Migration } from './migrate.js';
+import { TEST_ACTOR } from './audit/actor.fixture.js';
+import { appendAuditEvent, auditEventDdl, verifyAudit } from './audit/events.js';
+import {
+  MigrationError,
+  openAndMigrate,
+  rebuildTable,
+  type Migration,
+} from './migrate.js';
 
 const APP_ID = 0x54455354; // "TEST"
 
@@ -179,6 +186,115 @@ describe('openAndMigrate', () => {
     ).toThrow();
     const db = new Database(path);
     expect(db.pragma('user_version', { simple: true })).toBe(1);
+    db.close();
+  });
+});
+
+describe('rebuildTable', () => {
+  const auditV1: Migration = {
+    version: 1,
+    description: 'audit_event, logins only',
+    up: (db) => db.exec(auditEventDdl(['auth.login'])),
+  };
+  const auditV2: Migration = {
+    version: 2,
+    description: 'audit_event widened to downloads',
+    up: (db) =>
+      rebuildTable(db, 'audit_event', auditEventDdl(['auth.login', 'file.downloaded'])),
+  };
+
+  it('widens a self-referencing CHECK, keeping every row, id, batch and the chain', () => {
+    const path = dbPath();
+    const before = openAndMigrate(path, { applicationId: APP_ID, migrations: [auditV1] });
+    const login = (batchId: number | null) =>
+      appendAuditEvent(before, {
+        actor: TEST_ACTOR,
+        action: 'auth.login',
+        subjectType: 'admin_user',
+        subjectId: '1',
+        batchId,
+        detail: null,
+      });
+    const parent = login(null);
+    login(parent.id);
+    login(parent.id);
+    const rows = before.prepare('SELECT * FROM audit_event ORDER BY id').all();
+    expect(() =>
+      before
+        .prepare(
+          "INSERT INTO audit_event (at, actor, action, subject_type, chain_hash) VALUES ('t', 'a', 'file.downloaded', 's', 'h')",
+        )
+        .run(),
+    ).toThrow(/CHECK constraint failed/);
+    before.close();
+
+    const after = openAndMigrate(path, {
+      applicationId: APP_ID,
+      migrations: [auditV1, auditV2],
+    });
+    expect(after.prepare('SELECT * FROM audit_event ORDER BY id').all()).toEqual(rows);
+    expect(verifyAudit(after)).toEqual({ events: 3, brokenAt: null });
+    appendAuditEvent(after, {
+      actor: TEST_ACTOR,
+      action: 'file.downloaded',
+      subjectType: 'source_file',
+      subjectId: '1',
+      batchId: parent.id,
+      detail: { file_id: 1, name: 'a.docx', sha256: '00' },
+    });
+    expect(verifyAudit(after).brokenAt).toBeNull();
+    // The append-only triggers came back with the table.
+    expect(() => after.prepare('DELETE FROM audit_event').run()).toThrow(/append-only/);
+    // Nothing of the old table is left behind, and the batch index is back.
+    const schema = after
+      .prepare('SELECT type, name FROM sqlite_master ORDER BY type, name')
+      .all();
+    expect(schema).toEqual([
+      { type: 'index', name: 'audit_event_batch' },
+      { type: 'index', name: 'audit_event_subject' },
+      { type: 'table', name: 'audit_event' },
+      { type: 'trigger', name: 'audit_event_no_delete' },
+      { type: 'trigger', name: 'audit_event_no_update' },
+    ]);
+    after.close();
+  });
+
+  it('refuses a table another table references, and leaves the file untouched', () => {
+    const path = dbPath();
+    const v1: Migration = {
+      version: 1,
+      description: 'parent and child',
+      up: (db) =>
+        db.exec(`
+          CREATE TABLE parent (id INTEGER PRIMARY KEY);
+          CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id));
+        `),
+    };
+    const v2: Migration = {
+      version: 2,
+      description: 'rebuild parent',
+      up: (db) =>
+        rebuildTable(
+          db,
+          'parent',
+          'CREATE TABLE parent (id INTEGER PRIMARY KEY, x TEXT);',
+        ),
+    };
+    openAndMigrate(path, { applicationId: APP_ID, migrations: [v1] }).close();
+    expect(() =>
+      openAndMigrate(path, { applicationId: APP_ID, migrations: [v1, v2] }),
+    ).toThrow(/"child" references it/);
+    const db = new Database(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(1);
+    db.close();
+  });
+
+  it('refuses to run outside a transaction', () => {
+    const db = new Database(':memory:');
+    db.exec('CREATE TABLE t (id INTEGER PRIMARY KEY)');
+    expect(() =>
+      rebuildTable(db, 't', 'CREATE TABLE t (id INTEGER PRIMARY KEY);'),
+    ).toThrow(MigrationError);
     db.close();
   });
 });

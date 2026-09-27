@@ -1,10 +1,12 @@
 /**
  * The audit action vocabulary and each action's `detail` shape
- * (`planning/audit-spec.md` §2.2). One list per database, so each file's
- * `CHECK (action IN (...))` is generated from the list of actions that
- * can happen in that file — the way `qa_issue.rule` is generated from
- * `QA_RULES`. Adding an action is a migration that widens a CHECK: an
- * action nobody declared is a write path nobody reviewed.
+ * (`planning/audit-spec.md` §2.2). One list per database: the actions
+ * that can happen in that file. Each file's `CHECK (action IN (...))` is
+ * a frozen snapshot of its list, written as a literal in the migration
+ * that created it, never read from here (`db/migrate.ts`, backlog #64);
+ * a guard test ties the newest snapshot to this list. Adding an action
+ * is a migration that widens a CHECK: an action nobody declared is a
+ * write path nobody reviewed.
  */
 
 import type { Origin, SegmentStatus } from '../model/segment.js';

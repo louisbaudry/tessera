@@ -4,8 +4,13 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { QA_RULES } from '@cat-tool/core';
+import Database from 'better-sqlite3';
+
+import { openAndMigrate, sqlList, type Migration } from '../migrate.js';
 import { openProjectDb } from './index.js';
-import { PROJECT_APPLICATION_ID } from './schema.js';
+import { setRuleEnabled } from './qa-settings.js';
+import { PROJECT_APPLICATION_ID, PROJECT_MIGRATIONS } from './schema.js';
 
 let dir: string;
 const dbPath = () => {
@@ -103,6 +108,106 @@ describe('openProjectDb', () => {
     expect(() => insert.run('tag.missing', 'critical', 'x', '2026-01-01')).toThrow();
     expect(() => insert.run('not.a.rule', 'error', 'x', '2026-01-01')).toThrow();
     expect(() => insert.run('tag.missing', 'error', 'x', '2026-01-01')).not.toThrow();
+    db.close();
+  });
+});
+
+describe('v7: qa_issue and qa_rule_setting rebuilt (backlog #64)', () => {
+  const TAG_RULES = ['tag.missing', 'tag.extra', 'tag.unbalanced'];
+
+  /**
+   * A v6 file whose two QA CHECKs hold only the tag rules: v1–v6 as they
+   * ran on a file created while the live list was that short, which is
+   * what a migration reading `QA_RULES` would have left behind.
+   */
+  function driftedV6File(path: string): void {
+    const narrowed = (m: Migration): Migration => ({
+      ...m,
+      up: (db) =>
+        m.up(
+          new Proxy(db, {
+            get: (target, key) =>
+              key === 'exec'
+                ? (sql: string) =>
+                    target.exec(sql.replaceAll(sqlList(QA_RULES), sqlList(TAG_RULES)))
+                : (Reflect.get(target, key) as unknown),
+          }),
+        ),
+    });
+    openAndMigrate(path, {
+      applicationId: PROJECT_APPLICATION_ID,
+      migrations: PROJECT_MIGRATIONS.slice(0, 6).map(narrowed),
+    }).close();
+
+    const seeded = new Database(path);
+    seeded.exec(`
+      INSERT INTO file (id, rel_path, original_blob, skeleton, part_map, imported_at)
+        VALUES (1, 'a.docx', x'00', '[]', '[]', '2026-01-01');
+      INSERT INTO segment
+        (id, file_id, part, ord, para_key, para_ord, source_tokens, format_table, source_hash, status, updated_at)
+        VALUES (1, 1, 'document', 0, 'p1', 0, '[]', '[]', 'h1', 'new', '2026-01-01'),
+               (2, 1, 'document', 1, 'p2', 1, '[]', '[]', 'h2', 'new', '2026-01-01');
+      INSERT INTO qa_issue (id, segment_id, rule, severity, message, dismissed, run_at)
+        VALUES (7, 1, 'tag.missing', 'error', 'Missing tags: 1', 1, '2026-01-01'),
+               (9, 2, 'tag.extra', 'error', 'Extra tags: 2', 0, '2026-01-02');
+      INSERT INTO qa_rule_setting (rule, enabled) VALUES ('tag.unbalanced', 0);
+    `);
+    seeded.close();
+  }
+
+  const qaSchema = (db: Database.Database) =>
+    db
+      .prepare(
+        `SELECT type, name, tbl_name, sql FROM sqlite_master
+         WHERE tbl_name IN ('qa_issue', 'qa_rule_setting') ORDER BY type, name`,
+      )
+      .all();
+
+  it('the simulated drift is real: the old file rejects seg.empty in both tables', () => {
+    const path = dbPath();
+    driftedV6File(path);
+    const db = new Database(path);
+    expect(() =>
+      db
+        .prepare("INSERT INTO qa_rule_setting (rule, enabled) VALUES ('seg.empty', 0)")
+        .run(),
+    ).toThrow(/CHECK constraint failed/);
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO qa_issue (segment_id, rule, severity, message, run_at) VALUES (1, 'seg.empty', 'error', 'x', 't')",
+        )
+        .run(),
+    ).toThrow(/CHECK constraint failed/);
+    db.close();
+  });
+
+  it('opening it accepts seg.empty, keeps every row and id, and restores qa_issue_segment', () => {
+    const path = dbPath();
+    driftedV6File(path);
+    const before = new Database(path, { readonly: true });
+    const issues = before.prepare('SELECT * FROM qa_issue ORDER BY id').all();
+    const settings = before.prepare('SELECT * FROM qa_rule_setting ORDER BY rule').all();
+    before.close();
+
+    const db = openProjectDb(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(7);
+    expect(db.prepare('SELECT * FROM qa_issue ORDER BY id').all()).toEqual(issues);
+    expect(db.prepare('SELECT * FROM qa_rule_setting ORDER BY rule').all()).toEqual(
+      settings,
+    );
+
+    setRuleEnabled(db, 'seg.empty', false);
+    db.prepare(
+      "INSERT INTO qa_issue (segment_id, rule, severity, message, run_at) VALUES (1, 'seg.empty', 'error', 'x', 't')",
+    ).run();
+
+    const fresh = openProjectDb(join(dir, 'fresh.catdb'));
+    expect(qaSchema(db)).toEqual(qaSchema(fresh));
+    expect(qaSchema(db)).toContainEqual(
+      expect.objectContaining({ type: 'index', name: 'qa_issue_segment' }),
+    );
+    fresh.close();
     db.close();
   });
 });

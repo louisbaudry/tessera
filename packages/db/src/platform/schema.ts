@@ -10,7 +10,7 @@
  * across every existing user's data.
  */
 
-import { PLATFORM_AUDIT_ACTIONS } from '@cat-tool/core';
+import type { PlatformAuditAction } from '@cat-tool/core';
 
 import { auditEventDdl } from '../audit/events.js';
 import type { Migration } from '../migrate.js';
@@ -58,6 +58,23 @@ const v2: Migration = {
 };
 
 /**
+ * `audit_event.action` since v3: `PLATFORM_AUDIT_ACTIONS` as of backlog
+ * #57. A frozen snapshot, never the live constant (`db/migrate.ts`,
+ * backlog #64); a new action is a new migration, never an edit here.
+ */
+const V3_AUDIT_ACTIONS = [
+  'auth.login',
+  'auth.login_failed',
+  'auth.logout',
+  'account.created',
+  'authorization.granted',
+  'authorization.revoked',
+  'project.created',
+  'project.deleted',
+  'file.downloaded',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
  * The audit log (audit-spec.md §2, §2.5; backlog #57): the same table
  * every file that keeps one gets, its `CHECK` admitting only the actions
  * that can happen here. No baseline: nothing before this recorded who
@@ -67,7 +84,7 @@ const v3: Migration = {
   version: 3,
   description: 'audit_event (audit-spec.md §2.5, backlog #57)',
   up: (db) => {
-    db.exec(auditEventDdl(PLATFORM_AUDIT_ACTIONS));
+    db.exec(auditEventDdl(V3_AUDIT_ACTIONS));
   },
 };
 
