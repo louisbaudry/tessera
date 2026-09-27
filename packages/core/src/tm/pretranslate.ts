@@ -13,7 +13,7 @@
  */
 
 import { withoutHiddenTags } from '../model/hidden-tags.js';
-import { plainText } from '../model/token.js';
+import { plainText, xmlLegalText } from '../model/token.js';
 import type { FormatEntry, Token, TmToken } from '../model/token.js';
 import { remapTmTokens } from './mapping.js';
 
@@ -40,13 +40,21 @@ export interface PlacedMatch {
  * rather than approximate, and this falls back to the match's plain
  * text as a single untagged token: never a guessed, possibly
  * tag-invalid, placement (`core/tm/mapping.ts`).
+ *
+ * Either way the text is made something XML can carry (`xmlLegalText`):
+ * a memory can hold a vertical tab — PowerPoint's soft line break — that
+ * no DOCX can, and a target export refuses would fail the whole file at
+ * delivery, not this one segment now.
  */
 export function placeMatch(
   matchTokens: readonly TmToken[],
   sourceTokens: readonly Token[],
   sourceFormats: readonly FormatEntry[],
 ): PlacedMatch {
-  const remap = remapTmTokens(matchTokens, sourceTokens, sourceFormats);
+  const legal = matchTokens.map((t) =>
+    t.t === 'text' ? { t: 'text' as const, v: xmlLegalText(t.v) } : t,
+  );
+  const remap = remapTmTokens(legal, sourceTokens, sourceFormats);
   if (remap.ok) {
     return { targetTokens: remap.tokens, tagsMatched: true };
   }
@@ -59,7 +67,7 @@ export function placeMatch(
     (t) => t.t === 'text',
   );
   return {
-    targetTokens: [{ t: 'text', v: plainText(matchTokens) }],
+    targetTokens: [{ t: 'text', v: plainText(legal) }],
     tagsMatched: nothingToPlace,
   };
 }

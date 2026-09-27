@@ -160,6 +160,38 @@ describe('carryHiddenTags', () => {
     ]);
   });
 
+  it('never takes a digit out of a number, and finds a note number at the end', () => {
+    // A note number raised by hand after the sentence's last word.
+    const f = [entry(1, 'run', false), entry(2, 'run', false)];
+    const src = [
+      open(1),
+      text('Rates rose by 1.5 points in 2021.'),
+      close(1),
+      open(2),
+      text('1'),
+      close(2),
+    ];
+    expect(
+      carryHiddenTags([text('Die Zinsen stiegen 2021 um 1,5 Punkte.1')], src, f),
+    ).toEqual([
+      open(1),
+      text('Die Zinsen stiegen 2021 um 1,5 Punkte.'),
+      open(2),
+      text('1'),
+      close(2),
+      close(1),
+    ]);
+    // Standing apart earlier on is not enough: the run came last.
+    expect(carryHiddenTags([text('Regel 1 gilt.1')], src, f)).toEqual([
+      open(1),
+      text('Regel 1 gilt.'),
+      open(2),
+      text('1'),
+      close(2),
+      close(1),
+    ]);
+  });
+
   it('ignores whitespace when judging what a wrapper encloses', () => {
     // A whole-sentence insertion, then the paragraph's trailing space.
     const f = [entry(1, 'inline', false), entry(2, 'run', false)];
@@ -218,6 +250,32 @@ describe('carryHiddenTags', () => {
     const src = [text('Kept, '), open(1), text('inserted'), close(1)];
     expect(carryHiddenTags([text('Todo')], src, f)).toEqual([
       text('Todo'),
+      open(1),
+      close(1),
+    ]);
+  });
+
+  it('places a wrapper empty when a visible tag of its container was outside it', () => {
+    // A tracked insertion of the text, then a link on a logo after it:
+    // wrapping the link too would put it inside the insertion, which
+    // OOXML does not allow — and make it part of what a reviewer rejects.
+    const f = [
+      entry(1, 'inline', false),
+      entry(2, 'inline', true, 'link'),
+      entry(3, 'in-run', true, 'image'),
+    ];
+    const src = [open(1), text('Click the logo '), close(1), open(2), ph(3), close(2)];
+    expect(
+      carryHiddenTags(
+        [text('Klicken Sie auf das Logo '), open(2), ph(3), close(2)],
+        src,
+        f,
+      ),
+    ).toEqual([
+      text('Klicken Sie auf das Logo '),
+      open(2),
+      ph(3),
+      close(2),
       open(1),
       close(1),
     ]);

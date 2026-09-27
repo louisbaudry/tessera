@@ -21,9 +21,10 @@ export default tseslint.config(
   },
   {
     // `core/model` is the base layer: nothing from another `core` module,
-    // nothing from Node (CLAUDE.md). It is also `@cat-tool/core/model`,
-    // the one runtime entry the SPA may import, so this is what keeps a
-    // browser bundle free of `node:crypto` and the DOCX filter.
+    // nothing from Node, nothing from a package (CLAUDE.md) — only its
+    // own `./` siblings. It is also `@cat-tool/core/model`, the one
+    // runtime entry the SPA may import, so this is what keeps a browser
+    // bundle free of `node:crypto` and the DOCX filter.
     files: ['packages/core/src/model/**/*.ts'],
     ignores: ['packages/core/src/model/**/*.test.ts'],
     rules: {
@@ -32,9 +33,9 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['../*', 'node:*'],
+              regex: '^(?!\\./)',
               message:
-                'model/ is the base layer: nothing from other core modules or Node.',
+                'model/ is the base layer: it imports its own ./ siblings, nothing else.',
             },
           ],
         },

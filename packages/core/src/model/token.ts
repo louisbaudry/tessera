@@ -151,6 +151,19 @@ export function xmlIllegalChar(s: string): string | null {
 }
 
 /**
+ * `s` made something XML can carry: a vertical tab or a form feed — a
+ * soft line break or a page break where it came from — becomes a space,
+ * and any other character {@link xmlIllegalChar} would name is dropped.
+ * For text that reaches a target without passing `parseTokens`: a paste,
+ * a TM match (`placeMatch`).
+ */
+export function xmlLegalText(s: string): string {
+  return s
+    .replace(/[\u000B\u000C]/g, ' ')
+    .replace(new RegExp(XML_ILLEGAL.source, 'g'), '');
+}
+
+/**
  * Whether a tag token's role fits its format: a pair (`open`/`close`) is
  * a `run` or `inline` tag, a placeholder an `in-run` or `block` one. The
  * other way round is XML with no close, or a close with nothing open —

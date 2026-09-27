@@ -140,11 +140,7 @@ export function replaceQaIssues(
   })();
 }
 
-interface SiblingRow {
-  target_tokens: string | null;
-}
-
-interface FullTargetRow {
+interface TranslatedRow {
   id: number;
   source_hash: string;
   source_tokens: string;
@@ -152,43 +148,57 @@ interface FullTargetRow {
 }
 
 /**
- * Project-wide sibling data for `consistency.*` (backlog #23) — see the
- * design decision in `planning/v1-backlog.md`'s `#23` entry. Two plain
- * queries, computed fresh per call: one by `source_hash` (indexed), one
- * full scan of every other translated segment (there is no target-text
- * index, so equality is checked in JS after decoding). O(n) in the
- * project's segment count; acceptable at v1's single-translator scale,
- * same "wholesale, not diffed" tradeoff `replaceQaIssues` already makes.
+ * Every translated segment of the project, keyed both ways
+ * `consistency.*` looks (backlog #23): by `source_hash`, and by target
+ * plain text (there is no target-text index, so equality is checked in
+ * JS after decoding). Read once per QA pass, however many segments it
+ * checks: a pass that read the project once *per segment* cost seconds
+ * for one save of a segment with a few hundred repetitions (backlog #29).
+ * A source is decoded only when a match needs it.
  */
-function buildSiblingContext(db: Database.Database, segment: Segment): QaSiblingContext {
-  const sameSourceRows = db
-    .prepare(
-      `SELECT target_tokens FROM segment
-       WHERE source_hash = @source_hash AND id != @id AND target_tokens IS NOT NULL`,
-    )
-    .all({ source_hash: segment.sourceHash, id: segment.id }) as SiblingRow[];
-  const sameSourceOtherTargets = sameSourceRows
-    .filter((row): row is { target_tokens: string } => row.target_tokens !== null)
-    .map((row) => plainText(JSON.parse(row.target_tokens) as Token[]));
+interface TranslatedIndex {
+  readonly bySource: ReadonlyMap<string, readonly { id: number; target: string }[]>;
+  readonly byTarget: ReadonlyMap<string, readonly TranslatedRow[]>;
+}
 
+function readTranslated(db: Database.Database): TranslatedIndex {
+  const rows = db
+    .prepare(
+      `SELECT id, source_hash, source_tokens, target_tokens FROM segment
+       WHERE target_tokens IS NOT NULL`,
+    )
+    .all() as TranslatedRow[];
+  const bySource = new Map<string, { id: number; target: string }[]>();
+  const byTarget = new Map<string, TranslatedRow[]>();
+  for (const row of rows) {
+    const target = plainText(JSON.parse(row.target_tokens) as Token[]);
+    const sameSource = bySource.get(row.source_hash);
+    if (sameSource) sameSource.push({ id: row.id, target });
+    else bySource.set(row.source_hash, [{ id: row.id, target }]);
+    const sameTarget = byTarget.get(target);
+    if (sameTarget) sameTarget.push(row);
+    else byTarget.set(target, [row]);
+  }
+  return { bySource, byTarget };
+}
+
+/**
+ * One segment's sibling data for `consistency.*` — see the design
+ * decision in `planning/v1-backlog.md`'s `#23` entry — out of the
+ * project's translated segments.
+ */
+function siblingContext(index: TranslatedIndex, segment: Segment): QaSiblingContext {
+  const sameSourceOtherTargets = (index.bySource.get(segment.sourceHash) ?? [])
+    .filter((row) => row.id !== segment.id)
+    .map((row) => row.target);
   if (segment.targetTokens === null) {
     return { sameSourceOtherTargets, sameTargetOtherSources: [] };
   }
-  const ownTargetText = plainText(segment.targetTokens);
-  const otherRows = db
-    .prepare(
-      `SELECT id, source_hash, source_tokens, target_tokens FROM segment
-       WHERE id != @id AND target_tokens IS NOT NULL`,
-    )
-    .all({ id: segment.id }) as FullTargetRow[];
-  const sameTargetOtherSources = otherRows
-    .filter(
-      (row) =>
-        row.source_hash !== segment.sourceHash &&
-        plainText(JSON.parse(row.target_tokens) as Token[]) === ownTargetText,
-    )
+  const sameTargetOtherSources = (
+    index.byTarget.get(plainText(segment.targetTokens)) ?? []
+  )
+    .filter((row) => row.id !== segment.id && row.source_hash !== segment.sourceHash)
     .map((row) => plainText(JSON.parse(row.source_tokens) as Token[]));
-
   return { sameSourceOtherTargets, sameTargetOtherSources };
 }
 
@@ -199,30 +209,83 @@ function buildSiblingContext(db: Database.Database, segment: Segment): QaSibling
  * of a still-firing rule survives.
  *
  * Rules run "per segment on confirm and across the project on demand"
- * (`v1-spec.md` §6.4) — both call this the same way, one segment at a
- * time; a project-wide sweep is just this in a loop over `listSegments`.
+ * (`v1-spec.md` §6.4); a project-wide sweep is {@link runQaRulesFor}
+ * over every segment, which reads the project once rather than once per
+ * segment.
  */
 export function runQaRules(db: Database.Database, segmentId: number): readonly QaIssue[] {
-  const segment = getSegment(db, segmentId);
-  if (!segment) {
-    throw new SegmentRepoError(`no segment with id ${segmentId}`);
-  }
-  // The locale-aware rules (backlog #24) read the project's language pair;
-  // a database with no identity row yet leaves them undefined, and those
-  // rules then report nothing rather than guess a locale.
+  return runQaRulesFor(db, [segmentId]);
+}
+
+/** {@link runQaRules} for several segments, in one transaction, the project read once. */
+export function runQaRulesFor(
+  db: Database.Database,
+  segmentIds: readonly number[],
+): QaIssue[] {
+  return db.transaction(() => runChecks(db, segmentIds, readTranslated(db)))();
+}
+
+function runChecks(
+  db: Database.Database,
+  segmentIds: readonly number[],
+  index: TranslatedIndex,
+): QaIssue[] {
+  // The locale-aware rules (backlog #24) read the project's language
+  // pair; a database with no identity row yet leaves them undefined, and
+  // those rules then report nothing rather than guess a locale.
   const project = getProject(db);
-  const findings = runQaChecks(
-    {
-      source: segment.sourceTokens,
-      target: segment.targetTokens,
-      status: segment.status,
-      untranslatedAllowed: isUntranslatedAllowed(db, segment.sourceHash),
-      siblings: buildSiblingContext(db, segment),
-      srcLang: project?.srcLang,
-      tgtLang: project?.tgtLang,
-      formats: segment.formatTable,
-    },
-    listEnabledRules(db),
-  );
-  return replaceQaIssues(db, segmentId, findings);
+  const rules = listEnabledRules(db);
+  return segmentIds.flatMap((segmentId) => {
+    const segment = getSegment(db, segmentId);
+    if (!segment) {
+      throw new SegmentRepoError(`no segment with id ${segmentId}`);
+    }
+    const findings = runQaChecks(
+      {
+        source: segment.sourceTokens,
+        target: segment.targetTokens,
+        status: segment.status,
+        untranslatedAllowed: isUntranslatedAllowed(db, segment.sourceHash),
+        siblings: siblingContext(index, segment),
+        srcLang: project?.srcLang,
+        tgtLang: project?.tgtLang,
+        formats: segment.formatTable,
+      },
+      rules,
+    );
+    return replaceQaIssues(db, segmentId, findings);
+  });
+}
+
+/**
+ * QA after one segment's target changed from `before` (backlog #29): the
+ * segment itself, and every segment whose `consistency.*` findings the
+ * change can move — those sharing its source (`target_differs`), and
+ * those whose target reads as its old or its new one
+ * (`source_differs`). The ids come back with the findings, the edited
+ * segment's first, so a caller holding issues can replace exactly those.
+ */
+export function rerunQaAfterEdit(
+  db: Database.Database,
+  segmentId: number,
+  before: readonly Token[] | null,
+): { rerun: number[]; issues: QaIssue[] } {
+  return db.transaction(() => {
+    const segment = getSegment(db, segmentId);
+    if (!segment) {
+      throw new SegmentRepoError(`no segment with id ${segmentId}`);
+    }
+    const index = readTranslated(db);
+    const neighbours = new Set<number>();
+    for (const row of index.bySource.get(segment.sourceHash) ?? [])
+      neighbours.add(row.id);
+    for (const tokens of [before, segment.targetTokens]) {
+      if (tokens === null) continue;
+      for (const row of index.byTarget.get(plainText(tokens)) ?? [])
+        neighbours.add(row.id);
+    }
+    neighbours.delete(segmentId);
+    const rerun = [segmentId, ...[...neighbours].sort((a, b) => a - b)];
+    return { rerun, issues: runChecks(db, rerun, index) };
+  })();
 }

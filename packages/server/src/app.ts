@@ -471,6 +471,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         return reply.code(404).send({ error: `no segment #${req.params.segmentId}` });
       }
       const body = req.body ?? {};
+      if (typeof body !== 'object' || Array.isArray(body)) {
+        return reply.code(400).send({ error: 'the body must be a JSON object' });
+      }
       if ('status' in body || 'origin' in body) {
         return reply.code(400).send({
           error: "status and origin are the server's: an edit is its translator's own",

@@ -25,17 +25,21 @@
  *    where there is nothing else: a space at a paragraph's edge decides
  *    nothing, but a container of nothing but spaces keeps their run.
  * 2. **Verbatim minorities.** A hidden run that lost (1) — a note number
- *    raised by hand, a checkbox in a symbol font — wraps the first
- *    occurrence of its own text in the target's text of that container,
- *    when the translator kept it verbatim and it stands apart from the
- *    characters around it (`8` after a word, never inside `18`).
+ *    raised by hand, a checkbox in a symbol font — wraps an occurrence
+ *    of its own text in the target's text of that container, when the
+ *    translator kept it verbatim and it stands apart from the characters
+ *    around it (`8` after a word, never inside `18`, nor in `1,8` or
+ *    `8.5`): the last occurrence for a run that came after all of the
+ *    container's other text, as a note number does, and the first
+ *    otherwise.
  * 3. **Wrappers.** A hidden paired tag that is not a run (`w:ins`,
- *    `w:sdt`, `w:smartTag`) and encloses every character of its
- *    container's source text encloses all of its target content — a
- *    tracked insertion of a whole sentence stays one in translation. One
- *    that covered only part of it is placed empty: which words of a
- *    translation "are" the inserted ones is not a question this can
- *    answer.
+ *    `w:sdt`, `w:smartTag`) and encloses every character and every
+ *    visible tag of its container's source encloses all of its target
+ *    content — a tracked insertion of a whole sentence stays one in
+ *    translation. One that left anything out is placed empty: which
+ *    words of a translation "are" the inserted ones is not a question
+ *    this can answer, and wrapping what it did not wrap would also put
+ *    a link, say, inside a tracked insertion, where OOXML allows none.
  * 4. **Placeholders.** A hidden placeholder before all of its container's
  *    source text leads its target content (a bookmark start before a
  *    heading), and so does the start of a range (bookmark, comment,
@@ -119,6 +123,21 @@ export function sameVisibleTarget(
   );
 }
 
+/**
+ * Whether a target is no translation at all: nothing visible but
+ * whitespace. Hidden tags alone, or spaces, are nothing a reader would
+ * call a translation — an edit leaving only that makes the segment
+ * untranslated (`editSegmentTarget`), and confirm refuses it.
+ */
+export function isBlankTarget(
+  tokens: readonly Token[] | null,
+  formats: readonly FormatEntry[],
+): boolean {
+  return (tokens === null ? [] : withoutHiddenTags(tokens, formats)).every(
+    (t) => t.t === 'text' && t.v.trim() === '',
+  );
+}
+
 /** Text tokens joined, empty ones dropped: two streams that read the same compare equal. */
 function joined(tokens: readonly Token[]): Token[] {
   const out: Token[] = [];
@@ -160,21 +179,33 @@ const charClass = (ch: string | undefined): 'L' | 'N' | 'O' | null =>
   ch === undefined ? null : /\p{L}/u.test(ch) ? 'L' : /\p{N}/u.test(ch) ? 'N' : 'O';
 
 /**
- * Where `needle` stands apart in `text` at or after `from`: not glued to
- * a character of the same class as its own edge, so `8` is found after a
- * word but not inside `18`, and `Nota` not inside `Notable`.
+ * What joins the digits of one number: a decimal or thousands separator
+ * (a no-break, narrow no-break or thin space among them), a time, a
+ * fraction, a range.
  */
-function findApart(text: string, needle: string, from: number): number {
+const NUMBER_JOINER = /[.,:/'\u2019\u00A0\u202F\u2009-]/;
+
+/**
+ * Every index where `needle` stands apart in `text`: not glued to a
+ * character of the same class as its own edge, so `8` is found after a
+ * word but not inside `18`, and `Nota` not inside `Notable`. A digit
+ * edge is glued through a separator to a digit beyond it too: `1` is
+ * part of `1,5` and of `1.000`, not a note number beside them.
+ */
+function findApart(text: string, needle: string): number[] {
   const first = charClass(needle[0]);
   const last = charClass(needle[needle.length - 1]);
-  for (let i = text.indexOf(needle, from); i >= 0; i = text.indexOf(needle, i + 1)) {
-    const before = charClass(text[i - 1]);
-    const after = charClass(text[i + needle.length]);
-    const okBefore = first === 'O' || before !== first;
-    const okAfter = last === 'O' || after !== last;
-    if (okBefore && okAfter) return i;
+  const gluedAt = (edge: 'L' | 'N' | 'O' | null, at: number, step: 1 | -1): boolean =>
+    edge !== 'O' &&
+    (charClass(text[at]) === edge ||
+      (edge === 'N' &&
+        NUMBER_JOINER.test(text[at] ?? '') &&
+        charClass(text[at + step]) === 'N'));
+  const found: number[] = [];
+  for (let i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + 1)) {
+    if (!gluedAt(first, i - 1, -1) && !gluedAt(last, i + needle.length, 1)) found.push(i);
   }
-  return -1;
+  return found;
 }
 
 /**
@@ -187,7 +218,10 @@ export function carryHiddenTags(
   formats: readonly FormatEntry[],
 ): Token[] {
   if (sameVisibleTarget(target, source, formats)) return [...source];
-  const visible = withoutHiddenTags(target, formats);
+  // Text joined: whether a minority's text stands apart is read across
+  // the whole run of text, never cut short where a hidden tag once split
+  // it — which is also what keeps the rule idempotent.
+  const visible = joined(withoutHiddenTags(target, formats));
 
   // --- the source: containers, hidden tags, plain-formatting coverage ---
   const formatOf = formatsOf(source, formats);
@@ -201,6 +235,10 @@ export function carryHiddenTags(
   const blankCoverage = new Map<number, Map<number, number>>();
   /** Indexes of text tokens that are more than whitespace. */
   const textAt: number[] = [];
+  /** Per container: indexes of the visible tags directly in it. */
+  const visibleTagsIn = new Map<number, number[]>();
+  const noteVisible = (container: number, at: number) =>
+    visibleTagsIn.set(container, [...(visibleTagsIn.get(container) ?? []), at]);
 
   const stack: Array<{ token: Open; entry: FormatEntry | undefined }> = [];
   const visibleChain = (): number[] => {
@@ -247,9 +285,11 @@ export function carryHiddenTags(
       } else if (top) {
         const pair = pairs.get(top.token.id);
         if (pair) pair.end = at;
+        noteVisible(visibleChain()[0] ?? TOP, at);
       }
       return;
     }
+    if (entry?.visible !== false) noteVisible(visibleChain()[0] ?? TOP, at);
     if (entry?.visible === false) {
       const chain = visibleChain();
       const record: Hidden = {
@@ -348,7 +388,12 @@ export function carryHiddenTags(
     } else if (tag.entry.placement === 'run') {
       if (plan.run === null && dominant(home) === tag.open.id) plan.run = tag;
       else plan.minorities.push(tag);
-    } else if (span && tag.at < span[0] && tag.end > span[1]) {
+    } else if (
+      span &&
+      tag.at < span[0] &&
+      tag.end > span[1] &&
+      (visibleTagsIn.get(home) ?? []).every((i) => i > tag.at && i < tag.end)
+    ) {
       plan.wrappers.push(tag);
     } else {
       plan.rest.push(tag);
@@ -380,33 +425,37 @@ export function carryHiddenTags(
     });
     for (const [container, plan] of plans) {
       const kept: Hidden[] = [];
+      const span = textSpan(container);
       for (const run of plan.minorities) {
-        let claimed = false;
+        const candidates: Array<{ i: number; at: number }> = [];
         if (run.text !== '') {
           visible.forEach((token, i) => {
-            if (claimed || token.t !== 'text') return;
-            if (containerOf[i] !== container || inVisibleRun[i]) return;
-            const taken = claims.get(i) ?? [];
-            let from = 0;
-            for (;;) {
-              const at = findApart(token.v, run.text, from);
-              if (at < 0) return;
-              const overlaps = taken.some(
-                (c) => at < c.at + c.run.text.length && c.at < at + run.text.length,
-              );
-              if (!overlaps) {
-                claims.set(
-                  i,
-                  [...taken, { at, run }].sort((a, b) => a.at - b.at),
-                );
-                claimed = true;
-                return;
-              }
-              from = at + 1;
+            if (token.t !== 'text' || containerOf[i] !== container || inVisibleRun[i]) {
+              return;
             }
+            for (const at of findApart(token.v, run.text)) candidates.push({ i, at });
           });
         }
-        if (!claimed) kept.push(run);
+        // Nothing of the container's source text came after this run: a
+        // note number, most likely, which ends its sentence in any
+        // language — so the last occurrence, not a figure earlier on.
+        if (span && span[1] < run.end) candidates.reverse();
+        const free = candidates.find(
+          ({ i, at }) =>
+            !(claims.get(i) ?? []).some(
+              (c) => at < c.at + c.run.text.length && c.at < at + run.text.length,
+            ),
+        );
+        if (free) {
+          claims.set(
+            free.i,
+            [...(claims.get(free.i) ?? []), { at: free.at, run }].sort(
+              (a, b) => a.at - b.at,
+            ),
+          );
+        } else {
+          kept.push(run);
+        }
       }
       // Unmatched minorities are carried empty, with the rest.
       plan.rest.push(...kept);

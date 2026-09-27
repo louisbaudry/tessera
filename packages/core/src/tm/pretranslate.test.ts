@@ -75,6 +75,41 @@ describe('placeMatch', () => {
     });
   });
 
+  it("makes a match's text something XML can carry, placed or not (backlog #29)", () => {
+    // A vertical tab is PowerPoint's soft line break, and a memory keeps
+    // it; a DOCX cannot, and export refuses a target that has one.
+    const formats: FormatEntry[] = [
+      { id: 10, kind: 'b', visible: true, placement: 'run', open: '', close: '' },
+    ];
+    const placed = placeMatch(
+      [
+        { t: 'open', id: 1, k: 'b' },
+        { t: 'text', v: 'Start\u000Bdr\u0001\u00FCcken' },
+        { t: 'close', id: 1 },
+      ],
+      [
+        { t: 'open', id: 10, fmt: 10 },
+        { t: 'text', v: 'x' },
+        { t: 'close', id: 10 },
+      ],
+      formats,
+    );
+    expect(placed.targetTokens[1]).toEqual({ t: 'text', v: 'Start dr\u00FCcken' });
+    const dropped = placeMatch(
+      [{ t: 'text', v: 'Start\u000Cdr\u00FCcken' }],
+      [
+        { t: 'open', id: 10, fmt: 10 },
+        { t: 'text', v: 'x' },
+        { t: 'close', id: 10 },
+      ],
+      formats,
+    );
+    expect(dropped).toEqual({
+      targetTokens: [{ t: 'text', v: 'Start dr\u00FCcken' }],
+      tagsMatched: false,
+    });
+  });
+
   it('falls back to plain text when a kind occurs a different number of times', () => {
     const matchTokens: TmToken[] = [
       { t: 'open', id: 1, k: 'b' },

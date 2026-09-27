@@ -768,11 +768,14 @@ On pre-translate, for each unlocked segment:
 3. If found:
    - Tag multiset of the TM hit's source equals the segment's source →
      insert target as-is, `origin = 'tm_exact'`, `status = 'translated'`.
-     The hit's tags take the receiving segment's own ids by `(kind,
-     role, order)` (`core/tm/mapping.ts`; a placeholder only ever takes a
-     placeholder's id — backlog #29 found a kind-only match giving a
-     spell-check marker a run's id, which rendered a `<w:r>` with no
-     close).
+     The hit's tags take the receiving segment's own *visible* tags' ids
+     by `(kind, role, order)` (`core/tm/mapping.ts`; a placeholder only
+     ever takes a placeholder's id — backlog #29 found a kind-only match
+     giving a spell-check marker a run's id, which rendered a `<w:r>`
+     with no close). A memory holds no hidden tags (tm-format-spec §3);
+     a unit that does — another tool's — is matched against all of the
+     source's tags and keeps only the visible. The match's text is made
+     XML-legal (`xmlLegalText`) before it is placed.
    - Tag multiset differs → insert the target's **text**, re-tagged by
      position where unambiguous, `origin = 'tm_exact_tagdiff'`,
      `status = 'draft'`, and raise a QA warning. Never silently produce
@@ -944,10 +947,11 @@ they are not re-derived:
   In development Vite proxies `/api` to the server on `:3400`; serving
   the built SPA from the server process is #36's, where the container
   image is.
-- **`@cat-tool/web` imports `core` for types only.** `core`'s index
-  pulls in `node:crypto` (credentials), the DOCX filter and the
-  segmenter; none of it belongs in a browser bundle, and a runtime
-  import would drag it there. What the grid needs at runtime — a
+- **`@cat-tool/web` imports `core` for types only** — except
+  `@cat-tool/core/model`, the token model and tag rules, since #29
+  (§7.2). `core`'s index pulls in `node:crypto` (credentials), the DOCX
+  filter and the segmenter; none of it belongs in a browser bundle, and
+  a runtime import would drag it there. What the grid needs at runtime — a
   status's label, an origin's abbreviation — is a `Record` keyed by
   `core`'s union types, so a status added in `core` fails the web
   typecheck instead of rendering blank.
@@ -1012,10 +1016,19 @@ placed visible pair) from the source's content there: the dominant
 plain formatting — the hidden run over the most non-space characters,
 or none — wraps it; a losing hidden run whose text the translator kept
 verbatim, standing apart (a note number raised by hand, a symbol-font
-checkbox), wraps that; a wrapper (`w:ins`, `w:sdt`) around all of the
-source's text wraps all of the target's; a placeholder before the text,
-or a range start whose end follows text, leads; everything else trails,
-empty. Carried tags sit just inside the wrapping ones, so a dressed
+checkbox), wraps that — never a digit of a number (`1` in `1,5` is
+not apart), and the last occurrence for a run that came after all of
+its container's text, as a note number does; a wrapper (`w:ins`,
+`w:sdt`) around all of the source's text *and every visible tag* wraps
+all of the target's (one that left a link outside would put the link
+inside a tracked insertion, which OOXML does not allow); a placeholder
+before the text, or a range start whose end follows text, leads;
+everything else trails, empty. Trailing is only safe for what shows
+nothing: a `w:fldSimple` page number, a `w:cr` and an equation had been
+hidden by omission from the tokenizer's visible list, and trailed —
+"Page 1 of 3" delivered as "Seite von 13". They are visible now (§3.2
+lists fields), and so is everything else the run and paragraph content
+models allow that shows content (`tokenize.ts`'s `VISIBLE_PH`). Carried tags sit just inside the wrapping ones, so a dressed
 target begins with opens and ends with closes, and export's fold fuses
 neighbouring sentences' runs instead of leaving the space between them
 in a bare run. Measured on the corpus: retyping every segment with its
@@ -1034,8 +1047,9 @@ than the nearest `inline` tag (run properties never cross a hyperlink);
 run XML is emitted lazily and a paragraph-level element closes the run
 first; an empty run pair renders nothing. For tokenizer-shaped streams
 the output is byte-identical to before (4,545 corpus streams checked;
-the roundtrip gate never renders). Before this, 123 of 2,602 carried
-targets would have exported a run inside a run. The renderer also
+the roundtrip gate never renders). Before this, a text-only target
+carried onto each of the corpus's 2,602 unlocked segments exported a
+run inside a run in 302 of them. The renderer also
 refuses a tag in a role its format does not fit and text XML cannot
 carry (`xmlIllegalChar`: a vertical tab is how PowerPoint writes a soft
 break), and `parseTokens` refuses both — and a `fmt` other than the
@@ -1052,8 +1066,9 @@ route only parsing around it (the CLI rule, §2.4):
 - *Status and origin are derived, never sent.* Anything visible →
   `translated`, origin `null` (the translator's own; the audit log's
   previous event keeps what it was — audit-spec decision 4). Nothing
-  visible → `null`, `new`: an untranslated segment again, never an
-  empty translation, which export would deliver as a missing sentence.
+  visible but spaces → `null`, `new`: an untranslated segment again,
+  never an empty translation, which export would deliver as a missing
+  sentence (`isBlankTarget`, the test confirm uses too).
   Editing a confirmed segment makes it `translated`, to be confirmed
   again before the TM learns it. Accepting a suggestion (a TM hit,
   later an MT draft) will be its own write naming its origin, not this
@@ -1065,10 +1080,17 @@ route only parsing around it (the CLI rule, §2.4):
   sent with the version the last answer returned.
 - *A structure export would refuse is refused now* (400), not at
   delivery, where one bad segment would fail the whole file.
-- *QA reruns in the same transaction* for the segment and every segment
-  sharing its source (`consistency.target_differs`), and the answer
-  carries their issues, so the gutter follows the edit.
-- `confirmSegment` refuses a target with nothing visible in it.
+- *QA reruns in the same transaction* (`rerunQaAfterEdit`) for the
+  segment and every segment whose consistency findings the edit can
+  move: those sharing its source (`consistency.target_differs`) and
+  those whose target reads as its old or new one
+  (`consistency.source_differs`). The answer carries their ids and
+  issues, so the gutter follows the edit. The project's translated
+  segments are read once per pass, not once per segment rerun: that
+  was 7 s for one save of a segment with 500 repetitions in a
+  10,000-segment project, and is 0.15 s.
+- `confirmSegment` refuses a target with nothing visible in it but
+  spaces.
 
 **When it saves.** When the editor leaves the segment — blur, Esc, the
 row unmounting, and `pagehide` (a `keepalive` request, which unlike a
@@ -1137,10 +1159,10 @@ carry the source's.
 **`@cat-tool/core/model`** is the SPA's one runtime import from `core`:
 the token model and tag rules (`token.ts`, `tags.ts`, `hidden-tags.ts`),
 so which tags are hidden is one definition in the browser and on the
-server. `model/` importing nothing from other `core` modules or Node is
-now a lint rule, not just a convention, which is what keeps that entry
-browser-safe; the built bundle was checked for `node:crypto` and the
-DOCX filter.
+server. `model/` importing nothing but its own `./` siblings — no other
+`core` module, no Node builtin, no package — is now a lint rule, not
+just a convention, which is what keeps that entry browser-safe; the
+built bundle was checked for `node:crypto` and the DOCX filter.
 
 Measured in a Chromium smoke run against the real server (26 checks):
 typing, placing and wrapping, refusal notes, the tag list, save on Esc

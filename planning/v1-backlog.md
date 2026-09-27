@@ -1854,21 +1854,29 @@ formatting plus verbatim minorities; retyping the corpus leaves 45 of
 (pinned in `project/carry.test.ts`). A copy of the source keeps the
 source's own hidden tags exactly.
 
-**Four bugs this found in code that already existed:**
+**Five bugs this found in code that already existed:**
 - **The renderer nested runs.** A carried target puts a visible bold run
   inside the hidden run carrying the font; `renderTokens` emitted `w:r`
-  inside `w:r` — 123 of 2,602 carried corpus targets would have
-  exported files Word refuses, with nothing to catch it. It now renders
+  inside `w:r` — given a text-only target carried by the final rule,
+  302 of the corpus's 2,602 unlocked segments would have exported files
+  Word refuses, with nothing to catch it. It now renders
   every structurally valid stream to valid OOXML (innermost run wins,
   lazy runs, paragraph-level elements close the run), byte-identical to
   before on all 4,545 tokenizer-shaped corpus streams.
 - **The TM remap matched tags by kind only.** `other` is both a hidden
   run and a spell-check marker, so a unit that put the marker first gave
-  it the run's id, and the run's `<w:r>` rendered with no close — 58
-  corpus segments propagated onto themselves came out corrupt, marked
-  `tm_exact`, no QA finding. Remap is now keyed by kind *and* role; the
-  renderer and `parseTokens` refuse a tag in a role its format does not
-  fit.
+  it the run's id, and the run's `<w:r>` rendered with no close — 61
+  corpus segments, each retyped and propagated onto itself, came out
+  corrupt, marked `tm_exact`, no QA finding. Remap is now keyed by kind
+  *and* role; the renderer and `parseTokens` refuse a tag in a role its
+  format does not fit. The final review found the same remap wrong one
+  level up: the carrying rule puts the dominant font run first, and a
+  memory that learned that order gave a visible `other` run's id to the
+  hidden one — a whole sentence exported red, as a clean `tm_exact`. A
+  memory now holds no hidden tags (`toTmTokens`), a match is mapped onto
+  the visible ones (another tool's unit that holds hidden tags onto all,
+  keeping the visible), and `carry.test.ts` sends every corpus segment
+  through a memory and back.
 - **A mismatch in hidden tags only was a tag-diff draft** with a
   `tag.missing` warning naming tags nobody could see: 1,296 of the
   corpus's 1,961 tagged segments have no visible tag at all. Such a
@@ -1880,7 +1888,18 @@ source's own hidden tags exactly.
 - **Text XML cannot carry reached export.** A pasted vertical tab
   (PowerPoint's soft break) went through `parseTokens` and the renderer
   into a part no parser opens. Refused at both now (`xmlIllegalChar`),
-  and the editor turns it into a space on paste.
+  and the editor turns it into a space on paste. A memory holds them
+  too (`&#xB;` decodes to one), and pre-translate stored it unchecked —
+  the whole file's export failing, every save of that segment a 400:
+  `placeMatch` now makes a match's text legal (`xmlLegalText`, the one
+  definition the editor's paste uses too).
+- **Which placeholders are hidden had to be right.** Trailing is only
+  safe for what shows nothing, and `w:fldSimple`, `w:cr` and equations
+  had been hidden by omission from the tokenizer's visible list — "Page
+  1 of 3" would have delivered as "Seite von 13", marked `tm_exact`.
+  They are visible now (§3.2 always listed fields), with everything else
+  the run and paragraph content models allow that shows content; none
+  is in the corpus, which is how it went unseen.
 
 **What an edit means is `db`'s, not the client's.** The first draft had
 the SPA decide status and origin and whether anything changed, and the
@@ -1889,12 +1908,17 @@ transaction: no visible change is no write (a TM match clicked through
 keeps its origin — the client's token comparison would have wiped it,
 since a stored target's text can be split where the editor's is not); a
 visible target is `translated` with origin `null`; an emptied one is
-`null`/`new`, never an empty translation (which export delivers as a
-missing sentence, and confirm would have written to the TM — it now
+`null`/`new`, never an empty translation — nor one of spaces, the same
+test confirm uses (`isBlankTarget`) — which export delivers as a
+missing sentence, and confirm would have written to the TM (it now
 refuses); a write over a newer version is a 409; a structure export
 would refuse is a 400 now rather than a 500 for the whole file at
-delivery; and QA reruns for the segment and its same-source siblings, so
-the gutter follows the edit. The PUT body is `{targetTokens,
+delivery; and QA reruns for every segment whose consistency findings the
+edit can move — same source, or a target reading as the old or new one
+— so the gutter follows the edit. That pass reads the project once, not
+once per segment: one save of a segment with 500 repetitions in a
+10,000-segment project took 7 s, and takes 0.15 s. `cat-tool qa` sweeps
+the same way (`runQaRulesFor`). The PUT body is `{targetTokens,
 baseUpdatedAt}`; a `status` or `origin` in it is refused.
 
 **Smaller things settled:**

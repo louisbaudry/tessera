@@ -22,6 +22,8 @@ import { tagSignature, validateTagStructure } from '../model/tags.js';
 import { plainText, type FormatEntry, type Token } from '../model/token.js';
 import { runQaChecks } from '../qa/rules.js';
 import { rulesFor } from '../segment/rules.js';
+import { toTmTokens } from '../tm/mapping.js';
+import { placeMatch } from '../tm/pretranslate.js';
 import { assembleFile } from './assemble.js';
 import { exportProjectFile, foldSegments } from './export.js';
 
@@ -143,6 +145,35 @@ describe('carryHiddenTags — the whole corpus', () => {
     }
     expect(chars).toBe(RETYPED_CHARS);
     expect(looksDifferent).toBeLessThanOrEqual(LOOKS_DIFFERENT);
+  });
+
+  it('comes back as placed through a memory, or a propagation, onto its own document', () => {
+    // What confirm writes to the memory, and what pre-translate places
+    // from it onto a repetition: the same visible target, tags on the
+    // same words. A memory that learned hidden tags in carried order
+    // once gave a visible run's id to a hidden one of the same kind.
+    for (const s of segments) {
+      const retyped = targetsOf(s).placed.map((t) =>
+        t.t === 'text' ? { t: 'text' as const, v: swapCase(t.v) } : t,
+      );
+      for (const [shape, target] of Object.entries({ ...targetsOf(s), retyped })) {
+        const where = `${s.where} (${shape})`;
+        const stored = carryHiddenTags(target, s.sourceTokens, s.formatTable);
+        const placed = placeMatch(
+          toTmTokens(stored, s.formatTable),
+          s.sourceTokens,
+          s.formatTable,
+        );
+        // A text-only target of a source with visible tags is the one
+        // shape whose tags do not correspond: the tag-diff path.
+        const hasVisibleTags = withoutHiddenTags(s.sourceTokens, s.formatTable).some(
+          (t) => t.t !== 'text',
+        );
+        expect(placed.tagsMatched, where).toBe(shape !== 'textOnly' || !hasVisibleTags);
+        const again = carryHiddenTags(placed.targetTokens, s.sourceTokens, s.formatTable);
+        expect(sameVisibleTarget(again, stored, s.formatTable), where).toBe(true);
+      }
+    }
   });
 
   it("keeps the space export's fold puts between sentences in their formatting", () => {

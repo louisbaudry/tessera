@@ -120,6 +120,18 @@ describe('editSegmentTarget', () => {
     db.close();
   });
 
+  it('makes a target of spaces untranslated too, as confirm would refuse it', () => {
+    const db = project('form-minimal.docx');
+    const segment = hiddenOnly(db);
+    editSegmentTarget(db, segment.id, { tokens: [text('Hola')], actor: TEST_ACTOR });
+    const result = editSegmentTarget(db, segment.id, {
+      tokens: [text('  ')],
+      actor: TEST_ACTOR,
+    });
+    expect(result.segment).toMatchObject({ targetTokens: null, status: 'new' });
+    db.close();
+  });
+
   it('unconfirms a confirmed segment it changes, and leaves one it does not', () => {
     const db = project('form-minimal.docx');
     const segment = hiddenOnly(db);
@@ -225,6 +237,31 @@ describe('editSegmentTarget', () => {
     expect(withoutHiddenTags(result.segment.targetTokens!, segment.formatTable)).toEqual([
       text('Otra versión'),
     ]);
+    db.close();
+  });
+
+  it('reruns QA for the segments whose target reads as the old or the new one', () => {
+    // consistency.source_differs: the same translation for two sources.
+    const db = project('form-release.docx');
+    const [a, b] = listSegments(db, 1).filter(
+      (s, i, all) =>
+        !s.locked && all.findIndex((o) => o.sourceHash === s.sourceHash) === i,
+    );
+    const rules = (id: number) => listQaIssues(db, id).map((i) => i.rule);
+    editSegmentTarget(db, a!.id, { tokens: [text('Igual')], actor: TEST_ACTOR });
+    const same = editSegmentTarget(db, b!.id, {
+      tokens: [text('Igual')],
+      actor: TEST_ACTOR,
+    });
+    expect(same.rerun).toEqual([b!.id, a!.id]);
+    expect(rules(a!.id)).toContain('consistency.source_differs');
+    // And once they differ again, the finding on the other one goes.
+    const apart = editSegmentTarget(db, b!.id, {
+      tokens: [text('Distinto')],
+      actor: TEST_ACTOR,
+    });
+    expect(apart.rerun).toEqual([b!.id, a!.id]);
+    expect(rules(a!.id)).not.toContain('consistency.source_differs');
     db.close();
   });
 });

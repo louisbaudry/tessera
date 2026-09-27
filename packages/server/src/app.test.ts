@@ -688,6 +688,16 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
       400,
     );
     expect((await put({ targetTokens: 'x' })).statusCode).toBe(400);
+    // JSON that is not an object at all.
+    for (const body of ['"hello"', '5', 'true', '[]']) {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/projects/job/segments/${segment.id}`,
+        headers: { ...auth(token), 'content-type': 'application/json' },
+        payload: body,
+      });
+      expect(res.statusCode, body).toBe(400);
+    }
     // Text XML cannot carry: a paste from elsewhere, refused before export.
     expect((await put({ targetTokens: [{ t: 'text', v: 'a\u000Bb' }] })).statusCode).toBe(
       400,

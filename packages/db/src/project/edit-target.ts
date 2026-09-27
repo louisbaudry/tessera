@@ -22,12 +22,14 @@
  *   editor last saw it; a write over a newer one — another tab, another
  *   session — is a conflict, not a silent overwrite.
  * - **A structure export would refuse is refused now**, not at delivery.
- * - **QA reruns in the same transaction**, for the segment and every
- *   segment sharing its source (`consistency.target_differs`), so the
- *   grid's marks follow the edit instead of going stale until someone
- *   runs `cat-tool qa`.
+ * - **QA reruns in the same transaction** (`rerunQaAfterEdit`), for the
+ *   segment and every segment whose consistency findings the edit can
+ *   move — those sharing its source, and those whose target reads as its
+ *   old or new one — so the grid's marks follow the edit instead of going
+ *   stale until someone runs `cat-tool qa`.
  */
 import {
+  isBlankTarget,
   sameVisibleTarget,
   validateTagStructure,
   withoutHiddenTags,
@@ -38,7 +40,7 @@ import {
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
-import { runQaRules } from './qa-issues.js';
+import { rerunQaAfterEdit } from './qa-issues.js';
 import { getSegment, SegmentRepoError, setSegmentTarget } from './segments.js';
 
 /** The segment changed since the editor loaded it; `current` is how it stands. */
@@ -69,7 +71,7 @@ export interface EditTargetOptions {
 export interface EditTargetResult {
   readonly segment: Segment;
   readonly changed: boolean;
-  /** Every segment QA reran: this one and its same-source siblings. */
+  /** Every segment QA reran, this one first (`rerunQaAfterEdit`). */
   readonly rerun: readonly number[];
   /** Their QA issues now, dismissed ones included. */
   readonly issues: readonly QaIssue[];
@@ -99,7 +101,7 @@ export function editSegmentTarget(
       const detail = structure.errors.map((e) => `${e.code} (tag ${e.id})`).join(', ');
       throw new TargetStructureError(`the target's tags do not nest: ${detail}`);
     }
-    const empty = visible.every((t) => t.t === 'text' && t.v === '');
+    const empty = isBlankTarget(visible, segment.formatTable);
     const stored = segment.targetTokens;
     if (
       (stored === null) === empty &&
@@ -114,11 +116,7 @@ export function editSegmentTarget(
       origin: null,
       actor: options.actor,
     });
-    const siblings = db
-      .prepare('SELECT id FROM segment WHERE source_hash = ? AND id != ? ORDER BY id')
-      .all(segment.sourceHash, id) as Array<{ id: number }>;
-    const rerun = [id, ...siblings.map((s) => s.id)];
-    const issues = rerun.flatMap((sid) => runQaRules(db, sid));
+    const { rerun, issues } = rerunQaAfterEdit(db, id, stored);
     return { segment: getSegment(db, id)!, changed: true, rerun, issues };
   })();
 }

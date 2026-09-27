@@ -14,6 +14,7 @@
  */
 
 import type { FormatEntry } from '../docx/tokenize.js';
+import { withoutHiddenTags } from '../model/hidden-tags.js';
 import { validateTagStructure } from '../model/tags.js';
 import type { TagKind, TmToken, Token } from '../model/token.js';
 
@@ -22,6 +23,16 @@ import type { TagKind, TmToken, Token } from '../model/token.js';
  * as a hint (`k`) instead, ids renumbered from 1 in source order —
  * exactly the identity a project token loses no matter which file it
  * ends up matched against later.
+ *
+ * Hidden tags are dropped too (backlog #29). They are the document's,
+ * never the translator's: a paragraph's font, a spell-check marker. The
+ * receiving document carries its own onto whatever is placed
+ * (`carryHiddenTags`), and where they sit in a target is that rule's
+ * choice, not a position worth learning — the dominant font run wraps
+ * the whole sentence, whichever run came first in the source. Kept, a
+ * hidden `other` run stored first took the id of the receiving source's
+ * first `other` run, a visible one, and moved its formatting onto the
+ * whole sentence.
  */
 export function toTmTokens(
   tokens: readonly Token[],
@@ -32,7 +43,7 @@ export function toTmTokens(
   const nextId = (): number => renumbered.size + 1;
 
   const out: TmToken[] = [];
-  for (const token of tokens) {
+  for (const token of withoutHiddenTags(tokens, formats)) {
     if (token.t === 'text') {
       out.push(token);
       continue;
@@ -90,6 +101,14 @@ function idsBySlot(
  * and placeholders are counted apart, so a placeholder only ever takes a
  * placeholder's id and a pair a pair's.
  *
+ * The match is mapped onto the source's visible tags: a memory this tool
+ * writes holds no hidden ones (`toTmTokens`), and the receiving
+ * document's own are carried onto the result when it is written
+ * (`setSegmentTarget`). A unit from before that, or from another tool,
+ * can hold tags this document hides — a Trados export tags every run —
+ * so failing that, it is mapped onto all of the source's tags, in their
+ * source order, and the hidden ones it placed are dropped.
+ *
  * Succeeds only when every kind occurs exactly as many times in the
  * match as in the receiving segment's source — a real correspondence,
  * not a guess. A translator may legitimately restructure formatting
@@ -100,6 +119,20 @@ function idsBySlot(
  * placement.
  */
 export function remapTmTokens(
+  tmTokens: readonly TmToken[],
+  sourceTokens: readonly Token[],
+  sourceFormats: readonly FormatEntry[],
+): RemapResult {
+  const visible = withoutHiddenTags(sourceTokens, sourceFormats);
+  const onVisible = remapOnto(tmTokens, visible, sourceFormats);
+  if (onVisible.ok || visible.length === sourceTokens.length) return onVisible;
+  const onAll = remapOnto(tmTokens, sourceTokens, sourceFormats);
+  return onAll.ok
+    ? { ok: true, tokens: withoutHiddenTags(onAll.tokens, sourceFormats) }
+    : onVisible;
+}
+
+function remapOnto(
   tmTokens: readonly TmToken[],
   sourceTokens: readonly Token[],
   sourceFormats: readonly FormatEntry[],

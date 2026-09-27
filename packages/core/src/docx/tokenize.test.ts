@@ -121,6 +121,21 @@ describe('tokenizeRegion — placeholders', () => {
     }
   });
 
+  it('shows what shows on the page: a simple field, a carriage return, an equation (backlog #29)', () => {
+    // Hidden, each of these once trailed its sentence when a translation
+    // was carried: "Page 1 of 3" delivered as "Seite von 13".
+    for (const [xml, kind] of [
+      ['<w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>', 'field'],
+      ['<w:r><w:cr/></w:r>', 'br'],
+      ['<w:r><w:pgNum/></w:r>', 'field'],
+      ['<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>', 'other'],
+    ] as const) {
+      const r = tokenizeRegion(xml);
+      expect(r.formats[0]!.kind, xml).toBe(kind);
+      expect(r.formats[0]!.visible, xml).toBe(true);
+    }
+  });
+
   it('hides spell-check and bookmark noise from the translator', () => {
     // These carry no meaning for a translation. Showing them would put
     // junk tags in front of the translator on every other sentence.

@@ -127,7 +127,10 @@ the check happens before the push, not after.
   OOXML (a run tag nested in one: innermost wins), so no writer shapes
   nesting for the renderer either. Before #29, pre-translate's
   tag-diff fallback stored text with no hidden tags at all, and exports
-  lost fonts, bookmarks and drawings with nothing to flag it.
+  lost fonts, bookmarks and drawings, flagged only as a `tag.missing`
+  naming tags nobody could see. A memory holds no hidden tags either
+  (`toTmTokens`): where the carrying rule put them is not a position
+  worth learning, and a remap by order once took it for one.
 - **A column with a frozen contract never receives a value computed some
   other way — carry the foreign value as provenance instead.**
   `prev_hash`/`next_hash` mean "SHA-256 of the normalised neighbouring
@@ -163,8 +166,8 @@ the check happens before the push, not after.
   #15d) should too, rather than inventing its own shape.
 - **`core`'s internal layering is one-directional: `model/` → (`docx/`,
   `segment/`) → `project/`.** `model/` is the base layer — nothing may be
-  imported into it from any other `core` module (a lint rule since #29,
-  as it is also the SPA's `@cat-tool/core/model`). `docx/` and `segment/`
+  imported into it from any other `core` module, Node or a package (a
+  lint rule since #29, as it is also the SPA's `@cat-tool/core/model`). `docx/` and `segment/`
   each import from `model/` but never from each other in the forbidden
   direction (`segment/` imports `docx/`'s tokenizer types, so `docx/`
   must never import from `segment/`). Anything that needs both — like

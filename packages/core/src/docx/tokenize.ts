@@ -30,9 +30,24 @@ export type { FormatEntry, TokenizedRegion } from '../model/token.js';
 /** Run children that are text rather than structure. */
 const TEXT_NODES = new Set(['w:t']);
 
-/** Run children that are visible, placeable objects. */
+/**
+ * Elements that are visible, placeable objects: they show something on
+ * the page, so where they go in a translation is the translator's call.
+ *
+ * Anything in neither this list nor {@link HIDDEN_PH} is kept whole and
+ * hidden, and a hidden placeholder the carrying rule cannot place trails
+ * its sentence (`carryHiddenTags`). So a construct that shows content
+ * belongs here, or it moves: a `w:fldSimple` page number, once missing
+ * from this list, went to the end of "Page 1 of 3" (backlog #29). The
+ * run and paragraph content models (ECMA-376 `EG_RunInnerContent`,
+ * `EG_PContent`) are finite; what they allow that shows content is all
+ * here. `mc:AlternateContent` is not: every one in the fixture corpus is
+ * a floating shape, placed on the page by its anchor rather than by
+ * where it sits in the text.
+ */
 const VISIBLE_PH = new Set([
   'w:br',
+  'w:cr',
   'w:tab',
   'w:sym',
   'w:footnoteReference',
@@ -42,11 +57,29 @@ const VISIBLE_PH = new Set([
   'w:drawing',
   'w:pict',
   'w:object',
+  'w:contentPart',
+  'w:ruby',
   'w:instrText',
   'w:fldChar',
+  'w:fldSimple',
+  'w:pgNum',
+  'w:dayShort',
+  'w:dayLong',
+  'w:monthShort',
+  'w:monthLong',
+  'w:yearShort',
+  'w:yearLong',
   'w:noBreakHyphen',
   'w:softHyphen',
   'w:ptab',
+  'm:oMath',
+  'm:oMathPara',
+  // Containers this filter does not walk: their text is not translated,
+  // but it is on the page.
+  'w:customXml',
+  'w:dir',
+  'w:bdo',
+  'w:subDoc',
 ]);
 
 /** Structure that carries no meaning for a translation. */
@@ -76,6 +109,7 @@ const WRAPPERS = new Set(['w:ins', 'w:smartTag']);
 function kindOfElement(name: string): TagKind {
   switch (name) {
     case 'w:br':
+    case 'w:cr':
       return 'br';
     case 'w:tab':
     case 'w:ptab':
@@ -91,6 +125,14 @@ function kindOfElement(name: string): TagKind {
       return 'image';
     case 'w:instrText':
     case 'w:fldChar':
+    case 'w:fldSimple':
+    case 'w:pgNum':
+    case 'w:dayShort':
+    case 'w:dayLong':
+    case 'w:monthShort':
+    case 'w:monthLong':
+    case 'w:yearShort':
+    case 'w:yearLong':
       return 'field';
     case 'w:bookmarkStart':
     case 'w:bookmarkEnd':

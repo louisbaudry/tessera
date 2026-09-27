@@ -18,11 +18,13 @@ fragmentation — nearly every sentence sits inside a pair of invisible
 run tags, and one carries ten. The memory is not a clean set of
 matches; it is shaped like a memory a job actually inherits:
 
-- **Fourteen exact matches with tags**, typed the way this tool writes
-  them (`<bpt type="other">`, `type="i"`, `type="style"`), so the match
-  lands on the receiving document's own formatting by `(kind, order)`.
-  One of them carries seven `other`, one `i` and two `style` tags — the
-  most tag-dense sentence in the file.
+- **Thirteen exact matches with typed tags**, the way this tool wrote
+  them before backlog #29 (`<bpt type="other">`, `type="i"`,
+  `type="style"`) — the document's hidden runs included, so each match
+  is mapped onto all of the receiving source's tags by `(kind, order)`,
+  and keeps the visible ones (`tm-format-spec.md` §3). One of them
+  carries seven `other`, one `i` and two `style` tags — the most
+  tag-dense sentence in the file.
 - **Two units whose tags carry no kind hint**, the way a Trados export
   writes them (`<bpt i="1">&lt;cf style="Title"&gt;</bpt>`). One is the
   heading, whose style is a tag the translator places: pre-translate
