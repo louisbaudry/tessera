@@ -377,3 +377,26 @@ Cost at 1M on this machine:
 descriptive), synthetic-100k `hnsw`, and the private memories on the
 owner's machine. The card's "done when" also needs spec §9.1 settled
 or deferred with a reason.
+
+---
+
+## 2026-09-27 — Merged to `main` part-way (owner's request)
+
+On the owner's request, the work so far goes into `main` now instead of
+waiting for every run. Included: the pre-registration, the harness, the
+DGT-1M set and its H1b verdict, and the synthetic-100k and
+synthetic-1M exact results. Card `#59` (issue #50) stays open.
+
+Still to do for its "done when":
+
+- synthetic-1M `hnsw` (running), synthetic-5M `exact` and `hnsw`
+  (`e5s` only), and synthetic-100k `hnsw`. These are cost and scaling
+  runs; they cannot change H1b's verdict.
+- The private memories, on the owner's machine.
+- Spec §9.1 (which model): e5s leads on DGT-1M, but the decision waits
+  for the private runs.
+- The `tuv_vec` storage finding (about 4.7 KB per unit) belongs in the
+  spec before the product writes vectors.
+
+The remaining results files will come in a follow-up branch from
+`main`.
