@@ -105,7 +105,8 @@ export const api = {
     }),
   /**
    * One segment's target: what the translator placed (§7.2), over the
-   * version of the segment the page last saw. The server decides the rest.
+   * version of the segment the page last saw — or, with no version (left
+   * out of the JSON), over whatever is stored. The server decides the rest.
    */
   saveTarget: (
     token: string,

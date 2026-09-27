@@ -10,6 +10,7 @@ import {
   pairGroups,
   paletteOf,
   pastedText,
+  tagChoices,
   unplacedTags,
   withoutEmptyPairs,
   type Chip,
@@ -143,6 +144,26 @@ describe('pair groups', () => {
     ]);
   });
 
+  it('saves no member twice that the target places apart', () => {
+    // A memory's match placed the pairs apart; the first then moved, carrying its members.
+    const members = new Map([[1, [2, 4]]]);
+    const saved = expandGroups(
+      [open(1), text('a'), close(1), text(' y '), open(2), text('b'), close(2)],
+      members,
+    );
+    expect(saved).toEqual([
+      open(1),
+      text('a'),
+      close(1),
+      open(4),
+      close(4),
+      text(' y '),
+      open(2),
+      text('b'),
+      close(2),
+    ]);
+  });
+
   it('leaves a group placed piecemeal as separate pairs', () => {
     const groups = pairGroups(source, formats);
     const scattered = [
@@ -159,21 +180,82 @@ describe('pair groups', () => {
 });
 
 describe('unplacedTags', () => {
+  const formats = [fmt(1, 'b'), fmt(2, 'br'), fmt(3, 'i')];
   const palette = paletteOf(
     [open(1), text('x'), close(1), ph(2), open(3), close(3)],
-    [fmt(1, 'b'), fmt(2, 'br'), fmt(3, 'i')],
+    formats,
   );
+  const none = new Map<number, number[]>();
 
   it('is every palette tag the target lacks, in source order', () => {
-    expect(unplacedTags(palette, [text('x'), ph(2)]).map((t) => t.id)).toEqual([1, 3]);
-    expect(unplacedTags(palette, [])).toEqual(palette);
-    expect(unplacedTags(palette, [open(3), ph(2), open(1), close(1), close(3)])).toEqual(
-      [],
-    );
+    expect(
+      unplacedTags(palette, [text('x'), ph(2)], none, formats).map((t) => t.id),
+    ).toEqual([1, 3]);
+    expect(unplacedTags(palette, [], none, formats)).toEqual(palette);
+    expect(
+      unplacedTags(palette, [open(3), ph(2), open(1), close(1), close(3)], none, formats),
+    ).toEqual([]);
   });
 
   it('does not take a placeholder for the pair with the same id', () => {
-    expect(unplacedTags(palette, [ph(1)]).map((t) => t.id)).toEqual([1, 2, 3]);
+    expect(unplacedTags(palette, [ph(1)], none, formats).map((t) => t.id)).toEqual([
+      1, 2, 3,
+    ]);
+  });
+});
+
+describe('tagChoices', () => {
+  // "Rabu ho mivo" in bold, as Word split it: one group of three pairs.
+  const formats = [fmt(1, 'b'), fmt(2, 'b'), fmt(4, 'b')];
+  const source = [
+    open(1),
+    text('Rabu'),
+    close(1),
+    open(2),
+    text(' ho'),
+    close(2),
+    open(4),
+    text(' mivo'),
+    close(4),
+  ];
+  const palette = paletteOf(source, formats);
+  const shown = (choices: ReturnType<typeof tagChoices>) =>
+    choices.map((c) => [c.tag.id, c.tag.members, c.placed]);
+
+  it('is the group as one tag, placed whole or not at all', () => {
+    expect(shown(tagChoices(palette, [text('x')], new Map(), formats))).toEqual([
+      [1, [2, 4], false],
+    ]);
+    const grouped = [open(1), text('x'), close(1)];
+    expect(shown(tagChoices(palette, grouped, new Map([[1, [2, 4]]]), formats))).toEqual([
+      [1, [2, 4], true],
+    ]);
+  });
+
+  it('lists a member its placed first pair does not carry as a tag of its own', () => {
+    // Placed apart, then member 4 deleted: nothing else would put it back.
+    const apart = [open(1), text('a'), close(1), text(' '), open(2), text('b'), close(2)];
+    const choices = tagChoices(palette, apart, new Map(), formats);
+    expect(shown(choices)).toEqual([
+      [1, [], true],
+      [2, [], true],
+      [4, [], false],
+    ]);
+    expect(choices[2]!.tag).toEqual({
+      role: 'pair',
+      id: 4,
+      fmt: 4,
+      kind: 'b',
+      members: [],
+    });
+  });
+
+  it('places with an unplaced first pair only the members not placed apart', () => {
+    const apart = [text('a '), open(2), text('b'), close(2)];
+    expect(shown(tagChoices(palette, apart, new Map(), formats))).toEqual([
+      [1, [4], false],
+      [2, [], true],
+    ]);
   });
 });
 
@@ -283,6 +365,10 @@ describe('pastedText', () => {
   });
 
   it('turns the soft breaks other programs write into spaces, drops other controls', () => {
-    expect(pastedText('uno\u000Bdos\u000Ctres\u0007!')).toBe('uno dos tres!');
+    expect(pastedText('uno\u000Bdos\u000Ctres\u0007!\u007F')).toBe('uno dos tres!');
+  });
+
+  it('drops whatever else XML cannot carry, as core defines it', () => {
+    expect(pastedText('a\uFFFEb\uD800c\u{1F600}')).toBe('abc\u{1F600}');
   });
 });

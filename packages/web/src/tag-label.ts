@@ -72,6 +72,22 @@ function describePlaceholder(xml: string): string {
       const code = /<w:instrText\b[^>]*>([^<]*)</.exec(xml)?.[1]?.trim();
       return code ? `field ${code}` : 'field';
     }
+    case 'w:fldSimple': {
+      const code = attr(xml, 'fldSimple', 'w:instr')?.trim().split(/\s+/)[0];
+      return code ? `field ${code}` : 'field';
+    }
+    case 'w:pgNum':
+      return 'page number';
+    case 'w:dayShort':
+    case 'w:dayLong':
+    case 'w:monthShort':
+    case 'w:monthLong':
+    case 'w:yearShort':
+    case 'w:yearLong':
+      return 'date';
+    case 'm:oMath':
+    case 'm:oMathPara':
+      return 'equation';
     case 'w:fldChar': {
       const type = attr(xml, 'fldChar', 'w:fldCharType');
       return type ? `field ${type}` : 'field';

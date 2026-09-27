@@ -1077,7 +1077,17 @@ route only parsing around it (the CLI rule, §2.4):
   last saw it; a write over a newer one — another tab — is a 409 with
   the segment as it is, shown on the row, never a silent overwrite. The
   page keeps one write per segment in flight (`save-queue.ts`), each
-  sent with the version the last answer returned.
+  sent with the version the last answer returned. An answer for a write
+  a later one has superseded updates the row's version, status and
+  issues but not its text, so a slow answer never shows older text the
+  translator could then edit on top of; a superseded write's failure is
+  not shown. The one exception to the version check is the page going
+  away: its write goes at once and cannot wait for the one in flight,
+  whose answer would carry the version, so it goes without one and
+  replaces any write still waiting. What that risks is overwriting
+  another tab's write that landed just before the one in flight; what
+  it saves is the last edit, which a refusal on a closing page would
+  lose with nobody to see it.
 - *A structure export would refuse is refused now* (400), not at
   delivery, where one bad segment would fail the whole file.
 - *QA reruns in the same transaction* (`rerunQaAfterEdit`) for the
@@ -1085,7 +1095,9 @@ route only parsing around it (the CLI rule, §2.4):
   move: those sharing its source (`consistency.target_differs`) and
   those whose target reads as its old or new one
   (`consistency.source_differs`). The answer carries their ids and
-  issues, so the gutter follows the edit. The project's translated
+  issues, so the gutter follows the edit (the grid takes those of its
+  own file's segments; a repetition in another file is that file's
+  grid's to show). The project's translated
   segments are read once per pass, not once per segment rerun: that
   was 7 s for one save of a segment with 500 repetitions in a
   10,000-segment project, and is 0.15 s.
@@ -1095,9 +1107,10 @@ route only parsing around it (the CLI rule, §2.4):
 **When it saves.** When the editor leaves the segment — blur, Esc, the
 row unmounting, and `pagehide` (a `keepalive` request, which unlike a
 beacon carries the bearer header) — and only if the document changed
-(ProseMirror document equality, so a split text node is not an edit).
-Signing out blurs the editor and waits for its write before revoking
-the session. Saving at segment boundaries, never per keystroke, is
+(ProseMirror document equality, so a split text node is not an edit)
+— or if the segment's last write failed, changed or not, so leaving
+the row again is the retry. Signing out blurs the editor and waits for
+its write before revoking the session. Saving at segment boundaries, never per keystroke, is
 audit-spec §2.2's rule; autosave (#31) has to keep it — drafts outside
 the audited write, or an amended §2.2 first.
 
@@ -1120,10 +1133,18 @@ when the selection is balanced; and a pair nests only as a source's do —
 formatting holds only text and placeholders and sits in no other
 formatting, no link in a link — because a run tag is a whole `w:rPr` and
 bold around italic would export as italic alone, silently. Paste from
-elsewhere is one line of plain text (breaks and tabs become spaces,
-other controls dropped); paste of this editor's own copy keeps its
-chips less those already placed, so a cut and paste moves a tag — the
-EN→ES adjective-after-noun gesture. Drop is refused.
+elsewhere is one line of plain text (breaks and tabs become spaces;
+what XML cannot carry, `xmlLegalText`, and DEL are dropped). Paste of
+this segment's own copy keeps its chips, so a cut and paste moves a
+tag — the EN→ES adjective-after-noun gesture: only this segment's
+tags, rebuilt from its own format table; only those not still placed
+once the selection is replaced; only whole pairs, and only where they
+nest as a source's do (bold pasted into italic, or a link into a link,
+arrives as its words). A copy names its segment
+(`<span data-segment-copy>`, which also makes ProseMirror mark every
+copy as its own, even one that starts with a word), and a copy from
+another segment's editor is plain text: tag ids are per segment, and
+the same number can be a different tag. Drop is refused.
 
 **Placing tags.** The palette is the source's visible tags in source
 order. `Ctrl+,` places the first unplaced one — with text selected, the
@@ -1146,7 +1167,11 @@ hidden tags between) and read the same (`describeFormat`) are one
 palette entry and one chip pair, numbered `‹1–31`; saved, the first
 wraps the text and the rest follow it empty — export renders the text
 with the first's properties, and what differed between them is what no
-chip ever showed, the same trade the hidden runs make.
+chip ever showed, the same trade the hidden runs make. A target can
+also hold a group's pairs apart (a TM match places each by its own
+id): then a member the first pair's chip does not carry is a tag of its
+own in the bar and the tag list, placed or to place, and moving the
+first pair never places a member twice (`tagChoices`, `expandGroups`).
 
 **Full tags** (a grid-wide toggle, remembered per browser): each chip
 says what it stands for — `‹1 bold italic`, `link #_Ref4`, `⟨2 footnote⟩`,
@@ -1164,13 +1189,15 @@ server. `model/` importing nothing but its own `./` siblings — no other
 just a convention, which is what keeps that entry browser-safe; the
 built bundle was checked for `node:crypto` and the DOCX filter.
 
-Measured in a Chromium smoke run against the real server (26 checks):
+Measured in a Chromium smoke run against the real server (31 checks):
 typing, placing and wrapping, refusal notes, the tag list, save on Esc
 with the hidden tags carried and QA rerun, a click-through writing
 nothing, pair deletion and its undo, paste from elsewhere, IME
 composition, full tags, a 15-pair group placed with one keystroke, a
-reload showing what was saved, and the caret landing where the click
-did; the exported DOCX well-formed with no run inside a run.
+reload showing what was saved, the caret landing where the click did,
+a cut starting on a word moving its tag, and another segment's copy —
+its tag 1 bold, like this one's — arriving as words; the exported DOCX
+well-formed with no run inside a run.
 
 ---
 

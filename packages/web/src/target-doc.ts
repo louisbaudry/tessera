@@ -8,7 +8,13 @@
  */
 import type { FormatEntry, Token } from '@cat-tool/core';
 import { closeHistory } from 'prosemirror-history';
-import { Fragment, Schema, Slice, type Node as PmNode } from 'prosemirror-model';
+import {
+  DOMSerializer,
+  Fragment,
+  Schema,
+  Slice,
+  type Node as PmNode,
+} from 'prosemirror-model';
 import {
   EditorState,
   Plugin,
@@ -26,11 +32,13 @@ import {
   isBalanced,
   nestingRefusal,
   pastedText,
+  tagChoices,
   unplacedTags,
   withoutEmptyPairs,
   type Chip,
   type PairShape,
   type PaletteTag,
+  type TagChoice,
 } from './tags.js';
 
 type Role = 'open' | 'close' | 'ph';
@@ -191,6 +199,17 @@ export function tokensFromDoc(doc: PmNode): Token[] {
   return out;
 }
 
+/** The members each group chip in the document stands for, by its id. */
+function membersIn(doc: PmNode): Map<number, readonly number[]> {
+  const members = new Map<number, readonly number[]>();
+  doc.forEach((node) => {
+    const a = node.attrs as Partial<ChipAttrs>;
+    if (a.role === 'open' && a.members && a.members.length > 0)
+      members.set(a.id!, a.members);
+  });
+  return members;
+}
+
 /**
  * The visible target to save: pairs holding nothing dropped — an empty
  * pair formats nothing, so it counts as unplaced and QA's `tag.missing`
@@ -198,13 +217,16 @@ export function tokensFromDoc(doc: PmNode): Token[] {
  * (`expandGroups`), so the server stores every tag the source has.
  */
 export function targetFromDoc(doc: PmNode): Token[] {
-  const members = new Map<number, readonly number[]>();
-  doc.forEach((node) => {
-    const a = node.attrs as Partial<ChipAttrs>;
-    if (a.role === 'open' && a.members && a.members.length > 0)
-      members.set(a.id!, a.members);
-  });
-  return expandGroups(withoutEmptyPairs(tokensFromDoc(doc)), members);
+  return expandGroups(withoutEmptyPairs(tokensFromDoc(doc)), membersIn(doc));
+}
+
+/** The palette as the document stands (`tagChoices`): the bar and the tag list. */
+export function choicesIn(
+  doc: PmNode,
+  palette: readonly PaletteTag[],
+  formats: readonly FormatEntry[],
+): TagChoice[] {
+  return tagChoices(palette, tokensFromDoc(doc), membersIn(doc), formats);
 }
 
 type PlacedChip = Chip & { readonly pos: number; readonly fmt: number };
@@ -269,8 +291,10 @@ function shapeOf(fmt: number, formats: readonly FormatEntry[]): PairShape {
  * and is refused otherwise; with nothing selected it goes in empty, the
  * cursor between its chips, ready to type into. Either way it must nest
  * the way a source's pairs do (`nestingRefusal`), or it is refused. A tag
- * already placed is moved: its old chips go first. Each placement is its
- * own undo step.
+ * already placed is moved: its old chips go first. A group's first pair
+ * stands for only the members the document does not place apart, which
+ * keep their own chips (`expandGroups` would otherwise save them twice).
+ * Each placement is its own undo step.
  */
 export function planInsert(
   state: EditorState,
@@ -284,7 +308,13 @@ export function planInsert(
   for (const chip of [...existing].reverse()) tr.delete(chip.pos, chip.pos + 1);
   const from = tr.mapping.map(state.selection.from);
   const to = tr.mapping.map(state.selection.to);
-  const last = tag.members.length > 0 ? tag.members[tag.members.length - 1] : undefined;
+  const apart = new Set(
+    chipsIn(tr.doc)
+      .filter((c) => c.role === 'open')
+      .map((c) => c.id),
+  );
+  const members = tag.members.filter((id) => !apart.has(id));
+  const last = members.length > 0 ? members[members.length - 1] : undefined;
   const label = tagLabel(tag.role === 'ph' ? 'ph' : 'open', tag.id, last);
 
   if (tag.role === 'ph') {
@@ -305,8 +335,8 @@ export function planInsert(
     inside.filter((c) => c.role === 'open').map((c) => shapeOf(c.fmt, formats)),
   );
   if (refusal) return { ok: false, reason: `${label}: ${refusal}.` };
-  tr.insert(to, chipNode('close', tag.id, tag.fmt, formats, tag.members));
-  tr.insert(from, chipNode('open', tag.id, tag.fmt, formats, tag.members));
+  tr.insert(to, chipNode('close', tag.id, tag.fmt, formats, members));
+  tr.insert(from, chipNode('open', tag.id, tag.fmt, formats, members));
   tr.setSelection(TextSelection.create(tr.doc, from === to ? from + 1 : to + 2));
   return { ok: true, tr: tr.scrollIntoView() };
 }
@@ -329,8 +359,14 @@ export function insertTag(tag: PaletteTag, formats: readonly FormatEntry[]): Com
 export function nextUnplaced(
   state: EditorState,
   palette: readonly PaletteTag[],
+  formats: readonly FormatEntry[],
 ): PaletteTag | undefined {
-  const unplaced = unplacedTags(palette, tokensFromDoc(state.doc));
+  const unplaced = unplacedTags(
+    palette,
+    tokensFromDoc(state.doc),
+    membersIn(state.doc),
+    formats,
+  );
   if (state.selection.empty) return unplaced[0];
   return unplaced.find((t) => t.role === 'pair') ?? unplaced[0];
 }
@@ -340,22 +376,147 @@ export function pasteText(state: EditorState, text: string): Transaction {
   return state.tr.insertText(pastedText(text)).scrollIntoView();
 }
 
+/** The attribute naming the segment a copy came from (`SegmentClipboard`). */
+const COPY_OF = 'data-segment-copy';
+
 /**
- * A slice pasted from this editor, with the chips the document already
- * has taken out: a copy and paste copies the words, a cut and paste —
- * whose chips left with the cut — moves the tags with them. A half pair
- * left over is the integrity plugin's to drop.
+ * What one segment's editor puts on the clipboard (its view's
+ * `clipboardSerializer`): the copy wrapped in one element naming the
+ * segment. ProseMirror marks its own copy (`data-pm-slice`) on the first
+ * node only if that is an element, and a copy starting with a word starts
+ * with a text node — so it read as anyone's HTML, arrived as plain text,
+ * and the tags a cut had taken were lost. Wrapped, every copy is marked,
+ * and a paste can tell this segment's copy from another's
+ * (`clipboardSegment`), whose tag ids name other tags.
  */
-export function pastedSlice(slice: Slice, doc: PmNode): Slice {
-  const present = new Set(chipsIn(doc).map((c) => `${c.role}${c.id}`));
-  const nodes: PmNode[] = [];
+export class SegmentClipboard extends DOMSerializer {
+  constructor(readonly segmentId: number) {
+    super(DOMSerializer.nodesFromSchema(schema), DOMSerializer.marksFromSchema(schema));
+  }
+
+  override serializeFragment(
+    fragment: Fragment,
+    options: { document?: Document } = {},
+    target?: HTMLElement | DocumentFragment,
+  ): HTMLElement | DocumentFragment {
+    // Only the copy itself is wrapped, not a node's content inside it.
+    if (target) return super.serializeFragment(fragment, options, target);
+    const dom = options.document ?? document;
+    const wrap = dom.createElement('span');
+    wrap.setAttribute(COPY_OF, String(this.segmentId));
+    super.serializeFragment(fragment, options, wrap);
+    const out = dom.createDocumentFragment();
+    out.appendChild(wrap);
+    return out;
+  }
+}
+
+/** The segment whose editor copied this clipboard HTML, or null: anyone else's. */
+export function clipboardSegment(html: string): number | null {
+  const match = new RegExp(`${COPY_OF}="(\\d+)"`).exec(html);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * A slice pasted from this segment's own editor, as it may enter the
+ * document. A copy and paste copies the words; a cut and paste — whose
+ * chips left with the cut — moves the tags with them, the EN→ES
+ * adjective-after-noun gesture. So a chip is kept only when it is one of
+ * this segment's tags (the palette's, a group's members included) that
+ * the document will not still have, as a whole pair, and nesting where
+ * it lands the way a source's pairs do (`nestingRefusal`): bold pasted
+ * into italic would export as italic alone, which `planInsert` refuses
+ * too. Each pair is checked against what will be around it, so of two
+ * that may not nest the inner one goes. A kept chip is rebuilt from this
+ * segment's format table, never taken as the clipboard describes it.
+ */
+export function pastedSlice(
+  slice: Slice,
+  state: EditorState,
+  palette: readonly PaletteTag[],
+  formats: readonly FormatEntry[],
+): Slice {
+  // This segment's tags, by role and id, each with its fmt; a group's members.
+  const fmtOf = new Map<string, number>();
+  const groupOf = new Map<number, readonly number[]>();
+  for (const tag of palette) {
+    fmtOf.set(`${tag.role}${tag.id}`, tag.fmt);
+    for (const id of tag.members) fmtOf.set(`pair${id}`, id);
+    if (tag.members.length > 0) groupOf.set(tag.id, tag.members);
+  }
+
+  // The document as the paste lands in it: the selection gone, and with it
+  // any pair the selection took one chip of (the integrity rule).
+  const landing = state.tr.deleteSelection().doc;
+  const left = chipsIn(landing);
+  const cut = chipsToDrop(left);
+  const staying = left.filter((_, i) => !cut.has(i));
+  const present = new Set(staying.map((c) => `${c.role}${c.id}`));
+  const placed = new Set<number>();
+  for (const c of staying) {
+    if (c.role !== 'open') continue;
+    placed.add(c.id);
+    for (const id of (landing.nodeAt(c.pos)!.attrs as ChipAttrs).members) placed.add(id);
+  }
+  const outer: PairShape[] = [];
+  for (const c of staying) {
+    if (c.pos >= state.selection.from) break;
+    if (c.role === 'open') outer.push(shapeOf(c.fmt, formats));
+    else if (c.role === 'close') outer.pop();
+  }
+
+  type Pasted = Chip & { readonly members: readonly number[] };
+  const items: Array<PmNode | Pasted> = [];
   // At whatever depth the clipboard parser left them.
   slice.content.descendants((node) => {
-    const a = node.attrs as Partial<ChipAttrs>;
-    if (node.isText) nodes.push(schema.text(pastedText(node.text!)));
-    else if (node.type.name === 'tag' && !present.has(`${a.role}${a.id}`))
-      nodes.push(node);
+    const a = node.attrs as ChipAttrs;
+    if (node.isText) {
+      const v = pastedText(node.text!);
+      if (v !== '') items.push(schema.text(v));
+    } else if (
+      node.type.name === 'tag' &&
+      fmtOf.has(`${a.role === 'ph' ? 'ph' : 'pair'}${a.id}`) &&
+      !present.has(`${a.role}${a.id}`) &&
+      !(a.role !== 'ph' && placed.has(a.id))
+    ) {
+      items.push({ role: a.role, id: a.id, members: a.members });
+    }
     return true;
+  });
+  const chips = items.filter((item): item is Pasted => !('type' in item));
+  const unpaired = chipsToDrop(chips);
+  const refused = new Set<number>();
+  const stack: PairShape[] = [];
+  chips.forEach((chip, i) => {
+    if (unpaired.has(i)) return;
+    if (chip.role === 'close') stack.pop();
+    if (chip.role !== 'open') return;
+    const shape = shapeOf(fmtOf.get(`pair${chip.id}`)!, formats);
+    if (nestingRefusal(shape, [...outer, ...stack], [])) refused.add(chip.id);
+    stack.push(shape);
+  });
+  const kept = chips.filter(
+    (chip, i) => !unpaired.has(i) && (chip.role === 'ph' || !refused.has(chip.id)),
+  );
+
+  // A group's first pair still stands for the members its copy carried,
+  // less any the document or the paste places apart.
+  for (const chip of kept) if (chip.role === 'open') placed.add(chip.id);
+  const members = new Map<number, readonly number[]>();
+  for (const chip of kept) {
+    const group = chip.role === 'open' ? groupOf.get(chip.id) : undefined;
+    if (group) {
+      members.set(
+        chip.id,
+        group.filter((id) => chip.members.includes(id) && !placed.has(id)),
+      );
+    }
+  }
+  const nodes = items.flatMap((item): PmNode[] => {
+    if ('type' in item) return [item];
+    if (!kept.includes(item)) return [];
+    const fmt = fmtOf.get(`${item.role === 'ph' ? 'ph' : 'pair'}${item.id}`)!;
+    return [chipNode(item.role, item.id, fmt, formats, members.get(item.id) ?? [])];
   });
   return new Slice(Fragment.fromArray(nodes), 0, 0);
 }

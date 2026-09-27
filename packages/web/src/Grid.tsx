@@ -5,6 +5,7 @@
  * #29) — one row at a time; the keyboard model around it is #30.
  */
 import type { FormatEntry, QaIssue, Segment, Token } from '@cat-tool/core';
+import { isBlankTarget } from '@cat-tool/core/model';
 import {
   defaultRangeExtractor,
   useVirtualizer,
@@ -36,6 +37,11 @@ interface GridData {
   readonly issues: readonly QaIssue[];
 }
 
+/** Why a segment's last write failed: a new object for each failure. */
+interface SaveFailure {
+  readonly message: string;
+}
+
 export function Grid({ project, fileId }: { project: string; fileId: number }) {
   const data = useLoad(
     useCallback(
@@ -62,7 +68,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const [issues, setIssues] = useState(data.issues);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [clickAt, setClickAt] = useState<{ x: number; y: number } | undefined>();
-  const [unsaved, setUnsaved] = useState<ReadonlyMap<number, string>>(new Map());
+  const [unsaved, setUnsaved] = useState<ReadonlyMap<number, SaveFailure>>(new Map());
   const [fullTags, setFullTags] = useState(loadFullTags);
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -104,8 +110,9 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     session.current = { token, project, signOut };
   });
   const loadedVersions = useRef(new Map(file.segments.map((s) => [s.id, s.updatedAt])));
-  const [queue] = useState(() =>
-    createSaveQueue({
+  const [queue] = useState(() => {
+    const inFile = new Set(file.segments.map((s) => s.id));
+    return createSaveQueue({
       send: (segmentId, tokens, baseUpdatedAt, urgent) =>
         api.saveTarget(
           session.current.token,
@@ -115,9 +122,20 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           { keepalive: urgent },
         ),
       loadedVersion: (segmentId) => loadedVersions.current.get(segmentId),
-      onSaved: (segmentId, result) => {
-        setSegments((all) => all.map((s) => (s.id === segmentId ? result.segment : s)));
-        setIssues((all) => replaceIssues(all, result.rerun, result.issues));
+      onSaved: (segmentId, result, latest) => {
+        // The row takes what the server stored — unless a later edit of
+        // it is still on its way, whose text the row already shows.
+        setSegments((all) =>
+          all.map((s) =>
+            s.id !== segmentId
+              ? s
+              : latest
+                ? result.segment
+                : { ...result.segment, targetTokens: s.targetTokens },
+          ),
+        );
+        setIssues((all) => replaceIssues(all, result.rerun, result.issues, inFile));
+        if (!latest) return;
         setUnsaved((all) => {
           if (!all.has(segmentId)) return all;
           const next = new Map(all);
@@ -125,21 +143,23 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           return next;
         });
       },
-      onFailed: (segmentId, err) => {
+      onFailed: (segmentId, err, latest) => {
         if (err instanceof ApiError && err.status === 401) {
           session.current.signOut();
           return;
         }
+        // A later write of the segment answers for it.
+        if (!latest) return;
         const message =
           err instanceof ApiError && err.status === 409
             ? `${err.message}: this edit was not saved. Reload the file to see the segment as it is now.`
             : err instanceof Error
               ? err.message
               : String(err);
-        setUnsaved((all) => new Map(all).set(segmentId, message));
+        setUnsaved((all) => new Map(all).set(segmentId, { message }));
       },
-    }),
-  );
+    });
+  });
 
   const activate = useCallback((id: number, at?: { x: number; y: number }) => {
     setClickAt(at);
@@ -148,11 +168,16 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const leave = useCallback(() => setActiveId(null), []);
   const commit = useCallback(
     (segmentId: number, tokens: Token[], options: CommitOptions) => {
-      // Shown at once; the server's answer replaces it with what it stored.
-      const empty = tokens.every((t) => t.t === 'text' && t.v === '');
+      // Shown at once; the server's answer replaces it with what it stored,
+      // which for nothing visible but spaces is no target (`isBlankTarget`).
       setSegments((all) =>
         all.map((s) =>
-          s.id === segmentId ? { ...s, targetTokens: empty ? null : tokens } : s,
+          s.id === segmentId
+            ? {
+                ...s,
+                targetTokens: isBlankTarget(tokens, s.formatTable) ? null : tokens,
+              }
+            : s,
         ),
       );
       queue.save(segmentId, tokens, options.urgent);
@@ -259,7 +284,7 @@ const SegmentRow = memo(function SegmentRow({
   active: boolean;
   clickAt: { x: number; y: number } | undefined;
   /** Why the last write of this target failed, if it did. */
-  unsaved: string | undefined;
+  unsaved: SaveFailure | undefined;
   srcLang: string;
   tgtLang: string;
   onActivate: (segmentId: number, at: { x: number; y: number }) => void;
@@ -283,7 +308,7 @@ const SegmentRow = memo(function SegmentRow({
         <span className="ord">{position}</span>
         <span
           className="status"
-          title={unsaved === undefined ? badge.title : `Not saved: ${unsaved}`}
+          title={unsaved === undefined ? badge.title : `Not saved: ${unsaved.message}`}
         >
           {unsaved === undefined ? badge.text : '!'}
         </span>
@@ -309,7 +334,7 @@ const SegmentRow = memo(function SegmentRow({
         className={editable ? 'cell target editable' : 'cell target'}
         role="cell"
         lang={tgtLang}
-        title={unsaved}
+        title={unsaved?.message}
         onClick={
           editable && !active
             ? (e) => onActivate(segment.id, { x: e.clientX, y: e.clientY })
@@ -321,6 +346,7 @@ const SegmentRow = memo(function SegmentRow({
             segment={segment}
             tgtLang={tgtLang}
             clickAt={clickAt}
+            failed={unsaved}
             onCommit={onCommit}
             onLeave={onLeave}
           />

@@ -16,7 +16,7 @@
  * the same one when it carries them (`carryHiddenTags`).
  */
 import type { FormatEntry, TagKind, Token } from '@cat-tool/core';
-import { withoutHiddenTags } from '@cat-tool/core/model';
+import { withoutHiddenTags, xmlLegalText } from '@cat-tool/core/model';
 
 import { describeFormat } from './tag-label.js';
 
@@ -156,36 +156,95 @@ export function collapseGroups(
 /**
  * The inverse, for saving: each grouped first pair followed by its
  * members, empty. The server stores every tag the source has; export
- * drops the empty ones and renders the text with the first.
+ * drops the empty ones and renders the text with the first. A member
+ * the target already places as a pair of its own — a group placed
+ * piecemeal, its first pair then moved — is not added a second time,
+ * which the server would refuse as a tag placed twice.
  */
 export function expandGroups(
   tokens: readonly Token[],
   members: ReadonlyMap<number, readonly number[]>,
 ): Token[] {
+  const apart = new Set(tokens.flatMap((t) => (t.t === 'open' ? [t.id] : [])));
   return tokens.flatMap((token): Token[] => {
     const ids = token.t === 'close' ? members.get(token.id) : undefined;
     if (!ids) return [token];
     return [
       token,
-      ...ids.flatMap((id): Token[] => [
-        { t: 'open', id, fmt: id },
-        { t: 'close', id },
-      ]),
+      ...ids
+        .filter((id) => !apart.has(id))
+        .flatMap((id): Token[] => [
+          { t: 'open', id, fmt: id },
+          { t: 'close', id },
+        ]),
     ];
   });
 }
 
-/** Palette tags the target has not placed yet, in source order. */
-export function unplacedTags(
+/** A palette tag as a target stands: whether it is placed. */
+export interface TagChoice {
+  readonly tag: PaletteTag;
+  readonly placed: boolean;
+}
+
+/**
+ * The palette as a target stands, in source order: each tag and whether
+ * it is placed. `target` is the editor's tokens (a group as its first
+ * pair), `carried` the members each placed first pair stands for.
+ *
+ * A group (`pairGroups`) is placed as far as its chips go. Placed
+ * piecemeal — a memory's match can store its pairs apart — each member
+ * its first pair does not carry is a tag of its own: placed when it has
+ * a chip of its own, and otherwise listed to place, since nothing else
+ * would put it back and each one left out is a blocking `tag.missing`.
+ * An unplaced first pair places with it only the members not already
+ * placed apart.
+ */
+export function tagChoices(
   palette: readonly PaletteTag[],
   target: readonly Token[],
-): PaletteTag[] {
+  carried: ReadonlyMap<number, readonly number[]>,
+  formats: readonly FormatEntry[],
+): TagChoice[] {
+  const byId = formatsById(formats);
   const placed = new Set<string>();
   for (const token of target) {
     if (token.t === 'open') placed.add(`pair${token.id}`);
     else if (token.t === 'ph') placed.add(`ph${token.id}`);
   }
-  return palette.filter((tag) => !placed.has(`${tag.role}${tag.id}`));
+  return palette.flatMap((tag): TagChoice[] => {
+    const isPlaced = placed.has(`${tag.role}${tag.id}`);
+    if (tag.members.length === 0) return [{ tag, placed: isPlaced }];
+    const withFirst = isPlaced ? (carried.get(tag.id) ?? []) : [];
+    const others = tag.members.filter((id) => !withFirst.includes(id));
+    const apart = (id: number) => placed.has(`pair${id}`);
+    const members = isPlaced
+      ? tag.members.filter((id) => withFirst.includes(id))
+      : others.filter((id) => !apart(id));
+    const own = isPlaced ? others : others.filter(apart);
+    return [
+      {
+        tag: members.length === tag.members.length ? tag : { ...tag, members },
+        placed: isPlaced,
+      },
+      ...own.map((id): TagChoice => ({
+        tag: { role: 'pair', id, fmt: id, kind: byId.get(id)?.kind ?? null, members: [] },
+        placed: apart(id),
+      })),
+    ];
+  });
+}
+
+/** Palette tags the target has not placed yet, in source order (`tagChoices`). */
+export function unplacedTags(
+  palette: readonly PaletteTag[],
+  target: readonly Token[],
+  carried: ReadonlyMap<number, readonly number[]>,
+  formats: readonly FormatEntry[],
+): PaletteTag[] {
+  return tagChoices(palette, target, carried, formats)
+    .filter((choice) => !choice.placed)
+    .map((choice) => choice.tag);
 }
 
 /** A tag chip as the editor holds it, in document order. */
@@ -317,12 +376,14 @@ export function withoutEmptyPairs(tokens: readonly Token[]): Token[] {
  * Pasted text as it may enter a segment: one line of printable text.
  * Line breaks and tabs are structure a translator places as tags (`w:br`,
  * `w:tab`), not characters, and a vertical tab or form feed is how other
- * programs write them: each run of those becomes one space. Any other
- * control character is dropped — the server refuses text XML cannot
- * carry, and a paste should not be where that is discovered.
+ * programs write them: each run of those becomes one space. Then what
+ * XML cannot carry goes (`xmlLegalText`, `core`'s one definition of it) —
+ * the server refuses such text, and a paste should not be where that is
+ * discovered — and so does DEL, which XML carries but no text means.
  */
 export function pastedText(text: string): string {
-  return text
-    .replace(/[\r\n\t\u000B\u000C\u2028\u2029]+/g, ' ')
-    .replace(/[\u0000-\u001F\u007F]/g, '');
+  return xmlLegalText(text.replace(/[\r\n\t\u000B\u000C\u2028\u2029]+/g, ' ')).replace(
+    /\u007F/g,
+    '',
+  );
 }

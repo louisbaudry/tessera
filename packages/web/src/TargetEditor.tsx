@@ -12,8 +12,10 @@
  *
  * The editor sends what the translator placed when it leaves the segment
  * — blur, Esc, the row going away, the page going away — and only if the
- * document changed. It never re-reads the segment after opening it: a
- * save's answer updates the grid, not the text under the caret.
+ * document changed, or if the last write of the segment failed: the edit
+ * then lives only in the grid's copy, and leaving sends it again. It
+ * never re-reads the segment after opening it: a save's answer updates
+ * the grid, not the text under the caret.
  */
 import type { Segment, Token } from '@cat-tool/core';
 import { withoutHiddenTags } from '@cat-tool/core/model';
@@ -29,17 +31,19 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { fullTagLabel, tagLabel, tagTitle } from './pieces.js';
 import { describeFormat } from './tag-label.js';
 import {
+  choicesIn,
+  clipboardSegment,
   createTargetState,
   docFromTokens,
   nextUnplaced,
   pastedSlice,
   pasteText,
   planInsert,
+  SegmentClipboard,
   TAG_OP,
   targetFromDoc,
-  tokensFromDoc,
 } from './target-doc.js';
-import { pairGroups, paletteOf, unplacedTags, type PaletteTag } from './tags.js';
+import { pairGroups, paletteOf, type PaletteTag, type TagChoice } from './tags.js';
 
 export interface CommitOptions {
   /** The page is going away: the request must outlive it. */
@@ -52,7 +56,13 @@ interface TargetEditorProps {
   readonly tgtLang: string;
   /** Where the click that opened the editor landed, to put the caret there. */
   readonly clickAt?: { readonly x: number; readonly y: number };
-  /** The visible target, when the editor leaves it changed. */
+  /**
+   * The last write of this target failed, if it did — a new object for
+   * each failure, so an open editor hears of one: leaving then sends the
+   * target again, changed or not.
+   */
+  readonly failed?: object;
+  /** The visible target, when the editor leaves it changed (or `failed`). */
   readonly onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
   /** Esc: done with this segment. */
   readonly onLeave: () => void;
@@ -76,6 +86,7 @@ export function TargetEditor({
   segment,
   tgtLang,
   clickAt,
+  failed,
   onCommit,
   onLeave,
 }: TargetEditorProps) {
@@ -92,15 +103,14 @@ export function TargetEditor({
     () => paletteOf(opened.sourceTokens, opened.formatTable),
     [opened],
   );
-  // The chips placed so far, for the unplaced list; the document is the truth.
-  const [tokens, setTokens] = useState<Token[]>(() =>
-    tokensFromDoc(
+  // The document as last rendered, for the unplaced list and the tag list.
+  const [doc, setDoc] = useState<PmNode>(
+    () =>
       docFromTokens(
         withoutHiddenTags(opened.targetTokens ?? [], opened.formatTable),
         opened.formatTable,
         pairGroups(opened.sourceTokens, opened.formatTable),
       ).doc,
-    ),
   );
   const [note, setNote] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
@@ -108,6 +118,9 @@ export function TargetEditor({
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  // What was last sent, to tell a change from a click-through; null when
+  // the next leave must send whatever is there.
+  const committed = useRef<PmNode | null>(null);
   const callbacks = useRef({ onCommit, onLeave });
   useEffect(() => {
     callbacks.current = { onCommit, onLeave };
@@ -131,7 +144,7 @@ export function TargetEditor({
       history(),
       keymap({
         'Ctrl-,': (state, dispatch) =>
-          place(nextUnplaced(state, palette))(state, dispatch),
+          place(nextUnplaced(state, palette, opened.formatTable))(state, dispatch),
         'Ctrl-Shift-,': () => {
           setListOpen(true);
           return true;
@@ -154,13 +167,13 @@ export function TargetEditor({
       }),
       keymap(baseKeymap),
     ]);
-    // What was last saved, to tell a change from a click-through. A stored
-    // target the editor had to repair has never been saved as shown.
-    let committed: PmNode | null = loaded.repaired ? null : loaded.state.doc;
+    // A stored target the editor had to repair has never been saved as
+    // shown; one whose last write failed is resent (the effect below).
+    committed.current = loaded.repaired ? null : loaded.state.doc;
     const commit = (editor: EditorView, urgent = false) => {
       const doc = editor.state.doc;
-      if (committed && doc.eq(committed)) return;
-      committed = doc;
+      if (committed.current && doc.eq(committed.current)) return;
+      committed.current = doc;
       callbacks.current.onCommit(opened.id, targetFromDoc(doc), { urgent });
     };
 
@@ -178,7 +191,7 @@ export function TargetEditor({
         editor.updateState(editor.state.apply(tr));
         const after = editor.state.doc;
         if (before === after) return;
-        setTokens(tokensFromDoc(after));
+        setDoc(after);
         // A chip deleted by a keystroke takes its partner with it; say so,
         // since the translator may not have seen it go.
         const gone = [...chipKeys(before)].filter(([key]) => !chipKeys(after).has(key));
@@ -189,16 +202,20 @@ export function TargetEditor({
         );
       },
       handlePaste(editorView, event) {
-        // This editor's own copy is parsed, chips and all (`pastedSlice`
-        // filters it); anything else arrives as one line of plain text.
-        if (event.clipboardData?.getData('text/html').includes('data-pm-slice'))
-          return false;
+        // This segment's own copy is parsed, chips and all (`pastedSlice`
+        // filters it); anything else — another segment's copy too, whose
+        // tag ids name other tags — arrives as one line of plain text.
+        const html = event.clipboardData?.getData('text/html') ?? '';
+        if (clipboardSegment(html) === opened.id) return false;
         editorView.dispatch(
           pasteText(editorView.state, event.clipboardData?.getData('text/plain') ?? ''),
         );
         return true;
       },
-      transformPasted: (slice, editorView) => pastedSlice(slice, editorView.state.doc),
+      transformPasted: (slice, editorView) =>
+        pastedSlice(slice, editorView.state, palette, opened.formatTable),
+      // Every copy marked as this segment's (`SegmentClipboard`).
+      clipboardSerializer: new SegmentClipboard(opened.id),
       // Dragging would move chips around unchecked; nothing is dropped.
       handleDrop: () => true,
       // Copied text is the words, not the chips' numbers.
@@ -235,6 +252,12 @@ export function TargetEditor({
     };
   }, [opened, groups, palette, tgtLang, firstClick]);
 
+  // After the one above: a failed write is sent again on leaving, whether
+  // it failed before the editor opened or while it is open.
+  useEffect(() => {
+    if (failed) committed.current = null;
+  }, [failed]);
+
   const insert = (tag: PaletteTag) => {
     const editor = view.current;
     if (!editor) return;
@@ -244,10 +267,8 @@ export function TargetEditor({
     editor.focus();
   };
 
-  const unplaced = unplacedTags(palette, tokens);
-  const placedIds = new Set(
-    palette.filter((t) => !unplaced.includes(t)).map((t) => `${t.role}${t.id}`),
-  );
+  const choices = choicesIn(doc, palette, formats);
+  const unplaced = choices.filter((c) => !c.placed).map((c) => c.tag);
 
   return (
     <div className="editor-shell" ref={shell}>
@@ -291,8 +312,7 @@ export function TargetEditor({
       )}
       {listOpen && (
         <TagList
-          palette={palette}
-          placed={placedIds}
+          choices={choices}
           formats={formats}
           onChoose={(tag) => {
             setListOpen(false);
@@ -342,22 +362,21 @@ function ChipText({
  * tag's number; Esc returns to the editor.
  */
 function TagList({
-  palette,
-  placed,
+  choices,
   formats,
   onChoose,
   onClose,
 }: {
-  palette: readonly PaletteTag[];
-  placed: ReadonlySet<string>;
+  choices: readonly TagChoice[];
   formats: Segment['formatTable'];
   onChoose: (tag: PaletteTag) => void;
   onClose: () => void;
 }) {
+  const palette = choices.map((c) => c.tag);
   const [active, setActive] = useState(() =>
     Math.max(
       0,
-      palette.findIndex((t) => !placed.has(`${t.role}${t.id}`)),
+      choices.findIndex((c) => !c.placed),
     ),
   );
   const list = useRef<HTMLUListElement>(null);
@@ -389,9 +408,8 @@ function TagList({
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onClose();
       }}
     >
-      {palette.map((tag, i) => {
+      {choices.map(({ tag, placed: isPlaced }, i) => {
         const labels = chipLabels(tag, formats);
-        const isPlaced = placed.has(`${tag.role}${tag.id}`);
         return (
           <li
             key={`${tag.role}${tag.id}`}
