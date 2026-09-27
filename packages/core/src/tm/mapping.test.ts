@@ -133,7 +133,7 @@ describe('remapTmTokens', () => {
     const result = remapTmTokens(tmTokens, sourceTokens, formats);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('unreachable');
-    expect(result.reason).toMatch(/"b" occurs 2 time\(s\).*1 time\(s\)/);
+    expect(result.reason).toMatch(/"b" pair occurs 2 time\(s\).*1 time\(s\)/);
   });
 
   it('refuses when the source has a kind the match never uses at all (asymmetric mismatch)', () => {
@@ -204,6 +204,51 @@ describe('remapTmTokens', () => {
         { t: 'text', v: 'a' },
         { t: 'ph', id: 5, fmt: 5 },
         { t: 'text', v: 'b' },
+      ],
+    });
+  });
+
+  it('never gives a placeholder the id of a pair of the same kind (backlog #29)', () => {
+    // `other` is both a hidden run and a spell-check marker. A match that
+    // puts the marker first once handed it the run's id, and the run's
+    // XML rendered as a placeholder: a <w:r> with no </w:r>.
+    const formats: FormatEntry[] = [
+      {
+        id: 1,
+        kind: 'other',
+        visible: false,
+        placement: 'run',
+        open: '<w:r><w:rPr><w:sz w:val="28"/></w:rPr>',
+        close: '</w:r>',
+      },
+      {
+        id: 2,
+        kind: 'other',
+        visible: false,
+        placement: 'block',
+        open: '<w:proofErr w:type="spellStart"/>',
+        close: '',
+      },
+    ];
+    const sourceTokens: Token[] = [
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: 'schedule' },
+      { t: 'close', id: 1 },
+      { t: 'ph', id: 2, fmt: 2 },
+    ];
+    const tmTokens: TmToken[] = [
+      { t: 'ph', id: 1, k: 'other' },
+      { t: 'open', id: 2, k: 'other' },
+      { t: 'text', v: 'calendario' },
+      { t: 'close', id: 2 },
+    ];
+    expect(remapTmTokens(tmTokens, sourceTokens, formats)).toEqual({
+      ok: true,
+      tokens: [
+        { t: 'ph', id: 2, fmt: 2 },
+        { t: 'open', id: 1, fmt: 1 },
+        { t: 'text', v: 'calendario' },
+        { t: 'close', id: 1 },
       ],
     });
   });

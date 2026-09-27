@@ -1827,16 +1827,132 @@ Not here: the editable target and tag insertion (#29), keyboard (#30),
 autosave (#31), serving the built SPA from the server (#36's container),
 dark mode (#35 — colours are already CSS tokens for it).
 
-**#29 · Tag-aware target editor · L** · [issue #11]
-Atomic tag chips, insert-next-tag, tag list, full-tag toggle. Tags never
-editable as text.
+**#29 · ~~Tag-aware target editor~~ · DONE — `web/TargetEditor.tsx`,
+`web/target-doc.ts` + `web/tags.ts` + `web/save-queue.ts`,
+`core/model/hidden-tags.ts`, `db/project/edit-target.ts`**
+Clicking a target opens it in a ProseMirror editor: text and atomic tag
+chips, `Ctrl+,` to place the next unplaced tag, `Ctrl+Shift+,` for the
+tag list, a grid-wide "show full tags" toggle, hidden tags never shown.
+Decisions in `v1-spec.md` §7.2. The design went to four independent
+reviews before most of the code was written, and most of what is below
+is what they found.
+
+**Hidden tags turned out to be the whole card.** "Carried
+automatically" had no mechanism: a typed target has none of the
+source's hidden tags, and they are not noise — a hidden run carries the
+paragraph's font and size, a hidden placeholder can be an anchored
+drawing, a bookmark a TOC points at, a tracked deletion. The editor
+could not place them (it does not show them), so the server does, by one
+rule: `carryHiddenTags`, applied in `setSegmentTarget`, the one write
+every writer goes through. Putting it only in the HTTP route was the
+first draft; a review showed pre-translate's tag-diff fallback stored
+text with *no* hidden tags at all — since #19, every tag-mismatched
+match had been exporting without the paragraph's font, bookmarks,
+drawings or tracked deletions. The rule is per container, dominant
+formatting plus verbatim minorities; retyping the corpus leaves 45 of
+270,571 non-space characters looking different from the source
+(pinned in `project/carry.test.ts`). A copy of the source keeps the
+source's own hidden tags exactly.
+
+**Four bugs this found in code that already existed:**
+- **The renderer nested runs.** A carried target puts a visible bold run
+  inside the hidden run carrying the font; `renderTokens` emitted `w:r`
+  inside `w:r` — 123 of 2,602 carried corpus targets would have
+  exported files Word refuses, with nothing to catch it. It now renders
+  every structurally valid stream to valid OOXML (innermost run wins,
+  lazy runs, paragraph-level elements close the run), byte-identical to
+  before on all 4,545 tokenizer-shaped corpus streams.
+- **The TM remap matched tags by kind only.** `other` is both a hidden
+  run and a spell-check marker, so a unit that put the marker first gave
+  it the run's id, and the run's `<w:r>` rendered with no close — 58
+  corpus segments propagated onto themselves came out corrupt, marked
+  `tm_exact`, no QA finding. Remap is now keyed by kind *and* role; the
+  renderer and `parseTokens` refuse a tag in a role its format does not
+  fit.
+- **A mismatch in hidden tags only was a tag-diff draft** with a
+  `tag.missing` warning naming tags nobody could see: 1,296 of the
+  corpus's 1,961 tagged segments have no visible tag at all. Such a
+  source now takes the match's text as an exact match, its hidden tags
+  carried. The golden memory's Trados-style unit was exactly this case;
+  it now matches, and a second kind-less unit on the heading (a visible
+  style tag) keeps the tag-diff → reapply → confirm → audit trail the
+  transcript exists to show (`fixtures/golden/README.md`).
+- **Text XML cannot carry reached export.** A pasted vertical tab
+  (PowerPoint's soft break) went through `parseTokens` and the renderer
+  into a part no parser opens. Refused at both now (`xmlIllegalChar`),
+  and the editor turns it into a space on paste.
+
+**What an edit means is `db`'s, not the client's.** The first draft had
+the SPA decide status and origin and whether anything changed, and the
+route carry hidden tags. `editSegmentTarget` does all of it in one
+transaction: no visible change is no write (a TM match clicked through
+keeps its origin — the client's token comparison would have wiped it,
+since a stored target's text can be split where the editor's is not); a
+visible target is `translated` with origin `null`; an emptied one is
+`null`/`new`, never an empty translation (which export delivers as a
+missing sentence, and confirm would have written to the TM — it now
+refuses); a write over a newer version is a 409; a structure export
+would refuse is a 400 now rather than a 500 for the whole file at
+delivery; and QA reruns for the segment and its same-source siblings, so
+the gutter follows the edit. The PUT body is `{targetTokens,
+baseUpdatedAt}`; a `status` or `origin` in it is refused.
+
+**Smaller things settled:**
+- **ProseMirror, not a hand-rolled contentEditable.** Composition (dead
+  keys for Spanish accents on a Mac), the caret beside an atom,
+  spellcheck, paste and undo are where hand-rolled editors break; its
+  state layer runs in node, so every tag rule has a node test. Bundle 81
+  → 152 KB gzipped.
+- **Look-alike pairs are placed as one** (`pairGroups`). Word splits runs
+  on invisible changes and the tokenizer keeps each run's pair, so one
+  bold phrase arrived as 31 bold pairs, each unplaced one a blocking
+  `tag.missing` — 251 corpus segments have such runs. One chip pair
+  `‹1–31`, saved as the first around the text and the rest empty.
+- **Formatting never nests in formatting.** A run tag is a whole `w:rPr`,
+  so bold placed around italic exports as italic alone. The editor
+  refuses it (and a link in a link) with a note, rather than let a
+  translator's formatting vanish silently.
+- **Chips are not selectable**: a selected chip hides the caret and the
+  next letter replaces it. Deleting one takes its partner, with a note
+  and a one-step undo.
+- **Cut and paste moves a tag** (this editor's own clipboard keeps its
+  chips, less those still placed); anything else pastes as one line of
+  text. Drop is refused.
+- **Save when the editor leaves the segment, and on `pagehide`** with a
+  `keepalive` request; sign-out waits for it. One write per segment in
+  flight, each with the version the last answer returned.
+- **`@cat-tool/core/model`** is the SPA's one runtime `core` import, so
+  which tags are hidden is one definition in browser and server; the
+  first draft had a second copy in `pieces.ts`. `model/` importing
+  nothing else from `core` or Node is now a lint rule.
+- **The smoke run needed a person's pauses.** ProseMirror reads the
+  selection from `selectionchange`, which lags when automation sends a
+  key the instant after a selection move; with 60 ms between them all
+  26 checks passed. Not a user-visible race at human speed, but a
+  Playwright script that looks flaky here is probably this.
+
+Not here, recorded for their cards: field placeholders (begin,
+separator, end) can be reordered and tag structure cannot see it — a QA
+rule or a palette unit (#33/#44 area); the tokenizer's `w:position`
+(raised text) is incidental, so a hand-raised note number is a hidden
+run the verbatim rule protects only when kept verbatim; autosave (#31)
+must respect audit-spec §2.2's "segment boundaries, never per
+keystroke".
+
+49 new tests in web, 14 + 8 in core for the carry rule and its corpus
+run, 8 for `editSegmentTarget`, renderer and remap tests including a
+seeded 400-stream nesting property (20,000 checked once); full gate,
+`test:gate` and `test:golden` green, the golden diff read line by line.
 
 **#30 · Keyboard model · M** · [issue #6]
-Confirm-and-advance, copy source, tag insert, merge/split, filter focus
-(spec §7).
+Confirm-and-advance, copy source, merge/split, filter focus (spec §7).
+Tag insertion (`Ctrl+,`, `Ctrl+Shift+,`) shipped with the editor in #29.
 
 **#31 · Autosave · S** · [issue #7]
-Debounced per keystroke. No save action; crash costs seconds.
+Debounced per keystroke. No save action; crash costs seconds. #29 saves
+when the editor leaves a segment and on `pagehide`; audit-spec §2.2 says
+the audited write happens at segment boundaries, never per keystroke,
+so keystroke drafts need a home outside it, or §2.2 amended first.
 
 **#32 · Project and TM management UI · M** · [issue #8]
 Create project, add files, attach TMs, set priority and write target.

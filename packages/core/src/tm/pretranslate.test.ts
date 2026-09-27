@@ -39,7 +39,7 @@ describe('placeMatch', () => {
     });
   });
 
-  it('falls back to plain text with every tag dropped when the tag multiset differs — never a guessed placement', () => {
+  it('takes the text alone as the whole target when the source has no tag to place', () => {
     const matchTokens: TmToken[] = [
       { t: 'open', id: 1, k: 'b' },
       { t: 'text', v: 'Hola ' },
@@ -49,11 +49,30 @@ describe('placeMatch', () => {
       { t: 'close', id: 2 },
     ];
     // The receiving segment's source has no tags at all — same plain
-    // text can genuinely have arrived with different formatting.
+    // text can genuinely have arrived with different formatting. The
+    // match's tags are dropped, never guessed, and nothing is missing.
     const sourceTokens: Token[] = [{ t: 'text', v: 'Hello world' }];
     const result = placeMatch(matchTokens, sourceTokens, []);
-    expect(result.tagsMatched).toBe(false);
+    expect(result.tagsMatched).toBe(true);
     expect(result.targetTokens).toEqual([{ t: 'text', v: 'Hola mundo' }]);
+  });
+
+  it('counts a source whose tags are all hidden as having nothing to place (backlog #29)', () => {
+    // A memory without this document's spell-check marker: its hidden
+    // tags are carried when the target is written, not placed here.
+    const matchTokens: TmToken[] = [{ t: 'text', v: 'Hola' }];
+    const sourceTokens: Token[] = [
+      { t: 'text', v: 'Hel' },
+      { t: 'ph', id: 1, fmt: 1 },
+      { t: 'text', v: 'lo' },
+    ];
+    const formats: FormatEntry[] = [
+      { id: 1, kind: 'other', visible: false, placement: 'block', open: '', close: '' },
+    ];
+    expect(placeMatch(matchTokens, sourceTokens, formats)).toEqual({
+      targetTokens: [{ t: 'text', v: 'Hola' }],
+      tagsMatched: true,
+    });
   });
 
   it('falls back to plain text when a kind occurs a different number of times', () => {

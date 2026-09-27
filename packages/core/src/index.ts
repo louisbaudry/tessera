@@ -1,5 +1,6 @@
 export * from './model/token.js';
 export * from './model/tags.js';
+export * from './model/hidden-tags.js';
 export * from './model/segment.js';
 export * from './model/qa.js';
 export * from './qa/rules.js';

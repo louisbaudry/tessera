@@ -15,6 +15,7 @@ export { PROJECT_APPLICATION_ID, PROJECT_MIGRATIONS } from './schema.js';
 export * from './project.js';
 export * from './files.js';
 export * from './segments.js';
+export * from './edit-target.js';
 export * from './tm-refs.js';
 export * from './pretranslate.js';
 export * from './confirm.js';

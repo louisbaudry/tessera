@@ -89,3 +89,17 @@ export function qaMarks(issues: readonly QaIssue[]): ReadonlyMap<number, QaMark>
   }
   return marks;
 }
+
+/**
+ * The file's issues after a save: those of every segment QA reran
+ * replaced by what it found now — none, for a segment it cleared — and
+ * everyone else's kept.
+ */
+export function replaceIssues(
+  issues: readonly QaIssue[],
+  rerun: readonly number[],
+  fresh: readonly QaIssue[],
+): QaIssue[] {
+  const replaced = new Set(rerun);
+  return [...issues.filter((i) => !replaced.has(i.segmentId)), ...fresh];
+}

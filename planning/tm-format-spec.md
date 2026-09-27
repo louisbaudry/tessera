@@ -399,9 +399,13 @@ file matches a segment in today's document, the bold applied must be
 foreign formatting into a file that never asked for it.
 
 `k` is a hint, not payload. It drives tag re-mapping on retrieval: TM tags
-are matched to the current segment's tags by `(kind, order)`. All kinds
-match → clean insert. Otherwise the `tm_exact_tagdiff` path in
-`v1-spec.md` §6.1 applies.
+are matched to the current segment's tags by `(kind, order)`, pairs and
+placeholders counted apart — `other` names both a hidden run and a
+spell-check marker, and matching by kind alone once gave a marker a run's
+id (backlog #29). All match → clean insert. Otherwise the
+`tm_exact_tagdiff` path in `v1-spec.md` §6.1 applies. Either way the
+stored target's hidden tags are the receiving source's, carried when it
+is written (`v1-spec.md` §7.2), not the unit's.
 
 Writing a variant: drop `fmt`, derive `k` from the file's format entry,
 renumber `id` from 1 in source order.

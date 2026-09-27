@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assembleFile, rulesFor } from '@cat-tool/core';
+import {
+  assembleFile,
+  carryHiddenTags,
+  rulesFor,
+  withoutHiddenTags,
+} from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -50,6 +55,15 @@ function findTaggedSegment(db: Database.Database, fileId: number) {
     (s) => !s.locked && s.formatTable.length > 0,
   );
   if (!found) throw new Error('fixture has no eligible tagged segment');
+  return found;
+}
+
+/** A segment with a tag the translator places, not only hidden ones. */
+function findVisiblyTaggedSegment(db: Database.Database, fileId: number) {
+  const found = listSegments(db, fileId).find(
+    (s) => !s.locked && s.formatTable.some((f) => f.visible),
+  );
+  if (!found) throw new Error('fixture has no segment with a visible tag');
   return found;
 }
 
@@ -153,10 +167,10 @@ describe('pretranslate', () => {
     const file = insertFile(
       db,
       'a.docx',
-      assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      assembleFile(loadDocx('form-release.docx'), rulesFor('en')),
       { actor: TEST_ACTOR },
     );
-    const segment = findTaggedSegment(db, file.id);
+    const segment = findVisiblyTaggedSegment(db, file.id);
 
     const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
     // No tags at all in the match — guaranteed multiset mismatch against
@@ -177,12 +191,54 @@ describe('pretranslate', () => {
     const after = getSegment(db, segment.id)!;
     expect(after.status).toBe('draft');
     expect(after.origin).toBe('tm_exact_tagdiff');
-    expect(after.targetTokens).toEqual([{ t: 'text', v: 'Sin etiquetas' }]);
+    // The text only, with the source's hidden tags carried around it.
+    expect(withoutHiddenTags(after.targetTokens!, after.formatTable)).toEqual([
+      { t: 'text', v: 'Sin etiquetas' },
+    ]);
 
     const issues = listQaIssues(db, segment.id);
     expect(issues).toHaveLength(1);
     expect(issues[0]!.rule).toBe('tag.missing');
     expect(issues[0]!.severity).toBe('warning');
+    db.close();
+  });
+
+  it('a mismatch in hidden tags only is an exact match, its hidden tags carried (backlog #29)', () => {
+    // A memory that lacks this document's spell-check markers leaves the
+    // translator nothing to reapply: no tagdiff, no warning.
+    const db = openProjectDb(dbPath());
+    createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'es' });
+    const file = insertFile(
+      db,
+      'a.docx',
+      assembleFile(loadDocx('form-minimal.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
+    );
+    const segment = findTaggedSegment(db, file.id);
+    expect(segment.formatTable.every((f) => !f.visible)).toBe(true);
+
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    insertTmUnit(tm, {
+      srcLang: 'en',
+      srcHash: segment.sourceHash,
+      tgtLang: 'es',
+      targetTokens: [{ t: 'text', v: 'Sin etiquetas' }],
+    });
+    tm.close();
+    addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
+
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
+    expect(summary).toMatchObject({ exact: 1, tagdiff: 0 });
+    const after = getSegment(db, segment.id)!;
+    expect(after).toMatchObject({ status: 'translated', origin: 'tm_exact' });
+    expect(after.targetTokens).toEqual(
+      carryHiddenTags(
+        [{ t: 'text', v: 'Sin etiquetas' }],
+        segment.sourceTokens,
+        segment.formatTable,
+      ),
+    );
+    expect(listQaIssues(db, segment.id)).toEqual([]);
     db.close();
   });
 

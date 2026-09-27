@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { validateTagStructure } from '../model/tags.js';
-import type { Token } from '../model/token.js';
+import type { FormatEntry, Token } from '../model/token.js';
 import { documentSegments, exportDocx, importDocx } from './document.js';
 import {
   escapeXmlText,
@@ -15,6 +15,7 @@ import {
   renderTokens,
   withText,
 } from './render.js';
+import { nestingErrors, runOfEachChar } from './nesting.fixture.js';
 import { tokenizeRegion, tokensText, visibleTags } from './tokenize.js';
 
 const FIXTURES = join(
@@ -122,6 +123,12 @@ describe('renderTokens — rejects invalid targets', () => {
     expect(() => renderTokens(bad, two)).toThrow(RenderError);
   });
 
+  it('refuses text XML cannot carry rather than write a part Word rejects', () => {
+    expect(() => renderTokens([{ t: 'text', v: 'soft\u000Bbreak' }], [])).toThrow(
+      /U\+000B/,
+    );
+  });
+
   it('refuses a token pointing at a format that does not exist', () => {
     expect(() => renderTokens([{ t: 'ph', id: 99, fmt: 99 }], formats)).toThrow(
       /unknown format id/,
@@ -198,6 +205,252 @@ describe('renderTokens — wrappers survive translation', () => {
     expect(out).toContain('<w:delText>borrado</w:delText>');
   });
 });
+
+describe('renderTokens — nesting an edited target may contain (backlog #29)', () => {
+  const fonts: FormatEntry = {
+    id: 1,
+    kind: 'other',
+    visible: false,
+    placement: 'run',
+    open: '<w:r><w:rPr><w:rFonts w:ascii="Arial"/></w:rPr>',
+    close: '</w:r>',
+  };
+  const bold: FormatEntry = {
+    id: 2,
+    kind: 'b',
+    visible: true,
+    placement: 'run',
+    open: '<w:r><w:rPr><w:b/></w:rPr>',
+    close: '</w:r>',
+  };
+  const link: FormatEntry = {
+    id: 3,
+    kind: 'link',
+    visible: true,
+    placement: 'inline',
+    open: '<w:hyperlink r:id="rId9">',
+    close: '</w:hyperlink>',
+  };
+  const proofErr: FormatEntry = {
+    id: 4,
+    kind: 'other',
+    visible: false,
+    placement: 'block',
+    open: '<w:proofErr w:type="spellStart"/>',
+    close: '',
+  };
+  const br: FormatEntry = {
+    id: 5,
+    kind: 'br',
+    visible: true,
+    placement: 'in-run',
+    open: '<w:br/>',
+    close: '',
+  };
+  const formats = [fonts, bold, link, proofErr, br];
+  const text = (v: string): Token => ({ t: 'text', v });
+  const open = (id: number): Token => ({ t: 'open', id, fmt: id });
+  const close = (id: number): Token => ({ t: 'close', id });
+  const ph = (id: number): Token => ({ t: 'ph', id, fmt: id });
+
+  it('renders a run tag inside a run tag as sibling runs, the inner one winning', () => {
+    const tokens = [
+      open(1),
+      text('Hola '),
+      open(2),
+      text('mundo'),
+      close(2),
+      text('!'),
+      close(1),
+    ];
+    expect(renderTokens(tokens, formats)).toBe(
+      `${fonts.open}<w:t xml:space="preserve">Hola </w:t></w:r>` +
+        `${bold.open}<w:t>mundo</w:t></w:r>` +
+        `${fonts.open}<w:t>!</w:t></w:r>`,
+    );
+  });
+
+  it('closes the run before a paragraph-level placeholder and reopens it after', () => {
+    const tokens = [open(1), text('a'), ph(4), text('b'), close(1)];
+    expect(renderTokens(tokens, formats)).toBe(
+      `${fonts.open}<w:t>a</w:t></w:r>${proofErr.open}${fonts.open}<w:t>b</w:t></w:r>`,
+    );
+  });
+
+  it('closes the run before a hyperlink, whose text its properties do not reach', () => {
+    // Run properties never cross a hyperlink in OOXML; a link's text has
+    // the runs inside it, or none.
+    const tokens = [open(1), text('a'), open(3), text('b'), close(3), close(1)];
+    expect(renderTokens(tokens, formats)).toBe(
+      `${fonts.open}<w:t>a</w:t></w:r>` +
+        `${link.open}<w:r><w:t>b</w:t></w:r>${link.close}`,
+    );
+  });
+
+  it('refuses a tag in a role its format does not fit', () => {
+    // A run tag as a placeholder would be a <w:r> with no </w:r>.
+    expect(() => renderTokens([ph(1)], formats)).toThrow(/run tag/);
+    expect(() => renderTokens([open(5), close(5)], formats)).toThrow(/in-run tag/);
+  });
+
+  it('keeps a run-level placeholder inside the enclosing run', () => {
+    const tokens = [open(1), text('a'), ph(5), text('b'), close(1)];
+    expect(renderTokens(tokens, formats)).toBe(
+      `${fonts.open}<w:t>a</w:t><w:br/><w:t>b</w:t></w:r>`,
+    );
+  });
+
+  it('renders nothing for a run tag with no content', () => {
+    expect(renderTokens([text('x'), open(1), close(1)], formats)).toBe(
+      '<w:r><w:t>x</w:t></w:r>',
+    );
+  });
+
+  it('keeps one run open across identical properties instead of splitting it', () => {
+    const twin: FormatEntry = { ...fonts, id: 6 };
+    const tokens = [
+      open(1),
+      text('a'),
+      open(2),
+      close(2),
+      close(1),
+      open(6),
+      text('b'),
+      close(6),
+    ];
+    expect(renderTokens(tokens, [...formats, twin])).toBe(
+      `${fonts.open}<w:t>ab</w:t></w:r>`,
+    );
+  });
+
+  it('renders every structurally valid stream to OOXML Word accepts', () => {
+    // Generated streams: arbitrary nesting of runs, wrappers, hyperlinks
+    // and placeholders — shapes a translator can build and a source never
+    // has. Seeded, so a failure reproduces.
+    for (let seed = 1; seed <= 400; seed++) {
+      const { tokens, formats: table } = randomStream(seed);
+      expect(validateTagStructure(tokens), `seed ${seed}`).toEqual({ ok: true });
+      const out = renderTokens(tokens, table);
+      expect(nestingErrors(out), `seed ${seed}: ${out}`).toEqual([]);
+      const back = tokenizeRegion(out);
+      expect(tokensText(back.tokens), `seed ${seed}`).toBe(tokensText(tokens));
+      // Every character keeps the properties of its innermost run tag.
+      expect(runOfEachChar(back.tokens, back.formats), `seed ${seed}`).toEqual(
+        runOfEachChar(tokens, table),
+      );
+      // And the result is a fixed point, like a source render.
+      expect(renderRegion(back), `seed ${seed}`).toBe(out);
+    }
+  });
+});
+
+const TEMPLATES: ReadonlyArray<Omit<FormatEntry, 'id'>> = [
+  {
+    kind: 'other',
+    visible: false,
+    placement: 'run',
+    open: '<w:r><w:rPr><w:sz w:val="20"/></w:rPr>',
+    close: '</w:r>',
+  },
+  {
+    kind: 'b',
+    visible: true,
+    placement: 'run',
+    open: '<w:r><w:rPr><w:b/></w:rPr>',
+    close: '</w:r>',
+  },
+  {
+    kind: 'i',
+    visible: true,
+    placement: 'run',
+    open: '<w:r><w:rPr><w:i/></w:rPr>',
+    close: '</w:r>',
+  },
+  {
+    kind: 'link',
+    visible: true,
+    placement: 'inline',
+    open: '<w:hyperlink w:anchor="x">',
+    close: '</w:hyperlink>',
+  },
+  {
+    kind: 'other',
+    visible: false,
+    placement: 'inline',
+    open: '<w:ins w:id="1" w:author="R">',
+    close: '</w:ins>',
+  },
+  {
+    kind: 'other',
+    visible: false,
+    placement: 'inline',
+    open: '<w:sdt><w:sdtPr/><w:sdtContent>',
+    close: '</w:sdtContent></w:sdt>',
+  },
+];
+const PLACEHOLDERS: ReadonlyArray<Omit<FormatEntry, 'id'>> = [
+  {
+    kind: 'other',
+    visible: false,
+    placement: 'block',
+    open: '<w:proofErr w:type="gramEnd"/>',
+    close: '',
+  },
+  {
+    kind: 'bookmark',
+    visible: false,
+    placement: 'block',
+    open: '<w:bookmarkEnd w:id="3"/>',
+    close: '',
+  },
+  { kind: 'br', visible: true, placement: 'in-run', open: '<w:br/>', close: '' },
+  {
+    kind: 'other',
+    visible: false,
+    placement: 'in-run',
+    open: '<w:lastRenderedPageBreak/>',
+    close: '',
+  },
+];
+
+/** A seeded, structurally valid stream of arbitrary nesting. */
+function randomStream(seed: number): { tokens: Token[]; formats: FormatEntry[] } {
+  let state = seed;
+  const next = () => {
+    // mulberry32
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(next() * xs.length)]!;
+  const tokens: Token[] = [];
+  const formats: FormatEntry[] = [];
+  const add = (template: Omit<FormatEntry, 'id'>) => {
+    const id = formats.length + 1;
+    formats.push({ ...template, id });
+    return id;
+  };
+  const words = ['uno', 'dos ', ' tres', 'cuatro', '', ' '];
+  const fill = (depth: number) => {
+    const n = 1 + Math.floor(next() * 4);
+    for (let i = 0; i < n; i++) {
+      const roll = next();
+      if (roll < 0.4 || depth > 3) tokens.push({ t: 'text', v: pick(words) });
+      else if (roll < 0.6) {
+        const id = add(pick(PLACEHOLDERS));
+        tokens.push({ t: 'ph', id, fmt: id });
+      } else {
+        const id = add(pick(TEMPLATES));
+        tokens.push({ t: 'open', id, fmt: id });
+        if (next() < 0.9) fill(depth + 1);
+        tokens.push({ t: 'close', id });
+      }
+    }
+  };
+  fill(0);
+  return { tokens, formats };
+}
 
 describe('withText — carrying tags onto a target', () => {
   it('keeps a wrapping pair around the new text', () => {

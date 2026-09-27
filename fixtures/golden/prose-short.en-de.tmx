@@ -9,11 +9,11 @@
     <prop type="x-WordCountFlags">DefaultFlags</prop>
   </header>
   <body>
-    <tu creationdate="20250903T091412Z" creationid="translator" changedate="20250903T091412Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
+    <tu creationdate="20240611T151207Z" creationid="agency" changedate="20240611T151207Z" changeid="agency" lastusagedate="20240611T151207Z" usagecount="0">
       <prop type="x-Context">0, 0</prop>
-      <prop type="x-Origin">TM</prop>
-      <tuv xml:lang="en-US"><seg><bpt i="1" type="style"/>Kuneneco at the Palisuf Hekik Dekivipus<ept i="1"/></seg></tuv>
-      <tuv xml:lang="de-DE"><seg><bpt i="1" type="style"/>Niz&#xDF;poce hejo Nafovaf guse der Kifogonan<ept i="1"/></seg></tuv>
+      <prop type="x-Origin">Alignment</prop>
+      <tuv xml:lang="en-US"><seg><bpt i="1">&lt;cf style="Title"&gt;</bpt>Kuneneco at the Palisuf Hekik Dekivipus<ept i="1">&lt;/cf&gt;</ept></seg></tuv>
+      <tuv xml:lang="de-DE"><seg><bpt i="1">&lt;cf style="Title"&gt;</bpt>Niz&#xDF;poce hejo Nafovaf guse der Kifogonan<ept i="1">&lt;/cf&gt;</ept></seg></tuv>
     </tu>
     <tu creationdate="20250903T091530Z" creationid="translator" changedate="20250903T091530Z" changeid="translator" lastusagedate="20250910T143008Z" usagecount="1">
       <prop type="x-Context">0, 1</prop>

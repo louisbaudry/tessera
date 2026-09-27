@@ -118,6 +118,16 @@ the check happens before the push, not after.
   only a `kind` hint (`core/tm/mapping.ts`) — a bold span from a 2023
   client file must render with today's document's bold, not a run
   property carried over from wherever the memory entry came from.
+- **Hidden tags are never a writer's to place.** Every stored target
+  gets its source's hidden tags from `carryHiddenTags`
+  (`core/model/hidden-tags.ts`), applied in `setSegmentTarget` — the one
+  write the editor, pre-translate and propagation all go through
+  (backlog #29). A client sends what the translator placed, nothing
+  more. `renderTokens` renders any structurally valid stream to valid
+  OOXML (a run tag nested in one: innermost wins), so no writer shapes
+  nesting for the renderer either. Before #29, pre-translate's
+  tag-diff fallback stored text with no hidden tags at all, and exports
+  lost fonts, bookmarks and drawings with nothing to flag it.
 - **A column with a frozen contract never receives a value computed some
   other way — carry the foreign value as provenance instead.**
   `prev_hash`/`next_hash` mean "SHA-256 of the normalised neighbouring
@@ -153,7 +163,8 @@ the check happens before the push, not after.
   #15d) should too, rather than inventing its own shape.
 - **`core`'s internal layering is one-directional: `model/` → (`docx/`,
   `segment/`) → `project/`.** `model/` is the base layer — nothing may be
-  imported into it from any other `core` module. `docx/` and `segment/`
+  imported into it from any other `core` module (a lint rule since #29,
+  as it is also the SPA's `@cat-tool/core/model`). `docx/` and `segment/`
   each import from `model/` but never from each other in the forbidden
   direction (`segment/` imports `docx/`'s tokenizer types, so `docx/`
   must never import from `segment/`). Anything that needs both — like
@@ -368,7 +379,7 @@ together.
 Backlog #27 (`v1-spec.md` §2.5) is the shell everything after #8 runs
 behind: Fastify, `platform.sqlite` (accounts, sessions and their audit
 log, never translation data) and the storage volume, with `core` and
-`db` in-process and JSON to the SPA. Four things to keep true:
+`db` in-process and JSON to the SPA. Five things to keep true:
 
 - **No function takes a path from a request.** `server/src/storage.ts`
   builds every path from the account's minted `storage_root` and a
@@ -384,6 +395,11 @@ log, never translation data) and the storage volume, with `core` and
   (§2.4) again. `countSegments` is the model: when a route needs
   something `db` lacks, add it to `db`, where the CLI and the editor
   reach it too.
+- **What a segment edit means is `db`'s** (`editSegmentTarget`,
+  `v1-spec.md` §7.2): hidden tags carried, status and origin derived, a
+  visible no-change written as nothing, a stale version refused, QA
+  rerun. The PUT route parses and calls it; a client never sends status
+  or origin.
 - **A route's actor is `sessionActor(req)`, never built in the
   handler** (`audit-spec.md` §2.5). A write in the project goes to the
   project's log; one about the platform (login, a project's creation or
@@ -403,8 +419,11 @@ or state library until a screen needs one. Three things to keep true:
 - **`@cat-tool/core` is a type-only import here**, enforced by
   `@typescript-eslint/no-restricted-imports` in `eslint.config.js`.
   `core`'s runtime (credentials, the DOCX filter) is not a browser
-  dependency. A display table keyed by a `core` union is a `Record`
-  over that union, so a new value in `core` fails this typecheck.
+  dependency. The one exception is `@cat-tool/core/model` — the token
+  model and tag rules (which tags are hidden, what a valid target is) —
+  so the editor applies the server's definitions instead of copying
+  them. A display table keyed by a `core` union is a `Record` over that
+  union, so a new value in `core` fails this typecheck.
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts` and `layout.ts` are pure and tested there. A component
@@ -579,6 +598,12 @@ pattern.
   for the bare name would be satisfied by a job that did nothing — worth
   checking the settings against the names GitHub actually reports before
   trusting a required check.
+
+- **ProseMirror reads the selection from `selectionchange`, which lags
+  a key sent the instant after a selection move.** A Playwright script
+  that selects with Shift+Arrow and immediately presses a command key
+  acts on the old selection and looks flaky; pause ~60 ms after moving
+  the selection, as a person does (backlog #29's smoke run).
 
 ## Fixture corpus
 

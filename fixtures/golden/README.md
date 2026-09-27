@@ -23,15 +23,21 @@ matches; it is shaped like a memory a job actually inherits:
   lands on the receiving document's own formatting by `(kind, order)`.
   One of them carries seven `other`, one `i` and two `style` tags — the
   most tag-dense sentence in the file.
-- **One unit whose tags carry no kind hint**, the way a Trados export
-  writes them (`<bpt i="1">&lt;cf size="14"&gt;</bpt>`). Pre-translate
-  cannot place its tags and falls back to text only — `tm_exact_tagdiff`,
-  a draft — and `qa` then blocks on the dropped tag. The review step
+- **Two units whose tags carry no kind hint**, the way a Trados export
+  writes them (`<bpt i="1">&lt;cf style="Title"&gt;</bpt>`). One is the
+  heading, whose style is a tag the translator places: pre-translate
+  cannot place it and falls back to text only — `tm_exact_tagdiff`, a
+  draft — and `qa` then blocks on the dropped tag. The review step
   reapplies the tag and confirms the segment, which writes it into the
   job's own memory. The transcript's `history` of that segment is the
   audit trail of exactly this (backlog #56): pre-translate's tagless
   draft as a child of its batch, the reapplied tag, the confirm, and
-  the TM unit it wrote — then `audit-verify` over the whole job.
+  the TM unit it wrote — then `audit-verify` over the whole job. The
+  other (`&lt;cf size="14"&gt;`) is a sentence whose only tags are hidden
+  — a font size, which the translator never sees — so there is nothing
+  to reapply: its text is placed as an exact match and the hidden run is
+  carried around it (backlog #29). Until #29 that unit was the tag-diff
+  draft, and the review "reapplied" a tag no editor would have shown.
 - **One unit for a sentence the document misspells.** The memory says
   "Your …"; the document, through a run split, says "Y our …". No match, correctly — the segment is delivered in English.
 - **One sentence missing from the memory** (the first of a two-sentence

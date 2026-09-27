@@ -220,6 +220,7 @@ export function runQaRules(db: Database.Database, segmentId: number): readonly Q
       siblings: buildSiblingContext(db, segment),
       srcLang: project?.srcLang,
       tgtLang: project?.tgtLang,
+      formats: segment.formatTable,
     },
     listEnabledRules(db),
   );
