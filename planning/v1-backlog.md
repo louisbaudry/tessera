@@ -1982,7 +1982,7 @@ wait for the ring's own design pass, and Ring 0 finishes first. (Epics
 commercial loss rather than a planned sequence, and the card is where
 that stays visible.)
 
-### Epic 10a — Translation Portal v0 (pulled forward, done 2026-09-11)
+### Epic 10a — Translation Portal v0 (pulled forward, v0 done 2026-09-11)
 
 Not part of the Ring 0/0.5/1/2/3 sequence above — a business need (a
 client-facing intake/delivery surface for Optime Services, one pilot
@@ -2067,6 +2067,16 @@ Two things this fixed on the way, both worth remembering:
 
 Still manual: the word count (the `.txt` auto-count `portal-core` ships
 is not yet called by the server), and a client-side cancel.
+
+Sized issues:
+
+- **#62 · Portal word count through core (advisory) · L** · [issue #61] —
+  computed at submit through `core`, stored per file, pre-filled for the
+  admin to confirm; the client still sees "pending" until then (owner
+  decision, 2026-09-27: §4's principle kept, its "not core" rationale
+  reversed). Spec first: `portal-v0-spec.md` §4, §6, §8, and one
+  definition of a word in `v1-spec.md`, which `#34` and `#49` will read
+  too.
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)
 
@@ -2199,7 +2209,7 @@ any of this to render into until those land:
 - **#54 · Capacity status toggle UI · S** · [issue #33] — after
   `#28`–`#35`.
 
-### Cross-cutting — Auditability (spec'd 2026-09-23, done 2026-09-24)
+### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the
 epics that need it, for the reason the `.ctm` context columns were: history
@@ -2330,6 +2340,13 @@ Sized issues:
   - A client's view of an order's history drops `actorLabel`: it shows
     who acted (`admin:1`), never an admin's email.
 
+- **#63 · Portal: audit the word count and price (`order.priced`) · M** ·
+  [issue #62] — the price a client approves leaves no trace today, and
+  nothing on the server stops an unpriced order being approved. Also
+  the first `audit_event` CHECK widening, written once as a shared
+  helper, and the rule that a historical migration never reads a live
+  constant list.
+
 Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration
 (spec §8.2).
@@ -2409,3 +2426,5 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
 [issue #36]: https://github.com/louisbaudry/tessera/issues/36
+[issue #61]: https://github.com/louisbaudry/tessera/issues/61
+[issue #62]: https://github.com/louisbaudry/tessera/issues/62
