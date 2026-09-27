@@ -447,6 +447,11 @@ Extracted: body paragraphs, table cell paragraphs, headers, footers,
 text boxes, SmartArt text, alt-text on images, **and footnote / endnote
 bodies**.
 
+As built (checked 2026-09-27): `core` extracts neither SmartArt text
+nor image alt-text. Nothing reads `word/diagrams/` or a `descr`
+attribute. Treat those two as not yet extracted. Backlog `#62` counts
+words over what `core` actually extracts.
+
 Footnote bodies are in scope because the source texts this tool is built
 for — scholarly, legal, religious — carry real content in their notes. A
 DOCX handed back with translated body text and untranslated footnotes is

@@ -158,6 +158,12 @@ list, the way `qa_issue.rule` is generated from `QA_RULES` — adding an
 action is a migration that widens the CHECK, deliberately: an action
 nobody declared is a write path nobody reviewed.
 
+Caveat (2026-09-27): each migration builds that CHECK from the live
+list, so a later member changes what an old migration creates on a
+fresh file while every existing file still rejects it. Backlog `#64`
+freezes the lists and adds the table-rebuild helper that the first
+widening needs (`#63`'s `order.priced`).
+
 ### 2.1 Actor
 
 A string `kind:id`, parsed and formatted only by `core/audit/actor.ts`
@@ -555,3 +561,7 @@ work, gated behind Epic 6 like every other screen.
    thing, but `.ctm` is a frozen, specified format (`tm-format-spec.md`)
    and triggers are part of the file; it needs a `user_version` bump and
    its own spec change, not a rider on this one.
+4. **Pricing in `portal.sqlite`.** Setting an order's word count and
+   price writes no event, so the price a client approves is
+   unrecorded. Backlog `#63` adds `order.priced` (subject
+   `translation_order`, actor `admin:<id>`), after `#64`.

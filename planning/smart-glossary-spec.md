@@ -368,7 +368,9 @@ half cannot record that instruction.
 **QA integration is deferred.** `QA_RULES` is a closed set baked into the
 project schema's CHECK constraint (`db/project/schema.ts`), so a
 `term.glossary_mismatch` rule is a project-format migration, not a
-constant added. It lands with Epic 8's semantic QA (`v1-spec.md` §6.4
+constant added. That migration waits on backlog `#64`: today the
+project migrations build the CHECK from the live list, so the widening
+needs `#64`'s frozen lists and table-rebuild helper first. It lands with Epic 8's semantic QA (`v1-spec.md` §6.4
 extended), where it belongs, and as `warning` at most.
 
 ---

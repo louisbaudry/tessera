@@ -82,6 +82,12 @@ functions, no DB/HTTP — same headless discipline `CLAUDE.md` requires of
 `@cat-tool/core`, and for the same reason: provable by a test with nothing
 else in the loop.
 
+Not yet recorded (found 2026-09-27): `setWordCountAndPrice` takes no
+actor and writes no event, so the price a client approves leaves no
+trace, and the server approves an order with no price (only the client
+UI waits for one). Backlog `#63` adds an audited `order.priced` and a
+server-side price check on approval.
+
 ## 4. Word count
 
 v0 does **not** reuse `@cat-tool/core`'s DOCX segmenter for this — that
@@ -96,6 +102,16 @@ fills in a word count manually when reviewing the order, which also sets
 the authoritative number the price is computed from. This is the
 conservative choice: a wrong automated estimate on a real quote is worse
 than an honest "pending".
+
+**Decided 2026-09-27 (backlog `#62`): the count moves to
+`@cat-tool/core`, as advice only.** A `.docx` or `.txt` upload is
+counted at submit and stored per file. The admin sees the total
+pre-filled and confirms it, and only that confirmation sets the price.
+The client sees "pending" until then, `.txt` included. So the
+conservative principle above stands. Two things in this section do
+not: the "not core" rationale, and the `.txt` exception shown to the
+client unreviewed. `#62` rewrites this section, §6 and §8 before its
+code, together with one definition of a word in `v1-spec.md`.
 
 ## 5. Notification
 
@@ -201,9 +217,10 @@ a `fetch` and hand the browser a blob.
 
 ## 8. What's manual in v0 / where the CAT tool plugs in later
 
-Manual today: actual translation production (Trados/DeepL by hand), word
-count for every format except `.txt`, deciding when to move an order to
-`in_progress`. Moving the files themselves is not: since 2026-09-22 the
+Manual today: actual translation production (Trados/DeepL by hand), the
+word count for every format (the `.txt` estimator in `portal-core` is
+not called by the server; backlog `#62`), deciding when to move an order
+to `in_progress`. Moving the files themselves is not: since 2026-09-22 the
 admin downloads the client's uploads and the client downloads the
 delivered translation from the portal (§6), which is what §1 said the
 portal was for. Notification delivery now has a real channel

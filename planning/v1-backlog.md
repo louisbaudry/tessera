@@ -2147,7 +2147,8 @@ Split so the headless part does not wait on the editor:
 - **#43 · Glossary panel · M** · [issue #14] — after #28–#35.
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
-  a CHECK constraint.
+  a CHECK constraint. After `#64`, whose rebuild helper that migration
+  needs.
 
 ### Epic 9 — Language Provider tools (spec'd 2026-09-22, not started)
 
@@ -2438,7 +2439,19 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
-[issue #36]: https://github.com/louisbaudry/tessera/issues/36
 [issue #61]: https://github.com/louisbaudry/tessera/issues/61
 [issue #62]: https://github.com/louisbaudry/tessera/issues/62
 [issue #66]: https://github.com/louisbaudry/tessera/issues/66
+[issue #17]: https://github.com/louisbaudry/tessera/issues/17
+[issue #18]: https://github.com/louisbaudry/tessera/issues/18
+[issue #19]: https://github.com/louisbaudry/tessera/issues/19
+[issue #27]: https://github.com/louisbaudry/tessera/issues/27
+[issue #28]: https://github.com/louisbaudry/tessera/issues/28
+[issue #29]: https://github.com/louisbaudry/tessera/issues/29
+[issue #30]: https://github.com/louisbaudry/tessera/issues/30
+[issue #31]: https://github.com/louisbaudry/tessera/issues/31
+[issue #32]: https://github.com/louisbaudry/tessera/issues/32
+[issue #33]: https://github.com/louisbaudry/tessera/issues/33
+[issue #50]: https://github.com/louisbaudry/tessera/issues/50
+[issue #51]: https://github.com/louisbaudry/tessera/issues/51
+[issue #52]: https://github.com/louisbaudry/tessera/issues/52

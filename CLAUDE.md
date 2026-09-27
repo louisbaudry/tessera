@@ -319,7 +319,11 @@ through. Those rules also need the project's language pair
   missing CHECK constraint gets a bullet for above, applied to a table
   instead of a column: a rule with no row is enabled, so a rule added
   to `QA_RULES` later is on by default for every existing project with
-  no migration touching their data.
+  no migration touching their data. The CHECKs on `qa_issue.rule` and
+  `qa_rule_setting.rule` are a different matter. Old migrations build
+  them from the live list, so an existing file rejects a new rule until
+  a migration widens them. Backlog `#64` fixes that; don't add a rule
+  before it lands.
 
 ## The CLI (`@cat-tool/cli`)
 
