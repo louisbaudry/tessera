@@ -22,14 +22,16 @@ already settled differently.
 How to work with Louis — communication, asking questions as options
 with a recommendation, never merging without being asked, branching
 from `main`, not regenerating a red check away, the public-repo data
-rules — is shared across all his repos and lives once, in
-`louisbaudry/ai_profile` (`CLAUDE.md` + `ai_profile.md`).
-`.claude/hooks/load-ai-profile.sh` loads both at session start (see
-that repo's `hooks/README.md`). This file adds only what is specific
-to tessera, and where the two differ, this file wins.
+rules — is shared across all his repos and lives once, in the public
+`louisbaudry/claude-shared` (`CLAUDE.md`).
+`.claude/hooks/load-shared-context.sh` loads it at session start, plus
+Louis's private profile when the session can reach it (see that repo's
+`hooks/README.md`). This file adds only what is specific to tessera,
+and where the two differ, this file wins.
 
 If the session context has no "Shared context for working with Louis"
-block, say so at the start. Until it is fixed, still never merge
+block, or it shows a NOTE that the shared rules were not loaded, say so
+at the start. Until it is fixed, still never merge
 without an explicit go-ahead, and still push nothing that identifies a
 client or a person.
 
