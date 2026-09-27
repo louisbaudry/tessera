@@ -683,6 +683,20 @@ translatable ones, all-locked) and against real `Segment[]` shapes via
 context not captured at write time cannot be recovered — so whichever
 of #19/#20 lands first calls this rather than reinventing it.
 
+**#64 · Migrations never read live lists — freeze CHECK lists, rebuild
+helper, guard · M** · [issue #66]
+Every generated `CHECK (x IN (...))` in a migration reads a live
+constant (`QA_RULES`, `SEGMENT_STATUSES`, `DECISION_KINDS`,
+`ORDER_STATUSES`, the audit-action lists). A file keeps the list its
+migration ran with; a fresh file gets today's; so a new member is
+rejected by every existing file, and nothing flags it. Simulated on a
+project file whose QA CHECKs hold only the tag rules: `seg.empty` fails
+the CHECK. Whether that has already happened can't be settled from the
+public history. Freeze the lists as literals, add a rename-first
+table-rebuild helper (it also handles `audit_event`'s self-reference),
+widen the QA tables defensively, and guard with a test plus a lint rule.
+Before `#63` and `#44`.
+
 ---
 
 ## Epic 4 — TM and QA
@@ -2342,10 +2356,9 @@ Sized issues:
 
 - **#63 · Portal: audit the word count and price (`order.priced`) · M** ·
   [issue #62] — the price a client approves leaves no trace today, and
-  nothing on the server stops an unpriced order being approved. Also
-  the first `audit_event` CHECK widening, written once as a shared
-  helper, and the rule that a historical migration never reads a live
-  constant list.
+  nothing on the server stops an unpriced order being approved. Widens
+  portal's `audit_event` with `#64`'s rebuild helper, so it lands after
+  `#64`.
 
 Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration
@@ -2428,3 +2441,4 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #36]: https://github.com/louisbaudry/tessera/issues/36
 [issue #61]: https://github.com/louisbaudry/tessera/issues/61
 [issue #62]: https://github.com/louisbaudry/tessera/issues/62
+[issue #66]: https://github.com/louisbaudry/tessera/issues/66
