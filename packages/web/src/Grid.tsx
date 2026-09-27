@@ -1,22 +1,45 @@
 /**
  * The segment grid (v1-spec.md §7.1; backlog #28): source left, target
  * right, a status/origin/QA gutter, and only the rows on screen in the
- * DOM. Read-only — editing the target is #29, the keyboard model #30.
+ * DOM. Clicking a target opens it in the tag-aware editor (§7.2; backlog
+ * #29) — one row at a time; the keyboard model around it is #30.
  */
 import type { FormatEntry, QaIssue, Segment, Token } from '@cat-tool/core';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { isBlankTarget } from '@cat-tool/core/model';
+import {
+  defaultRangeExtractor,
+  useVirtualizer,
+  type Range,
+} from '@tanstack/react-virtual';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { api, type FileSegments, type ProjectDetail } from './api.js';
-import { originBadge, qaMarks, STATUS_BADGE, statusOf, type QaMark } from './gutter.js';
+import { api, ApiError, type FileSegments, type ProjectDetail } from './api.js';
+import {
+  originBadge,
+  qaMarks,
+  replaceIssues,
+  STATUS_BADGE,
+  statusOf,
+  type QaMark,
+} from './gutter.js';
 import { estimateRowHeight } from './layout.js';
 import { toPieces } from './pieces.js';
+import { loadFullTags, saveFullTags } from './prefs.js';
+import { createPageHide, createSaveQueue } from './save-queue.js';
+import { useSession } from './session-context.js';
+import { pairGroups } from './tags.js';
+import { TargetEditor, type CommitOptions } from './TargetEditor.js';
 import { useLoad } from './use-load.js';
 
 interface GridData {
   readonly detail: ProjectDetail;
   readonly file: FileSegments;
   readonly issues: readonly QaIssue[];
+}
+
+/** Why a segment's last write failed: a new object for each failure. */
+interface SaveFailure {
+  readonly message: string;
 }
 
 export function Grid({ project, fileId }: { project: string; fileId: number }) {
@@ -35,14 +58,35 @@ export function Grid({ project, fileId }: { project: string; fileId: number }) {
   );
   if (data.state === 'loading') return <p className="muted">Loading segments{'…'}</p>;
   if (data.state === 'error') return <p className="error">{data.message}</p>;
-  return <SegmentGrid data={data.data} />;
+  return <SegmentGrid project={project} data={data.data} />;
 }
 
-function SegmentGrid({ data }: { data: GridData }) {
-  const { detail, file, issues } = data;
-  const segments = file.segments;
+function SegmentGrid({ project, data }: { project: string; data: GridData }) {
+  const { detail, file } = data;
+  const { token, signOut } = useSession();
+  const [segments, setSegments] = useState(file.segments);
+  const [issues, setIssues] = useState(data.issues);
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [clickAt, setClickAt] = useState<{ x: number; y: number } | undefined>();
+  const [unsaved, setUnsaved] = useState<ReadonlyMap<number, SaveFailure>>(new Map());
+  const [fullTags, setFullTags] = useState(loadFullTags);
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const activeIndex = useMemo(
+    () => (activeId === null ? -1 : segments.findIndex((s) => s.id === activeId)),
+    [segments, activeId],
+  );
+  // The editing row stays in the DOM when scrolled away, so it keeps its
+  // caret and undo history instead of being unmounted and saved.
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = defaultRangeExtractor(range);
+      if (activeIndex < 0 || indexes.includes(activeIndex)) return indexes;
+      return [...indexes, activeIndex].sort((a, b) => a - b);
+    },
+    [activeIndex],
+  );
 
   // The virtualizer's API is not memoisable, which the React compiler
   // lint knows; nothing here relies on memoising it.
@@ -56,7 +100,99 @@ function SegmentGrid({ data }: { data: GridData }) {
     },
     getItemKey: (i) => segments[i]!.id,
     overscan: 10,
+    rangeExtractor,
   });
+
+  // Writes go through one queue for the grid's life (`save-queue.ts`); the
+  // session and the versions this page loaded are read when a write goes.
+  const session = useRef({ token, project, signOut });
+  useEffect(() => {
+    session.current = { token, project, signOut };
+  });
+  const loadedVersions = useRef(new Map(file.segments.map((s) => [s.id, s.updatedAt])));
+  const [queue] = useState(() => {
+    const inFile = new Set(file.segments.map((s) => s.id));
+    return createSaveQueue({
+      send: (segmentId, tokens, baseUpdatedAt, urgent) =>
+        api.saveTarget(
+          session.current.token,
+          session.current.project,
+          segmentId,
+          { targetTokens: tokens, baseUpdatedAt },
+          { keepalive: urgent },
+        ),
+      loadedVersion: (segmentId) => loadedVersions.current.get(segmentId),
+      onSaved: (segmentId, result, latest) => {
+        // The row takes what the server stored — unless a later edit of
+        // it is still on its way, whose text the row already shows.
+        setSegments((all) =>
+          all.map((s) =>
+            s.id !== segmentId
+              ? s
+              : latest
+                ? result.segment
+                : { ...result.segment, targetTokens: s.targetTokens },
+          ),
+        );
+        setIssues((all) => replaceIssues(all, result.rerun, result.issues, inFile));
+        if (!latest) return;
+        setUnsaved((all) => {
+          if (!all.has(segmentId)) return all;
+          const next = new Map(all);
+          next.delete(segmentId);
+          return next;
+        });
+      },
+      onFailed: (segmentId, err, latest) => {
+        if (err instanceof ApiError && err.status === 401) {
+          session.current.signOut();
+          return;
+        }
+        // A later write of the segment answers for it.
+        if (!latest) return;
+        const message =
+          err instanceof ApiError && err.status === 409
+            ? `${err.message}: this edit was not saved. Reload the file to see the segment as it is now.`
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        setUnsaved((all) => new Map(all).set(segmentId, { message }));
+      },
+    });
+  });
+
+  // One `pagehide` listener, so the open editor's write goes before the
+  // ones still waiting (`createPageHide`), each a `keepalive` request.
+  const [pageHide] = useState(() => createPageHide(queue));
+  useEffect(() => {
+    const onPageHide = () => pageHide.onPageHide();
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [pageHide]);
+
+  const activate = useCallback((id: number, at?: { x: number; y: number }) => {
+    setClickAt(at);
+    setActiveId(id);
+  }, []);
+  const leave = useCallback(() => setActiveId(null), []);
+  const commit = useCallback(
+    (segmentId: number, tokens: Token[], options: CommitOptions) => {
+      // Shown at once; the server's answer replaces it with what it stored,
+      // which for nothing visible but spaces is no target (`isBlankTarget`).
+      setSegments((all) =>
+        all.map((s) =>
+          s.id === segmentId
+            ? {
+                ...s,
+                targetTokens: isBlankTarget(tokens, s.formatTable) ? null : tokens,
+              }
+            : s,
+        ),
+      );
+      queue.save(segmentId, tokens, options.urgent);
+    },
+    [queue],
+  );
 
   const flagged = useMemo(() => {
     let n = 0;
@@ -65,13 +201,27 @@ function SegmentGrid({ data }: { data: GridData }) {
   }, [marks]);
 
   return (
-    <section className="grid">
+    <section className={fullTags ? 'grid full-tags' : 'grid'}>
       <div className="grid-meta">
         <strong>{file.file.relPath}</strong>
         <span className="muted">
           {segments.length.toLocaleString()} segments
           {flagged > 0 && ` · ${flagged.toLocaleString()} with QA errors`}
+          {unsaved.size > 0 && (
+            <span className="error"> · {unsaved.size.toLocaleString()} not saved</span>
+          )}
         </span>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={fullTags}
+            onChange={(e) => {
+              setFullTags(e.target.checked);
+              saveFullTags(e.target.checked);
+            }}
+          />{' '}
+          Show full tags
+        </label>
       </div>
       <div className="row head" role="row">
         <div className="gutter" role="columnheader">
@@ -103,8 +253,18 @@ function SegmentGrid({ data }: { data: GridData }) {
               >
                 <SegmentRow
                   segment={segment}
+                  project={project}
                   position={item.index + 1}
                   mark={marks.get(segment.id)}
+                  active={segment.id === activeId}
+                  clickAt={segment.id === activeId ? clickAt : undefined}
+                  unsaved={unsaved.get(segment.id)}
+                  srcLang={detail.project.srcLang}
+                  tgtLang={detail.project.tgtLang}
+                  onActivate={activate}
+                  onCommit={commit}
+                  onLeave={leave}
+                  registerPageHide={pageHide.register}
                 />
               </div>
             );
@@ -118,22 +278,54 @@ function SegmentGrid({ data }: { data: GridData }) {
 /** Memoised: scrolling re-renders the slots, not every row's chips. */
 const SegmentRow = memo(function SegmentRow({
   segment,
+  project,
   position,
   mark,
+  active,
+  clickAt,
+  unsaved,
+  srcLang,
+  tgtLang,
+  onActivate,
+  onCommit,
+  onLeave,
+  registerPageHide,
 }: {
   segment: Segment;
+  project: string;
   position: number;
   mark: QaMark | undefined;
+  active: boolean;
+  clickAt: { x: number; y: number } | undefined;
+  /** Why the last write of this target failed, if it did. */
+  unsaved: SaveFailure | undefined;
+  srcLang: string;
+  tgtLang: string;
+  onActivate: (segmentId: number, at: { x: number; y: number }) => void;
+  onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
+  onLeave: () => void;
+  registerPageHide: (leaveNow: () => void) => () => void;
 }) {
+  const groups = useMemo(
+    () => pairGroups(segment.sourceTokens, segment.formatTable),
+    [segment.sourceTokens, segment.formatTable],
+  );
   const status = statusOf(segment);
   const badge = STATUS_BADGE[status];
   const origin = originBadge(segment.origin);
+  const editable = status !== 'locked';
+  const classes = ['row', `status-${status}`];
+  if (active) classes.push('active');
+  if (unsaved !== undefined) classes.push('unsaved');
   return (
-    <div className={`row status-${status}`} role="row" aria-rowindex={position}>
+    <div className={classes.join(' ')} role="row" aria-rowindex={position}>
       <div className="gutter" role="cell">
         <span className="ord">{position}</span>
-        <span className="status" title={badge.title}>
-          {badge.text}
+        <span
+          className="status"
+          title={unsaved === undefined ? badge.title : `Not saved: ${unsaved.message}`}
+        >
+          {unsaved === undefined ? badge.text : '!'}
         </span>
         <span className="origin" title={origin?.title}>
           {origin?.text}
@@ -146,12 +338,43 @@ const SegmentRow = memo(function SegmentRow({
           {mark ? mark.count : ''}
         </span>
       </div>
-      <div className="cell source" role="cell">
-        <TokenText tokens={segment.sourceTokens} formats={segment.formatTable} />
+      <div className="cell source" role="cell" lang={srcLang}>
+        <TokenText
+          tokens={segment.sourceTokens}
+          formats={segment.formatTable}
+          groups={groups}
+        />
       </div>
-      <div className="cell target" role="cell">
-        {segment.targetTokens && (
-          <TokenText tokens={segment.targetTokens} formats={segment.formatTable} />
+      <div
+        className={editable ? 'cell target editable' : 'cell target'}
+        role="cell"
+        lang={tgtLang}
+        title={unsaved?.message}
+        onClick={
+          editable && !active
+            ? (e) => onActivate(segment.id, { x: e.clientX, y: e.clientY })
+            : undefined
+        }
+      >
+        {active ? (
+          <TargetEditor
+            segment={segment}
+            project={project}
+            tgtLang={tgtLang}
+            clickAt={clickAt}
+            failed={unsaved}
+            onCommit={onCommit}
+            onLeave={onLeave}
+            registerPageHide={registerPageHide}
+          />
+        ) : (
+          segment.targetTokens && (
+            <TokenText
+              tokens={segment.targetTokens}
+              formats={segment.formatTable}
+              groups={groups}
+            />
+          )
         )}
       </div>
     </div>
@@ -161,22 +384,21 @@ const SegmentRow = memo(function SegmentRow({
 function TokenText({
   tokens,
   formats,
+  groups,
 }: {
   tokens: readonly Token[];
   formats: readonly FormatEntry[];
+  groups: ReadonlyMap<number, readonly number[]>;
 }) {
   return (
     <>
-      {toPieces(tokens, formats).map((piece, i) =>
+      {toPieces(tokens, formats, groups).map((piece, i) =>
         piece.kind === 'text' ? (
           <span key={i}>{piece.text}</span>
         ) : (
-          <span
-            key={i}
-            className={`chip chip-${piece.role}`}
-            title={piece.tagKind ?? 'unknown tag'}
-          >
-            {piece.label}
+          <span key={i} className={`chip chip-${piece.role}`} title={piece.title}>
+            <span className="chip-short">{piece.label}</span>
+            <span className="chip-full">{piece.full}</span>
           </span>
         ),
       )}

@@ -24,10 +24,34 @@ describe('toPieces', () => {
     ];
     expect(toPieces(tokens, [fmt(1, 'b'), fmt(2, 'br')])).toEqual([
       { kind: 'text', text: 'A ' },
-      { kind: 'tag', role: 'open', id: 1, tagKind: 'b', label: '\u20391' },
+      {
+        kind: 'tag',
+        role: 'open',
+        id: 1,
+        tagKind: 'b',
+        label: '\u20391',
+        full: '\u20391 b',
+        title: 'b',
+      },
       { kind: 'text', text: 'bold' },
-      { kind: 'tag', role: 'close', id: 1, tagKind: 'b', label: '1\u203A' },
-      { kind: 'tag', role: 'ph', id: 2, tagKind: 'br', label: '\u27E82\u27E9' },
+      {
+        kind: 'tag',
+        role: 'close',
+        id: 1,
+        tagKind: 'b',
+        label: '1\u203A',
+        full: 'b 1\u203A',
+        title: 'b',
+      },
+      {
+        kind: 'tag',
+        role: 'ph',
+        id: 2,
+        tagKind: 'br',
+        label: '\u27E82\u27E9',
+        full: '\u27E82 x\u27E9',
+        title: 'x',
+      },
       { kind: 'text', text: ' end' },
     ]);
   });
@@ -52,8 +76,24 @@ describe('toPieces', () => {
       { t: 'ph', id: 3, fmt: 9 },
     ];
     expect(toPieces(tokens, [])).toEqual([
-      { kind: 'tag', role: 'close', id: 7, tagKind: null, label: '7\u203A' },
-      { kind: 'tag', role: 'ph', id: 3, tagKind: null, label: '\u27E83\u27E9' },
+      {
+        kind: 'tag',
+        role: 'close',
+        id: 7,
+        tagKind: null,
+        label: '7\u203A',
+        full: 'unknown tag 7\u203A',
+        title: 'unknown tag',
+      },
+      {
+        kind: 'tag',
+        role: 'ph',
+        id: 3,
+        tagKind: null,
+        label: '\u27E83\u27E9',
+        full: '\u27E83 unknown tag\u27E9',
+        title: 'unknown tag',
+      },
     ]);
   });
 

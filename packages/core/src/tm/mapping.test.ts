@@ -133,7 +133,7 @@ describe('remapTmTokens', () => {
     const result = remapTmTokens(tmTokens, sourceTokens, formats);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('unreachable');
-    expect(result.reason).toMatch(/"b" occurs 2 time\(s\).*1 time\(s\)/);
+    expect(result.reason).toMatch(/"b" pair occurs 2 time\(s\).*1 time\(s\)/);
   });
 
   it('refuses when the source has a kind the match never uses at all (asymmetric mismatch)', () => {
@@ -204,6 +204,142 @@ describe('remapTmTokens', () => {
         { t: 'text', v: 'a' },
         { t: 'ph', id: 5, fmt: 5 },
         { t: 'text', v: 'b' },
+      ],
+    });
+  });
+
+  it('never gives a placeholder the id of a pair of the same kind (backlog #29)', () => {
+    // `other` is both a run (a colour) and a placeholder (a symbol). A
+    // match that puts the symbol first once handed it the run's id, and
+    // the run's XML rendered as a placeholder: a <w:r> with no </w:r>.
+    const formats: FormatEntry[] = [
+      {
+        id: 1,
+        kind: 'other',
+        visible: true,
+        placement: 'run',
+        open: '<w:r><w:rPr><w:color w:val="FF0000"/></w:rPr>',
+        close: '</w:r>',
+      },
+      {
+        id: 2,
+        kind: 'other',
+        visible: true,
+        placement: 'in-run',
+        open: '<w:sym w:font="Wingdings" w:char="F0FC"/>',
+        close: '',
+      },
+    ];
+    const sourceTokens: Token[] = [
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: 'schedule' },
+      { t: 'close', id: 1 },
+      { t: 'ph', id: 2, fmt: 2 },
+    ];
+    const tmTokens: TmToken[] = [
+      { t: 'ph', id: 1, k: 'other' },
+      { t: 'open', id: 2, k: 'other' },
+      { t: 'text', v: 'calendario' },
+      { t: 'close', id: 2 },
+    ];
+    expect(remapTmTokens(tmTokens, sourceTokens, formats)).toEqual({
+      ok: true,
+      tokens: [
+        { t: 'ph', id: 2, fmt: 2 },
+        { t: 'open', id: 1, fmt: 1 },
+        { t: 'text', v: 'calendario' },
+        { t: 'close', id: 1 },
+      ],
+    });
+  });
+
+  it("maps visible tags only: a hidden run of the same kind never takes a visible one's id (backlog #29)", () => {
+    // A red run the translator places, then a run holding the paragraph's
+    // font, which is carried: both `other`. A memory that learned the
+    // carried order — font run outermost — once gave the font run's slot
+    // the red run's id, and exported the whole sentence red.
+    const formats: FormatEntry[] = [
+      {
+        id: 1,
+        kind: 'other',
+        visible: true,
+        placement: 'run',
+        open: '<w:r><w:rPr><w:color w:val="FF0000"/></w:rPr>',
+        close: '</w:r>',
+      },
+      {
+        id: 2,
+        kind: 'other',
+        visible: false,
+        placement: 'run',
+        open: '<w:r><w:rPr><w:rFonts w:ascii="Arial"/></w:rPr>',
+        close: '</w:r>',
+      },
+    ];
+    const source: Token[] = [
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: 'Warning:' },
+      { t: 'close', id: 1 },
+      { t: 'open', id: 2, fmt: 2 },
+      { t: 'text', v: ' do not open the cover.' },
+      { t: 'close', id: 2 },
+    ];
+    const carried: Token[] = [
+      { t: 'open', id: 2, fmt: 2 },
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: 'Achtung:' },
+      { t: 'close', id: 1 },
+      { t: 'text', v: ' Abdeckung nicht öffnen.' },
+      { t: 'close', id: 2 },
+    ];
+    const tm = toTmTokens(carried, formats);
+    expect(tm).toEqual([
+      { t: 'open', id: 1, k: 'other' },
+      { t: 'text', v: 'Achtung:' },
+      { t: 'close', id: 1 },
+      { t: 'text', v: ' Abdeckung nicht öffnen.' },
+    ]);
+    expect(remapTmTokens(tm, source, formats)).toEqual({
+      ok: true,
+      tokens: [
+        { t: 'open', id: 1, fmt: 1 },
+        { t: 'text', v: 'Achtung:' },
+        { t: 'close', id: 1 },
+        { t: 'text', v: ' Abdeckung nicht öffnen.' },
+      ],
+    });
+  });
+
+  it("maps a unit holding the document's hidden tags too onto all of them, keeping the visible", () => {
+    // A unit from another tool, or from before memories dropped hidden
+    // tags: a font run the document hides around a bold word.
+    const formats: FormatEntry[] = [
+      { id: 1, kind: 'other', visible: false, placement: 'run', open: '', close: '' },
+      { id: 2, kind: 'b', visible: true, placement: 'run', open: '', close: '' },
+    ];
+    const source: Token[] = [
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: 'a ' },
+      { t: 'close', id: 1 },
+      { t: 'open', id: 2, fmt: 2 },
+      { t: 'text', v: 'b' },
+      { t: 'close', id: 2 },
+    ];
+    const tm: TmToken[] = [
+      { t: 'open', id: 1, k: 'other' },
+      { t: 'text', v: 'x ' },
+      { t: 'close', id: 1 },
+      { t: 'open', id: 2, k: 'b' },
+      { t: 'text', v: 'y' },
+      { t: 'close', id: 2 },
+    ];
+    expect(remapTmTokens(tm, source, formats)).toEqual({
+      ok: true,
+      tokens: [
+        { t: 'text', v: 'x ' },
+        { t: 'open', id: 2, fmt: 2 },
+        { t: 'text', v: 'y' },
+        { t: 'close', id: 2 },
       ],
     });
   });

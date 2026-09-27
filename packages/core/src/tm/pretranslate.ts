@@ -12,7 +12,8 @@
  * writing the result) is what actually calls this.
  */
 
-import { plainText } from '../model/token.js';
+import { withoutHiddenTags } from '../model/hidden-tags.js';
+import { plainText, xmlLegalText } from '../model/token.js';
 import type { FormatEntry, Token, TmToken } from '../model/token.js';
 import { remapTmTokens } from './mapping.js';
 
@@ -39,15 +40,34 @@ export interface PlacedMatch {
  * rather than approximate, and this falls back to the match's plain
  * text as a single untagged token: never a guessed, possibly
  * tag-invalid, placement (`core/tm/mapping.ts`).
+ *
+ * Either way the text is made something XML can carry (`xmlLegalText`):
+ * a memory can hold a vertical tab — PowerPoint's soft line break — that
+ * no DOCX can, and a target export refuses would fail the whole file at
+ * delivery, not this one segment now.
  */
 export function placeMatch(
   matchTokens: readonly TmToken[],
   sourceTokens: readonly Token[],
   sourceFormats: readonly FormatEntry[],
 ): PlacedMatch {
-  const remap = remapTmTokens(matchTokens, sourceTokens, sourceFormats);
+  const legal = matchTokens.map((t) =>
+    t.t === 'text' ? { t: 'text' as const, v: xmlLegalText(t.v) } : t,
+  );
+  const remap = remapTmTokens(legal, sourceTokens, sourceFormats);
   if (remap.ok) {
     return { targetTokens: remap.tokens, tagsMatched: true };
   }
-  return { targetTokens: [{ t: 'text', v: plainText(matchTokens) }], tagsMatched: false };
+  // A source with no visible tag leaves the translator nothing to
+  // reapply: the text is the whole target, and its hidden tags are
+  // carried when it is written (`setSegmentTarget`, `carryHiddenTags`).
+  // Most tag mismatches on a real memory are only hidden ones — a
+  // spell-check marker here and not there (backlog #29).
+  const nothingToPlace = withoutHiddenTags(sourceTokens, sourceFormats).every(
+    (t) => t.t === 'text',
+  );
+  return {
+    targetTokens: [{ t: 'text', v: plainText(legal) }],
+    tagsMatched: nothingToPlace,
+  };
 }

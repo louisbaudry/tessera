@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Token } from '../model/token.js';
+import type { QaRule } from '../model/qa.js';
+import type { FormatEntry, Token } from '../model/token.js';
 import { QA_CHECKS, runQaChecks, type QaCheckContext } from './rules.js';
 
 const text = (v: string): Token => ({ t: 'text', v });
@@ -731,5 +732,39 @@ describe('checkPunctInverted ignores marks inside tokens', () => {
       tgt: 'es',
     });
     expect(only(ctx, 'punct.inverted')).toEqual([]);
+  });
+});
+
+describe('hidden placeholders (backlog #29)', () => {
+  // A spell-check marker: carried into a target wherever the carrying
+  // rule puts it, never where the translator did.
+  const formats: FormatEntry[] = [
+    {
+      id: 1,
+      kind: 'other',
+      visible: false,
+      placement: 'block',
+      open: '<w:proofErr w:type="spellStart"/>',
+      close: '',
+    },
+  ];
+  const source: Token[] = [{ t: 'text', v: 'Pay 1000 now: today.' }];
+  const target: Token[] = [
+    { t: 'text', v: 'Paga 1' },
+    { t: 'ph', id: 1, fmt: 1 },
+    { t: 'text', v: '000 ya: hoy.' },
+  ];
+  const rules = new Set<QaRule>(['num.missing', 'num.altered', 'punct.spacing']);
+
+  it('reads one as the nothing the reader sees', () => {
+    expect(
+      runQaChecks({ source, target, srcLang: 'en', tgtLang: 'es', formats }, rules),
+    ).toEqual([]);
+  });
+
+  it('still reads a placeholder with no table as content', () => {
+    expect(
+      runQaChecks({ source, target, srcLang: 'en', tgtLang: 'es' }, rules).length,
+    ).toBeGreaterThan(0);
   });
 });

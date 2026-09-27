@@ -60,10 +60,10 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
    `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
    `pnpm test`, `pnpm test:gate` if anything under
    `packages/core/src/docx` changed, and `pnpm test:golden` if anything
-   under `packages/cli`, `core/qa`, `core/project`, `core/tm`,
-   `db/project`, `db/tm` or `fixtures/golden` changed (its transcript
-   is what those deliver, so a change there is a diff to read, not a
-   red run to regenerate away). Rewrite the backlog entry as
+   under `packages/cli`, `core/model`, `core/qa`, `core/project`,
+   `core/tm`, `db/project`, `db/tm` or `fixtures/golden` changed (its
+   transcript is what those deliver, so a change there is a diff to
+   read, not a red run to regenerate away). Rewrite the backlog entry as
    _record_ in the same change — strike the title through, say where the
    code lives, keep what it taught (a bug caught, a design choice made),
    and drop the issue link. Its **status** is the issue's job, never the
@@ -114,6 +114,26 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
   only a `kind` hint (`core/tm/mapping.ts`) — a bold span from a 2023
   client file must render with today's document's bold, not a run
   property carried over from wherever the memory entry came from.
+- **Hidden tags are never a writer's to place.** Every stored target
+  gets its source's hidden tags from `carryHiddenTags`
+  (`core/model/hidden-tags.ts`), applied in `setSegmentTarget` — the one
+  write the editor, pre-translate and propagation all go through
+  (backlog #29). A client sends what the translator placed, nothing
+  more. `renderTokens` renders any structurally valid stream to valid
+  OOXML (a run tag nested in one: innermost wins), so no writer shapes
+  nesting for the renderer either. What it refuses is a tag in a role
+  its format doesn't fit and text XML cannot carry (`xmlIllegalChar`),
+  which is why `placeMatch` makes a match's text legal first
+  (`xmlLegalText`). Before #29, pre-translate's
+  tag-diff fallback stored text with no hidden tags at all, and exports
+  lost fonts, bookmarks and drawings, flagged only as a `tag.missing`
+  naming tags nobody could see. A memory this tool writes holds no
+  hidden tags either (`toTmTokens`): where the carrying rule put them
+  is not a position worth learning, and a remap by order once took it
+  for one. A unit that does hold them, written before #29 or by another
+  tool, is matched against all of the source's tags when the visible
+  ones do not correspond, and keeps only the visible ones it placed
+  (`remapTmTokens`).
 - **A column with a frozen contract never receives a value computed some
   other way — carry the foreign value as provenance instead.**
   `prev_hash`/`next_hash` mean "SHA-256 of the normalised neighbouring
@@ -149,7 +169,8 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
   #15d) should too, rather than inventing its own shape.
 - **`core`'s internal layering is one-directional: `model/` → (`docx/`,
   `segment/`) → `project/`.** `model/` is the base layer — nothing may be
-  imported into it from any other `core` module. `docx/` and `segment/`
+  imported into it from any other `core` module, Node or a package (a
+  lint rule since #29, as it is also the SPA's `@cat-tool/core/model`). `docx/` and `segment/`
   each import from `model/` but never from each other in the forbidden
   direction (`segment/` imports `docx/`'s tokenizer types, so `docx/`
   must never import from `segment/`). Anything that needs both — like
@@ -280,6 +301,10 @@ Backlog #22 (`v1-spec.md` §6.4) is another instance of the core/db split
 above, not a new pattern: `core/qa/rules.ts` holds pure `QaCheck`s (tokens
 in, `QaFinding[]` out, no DB); `db/project/qa-issues.ts`'s `runQaRules`
 is the orchestration (load the segment, run the registry, persist);
+`runQaRulesFor` is the same for many segments, reading the project
+once, not once per segment (that cost seconds for one save of a
+much-repeated segment, backlog #29), and `rerunQaAfterEdit` reruns an
+edit and every segment whose `consistency.*` findings it can move;
 `db/project/qa-settings.ts` is the per-project switches. All thirteen
 §6.4 rules are in the one `QA_CHECKS` registry (backlog #22 the tag
 rules, #23 `seg.*`/`consistency.*`, #24 `num.*`/`punct.*`); a new rule
@@ -364,7 +389,7 @@ together.
 Backlog #27 (`v1-spec.md` §2.5) is the shell everything after #8 runs
 behind: Fastify, `platform.sqlite` (accounts, sessions and their audit
 log, never translation data) and the storage volume, with `core` and
-`db` in-process and JSON to the SPA. Four things to keep true:
+`db` in-process and JSON to the SPA. Five things to keep true:
 
 - **No function takes a path from a request.** `server/src/storage.ts`
   builds every path from the account's minted `storage_root` and a
@@ -380,6 +405,11 @@ log, never translation data) and the storage volume, with `core` and
   (§2.4) again. `countSegments` is the model: when a route needs
   something `db` lacks, add it to `db`, where the CLI and the editor
   reach it too.
+- **What a segment edit means is `db`'s** (`editSegmentTarget`,
+  `v1-spec.md` §7.2): hidden tags carried, status and origin derived, a
+  visible no-change written as nothing, a stale version refused, QA
+  rerun. The PUT route parses and calls it; a client never sends status
+  or origin.
 - **A route's actor is `sessionActor(req)`, never built in the
   handler** (`audit-spec.md` §2.5). A write in the project goes to the
   project's log; one about the platform (login, a project's creation or
@@ -399,12 +429,16 @@ or state library until a screen needs one. Three things to keep true:
 - **`@cat-tool/core` is a type-only import here**, enforced by
   `@typescript-eslint/no-restricted-imports` in `eslint.config.js`.
   `core`'s runtime (credentials, the DOCX filter) is not a browser
-  dependency. A display table keyed by a `core` union is a `Record`
-  over that union, so a new value in `core` fails this typecheck.
+  dependency. The one exception is `@cat-tool/core/model` — the token
+  model and tag rules (which tags are hidden, what a valid target is) —
+  so the editor applies the server's definitions instead of copying
+  them. A display table keyed by a `core` union is a `Record` over that
+  union, so a new value in `core` fails this typecheck.
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
-  `gutter.ts` and `layout.ts` are pure and tested there. A component
-  holds rendering and nothing that needs a DOM to prove.
+  `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
+  `tag-label.ts` and `save-queue.ts` are pure and tested there. A
+  component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
   read every DOCX blob), found through the browser's resource timing.
@@ -573,6 +607,17 @@ pattern.
   for the bare name would be satisfied by a job that did nothing — worth
   checking the settings against the names GitHub actually reports before
   trusting a required check.
+
+- **ProseMirror reads the selection from `selectionchange`, which lags
+  a key sent the instant after a selection move.** A Playwright script
+  that selects with Shift+Arrow and immediately presses a command key
+  acts on the old selection and looks flaky; pause ~60 ms after moving
+  the selection, as a person does (backlog #29's smoke run). Worse, for
+  200 ms after the editor takes focus ProseMirror undoes a caret moved
+  to the document's start, taking it for the browser resetting the
+  selection (`prosemirror-view`'s `DOMObserver.flush`): a script that
+  opens an editor and presses Ctrl+Home at once types everything after
+  it in the wrong place. Wait 250 ms after an editor opens.
 
 ## Fixture corpus
 

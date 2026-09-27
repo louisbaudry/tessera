@@ -11,7 +11,15 @@ import { fileURLToPath } from 'node:url';
 
 import { createHash } from 'node:crypto';
 
-import { hashPassword, type AuditActor, type Token } from '@cat-tool/core';
+import {
+  carryHiddenTags,
+  hashPassword,
+  withoutHiddenTags,
+  type AuditActor,
+  type QaIssue,
+  type Segment,
+  type Token,
+} from '@cat-tool/core';
 import {
   addQaIssue,
   createAccount,
@@ -391,11 +399,7 @@ async function firstSegment(token: string, fileId: number) {
     url: `/api/projects/job/files/${fileId}/segments`,
     headers: auth(token),
   });
-  const segments = (
-    res.json() as {
-      segments: Array<{ id: number; locked: boolean; sourceTokens: Token[] }>;
-    }
-  ).segments;
+  const segments = (res.json() as { segments: Segment[] }).segments;
   return segments.find((s) => !s.locked)!;
 }
 
@@ -603,12 +607,12 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
         method: 'PUT',
         url: `/api/projects/job/segments/${segment.id}`,
         headers: auth(token),
-        payload: { targetTokens: target, status: 'translated', origin: null },
+        payload: { targetTokens: target, baseUpdatedAt: segment.updatedAt },
       });
       expect(res.statusCode, res.body).toBe(200);
       expect(res.json()).toMatchObject({
         changed: true,
-        segment: { id: segment.id, targetTokens: target, status: 'translated' },
+        segment: { id: segment.id, status: 'translated', origin: null },
       });
     });
     expect(events).toEqual([]);
@@ -628,6 +632,41 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
     }
   });
 
+  it("carries the source's hidden tags into the target a client sends", async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const segment = await firstSegment(token, fileId);
+    // The fixture's first sentence carries spell-check markers nobody sees.
+    expect(segment.formatTable.some((f) => !f.visible)).toBe(true);
+    const put = (targetTokens: readonly Token[]) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/projects/job/segments/${segment.id}`,
+        headers: auth(token),
+        payload: { targetTokens },
+      });
+    const typed: Token[] = [{ t: 'text', v: 'Ein Zieltext' }];
+
+    const res = await put(typed);
+    expect(res.statusCode, res.body).toBe(200);
+    const saved = res.json() as { segment: Segment; issues: QaIssue[] };
+    const stored = saved.segment.targetTokens!;
+    // QA reran with the write, and says so.
+    expect(saved.issues.every((i) => i.segmentId === segment.id)).toBe(true);
+    expect(stored).toEqual(
+      carryHiddenTags(typed, segment.sourceTokens, segment.formatTable),
+    );
+    expect(withoutHiddenTags(stored, segment.formatTable)).toEqual(typed);
+    expect(stored.length).toBeGreaterThan(typed.length);
+
+    // Sending back what was stored, or the typed text again, is no change:
+    // hidden tags are the server's, and one rule places them.
+    for (const again of [stored, typed]) {
+      const same = await put(again);
+      expect((same.json() as { changed: boolean }).changed).toBe(false);
+    }
+  });
+
   it('refuses a segment write it cannot store faithfully', async () => {
     const token = await login('alice@example.com', 'alice-pw');
     const { fileId } = await jobWithFile(token);
@@ -640,29 +679,30 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
         payload,
       });
     const text = [{ t: 'text', v: 'x' }];
-    expect(
-      (await put({ targetTokens: text, status: 'confirmed', origin: null })).statusCode,
-    ).toBe(400);
-    expect(
-      (await put({ targetTokens: text, status: 'bogus', origin: null })).statusCode,
-    ).toBe(400);
-    expect((await put({ targetTokens: text, status: 'draft' })).statusCode).toBe(400);
-    expect(
-      (
-        await put({
-          targetTokens: [{ t: 'ph', id: 1, fmt: 999 }],
-          status: 'draft',
-          origin: null,
-        })
-      ).statusCode,
-    ).toBe(400);
-    expect(
-      (await put({ targetTokens: 'x', status: 'draft', origin: null })).statusCode,
-    ).toBe(400);
-    expect(
-      (await put({ targetTokens: text, status: 'draft', origin: null }, 99999))
-        .statusCode,
-    ).toBe(404);
+    // Status and origin are derived, never asserted by a client.
+    expect((await put({ targetTokens: text, status: 'confirmed' })).statusCode).toBe(400);
+    expect((await put({ targetTokens: text, origin: 'tm_exact' })).statusCode).toBe(400);
+    expect((await put({})).statusCode).toBe(400);
+    expect((await put({ targetTokens: text, baseUpdatedAt: 7 })).statusCode).toBe(400);
+    expect((await put({ targetTokens: [{ t: 'ph', id: 1, fmt: 999 }] })).statusCode).toBe(
+      400,
+    );
+    expect((await put({ targetTokens: 'x' })).statusCode).toBe(400);
+    // JSON that is not an object at all.
+    for (const body of ['"hello"', '5', 'true', '[]']) {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/projects/job/segments/${segment.id}`,
+        headers: { ...auth(token), 'content-type': 'application/json' },
+        payload: body,
+      });
+      expect(res.statusCode, body).toBe(400);
+    }
+    // Text XML cannot carry: a paste from elsewhere, refused before export.
+    expect((await put({ targetTokens: [{ t: 'text', v: 'a\u000Bb' }] })).statusCode).toBe(
+      400,
+    );
+    expect((await put({ targetTokens: text }, 99999)).statusCode).toBe(404);
 
     // Bob cannot reach Alice's project by name.
     const bobToken = await login('bob@example.com', 'bob-pw');
@@ -670,9 +710,30 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
       method: 'PUT',
       url: `/api/projects/job/segments/${segment.id}`,
       headers: auth(bobToken),
-      payload: { targetTokens: text, status: 'draft', origin: null },
+      payload: { targetTokens: text },
     });
     expect(bob.statusCode).toBe(404);
+  });
+
+  it('refuses a write over a version of the segment it did not see', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const segment = await firstSegment(token, fileId);
+    const put = (targetTokens: Token[], baseUpdatedAt: string) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/projects/job/segments/${segment.id}`,
+        headers: auth(token),
+        payload: { targetTokens, baseUpdatedAt },
+      });
+    const first = await put([{ t: 'text', v: 'Eins' }], segment.updatedAt);
+    expect(first.statusCode, first.body).toBe(200);
+    // Another tab, still holding the segment as it first was.
+    const stale = await put([{ t: 'text', v: 'Zwei' }], segment.updatedAt);
+    expect(stale.statusCode).toBe(409);
+    expect((stale.json() as { segment: Segment }).segment.targetTokens).toEqual(
+      (first.json() as { segment: Segment }).segment.targetTokens,
+    );
   });
 
   it('never lets segment text into the application log (spec §5)', async () => {
@@ -719,11 +780,7 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
         method: 'PUT',
         url: `/api/projects/job/segments/${segment.id}`,
         headers: auth(token),
-        payload: {
-          targetTokens: [{ t: 'text', v: secret }],
-          status: 'translated',
-          origin: null,
-        },
+        payload: { targetTokens: [{ t: 'text', v: secret }] },
       });
       expect(res.statusCode, res.body).toBe(200);
       // A refused write echoes nothing of what was sent, either.

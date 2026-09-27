@@ -187,6 +187,16 @@ describe('confirmSegment', () => {
     expect(() => confirmSegment(db, segment.id, { actor: TEST_ACTOR })).toThrow(
       ConfirmError,
     );
+    // Nor a target of nothing a reader would see (backlog #29).
+    setSegmentTarget(db, segment.id, {
+      targetTokens: [{ t: 'text', v: '  ' }],
+      status: 'translated',
+      origin: null,
+      actor: TEST_ACTOR,
+    });
+    expect(() => confirmSegment(db, segment.id, { actor: TEST_ACTOR })).toThrow(
+      /no target/,
+    );
     db.close();
   });
 

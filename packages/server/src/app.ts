@@ -21,18 +21,17 @@ import {
   generateSessionToken,
   parseTokens,
   rulesFor,
-  SEGMENT_STATUSES,
   TokenShapeError,
   verifyPassword,
   type AuditActor,
   type Project,
   type SegmenterRules,
-  type SegmentStatus,
 } from '@cat-tool/core';
 import {
   createAccountSession,
   createProject,
   deleteAccountSession,
+  editSegmentTarget,
   exportFile,
   getAccountByEmail,
   getAccountBySessionToken,
@@ -50,7 +49,8 @@ import {
   recordFailedLogin,
   recordProjectChange,
   SegmentRepoError,
-  setSegmentTarget,
+  TargetConflictError,
+  TargetStructureError,
   type Account,
 } from '@cat-tool/db';
 import multipart from '@fastify/multipart';
@@ -120,11 +120,6 @@ const sessionActor = (req: FastifyRequest): AuditActor => auditActor(owner(req))
  * it is the actor, never the account the request named (spec §2.5).
  */
 const LOGIN_GATE: AuditActor = { actor: { kind: 'system', name: 'login' }, label: null };
-
-/** What a segment write may set; confirming and locking are their own acts. */
-const WRITABLE_STATUSES: readonly SegmentStatus[] = SEGMENT_STATUSES.filter(
-  (s) => s !== 'confirmed' && s !== 'locked',
-);
 
 const DOCX_TYPE =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -450,13 +445,21 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     },
   );
 
-  // One segment's target, status and origin: `setSegmentTarget` with the
-  // session's actor, so the edit lands in the *project's* log (spec
-  // decision 5). The tokens are shape-checked against the segment's own
-  // format table; which tags they use is QA's to judge, not a refusal.
+  // One segment's target, as the translator left it: `editSegmentTarget`
+  // with the session's actor, so the edit lands in the *project's* log
+  // (spec decision 5). The body is what the translator placed — text and
+  // visible tags — and the segment version the editor saw; what it means
+  // (hidden tags carried, status, origin, whether anything changed, QA)
+  // is db's to decide (v1-spec.md §7.2), and a client's say in status or
+  // origin is refused rather than ignored.
   app.put<{
     Params: { name: string; segmentId: string };
-    Body: { targetTokens?: unknown; status?: string; origin?: string | null };
+    Body: {
+      targetTokens?: unknown;
+      baseUpdatedAt?: unknown;
+      status?: unknown;
+      origin?: unknown;
+    };
   }>('/api/projects/:name/segments/:segmentId', async (req, reply) => {
     const opened = openOwnProject(req, reply, req.params.name);
     if (!opened) return reply;
@@ -467,40 +470,50 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       if (!segment) {
         return reply.code(404).send({ error: `no segment #${req.params.segmentId}` });
       }
-      const { targetTokens, status, origin } = req.body ?? {};
-      if (!WRITABLE_STATUSES.includes(status as SegmentStatus)) {
-        return reply
-          .code(400)
-          .send({ error: `status must be one of ${WRITABLE_STATUSES.join(', ')}` });
+      const body = req.body ?? {};
+      if (typeof body !== 'object' || Array.isArray(body)) {
+        return reply.code(400).send({ error: 'the body must be a JSON object' });
       }
-      if (origin === undefined || (origin !== null && typeof origin !== 'string')) {
-        return reply.code(400).send({ error: 'origin must be a string or null' });
+      if ('status' in body || 'origin' in body) {
+        return reply.code(400).send({
+          error: "status and origin are the server's: an edit is its translator's own",
+        });
+      }
+      const { targetTokens, baseUpdatedAt } = body;
+      if (targetTokens === undefined) {
+        return reply.code(400).send({ error: 'targetTokens is required (null clears)' });
+      }
+      if (baseUpdatedAt !== undefined && typeof baseUpdatedAt !== 'string') {
+        return reply.code(400).send({ error: 'baseUpdatedAt must be a string' });
       }
       let tokens;
       try {
         tokens =
-          targetTokens === null ? null : parseTokens(targetTokens, segment.formatTable);
+          targetTokens === null ? [] : parseTokens(targetTokens, segment.formatTable);
       } catch (err) {
         if (err instanceof TokenShapeError) {
           return reply.code(400).send({ error: `targetTokens: ${err.message}` });
         }
         throw err;
       }
-      let changed: boolean;
       try {
-        changed = setSegmentTarget(db, id, {
-          targetTokens: tokens,
-          status: status as SegmentStatus,
-          origin,
+        return editSegmentTarget(db, id, {
+          tokens,
           actor: sessionActor(req),
+          baseUpdatedAt,
         });
       } catch (err) {
+        if (err instanceof TargetConflictError) {
+          return reply.code(409).send({ error: err.message, segment: err.current });
+        }
+        if (err instanceof TargetStructureError) {
+          return reply.code(400).send({ error: `targetTokens: ${err.message}` });
+        }
         if (err instanceof SegmentRepoError) {
           return reply.code(409).send({ error: err.message });
         }
         throw err;
       }
-      return { segment: getSegment(db, id), changed };
     } finally {
       db.close();
     }

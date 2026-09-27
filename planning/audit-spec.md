@@ -360,7 +360,8 @@ invent an author. What the second file to carry the log settled:
   failed-login actor is the one other constant in the file.
 - **The segment-write route writes into the project's log, never
   this one** (decision 5). `PUT /api/projects/:name/segments/:id` is
-  `setSegmentTarget` with the session's actor. Fastify's request
+  `editSegmentTarget` with the session's actor (since backlog #29; it
+  writes through `setSegmentTarget`). Fastify's request
   logging carries method, URL and status, never a body. A test pins
   that: it writes a target through the route with a logger attached
   and asserts the target's text is absent from every line.

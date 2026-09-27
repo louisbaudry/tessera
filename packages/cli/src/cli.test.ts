@@ -134,13 +134,15 @@ describe('cat-tool: a full job, headless', () => {
     run('init', project, '--src', 'en', '--tgt', 'de');
     run('add-file', project, FIXTURE);
 
-    // A target with none of the source's tags: tag.missing, an error.
+    // A target without the source's number: num.missing, an error. (Not
+    // a dropped tag: this document's tags are all hidden, and a stored
+    // target carries those whatever it was given — backlog #29.)
     const db = openProjectDb(project);
-    const tagged = listSegments(db, 1).find(
-      (s) => !s.locked && s.formatTable.length > 0,
+    const numbered = listSegments(db, 1).find(
+      (s) => !s.locked && /\d/.test(plainText(s.sourceTokens)),
     )!;
-    setSegmentTarget(db, tagged.id, {
-      targetTokens: [{ t: 'text', v: 'ohne Tags' }],
+    setSegmentTarget(db, numbered.id, {
+      targetTokens: [{ t: 'text', v: 'ohne Zahl' }],
       status: 'translated',
       origin: null,
       actor: { actor: { kind: 'cli', name: 'test' }, label: 'test' },
@@ -149,7 +151,7 @@ describe('cat-tool: a full job, headless', () => {
 
     const qa = run('qa', project);
     expect(qa.code).toBe(1);
-    expect(qa.out).toContain(`#${tagged.id}\terror\ttag.missing`);
+    expect(qa.out).toContain(`#${numbered.id}\terror\tnum.missing`);
 
     const scoped = run('qa', project, '--file', '1');
     expect(scoped.code).toBe(1);

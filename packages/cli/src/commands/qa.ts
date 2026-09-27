@@ -1,5 +1,5 @@
 import { isBlocking, type QaIssue } from '@cat-tool/core';
-import { getFile, listAllSegments, listSegments, runQaRules } from '@cat-tool/db';
+import { getFile, listAllSegments, listSegments, runQaRulesFor } from '@cat-tool/db';
 
 import {
   CliError,
@@ -32,7 +32,10 @@ export function qa(args: readonly string[], io: CliIo): number {
     const segments =
       fileId === undefined ? listAllSegments(db) : listSegments(db, fileId);
     segmentCount = segments.length;
-    issues = segments.flatMap((s) => runQaRules(db, s.id));
+    issues = runQaRulesFor(
+      db,
+      segments.map((s) => s.id),
+    );
   } finally {
     db.close();
   }

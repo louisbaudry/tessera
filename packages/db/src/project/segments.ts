@@ -7,13 +7,15 @@
  * target.
  */
 
-import type {
-  AuditActor,
-  DocPart,
-  Origin,
-  Segment,
-  SegmentStatus,
-  Token,
+import {
+  carryHiddenTags,
+  type AuditActor,
+  type DocPart,
+  type FormatEntry,
+  type Origin,
+  type Segment,
+  type SegmentStatus,
+  type Token,
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
@@ -109,13 +111,20 @@ export interface SetTargetOptions {
  * records it as a `segment.target_set` event in the same transaction,
  * with the state *after* the change (audit-spec.md §2.2).
  *
+ * The target is stored with its source's hidden tags carried
+ * (`carryHiddenTags`, v1-spec.md §7.2), whoever wrote it: an editor
+ * save, a TM match, a propagation. Hidden tags are never a writer's to
+ * place, so every stored target has them where one rule puts them, and
+ * none is lost on export however the target was made (backlog #29).
+ *
  * A write that changes none of the three is not a change: no `UPDATE`,
  * no event, and `false` is returned. Otherwise every pre-translate
  * re-run would log a row per already-matched segment (spec §2.4).
  *
- * Refuses on a locked segment: `v1-spec.md` §6.1 forbids pre-translate
- * from touching one, and there is no reason an interactive edit should
- * be allowed to where pre-translate isn't.
+ * Refuses on a locked segment — `locked`, or the `locked` status:
+ * `v1-spec.md` §6.1 forbids pre-translate from touching one, and there
+ * is no reason an interactive edit should be allowed to where
+ * pre-translate isn't.
  */
 export function setSegmentTarget(
   db: Database.Database,
@@ -124,18 +133,35 @@ export function setSegmentTarget(
 ): boolean {
   return db.transaction((): boolean => {
     const current = db
-      .prepare('SELECT target_tokens, status, origin, locked FROM segment WHERE id = ?')
+      .prepare(
+        `SELECT target_tokens, status, origin, locked, source_tokens, format_table
+         FROM segment WHERE id = ?`,
+      )
       .get(id) as
-      Pick<SegmentRow, 'target_tokens' | 'status' | 'origin' | 'locked'> | undefined;
+      | Pick<
+          SegmentRow,
+          | 'target_tokens'
+          | 'status'
+          | 'origin'
+          | 'locked'
+          | 'source_tokens'
+          | 'format_table'
+        >
+      | undefined;
     if (!current) {
       throw new SegmentRepoError(`no segment with id ${id}`);
     }
-    if (current.locked) {
+    if (current.locked || current.status === 'locked') {
       throw new SegmentRepoError(`segment ${id} is locked`);
     }
-    const targetTokens = options.targetTokens
-      ? JSON.stringify(options.targetTokens)
+    const carried = options.targetTokens
+      ? carryHiddenTags(
+          options.targetTokens,
+          JSON.parse(current.source_tokens) as Token[],
+          JSON.parse(current.format_table) as FormatEntry[],
+        )
       : null;
+    const targetTokens = carried ? JSON.stringify(carried) : null;
     if (
       current.target_tokens === targetTokens &&
       current.status === options.status &&
@@ -164,7 +190,7 @@ export function setSegmentTarget(
       detail: {
         status: options.status,
         origin: options.origin,
-        target_tokens: options.targetTokens,
+        target_tokens: carried,
       },
     });
     return true;

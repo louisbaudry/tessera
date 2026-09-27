@@ -22,16 +22,16 @@ Pre-translated: 14 exact, 1 tag-diff (draft), 0 propagated, 2 unmatched, 1 skipp
 exit 0
 
 ## $ cat-tool qa <job>/job.catdb
+#1	error	tag.missing	Missing tag: 1
 #6	warning	punct.spacing	double space
 #7	warning	punct.spacing	double space
 #8	error	num.missing	Missing numbers: 14, 2
-#15	error	tag.missing	Missing tag: 1
 #17	warning	seg.untranslated	Target is identical to source
 QA: 5 issues across 18 segments — 2 errors, 3 warnings, 0 info; 2 blocking
 exit 1
 
 ## review
-confirmed #15 with its tag reapplied
+confirmed #1 with its tag reapplied
 dismissed #8 num.missing
 job.ctm holds 1 unit
 
@@ -47,12 +47,12 @@ exit 0
 Wrote <job>/out/prose-short.docx: 9/10 paragraphs rebuilt, 15/18 segments with a target
 exit 0
 
-## $ cat-tool history <job>/job.catdb 15
-#15	<at>	cli:<user>	segment.target_set (batch #2)	draft	tm_exact_tagdiff	"Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimohßen, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimohßen. "
-#18	<at>	cli:golden	segment.target_set	translated	tm_exact_tagdiff	"{1}Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimohßen, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimohßen. {/1}"
-#19	<at>	cli:golden	segment.target_set	confirmed	tm_exact_tagdiff	"{1}Hi Duhoha lumudi Pipuhido nubus hut Dov, simi und nukon siv jil in Zub Fobor mitasuhimohßen, ka sub mek zusuhamisef, Dov zici in defus Fobor mitasuhimohßen. {/1}"
+## $ cat-tool history <job>/job.catdb 1
+#3	<at>	cli:<user>	segment.target_set (batch #2)	draft	tm_exact_tagdiff	"Nizßpoce hejo Nafovaf guse der Kifogonan"
+#18	<at>	cli:golden	segment.target_set	translated	tm_exact_tagdiff	"{1}Nizßpoce hejo Nafovaf guse der Kifogonan{/1}"
+#19	<at>	cli:golden	segment.target_set	confirmed	tm_exact_tagdiff	"{1}Nizßpoce hejo Nafovaf guse der Kifogonan{/1}"
 #20	<at>	cli:golden	segment.confirmed	TM unit <uuid> rev 1
-4 events for segment #15
+4 events for segment #1
 exit 0
 
 ## $ cat-tool audit-verify <job>/job.catdb

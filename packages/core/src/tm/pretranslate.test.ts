@@ -39,7 +39,7 @@ describe('placeMatch', () => {
     });
   });
 
-  it('falls back to plain text with every tag dropped when the tag multiset differs — never a guessed placement', () => {
+  it('takes the text alone as the whole target when the source has no tag to place', () => {
     const matchTokens: TmToken[] = [
       { t: 'open', id: 1, k: 'b' },
       { t: 'text', v: 'Hola ' },
@@ -49,11 +49,65 @@ describe('placeMatch', () => {
       { t: 'close', id: 2 },
     ];
     // The receiving segment's source has no tags at all — same plain
-    // text can genuinely have arrived with different formatting.
+    // text can genuinely have arrived with different formatting. The
+    // match's tags are dropped, never guessed, and nothing is missing.
     const sourceTokens: Token[] = [{ t: 'text', v: 'Hello world' }];
     const result = placeMatch(matchTokens, sourceTokens, []);
-    expect(result.tagsMatched).toBe(false);
+    expect(result.tagsMatched).toBe(true);
     expect(result.targetTokens).toEqual([{ t: 'text', v: 'Hola mundo' }]);
+  });
+
+  it('counts a source whose tags are all hidden as having nothing to place (backlog #29)', () => {
+    // A memory without this document's spell-check marker: its hidden
+    // tags are carried when the target is written, not placed here.
+    const matchTokens: TmToken[] = [{ t: 'text', v: 'Hola' }];
+    const sourceTokens: Token[] = [
+      { t: 'text', v: 'Hel' },
+      { t: 'ph', id: 1, fmt: 1 },
+      { t: 'text', v: 'lo' },
+    ];
+    const formats: FormatEntry[] = [
+      { id: 1, kind: 'other', visible: false, placement: 'block', open: '', close: '' },
+    ];
+    expect(placeMatch(matchTokens, sourceTokens, formats)).toEqual({
+      targetTokens: [{ t: 'text', v: 'Hola' }],
+      tagsMatched: true,
+    });
+  });
+
+  it("makes a match's text something XML can carry, placed or not (backlog #29)", () => {
+    // A vertical tab is PowerPoint's soft line break, and a memory keeps
+    // it; a DOCX cannot, and export refuses a target that has one.
+    const formats: FormatEntry[] = [
+      { id: 10, kind: 'b', visible: true, placement: 'run', open: '', close: '' },
+    ];
+    const placed = placeMatch(
+      [
+        { t: 'open', id: 1, k: 'b' },
+        { t: 'text', v: 'Start\u000Bdr\u0001\u00FCcken' },
+        { t: 'close', id: 1 },
+      ],
+      [
+        { t: 'open', id: 10, fmt: 10 },
+        { t: 'text', v: 'x' },
+        { t: 'close', id: 10 },
+      ],
+      formats,
+    );
+    expect(placed.targetTokens[1]).toEqual({ t: 'text', v: 'Start dr\u00FCcken' });
+    const dropped = placeMatch(
+      [{ t: 'text', v: 'Start\u000Cdr\u00FCcken' }],
+      [
+        { t: 'open', id: 10, fmt: 10 },
+        { t: 'text', v: 'x' },
+        { t: 'close', id: 10 },
+      ],
+      formats,
+    );
+    expect(dropped).toEqual({
+      targetTokens: [{ t: 'text', v: 'Start dr\u00FCcken' }],
+      tagsMatched: false,
+    });
   });
 
   it('falls back to plain text when a kind occurs a different number of times', () => {
