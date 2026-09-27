@@ -8,7 +8,8 @@ onlyBuiltDependencies:
   - electron
   - esbuild
   # The bench's approximate vector index (E-001's `hnsw` arm), built by
-  # node-gyp.
+  # node-gyp. An optional dependency of @cat-tool/db: a machine with no
+  # C++ toolchain (CI's Windows runner) skips it and installs the rest.
   - hnswlib-node
 
 # Blocked on purpose. onnxruntime-node (via @huggingface/transformers,

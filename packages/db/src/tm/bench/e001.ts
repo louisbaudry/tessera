@@ -55,7 +55,6 @@ import {
   type VectorSet,
 } from '@cat-tool/db';
 import Database from 'better-sqlite3';
-import hnswlib from 'hnswlib-node';
 
 import { prng, syntheticUnits, tmxDocument, type SyntheticUnit } from './corpus.ts';
 import { transformersEmbedder } from './embedder.ts';
@@ -123,6 +122,27 @@ if (SEARCH !== 'exact' && SEARCH !== 'hnsw')
   throw new Error('--search must be exact or hnsw');
 // E-001's fixed HNSW parameters.
 const HNSW = { M: 16, efConstruction: 200, efSearch: 128, seed: 100 } as const;
+
+/**
+ * The slice of `hnswlib-node` the `hnsw` arm uses. It is an optional
+ * dependency, because it compiles from source and a machine without a
+ * C++ toolchain (CI's Windows runner) cannot build it. So it is loaded
+ * only when `--search hnsw` asks for it, and typed here rather than
+ * through its own declarations, which such a machine lacks.
+ */
+interface HnswIndex {
+  initIndex(max: number, m: number, efConstruction: number, seed: number): void;
+  addPoint(point: number[], label: number): void;
+  setEf(ef: number): void;
+  searchKnn(query: number[], k: number): { neighbors: number[] };
+}
+async function loadHnsw(): Promise<new (space: 'ip', dim: number) => HnswIndex> {
+  const specifier: string = 'hnswlib-node';
+  const mod = (await import(specifier)) as {
+    default: { HierarchicalNSW: new (space: 'ip', dim: number) => HnswIndex };
+  };
+  return mod.default.HierarchicalNSW;
+}
 const MODEL_KEYS = values.models.split(',') as E001ModelKey[];
 for (const k of MODEL_KEYS) {
   if (!(k in E001_MODELS)) throw new Error(`unknown model "${k}"`);
@@ -702,7 +722,8 @@ async function runModel(
   if (SEARCH === 'hnsw') {
     log(`${key}: building HNSW over ${set.ids.length} vectors`);
     const n = set.ids.length;
-    const index = new hnswlib.HierarchicalNSW('ip', set.dim);
+    const HierarchicalNSW = await loadHnsw();
+    const index = new HierarchicalNSW('ip', set.dim);
     const [, buildMs] = timed(() => {
       index.initIndex(n, HNSW.M, HNSW.efConstruction, HNSW.seed);
       for (let r = 0; r < n; r++) {
