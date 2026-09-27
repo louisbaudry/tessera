@@ -17,30 +17,34 @@ implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
 
-## Working with Louis
+## Shared rules, loaded at session start
 
-Be concise. Skip explanations unless asked. No summaries after routine edits.
+How to work with Louis — communication, asking questions as options
+with a recommendation, never merging without being asked, branching
+from `main`, not regenerating a red check away, the public-repo data
+rules — is shared across all his repos and lives once, in
+`louisbaudry/ai_profile` (`CLAUDE.md` + `ai_profile.md`).
+`.claude/hooks/load-ai-profile.sh` loads both at session start (see
+that repo's `hooks/README.md`). This file adds only what is specific
+to tessera, and where the two differ, this file wins.
+
+If the session context has no "Shared context for working with Louis"
+block, say so at the start. Until it is fixed, still never merge
+without an explicit go-ahead, and still push nothing that identifies a
+client or a person.
 
 ## This repository is public
 
-Everything pushed here — code, fixtures, planning docs, research
-results, commit messages, branch names, PR and issue text — is
-readable by anyone. **No personal data and no client data, ever, in
-any form.** That means no real names, email addresses, phone numbers
-or postal addresses; no client names, client documents, translation
-memories, glossaries or any text taken from them; no credentials,
-tokens or internal hostnames; and nothing that would let a reader
-identify a client or a person behind a pseudonym. It applies to test
-fixtures and to "just a snippet" in an example or a log alike.
+Everything pushed here is readable by anyone, so the shared
+_Public repositories_ rules apply in full: **no personal data and no
+client data, ever, in any form**, fixtures and "just a snippet"
+included.
 
-The existing rules are how this is kept, not exceptions to it: a real
+The rules here are how this is kept, not exceptions to it: a real
 document becomes a fixture only through
 `scripts/synthesize-fixtures.py` (see _Fixture corpus_ below — a hand
 scrub has leaked before); a real memory contributes numbers only,
-under opaque ids (`research/`, `pnpm bench:tm --sdltm`). When unsure
-whether something identifies someone, leave it out and ask. Deleting a
-file in a later commit does not unpublish it — history keeps it — so
-the check happens before the push, not after.
+under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
 
 ## The working rhythm
 
@@ -64,27 +68,19 @@ the check happens before the push, not after.
    code lives, keep what it taught (a bug caught, a design choice made),
    and drop the issue link. Its **status** is the issue's job, never the
    file's; `v1-backlog.md`'s own header states the two heading forms.
-3. **Never merge without being asked.** Push the branch, open the PR,
-   describe what it does — then wait. Every merge in this project has
-   been an individual, explicit go-ahead, not a default. This holds even
-   when the change looks obviously safe.
-4. **Branch from `main`, merge back to `main`, promptly.** Never branch
-   from another session's branch, and never let one accumulate several
-   sessions of work. That is how `main` quietly stopped being trunk
-   once already — a PR reading "closed unmerged" while its code was
-   live, and `main` a whole epic behind the real backlog until someone
-   went looking.
-5. **One session at a time on one area.** Every session writes its
+3. **Never merge without being asked; branch from `main`** — both
+   shared rules. The branch one was learned here: `main` quietly
+   stopped being trunk once already — a PR reading "closed unmerged"
+   while its code was live, and `main` a whole epic behind the real
+   backlog until someone went looking.
+4. **One session at a time on one area.** Every session writes its
    record into `planning/v1-backlog.md`, which makes that file a single
    point of contention by design. Two sessions on the same epic conflict
    there, in entries neither was editing on purpose. Phased work across
    several sessions has its own protocol:
    `planning/multi-session-workflow.md`.
-6. **When asking questions to Louis, always propose multiple choices
-   and a recommendation.** Never an open-ended question alone — lay
-   out the options and say which one you'd pick and why.
-7. **After each merge, ask Louis if the public GitHub website is worth
-   updating with the new developments.** Same form as the rule above:
+5. **After each merge, ask Louis if the public GitHub website is worth
+   updating with the new developments.** As a shared-rules question:
    options and a recommendation, not an open question.
 
 ## Non-negotiable invariants
@@ -496,8 +492,6 @@ pattern.
 - Prettier will happily rewrite `cat-tool-project.code-workspace` and
   break it; it's excluded via `.prettierignore`. Don't remove that
   entry without checking why it's there.
-- A pipeline like `cmd | tee log` masks `cmd`'s exit code — use
-  `set -o pipefail` in any script that pipes a check's output.
 - `better-sqlite3`'s `db.function(name, fn)` throws if the same name is
   registered twice on one `Database` — guard a per-connection custom SQL
   function's registration (e.g. with a module-level `WeakSet<Database>`),
