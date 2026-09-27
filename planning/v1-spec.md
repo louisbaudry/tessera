@@ -39,7 +39,7 @@ pool) rides on top later and is out of scope here.
 | CJK, Cyrillic, Nordic, Eastern European | Different tokenizer (CJK) or more abbreviation lists; neither is needed. |
 | Auto-localisation of numbers/dates | Real Trados feature, but it interacts with matching in ways worth designing once fuzzy exists. |
 | Cloud tier, licensing, collaboration | Separate product surface; a prototype already exists (§2.1). |
-| Track changes, comments | Comment text and tracked-change content are not extracted. Footnote/endnote **bodies** *are* extracted — see §3.5. |
+| Track changes, comments | Comment text and tracked deletions (a move's origin included) are not extracted; a tracked insertion's text, or a move's destination's, is. Footnote/endnote **bodies** *are* extracted — see §3.5. |
 
 ### Definition of done
 
@@ -164,7 +164,7 @@ packages/
     segment/     SRX-lite segmenter + abbreviation lists
     tm/          TMX read/write, exact matcher
     qa/          QA rule engine
-    model/       shared types
+    model/       shared types, tag rules; the SPA's @cat-tool/core/model
   db/            @cat-tool/db         better-sqlite3, migrations, repos
   cli/           @cat-tool/cli        headless driver — the test harness
   server/        @cat-tool/server     Fastify API — auth, uploads, project/TM
@@ -204,7 +204,7 @@ Decisions, so they are not re-derived:
   of one.** `init` is `createProject`; `add-file` is `assembleFile` +
   `insertFile`; `add-tm` is `addTmRef` (plus `createTm`/`importTmx`/
   `importSdltm` when the memory has to be made first); `pretranslate`
-  is `pretranslate`; `qa` is `runQaRules` over every segment; `export`
+  is `pretranslate`; `qa` is `runQaRulesFor` over every segment; `export`
   is `exportFile` (§3.4); `history` is `listEvents` and `audit-verify`
   is `verifyAudit` (`audit-spec.md` §7, backlog #56). The CLI parses arguments, opens the database,
   prints, and sets the exit status — nothing else. Any logic it would
@@ -291,7 +291,7 @@ browser never touches SQLite.
 | `GET /api/projects/:name/files/:id/qa-issues` | every `QaIssue` on the file's segments, dismissed ones included — the grid's QA gutter (backlog #28), and #33's panel |
 | `DELETE /api/projects/:name` | deletes the `.catdb` (and its log with it); 204 — backlog #57 |
 | `GET /api/projects/:name/files/:id/export` | the delivered DOCX, `exportFile`, exactly `export` (§2.4) — backlog #57 |
-| `PUT /api/projects/:name/segments/:id` `{targetTokens, status, origin}` | `setSegmentTarget`; tokens shape-checked (`parseTokens`) against the segment's format table; `confirmed`/`locked` refused (their own acts); 409 on a locked segment — backlog #57 |
+| `PUT /api/projects/:name/segments/:id` `{targetTokens, baseUpdatedAt?}` | the translator's edit: `editSegmentTarget` (§7.2) — what they placed, hidden tags carried, status and origin derived, QA rerun; tokens shape-checked (`parseTokens`); a `status` or `origin` in the body refused (400), a tag structure export could not render refused (400), a write over a newer version refused (409, with the segment as it is), a locked segment 409; → `{segment, changed, rerun, issues}` — backlog #57, reshaped by #29 |
 
 Decisions, so they are not re-derived:
 
@@ -367,18 +367,23 @@ styles, numbering, tables, images, and everything else v1 never models.
 
 ### 3.2 Paragraph → tagged text
 
-Within a paragraph, adjacent runs sharing identical `w:rPr` are merged.
-A change in `w:rPr` opens a tag pair. Concretely:
+Within a paragraph, each run with properties becomes a tag pair, one
+per run: the tokenizer merges nothing. Adjacent runs sharing identical
+`w:rPr` are merged when a target is rendered (§3.4), and the editor
+places look-alike neighbours as one (§7.2). Concretely:
 
 | DOCX construct | Becomes |
 |---|---|
 | `w:rPr` change (b, i, u, vertAlign, color, rStyle, …) | paired tag `<g id=n>` … `</g>` |
 | Hyperlink (`w:hyperlink`) | paired tag, target URL held in format table |
 | Footnote / endnote reference | standalone `<ph id=n>` |
-| Field (`w:fldSimple`, `w:instrText` runs) | standalone `<ph id=n>` |
-| Bookmark start/end, comment anchors | standalone `<ph id=n>` |
-| Inline drawing / image | standalone `<ph id=n>` |
-| `w:br`, `w:tab` | standalone `<ph id=n>` |
+| Field (`w:fldSimple`, `w:instrText`/`w:fldChar` runs, `w:pgNum`, date elements) | standalone `<ph id=n>` |
+| Bookmark start/end, comment anchors, proofing marks | standalone `<ph id=n>`, hidden (§3.3) |
+| Inline drawing / image, `w:contentPart`, equation (`m:oMath`, `m:oMathPara`), ruby | standalone `<ph id=n>` |
+| `w:customXml`, `w:dir`, `w:bdo`, `w:subDoc` (not walked) | standalone `<ph id=n>`; the text inside is not translated |
+| `w:br`, `w:cr`, `w:tab` | standalone `<ph id=n>` |
+| Tracked insertion or move destination (`w:ins`, `w:moveTo`), content control (`w:sdt`) | paired tag, hidden; the text inside is translated |
+| Tracked deletion or move origin (`w:del`, `w:moveFrom`), floating shape | standalone `<ph id=n>`, hidden, kept whole (§3.5) |
 | Soft hyphen, non-breaking space | literal characters, not tags |
 
 Tag ids are numbered per segment, starting at 1, in source order. They are
@@ -403,8 +408,17 @@ Rules the editor and validator both enforce:
 - `open`/`close` are matched pairs and must nest, never interleave.
 - The target's tag multiset must equal the source's (§6.1).
 - Target tag *order* may differ from source — word order changes between
-  languages. Only nesting validity and multiset equality are enforced.
+  languages. Order is never enforced; nesting validity and multiset
+  equality are, and the editor also nests a pair only as a source's do
+  — no formatting in formatting, no link in a link (§7.2).
 - Tags are atomic in the editor: never editable as text, deleted whole.
+- Hidden tags (`FormatEntry.visible` false) are never a writer's to
+  place: every stored target carries its source's by one rule, and any
+  structurally valid stream renders to valid OOXML — both §7.2.
+- A tag's `fmt` is its own id, its role fits its format (a pair is a
+  `run` or `inline` tag, a placeholder `in-run` or `block`), and text
+  holds nothing XML cannot carry (`xmlIllegalChar`): `parseTokens`
+  refuses anything else at the door (§7.2).
 
 ### 3.4 Paragraph vs segment
 
@@ -474,9 +488,12 @@ Ordering: footnote bodies sort after all body segments, in note-number
 order, so the editor presents the document then its notes rather than
 interleaving them mid-sentence.
 
-Still not extracted in v1: comment text, tracked-change content, document
+Still not extracted in v1: comment text, tracked deletions (`w:del`, and
+a move's origin, `w:moveFrom` — kept whole, hidden), document
 properties, embedded objects. Each is a known gap, listed here so it is a
-decision rather than a surprise.
+decision rather than a surprise. A tracked insertion (`w:ins`) or a
+move's destination (`w:moveTo`) is current text, and is extracted
+inside a hidden tag that keeps the revision (§3.2).
 
 Skipped as untranslatable: paragraphs whose extracted text, with tags
 removed, is empty or contains no letter in any supported language
@@ -768,12 +785,26 @@ On pre-translate, for each unlocked segment:
 1. Compute `source_hash`.
 2. Query each enabled TM in `priority` order; first hit wins.
 3. If found:
-   - Tag multiset of the TM hit's source equals the segment's source →
-     insert target as-is, `origin = 'tm_exact'`, `status = 'translated'`.
+   - Tag multiset of the TM hit, by `(kind, role)`, equals that of the
+     segment's *visible* source tags → insert target as-is,
+     `origin = 'tm_exact'`, `status = 'translated'`.
+     The hit's tags take the receiving segment's own *visible* tags' ids
+     by `(kind, role, order)` (`core/tm/mapping.ts`; a placeholder only
+     ever takes a placeholder's id — backlog #29 found a kind-only match
+     giving a spell-check marker a run's id, which rendered a `<w:r>`
+     with no close). A memory holds no hidden tags (tm-format-spec §3);
+     a unit that does — another tool's — is matched against all of the
+     source's tags and keeps only the visible. The match's text is made
+     XML-legal (`xmlLegalText`) before it is placed.
    - Tag multiset differs → insert the target's **text**, re-tagged by
      position where unambiguous, `origin = 'tm_exact_tagdiff'`,
      `status = 'draft'`, and raise a QA warning. Never silently produce
-     tag-invalid targets.
+     tag-invalid targets. **Unless the source has no visible tag**
+     (backlog #29): then there is nothing to reapply, the text is the
+     whole target, and it is placed as `tm_exact` — a real memory's
+     mismatches are mostly hidden ones, a spell-check marker here and
+     not there. Either way the stored target gets the source's hidden
+     tags (`setSegmentTarget`, §7.2).
 4. **Internal propagation**: two segments in the project sharing a
    `source_hash` — when one is confirmed, the other is populated with
    `origin = 'propagated'`, `status = 'draft'`. Never overwrite a
@@ -818,7 +849,15 @@ acceptance test, not schema validity.
 | `punct.inverted` | error | ES only: `?` without a matching `¿`, or `!` without `¡` |
 | `punct.spacing` | warning | Double space, space before `,.;:`, missing FR narrow no-break space |
 
-Rules run per segment on confirm and across the project on demand.
+Rules run per segment on confirm, on every target the editor saves —
+that segment and every segment whose consistency findings the edit can
+move (same source, or a target reading as the old or the new one), in
+the write's own transaction (`rerunQaAfterEdit`, via
+`editSegmentTarget`, §7.2) — and across the project on demand
+(`runQaRulesFor`, the project read once). The text rules (`num.*`, `punct.*`) read a hidden placeholder
+as the nothing the reader sees, not as content (`QaCheckContext.formats`):
+where it sits in a target is the carrying rule's doing, not the
+translator's.
 
 Two rules are load-bearing for **EN→ES** specifically, the working pair:
 
@@ -881,9 +920,9 @@ each had a false-positive trap the table alone did not settle:
   only (OQLF); `fr-CH` nothing. Outside French, `,` `.` `;` `:` take no
   space; with no target language known, only `,` and `.` are judged. A
   mark inside a token (`10:30`, `http://`, `?id=`) is not a sentence
-  mark. Placeholders are opaque characters for every rule here, not
-  dropped, so `word<tab>word` is not a double space and `1<tab>000` is
-  not one number.
+  mark. Visible placeholders are opaque characters for every rule here,
+  not dropped, so `word<tab>word` is not a double space and `1<tab>000`
+  is not one number; a hidden one is read as nothing (above).
 - The rules take the project's language pair through
   `QaCheckContext.srcLang`/`tgtLang` (from the `project` row); with no
   pair known, `num.*`, `punct.inverted` and the locale-specific half of
@@ -902,7 +941,8 @@ behaviours v1 cannot ship without:
 - Two-column grid, source left, target right, virtualised. Status,
   origin, and QA flag in a gutter.
 - `Ctrl+Enter` confirm and advance to next unconfirmed.
-- `Ctrl+,` insert next unplaced tag; `Ctrl+Shift+,` tag list.
+- `Ctrl+,` insert next unplaced tag; `Ctrl+Shift+,` tag list (bound by
+  #29 with the editor itself, §7.2; the other keys here are #30's).
 - `Ctrl+Ins` copy source to target.
 - `Ctrl+M` merge with next segment, `Ctrl+Shift+M` split at cursor
   (both within one paragraph only).
@@ -913,8 +953,11 @@ behaviours v1 cannot ship without:
 - Progress: segments confirmed / total, words confirmed / total.
 - Dark mode, and no layout shift when the QA panel opens.
 
-Autosave on every keystroke, debounced. There is no "save" action; a crash
-must never cost more than a few seconds.
+Autosave on every keystroke, debounced (#31). There is no "save"
+action; a crash must never cost more than a few seconds. The audited
+write stays at segment boundaries — audit-spec §2.2; the editor saves
+when it leaves a segment and on `pagehide` (§7.2) — so keystroke drafts
+need a home outside it, or §2.2 amended first.
 
 ### 7.1 The segment grid (`@cat-tool/web`, backlog #28)
 
@@ -929,10 +972,11 @@ they are not re-derived:
   In development Vite proxies `/api` to the server on `:3400`; serving
   the built SPA from the server process is #36's, where the container
   image is.
-- **`@cat-tool/web` imports `core` for types only.** `core`'s index
-  pulls in `node:crypto` (credentials), the DOCX filter and the
-  segmenter; none of it belongs in a browser bundle, and a runtime
-  import would drag it there. What the grid needs at runtime — a
+- **`@cat-tool/web` imports `core` for types only** — except
+  `@cat-tool/core/model`, the token model and tag rules, since #29
+  (§7.2). `core`'s index pulls in `node:crypto` (credentials), the DOCX
+  filter and the segmenter; none of it belongs in a browser bundle, and
+  a runtime import would drag it there. What the grid needs at runtime — a
   status's label, an origin's abbreviation — is a `Record` keyed by
   `core`'s union types, so a status added in `core` fails the web
   typecheck instead of rendering blank.
@@ -970,11 +1014,236 @@ they are not re-derived:
   grid fetches both and joins by `segmentId` in the browser.
 - **Tags render as read-only chips, numbered by their tag id; invisible
   ones are not rendered** (`FormatEntry.visible`, §3.3). A paired tag is
-  two chips, `‹1` and `1›`; a placeholder is one, `⟨2⟩`, titled with its
-  `kind`. Editing them — atomic chips in an editable target, insert-next-
-  tag — is #29; the grid only shows them, and a missing target shows
-  empty, never the source.
+  two chips, `‹1` and `1›`; a placeholder is one, `⟨2⟩`, titled with what
+  it stands for (`describeFormat`), as every chip is. Editing them —
+  atomic chips in an editable target, insert-next-tag — is #29's
+  (§7.2), which also shows a run of look-alike pairs as one chip pair,
+  `‹1–31`, here as there; a row not being edited only shows them, and a
+  missing target shows empty, never the source.
 
+
+### 7.2 The target editor (`@cat-tool/web`, backlog #29)
+
+Clicking a target opens it for editing: text and atomic tag chips, one
+row at a time, every other row read-only as in §7.1. The card's words —
+atomic chips, insert-next-tag, tag list, full-tag toggle, tags never
+editable as text, hidden tags carried and never shown — and what four
+independent reviews of the first draft found wrong with it, settled as:
+
+**Hidden tags are the server's, by one rule.** A client sends what the
+translator placed: text and visible tags. `setSegmentTarget` — the one
+write every writer goes through, the editor, pre-translate, propagation
+— stores the target with its source's hidden tags carried by
+`carryHiddenTags` (`core/model/hidden-tags.ts`), whatever tokens it was
+given. So a hidden tag never reaches QA's `tag.missing` as something a
+translator must place, and none is lost on export however the target
+was made. A target reading exactly as the source's gets the source's
+own hidden tags; any other is dressed per container (top level, each
+placed visible pair) from the source's content there: the dominant
+plain formatting — the hidden run over the most non-space characters,
+or none — wraps it; a losing hidden run whose text the translator kept
+verbatim, standing apart (a note number raised by hand, a symbol-font
+checkbox), wraps that — never a digit of a number (`1` in `1,5` is
+not apart); a run that came after all of its container's text, as a
+note number does, wraps only an occurrence ending the target's text
+there (`2021.1` ends in a note, and a `1` earlier in the sentence is
+never it); a wrapper (`w:ins`, `w:moveTo`, `w:sdt`) around all of the
+source's text *and every visible tag* wraps all of the target's, unless
+the target moves a visible tag into it from outside (either way a link
+or a field would land inside a tracked insertion, which OOXML does not
+allow); a placeholder before the text, or a range start whose end
+follows text, leads; everything else trails, empty. Trailing is only
+safe for what shows nothing: a `w:fldSimple` page number, a `w:cr` and
+an equation had been hidden by omission from the tokenizer's visible
+list, and trailed — "Page 1 of 3" delivered as "Seite von 13" — and a
+tracked move's text trailed untranslated. They are visible now (§3.2
+lists fields), a move's text walked like an insertion's, and so is
+everything else the run and paragraph content models allow that shows
+content, but for what stays hidden on purpose: tracked deletions
+(§3.5) and floating shapes (`tokenize.ts`). Carried tags sit just
+inside the wrapping ones, so a dressed
+target begins with opens and ends with closes, and export's fold fuses
+neighbouring sentences' runs instead of leaving the space between them
+in a bare run. Measured on the corpus: retyping every segment with its
+tags in place leaves 45 of 270,571 non-space characters in a font, size
+or raise other than the source's (`project/carry.test.ts` pins it).
+Deliberately not placed by position: a bookmark over part of a sentence
+grows to the whole sentence; a tracked insertion of part of one is
+placed empty (its words are no longer knowable in translation).
+
+**Any structurally valid stream renders to valid OOXML** (`renderTokens`).
+A dressed target nests what no source does — a bold run tag inside the
+hidden run carrying the paragraph's font — and `w:r` inside `w:r` is a
+file Word refuses. Content takes the properties of its innermost run tag
+(a run tag is a whole `w:rPr`, never a delta), looking no further out
+than the nearest `inline` tag (run properties never cross a hyperlink);
+run XML is emitted lazily and a paragraph-level element closes the run
+first; an empty run pair renders nothing. For tokenizer-shaped streams
+the output is byte-identical to before (4,545 corpus streams checked;
+the roundtrip gate never renders). Before this, a text-only target
+carried onto each of the corpus's 2,602 unlocked segments exported a
+run inside a run in 302 of them. The renderer also
+refuses a tag in a role its format does not fit and text XML cannot
+carry (`xmlIllegalChar`: a vertical tab is how PowerPoint writes a soft
+break), and `parseTokens` refuses both — and a `fmt` other than the
+tag's own id — at the door. "Valid" means markup Word opens; a field's
+begin, separator and end are separate placeholders, and their order is
+not something tag structure can check.
+
+**The interactive write is one `db` call** (`editSegmentTarget`), the
+route only parsing around it (the CLI rule, §2.4):
+- *No visible change, no write.* Same visible target
+  (`sameVisibleTarget`: however the text is split, wherever the hidden
+  tags sit) → nothing stored: a TM match clicked through keeps its
+  origin, a confirmed segment stays confirmed.
+- *Status and origin are derived, never sent.* Anything visible →
+  `translated`, origin `null` (the translator's own; the audit log's
+  previous event keeps what it was — audit-spec decision 4). Nothing
+  visible but spaces → `null`, `new`: an untranslated segment again,
+  never an empty translation, which export would deliver as a missing
+  sentence (`isBlankTarget`, the test confirm uses too).
+  Editing a confirmed segment makes it `translated`, to be confirmed
+  again before the TM learns it. Accepting a suggestion (a TM hit,
+  later an MT draft) will be its own write naming its origin, not this
+  one (audit-spec §4).
+- *A stale write is refused.* `baseUpdatedAt` is the segment as the page
+  last saw it; a write over a newer one — another tab — is a 409 carrying
+  the segment as it is; the row is marked not saved, with a note to
+  reload the file — never a silent overwrite. The
+  page keeps one write per segment in flight (`save-queue.ts`), each
+  sent with the version the last answer returned. An answer for a write
+  a later one has superseded updates the row's version, status and
+  issues but not its text, so a slow answer never shows older text the
+  translator could then edit on top of; a superseded write's failure is
+  not shown. The one exception to the version check is the page going
+  away: its write goes at once and cannot wait for the one in flight,
+  whose answer would carry the version, so it goes without one and
+  replaces any write still waiting. What that risks is overwriting
+  another tab's write that landed just before the one in flight; what
+  it saves is the last edit, which a refusal on a closing page would
+  lose with nobody to see it. The other segments' writes still waiting
+  behind one in flight go then too (`SaveQueue.flush`), after the open
+  editor's, rather than be lost with the page.
+- *A structure export would refuse is refused now* (400), not at
+  delivery, where one bad segment would fail the whole file.
+- *QA reruns in the same transaction* (`rerunQaAfterEdit`) for the
+  segment and every segment whose consistency findings the edit can
+  move: those sharing its source (`consistency.target_differs`) and
+  those whose target reads as its old or new one
+  (`consistency.source_differs`). The answer carries their ids and
+  issues, so the gutter follows the edit (the grid takes those of its
+  own file's segments; a repetition in another file is that file's
+  grid's to show). The project's translated
+  segments are read once per pass, not once per segment rerun: that
+  was 7 s for one save of a segment with 500 repetitions in a
+  10,000-segment project, and is 0.15 s.
+- `confirmSegment` refuses a target with nothing visible in it but
+  spaces.
+
+**When it saves.** When the editor leaves the segment — blur, Esc, the
+row unmounting, and `pagehide` (a `keepalive` request, which unlike a
+beacon carries the bearer header; the grid holds the one listener, so
+the open editor's write goes before the waiting ones,
+`createPageHide`) — and only if the document changed
+(ProseMirror document equality, so a split text node is not an edit)
+— or if the segment's last write failed, changed or not, so leaving
+the row again is the retry. Signing out blurs the editor and waits for
+its write before revoking the session. Saving at segment boundaries, never per keystroke, is
+audit-spec §2.2's rule; autosave (#31) has to keep it — drafts outside
+the audited write, or an amended §2.2 first.
+
+**ProseMirror, not a hand-rolled contentEditable.** The job is one line
+of text with atomic inline nodes — exactly ProseMirror's model — and the
+hard parts are the browser's: composition (Spanish accents typed with
+dead keys on macOS go through it; checked in the smoke run through CDP),
+the caret beside a non-editable node, spellcheck replacement, paste,
+undo. Its state layer runs in node, so every rule is tested without a
+DOM (`target-doc.test.ts`). The cost: the bundle went from 81 to 152 KB
+gzipped. The document is `doc(inline*)` with one `tag` atom node;
+chips are not selectable (arrows step over one in a press; a selected
+chip would hide the caret and be replaced by the next letter).
+
+**What keeps it tag-valid** (`tags.ts`, pure): deleting either chip of a
+pair deletes its partner, content kept, with a note saying what went and
+that Ctrl+Z (one step) restores it; a stored target that is not valid
+is repaired on load and saved as repaired; a pair wraps a selection only
+when the selection is balanced; and a pair nests only as a source's do —
+formatting holds only text and placeholders and sits in no other
+formatting, no link in a link — because a run tag is a whole `w:rPr` and
+bold around italic would export as italic alone, silently. Paste from
+elsewhere is one line of plain text (breaks and tabs become spaces;
+what XML cannot carry, `xmlLegalText`, and DEL are dropped). Paste of
+this segment's own copy keeps its chips, so a cut and paste moves a
+tag — the EN→ES adjective-after-noun gesture (`pasteOwn`, one undo step): the
+selection goes first, and with it any pair it took one chip of, as the
+integrity rule would take it; then of the copy's chips, only this
+segment's tags, rebuilt from its own format table; only those not
+still placed; only whole pairs, and only where they nest as a source's
+do (bold pasted into italic, or a link into a link, arrives as its
+words). A copy names its project and segment
+(`<span data-segment-copy="project/id">`, which also makes ProseMirror
+mark every copy as its own, even one that starts with a word), and any
+other copy is plain text — another segment's, or segment 12 of another
+project: tag ids are per segment, and the same number can be a
+different tag. Drop is refused.
+
+**Placing tags.** The palette is the source's visible tags in source
+order. `Ctrl+,` places the first unplaced one — with text selected, the
+first *pair*, since a selection asks to be wrapped: a pair wraps the
+selection or goes in empty with the caret between; a placeholder goes
+at the selection's end. `Ctrl+Shift+,` opens the tag list (arrows, Enter,
+a tag's number, Esc); choosing a placed tag moves it. Both keys are
+literal Ctrl on every platform (Cmd+, is the browser's own settings on a
+Mac) and both have a button in the row. Each placement is its own undo
+step. A pair left empty when the editor leaves is dropped — it formats
+nothing — so it counts as unplaced and QA says so.
+
+**Look-alike pairs are placed as one.** Word splits a run wherever
+anything changes, seen or not, and the tokenizer keeps each run's pair
+(§3.2's "merged" happens only at render). So a bold phrase can arrive
+as many bold pairs side by side: one fixture sentence has 31, the corpus
+has such runs in 251 of 2,602 segments, and each pair left unplaced is a
+blocking `tag.missing`. Pairs that follow each other directly (only
+hidden tags between) and read the same (`describeFormat`) are one
+palette entry and one chip pair, numbered `‹1–31`; saved, the first
+wraps the text and the rest follow it empty — export renders the text
+with the first's properties, and what differed between them is what no
+chip ever showed, the same trade the hidden runs make. A target can
+also hold a group's pairs apart (a TM match places each by its own
+id): then a member the first pair's chip does not carry is a tag of its
+own in the bar and the tag list, placed or to place, and moving the
+first pair never places a member twice (`tagChoices`, `expandGroups`).
+A first pair carrying only some members is saved with exactly those
+following it empty, and loads carrying exactly those
+(`collapseGroups`), so what the bar showed survives a reload and the
+next save; the grid's read-only rows show the same form.
+
+**Full tags** (a grid-wide toggle, remembered per browser): each chip
+says what it stands for — `‹1 bold italic`, `link #_Ref4`, `⟨2 footnote⟩`,
+`⟨3 field PAGE⟩` — read from the format table's raw XML
+(`tag-label.ts`). Both labels are always rendered; a class on the grid
+picks one, so toggling re-renders nothing. The editor carries the
+target language as `lang` for the browser's spell checker; source cells
+carry the source's.
+
+**`@cat-tool/core/model`** is the SPA's one runtime import from `core`:
+the token model and tag rules (`token.ts`, `tags.ts`, `hidden-tags.ts`),
+so which tags are hidden is one definition in the browser and on the
+server. `model/` importing nothing but its own `./` siblings — no other
+`core` module, no Node builtin, no package — is now a lint rule, not
+just a convention, which is what keeps that entry browser-safe; the
+built bundle was checked for `node:crypto` and the DOCX filter.
+
+Measured in a Chromium smoke run against the real server (35 checks):
+typing, placing and wrapping, refusal notes, the tag list, save on Esc
+with the hidden tags carried and QA rerun, a click-through writing
+nothing, pair deletion and its undo, paste from elsewhere, IME
+composition, full tags, a 15-pair group placed with one keystroke, a
+reload showing what was saved, the caret landing where the click did,
+a cut starting on a word moving its tag, another segment's copy — its
+tag 1 bold, like this one's — and another project's segment 1 arriving
+as words, and `pagehide` saving the open edit through the grid's
+listener; the exported DOCX well-formed with no run inside a run.
 
 ---
 

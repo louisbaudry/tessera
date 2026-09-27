@@ -9,7 +9,7 @@
 import { DEFAULT_SEVERITY, type QaRule, type QaSeverity } from '../model/qa.js';
 import type { SegmentStatus } from '../model/segment.js';
 import { extraTags, missingTags, validateTagStructure } from '../model/tags.js';
-import { plainText, type AnyToken } from '../model/token.js';
+import { plainText, type AnyToken, type FormatEntry } from '../model/token.js';
 import {
   GROUPING_SPACES,
   numberFormatFor,
@@ -66,6 +66,15 @@ export interface QaCheckContext {
    */
   readonly srcLang?: string;
   readonly tgtLang?: string;
+  /**
+   * The segment's format table (backlog #29). With it, the text rules
+   * read a hidden placeholder — a spell-check marker, a bookmark — as the
+   * nothing the reader sees, not as content: its place in a target is
+   * the carrying rule's (`carryHiddenTags`), not the translator's, and it
+   * must not split a number or look like a stray character before a
+   * colon.
+   */
+  readonly formats?: readonly FormatEntry[];
 }
 
 export type QaCheck = (context: QaCheckContext) => readonly QaFinding[];
@@ -251,13 +260,21 @@ const PLACEHOLDER_CHAR = '\uFFFC';
  * are formatting and vanish, but a placeholder is content: a tab, a
  * line break, a footnote reference, an image. Dropping it would glue
  * `1<tab>000` into one number and read `word<br> word` as a double
- * space, so each becomes one opaque character instead.
+ * space, so each becomes one opaque character instead — unless it is
+ * hidden (`QaCheckContext.formats`), in which case the reader sees
+ * nothing, and neither does the rule.
  */
-function visibleText(tokens: readonly AnyToken[]): string {
+function visibleText(
+  tokens: readonly AnyToken[],
+  formats: readonly FormatEntry[] = [],
+): string {
+  const hidden = new Set(formats.filter((f) => !f.visible).map((f) => f.id));
   let out = '';
   for (const token of tokens) {
     if (token.t === 'text') out += token.v;
-    else if (token.t === 'ph') out += PLACEHOLDER_CHAR;
+    else if (token.t === 'ph' && !('fmt' in token && hidden.has(token.fmt))) {
+      out += PLACEHOLDER_CHAR;
+    }
   }
   return out;
 }
@@ -271,11 +288,17 @@ const listSurfaces = (numerals: readonly Numeral[]): string =>
  * locale there is no way to say whether `1,000` and `1 000` are the same
  * number, and guessing is the false positive these rules exist to avoid.
  */
-const compareSegmentNumerals = ({ source, target, srcLang, tgtLang }: QaCheckContext) => {
+const compareSegmentNumerals = ({
+  source,
+  target,
+  srcLang,
+  tgtLang,
+  formats,
+}: QaCheckContext) => {
   if (target === null || srcLang === undefined || tgtLang === undefined) return null;
   return compareNumerals(
-    extractNumerals(visibleText(source), numberFormatFor(srcLang)),
-    extractNumerals(visibleText(target), numberFormatFor(tgtLang)),
+    extractNumerals(visibleText(source, formats), numberFormatFor(srcLang)),
+    extractNumerals(visibleText(target, formats), numberFormatFor(tgtLang)),
   );
 };
 
@@ -341,11 +364,11 @@ function terminalMark(text: string): string | null {
  * not. Presence only, not which mark: a source `?` rendered with a `.`
  * is a translation choice, a dropped full stop is not.
  */
-const checkPunctTerminal: QaCheck = ({ source, target }) => {
+const checkPunctTerminal: QaCheck = ({ source, target, formats }) => {
   if (target === null) return [];
-  const targetText = visibleText(target);
+  const targetText = visibleText(target, formats);
   if (targetText.trim().length === 0) return [];
-  const sourceMark = terminalMark(visibleText(source));
+  const sourceMark = terminalMark(visibleText(source, formats));
   const targetMark = terminalMark(targetText);
   if ((sourceMark === null) === (targetMark === null)) return [];
   return [
@@ -423,11 +446,11 @@ function bracketImbalances(text: string): Map<string, BracketImbalance> {
  * source unbalanced was there before the translator, and a target that
  * faithfully mirrors it is not the error this rule is for.
  */
-const checkPunctBrackets: QaCheck = ({ source, target }) => {
+const checkPunctBrackets: QaCheck = ({ source, target, formats }) => {
   if (target === null) return [];
-  const targetImbalances = bracketImbalances(visibleText(target));
+  const targetImbalances = bracketImbalances(visibleText(target, formats));
   if (targetImbalances.size === 0) return [];
-  const sourceImbalances = bracketImbalances(visibleText(source));
+  const sourceImbalances = bracketImbalances(visibleText(source, formats));
   const reported = [...targetImbalances.values()].filter(
     (t) => sourceImbalances.get(t.label)?.detail !== t.detail,
   );
@@ -464,9 +487,9 @@ const isSentenceMark = (after: string | undefined): boolean =>
  * each mark against one closing run of each; and only a closing run in
  * sentence position counts, so a URL's `?` is not one.
  */
-const checkPunctInverted: QaCheck = ({ target, tgtLang }) => {
+const checkPunctInverted: QaCheck = ({ target, tgtLang, formats }) => {
   if (target === null || !usesInvertedMarks(tgtLang)) return [];
-  const text = visibleText(target);
+  const text = visibleText(target, formats);
   // Only a run in sentence position closes anything: the `?` in
   // `https://example.com/?id=42` is not a question.
   const closing = [...text.matchAll(/[?!]+/gu)]
@@ -506,9 +529,9 @@ const DOUBLE_SPACE = new RegExp(`[${GROUPING_SPACES.join('')}]{2,}`, 'u');
  * source's: a French source's `mot :` copied into an English target is
  * exactly the space-before-colon this rule reports.
  */
-const checkPunctSpacing: QaCheck = ({ target, tgtLang }) => {
+const checkPunctSpacing: QaCheck = ({ target, tgtLang, formats }) => {
   if (target === null) return [];
-  const text = visibleText(target);
+  const text = visibleText(target, formats);
   // A blank target is `seg.empty`'s finding, not a run of spaces.
   if (text.trim().length === 0) return [];
   const profile = spacingProfileFor(tgtLang);

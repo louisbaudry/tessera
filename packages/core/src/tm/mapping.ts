@@ -14,6 +14,7 @@
  */
 
 import type { FormatEntry } from '../docx/tokenize.js';
+import { withoutHiddenTags } from '../model/hidden-tags.js';
 import { validateTagStructure } from '../model/tags.js';
 import type { TagKind, TmToken, Token } from '../model/token.js';
 
@@ -22,6 +23,16 @@ import type { TagKind, TmToken, Token } from '../model/token.js';
  * as a hint (`k`) instead, ids renumbered from 1 in source order —
  * exactly the identity a project token loses no matter which file it
  * ends up matched against later.
+ *
+ * Hidden tags are dropped too (backlog #29). They are the document's,
+ * never the translator's: a paragraph's font, a spell-check marker. The
+ * receiving document carries its own onto whatever is placed
+ * (`carryHiddenTags`), and where they sit in a target is that rule's
+ * choice, not a position worth learning — the dominant font run wraps
+ * the whole sentence, whichever run came first in the source. Kept, a
+ * hidden `other` run stored first took the id of the receiving source's
+ * first `other` run, a visible one, and moved its formatting onto the
+ * whole sentence.
  */
 export function toTmTokens(
   tokens: readonly Token[],
@@ -32,7 +43,7 @@ export function toTmTokens(
   const nextId = (): number => renumbered.size + 1;
 
   const out: TmToken[] = [];
-  for (const token of tokens) {
+  for (const token of withoutHiddenTags(tokens, formats)) {
     if (token.t === 'text') {
       out.push(token);
       continue;
@@ -56,19 +67,28 @@ export type RemapResult =
   | { readonly ok: true; readonly tokens: readonly Token[] }
   | { readonly ok: false; readonly reason: string };
 
-/** Ordered ids of a token stream's `open`/`ph` tokens, grouped by kind. */
-function idsByKind(
+/**
+ * A tag's kind *and* role: `other` names both hidden runs and hidden
+ * placeholders (a spell-check marker, a drawing), so kind alone let the
+ * Nth `other` placeholder of a match take the id of an `other` run and
+ * render a `<w:r>` with no close (backlog #29).
+ */
+type Slot = `${'open' | 'ph'}:${TagKind}`;
+
+/** Ordered ids of a token stream's `open`/`ph` tokens, grouped by slot. */
+function idsBySlot(
   tokens: readonly (Token | TmToken)[],
   kindOf: (id: number) => TagKind | undefined,
-): Map<TagKind, number[]> {
-  const queues = new Map<TagKind, number[]>();
+): Map<Slot, number[]> {
+  const queues = new Map<Slot, number[]>();
   for (const token of tokens) {
     if (token.t !== 'open' && token.t !== 'ph') continue;
     const kind = kindOf(token.id);
     if (!kind) continue;
-    const queue = queues.get(kind);
+    const slot: Slot = `${token.t}:${kind}`;
+    const queue = queues.get(slot);
     if (queue) queue.push(token.id);
-    else queues.set(kind, [token.id]);
+    else queues.set(slot, [token.id]);
   }
   return queues;
 }
@@ -77,7 +97,17 @@ function idsByKind(
  * Rebuilds a retrieved TM variant as project tokens, mapped onto the
  * *receiving* segment's own formatting by `(kind, order)`
  * (tm-format-spec.md §3): the Nth `bold` tag in the TM match takes the
- * fmt id of the Nth `bold` tag already present in `sourceTokens`.
+ * fmt id of the Nth `bold` tag already present in `sourceTokens`. Pairs
+ * and placeholders are counted apart, so a placeholder only ever takes a
+ * placeholder's id and a pair a pair's.
+ *
+ * The match is mapped onto the source's visible tags: a memory this tool
+ * writes holds no hidden ones (`toTmTokens`), and the receiving
+ * document's own are carried onto the result when it is written
+ * (`setSegmentTarget`). A unit from before that, or from another tool,
+ * can hold tags this document hides — a Trados export tags every run —
+ * so failing that, it is mapped onto all of the source's tags, in their
+ * source order, and the hidden ones it placed are dropped.
  *
  * Succeeds only when every kind occurs exactly as many times in the
  * match as in the receiving segment's source — a real correspondence,
@@ -93,33 +123,50 @@ export function remapTmTokens(
   sourceTokens: readonly Token[],
   sourceFormats: readonly FormatEntry[],
 ): RemapResult {
-  const sourceFormatById = new Map(sourceFormats.map((f) => [f.id, f]));
-  const sourceQueues = idsByKind(sourceTokens, (id) => sourceFormatById.get(id)?.kind);
+  const visible = withoutHiddenTags(sourceTokens, sourceFormats);
+  const onVisible = remapOnto(tmTokens, visible, sourceFormats);
+  if (onVisible.ok || visible.length === sourceTokens.length) return onVisible;
+  const onAll = remapOnto(tmTokens, sourceTokens, sourceFormats);
+  return onAll.ok
+    ? { ok: true, tokens: withoutHiddenTags(onAll.tokens, sourceFormats) }
+    : onVisible;
+}
 
-  const tmKindCounts = new Map<TagKind, number>();
+function remapOnto(
+  tmTokens: readonly TmToken[],
+  sourceTokens: readonly Token[],
+  sourceFormats: readonly FormatEntry[],
+): RemapResult {
+  const sourceFormatById = new Map(sourceFormats.map((f) => [f.id, f]));
+  const sourceQueues = idsBySlot(sourceTokens, (id) => sourceFormatById.get(id)?.kind);
+
+  const tmSlotCounts = new Map<Slot, number>();
   for (const token of tmTokens) {
     if (token.t !== 'open' && token.t !== 'ph') continue;
     if (!token.k) {
       return { ok: false, reason: `tag ${token.id} in the match carries no kind hint` };
     }
-    tmKindCounts.set(token.k, (tmKindCounts.get(token.k) ?? 0) + 1);
+    const slot: Slot = `${token.t}:${token.k}`;
+    tmSlotCounts.set(slot, (tmSlotCounts.get(slot) ?? 0) + 1);
   }
 
-  const allKinds = new Set<TagKind>([...tmKindCounts.keys(), ...sourceQueues.keys()]);
-  for (const kind of allKinds) {
-    const inMatch = tmKindCounts.get(kind) ?? 0;
-    const inSource = sourceQueues.get(kind)?.length ?? 0;
+  const allSlots = new Set<Slot>([...tmSlotCounts.keys(), ...sourceQueues.keys()]);
+  for (const slot of allSlots) {
+    const inMatch = tmSlotCounts.get(slot) ?? 0;
+    const inSource = sourceQueues.get(slot)?.length ?? 0;
     if (inMatch !== inSource) {
+      const [role, kind] = slot.split(':');
       return {
         ok: false,
         reason:
-          `"${kind}" occurs ${inMatch} time(s) in the match but ${inSource} ` +
-          `time(s) in this segment's source — tags do not correspond`,
+          `"${kind}" ${role === 'ph' ? 'placeholder' : 'pair'} occurs ${inMatch} ` +
+          `time(s) in the match but ${inSource} time(s) in this segment's source — ` +
+          `tags do not correspond`,
       };
     }
   }
 
-  const cursors = new Map<TagKind, number>();
+  const cursors = new Map<Slot, number>();
   const remappedId = new Map<number, number>(); // TM tag id -> receiving fmt id
   const out: Token[] = [];
   for (const token of tmTokens) {
@@ -138,11 +185,11 @@ export function remapTmTokens(
       out.push({ t: 'close', id });
       continue;
     }
-    const kind = token.k!; // every open/ph kind was hinted, checked above
-    const queue = sourceQueues.get(kind)!; // counts matched, so this exists
-    const cursor = cursors.get(kind) ?? 0;
+    const slot: Slot = `${token.t}:${token.k!}`; // every open/ph was hinted, checked above
+    const queue = sourceQueues.get(slot)!; // counts matched, so this exists
+    const cursor = cursors.get(slot) ?? 0;
     const id = queue[cursor]!;
-    cursors.set(kind, cursor + 1);
+    cursors.set(slot, cursor + 1);
     remappedId.set(token.id, id);
     out.push(token.t === 'open' ? { t: 'open', id, fmt: id } : { t: 'ph', id, fmt: id });
   }

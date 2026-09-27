@@ -46,7 +46,11 @@ export function App() {
     );
   }
 
-  const logOut = () => {
+  const logOut = async () => {
+    // An editor still open saves as it loses focus (§7.2), and that save
+    // must reach the server before the session it uses is revoked.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    await api.settled();
     // Revoke server-side, but never keep someone signed in because the
     // server could not be reached to hear it.
     void api.logout(session.token).catch(() => undefined);
@@ -61,7 +65,7 @@ export function App() {
             Tessera
           </a>
           <Breadcrumbs route={route} />
-          <button type="button" className="link" onClick={logOut}>
+          <button type="button" className="link" onClick={() => void logOut()}>
             Sign out
           </button>
         </header>

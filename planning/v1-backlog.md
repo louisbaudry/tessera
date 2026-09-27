@@ -68,7 +68,7 @@ container's Node, chosen once (TM format spec §1.1).
 
 **#4 · ~~Core domain types~~ · DONE**
 `Token`, `TmToken`, `TagKind`, `Segment`, `SegmentStatus`, `Origin`,
-`QaRule`, `QaIssue` in `@cat-tool/core/model`. Tag invariants as pure
+`QaRule`, `QaIssue` in `core/model/`. Tag invariants as pure
 predicates — `validateTagStructure` (nesting, interleaving, duplicate ids,
 unclosed), `tagSignature` / `tagsMatch` (order-independent multiset),
 `missingTags` / `extraTags` (feeding QA rules `tag.missing` / `tag.extra`).
@@ -1299,16 +1299,21 @@ call sites for what is still "one finding per rule per segment" against
 the same `qa_issue` table, for no isolation benefit — nothing about
 `consistency.*` needs a different persistence shape, only richer input.
 
-`db/project/qa-issues.ts` computes `siblings` per call with two plain
+`db/project/qa-issues.ts` computed `siblings` per call with two plain
 queries against `segment` (one by `source_hash`, one full scan comparing
-rendered target plain text — there is no target-text index) and decodes
-tokens to plain text in JS. This is O(n) per segment, run fresh on every
-`runQaRules` call; acceptable at v1's single-translator project scale,
-same "wholesale, not diffed" simplicity `replaceQaIssues` already
-established. If a future project-wide QA sweep over many thousand
-segments makes this the bottleneck, build the index once (map by
+rendered target plain text — there is no target-text index) and decoded
+tokens to plain text in JS. That was O(n) per segment, run fresh on
+every `runQaRules` call; acceptable at v1's single-translator project
+scale, same "wholesale, not diffed" simplicity `replaceQaIssues` already
+established. The plan, if a project-wide QA sweep over many thousand
+segments made it the bottleneck, was to build the index once (map by
 `source_hash` and by target text) and reuse it across all segments in
-that sweep, rather than adding a project-scoped registry.
+that sweep, rather than adding a project-scoped registry. #29 built it,
+and a single save needed it first: rerunning QA over a segment's 500
+repetitions took 7 s. `readTranslated` reads the project once per pass,
+`runQaRulesFor` checks any set of segments against it (the editor's
+rerun and `cat-tool qa`'s sweep alike), and `runQaRules` is that call
+for one segment.
 
 **`seg.empty` does not use `SEGMENT_STATUSES`' array order as "≥
 translated"**, despite the table's wording. `locked` sorts after
@@ -1833,24 +1838,206 @@ Smaller things settled:
   was. An exclude that matches nothing looks exactly like one that
   works; `vitest list` with the script's flags is how to check one.
 - **The 11 MB segments payload is a known cost, not fixed here.** 35 %
-  of it is each segment's format table, raw XML the grid only needs
+  of it is each segment's format table, raw XML the grid then read only
   `kind` and `visible` from. Worth a slimmer projection when a real
-  file makes it matter; #29 needs the table's shape first.
+  file makes it matter. #29 has since settled what the SPA reads, and
+  it is more: chip titles, full tags and look-alike pairs are all
+  `describeFormat` (`web/tag-label.ts`) over each entry's `placement`
+  and `open`, so a slimmer projection has to carry that description,
+  not drop it.
 
 Not here: the editable target and tag insertion (#29), keyboard (#30),
 autosave (#31), serving the built SPA from the server (#36's container),
 dark mode (#35 — colours are already CSS tokens for it).
 
-**#29 · Tag-aware target editor · L** · [issue #11]
-Atomic tag chips, insert-next-tag, tag list, full-tag toggle. Tags never
-editable as text.
+**#29 · ~~Tag-aware target editor~~ · DONE — `web/TargetEditor.tsx`,
+`web/target-doc.ts` + `web/tags.ts` + `web/save-queue.ts`,
+`core/model/hidden-tags.ts`, `db/project/edit-target.ts`**
+Clicking a target opens it in a ProseMirror editor: text and atomic tag
+chips, `Ctrl+,` to place the next unplaced tag, `Ctrl+Shift+,` for the
+tag list, a grid-wide "show full tags" toggle, hidden tags never shown.
+Decisions in `v1-spec.md` §7.2. The design went to four independent
+reviews before most of the code was written, and most of what is below
+is what they found.
+
+**Hidden tags turned out to be the whole card.** "Carried
+automatically" had no mechanism: a typed target has none of the
+source's hidden tags, and they are not noise — a hidden run carries the
+paragraph's font and size, a hidden placeholder can be an anchored
+drawing, a bookmark a TOC points at, a tracked deletion. The editor
+could not place them (it does not show them), so the server does, by one
+rule: `carryHiddenTags`, applied in `setSegmentTarget`, the one write
+every writer goes through. Putting it only in the HTTP route was the
+first draft; a review showed pre-translate's tag-diff fallback stored
+text with *no* hidden tags at all — since #19, every tag-mismatched
+match had been exporting without the paragraph's font, bookmarks,
+drawings or tracked deletions. The rule is per container, dominant
+formatting plus verbatim minorities; retyping the corpus leaves 45 of
+270,571 non-space characters looking different from the source
+(pinned in `project/carry.test.ts`). A copy of the source keeps the
+source's own hidden tags exactly.
+
+**Five bugs this found in code that already existed:**
+- **The renderer nested runs.** A carried target puts a visible bold run
+  inside the hidden run carrying the font; `renderTokens` emitted `w:r`
+  inside `w:r` — given a text-only target carried by the final rule,
+  302 of the corpus's 2,602 unlocked segments would have exported files
+  Word refuses, with nothing to catch it. It now renders
+  every structurally valid stream to valid OOXML (innermost run wins,
+  lazy runs, paragraph-level elements close the run), byte-identical to
+  before on all 4,545 tokenizer-shaped corpus streams.
+- **The TM remap matched tags by kind only.** `other` is both a hidden
+  run and a spell-check marker, so a unit that put the marker first gave
+  it the run's id, and the run's `<w:r>` rendered with no close — 61
+  corpus segments, each retyped and propagated onto itself, came out
+  corrupt, marked `tm_exact`, no QA finding. Remap is now keyed by kind
+  *and* role; the renderer and `parseTokens` refuse a tag in a role its
+  format does not fit. The final review found the same remap wrong one
+  level up: the carrying rule puts the dominant font run first, and a
+  memory that learned that order gave a visible `other` run's id to the
+  hidden one — a whole sentence exported red, as a clean `tm_exact`. A
+  memory now holds no hidden tags (`toTmTokens`), a match is mapped onto
+  the visible ones (another tool's unit that holds hidden tags onto all,
+  keeping the visible), and `carry.test.ts` sends every corpus segment
+  through a memory and back.
+- **A mismatch in hidden tags only was a tag-diff draft** with a
+  `tag.missing` warning naming tags nobody could see: 1,296 of the
+  corpus's 1,961 tagged segments have no visible tag at all. Such a
+  source now takes the match's text as an exact match, its hidden tags
+  carried. The golden memory's Trados-style unit was exactly this case;
+  it now matches, and a second kind-less unit on the heading (a visible
+  style tag) keeps the tag-diff → reapply → confirm → audit trail the
+  transcript exists to show (`fixtures/golden/README.md`).
+- **Text XML cannot carry reached export.** A pasted vertical tab
+  (PowerPoint's soft break) went through `parseTokens` and the renderer
+  into a part no parser opens. Refused at both now (`xmlIllegalChar`),
+  and the editor turns it into a space on paste. A memory holds them
+  too (`&#xB;` decodes to one), and pre-translate stored it unchecked —
+  the whole file's export failing, every save of that segment a 400:
+  `placeMatch` now makes a match's text legal (`xmlLegalText`, the one
+  definition the editor's paste uses too).
+- **Which placeholders are hidden had to be right.** Trailing is only
+  safe for what shows nothing, and `w:fldSimple`, `w:cr` and equations
+  had been hidden by omission from the tokenizer's visible list — "Page
+  1 of 3" would have delivered as "Seite von 13", marked `tm_exact`.
+  They are visible now (§3.2 always listed fields), with everything else
+  the run and paragraph content models allow that shows content; none
+  is in the corpus, which is how it went unseen. A second review found
+  one more: a tracked move's text (`w:moveTo`), hidden whole and so
+  trailed untranslated, is walked like an insertion now.
+
+**What an edit means is `db`'s, not the client's.** The first draft had
+the SPA decide status and origin and whether anything changed, and the
+route carry hidden tags. `editSegmentTarget` does all of it in one
+transaction: no visible change is no write (a TM match clicked through
+keeps its origin — the client's token comparison would have wiped it,
+since a stored target's text can be split where the editor's is not); a
+visible target is `translated` with origin `null`; an emptied one is
+`null`/`new`, never an empty translation — nor one of spaces, the same
+test confirm uses (`isBlankTarget`) — which export delivers as a
+missing sentence, and confirm would have written to the TM (it now
+refuses); a write over a newer version is a 409; a structure export
+would refuse is a 400 now rather than a 500 for the whole file at
+delivery; and QA reruns for every segment whose consistency findings the
+edit can move — same source, or a target reading as the old or new one
+— so the gutter follows the edit. That pass reads the project once, not
+once per segment: one save of a segment with 500 repetitions in a
+10,000-segment project took 7 s, and takes 0.15 s. `cat-tool qa` sweeps
+the same way (`runQaRulesFor`). The PUT body is `{targetTokens,
+baseUpdatedAt}`; a `status` or `origin` in it is refused.
+
+**Smaller things settled:**
+- **ProseMirror, not a hand-rolled contentEditable.** Composition (dead
+  keys for Spanish accents on a Mac), the caret beside an atom,
+  spellcheck, paste and undo are where hand-rolled editors break; its
+  state layer runs in node, so every tag rule has a node test. Bundle 81
+  → 152 KB gzipped.
+- **Look-alike pairs are placed as one** (`pairGroups`). Word splits runs
+  on invisible changes and the tokenizer keeps each run's pair, so one
+  bold phrase arrived as 31 bold pairs, each unplaced one a blocking
+  `tag.missing` — 251 corpus segments have such runs. One chip pair
+  `‹1–31`, saved as the first around the text and the rest empty. The
+  final review found a TM match holding a group's pairs apart: moving
+  the first pair then saved a member twice, a 400 the row could never
+  retry. A member placed apart is now a tag of its own (`tagChoices`),
+  and nothing re-places what the document already holds; a first pair
+  carrying only some members saves and loads as exactly that
+  (`collapseGroups`), where a second review found the reload turned
+  them into empty chips the next edit dropped.
+- **Formatting never nests in formatting.** A run tag is a whole `w:rPr`,
+  so bold placed around italic exports as italic alone. The editor
+  refuses it (and a link in a link) with a note, rather than let a
+  translator's formatting vanish silently.
+- **Chips are not selectable**: a selected chip hides the caret and the
+  next letter replaces it. Deleting one takes its partner, with a note
+  and a one-step undo.
+- **Cut and paste moves a tag** (this segment's own clipboard keeps its
+  chips, less those still placed); anything else pastes as one line of
+  text. Drop is refused. The final review found three ways through:
+  a cut starting on a word lost its tags (ProseMirror marks a copy as
+  its own only when it starts with an element — every copy is now
+  wrapped in one naming its segment); a pasted pair skipped the nesting
+  rule (checked now, the inner pair dropped); and a copy from another
+  segment's editor brought that segment's ids, which can name a
+  different tag here (it pastes as words now). A second review found
+  two more: a paste over one chip of a pair left its partner to pair
+  with the pasted copy's chip, around other tags (the paste now removes
+  the selection and its orphans first, `pasteOwn`); and segment ids
+  restart at 1 in every project, so a copy is keyed by project too.
+- **Save when the editor leaves the segment, and on `pagehide`** with a
+  `keepalive` request; sign-out waits for it. One write per segment in
+  flight, each with the version the last answer returned. The final
+  review found that rule's three edges: the `pagehide` write, sent
+  while the segment's own write was in flight, carried the version that
+  write was about to replace — a certain 409 on a closing page — and
+  now goes without one; an earlier write's slow answer showed older
+  text on the row, to be edited on top of, and now updates only
+  version, status and issues; and a failed write was never retried,
+  since reopening the row found nothing changed — leaving a row whose
+  last write failed now always resends. A second review found the
+  `pagehide` write was the open segment's only: a write waiting behind
+  one in flight for another segment died with the page. The grid now
+  holds the one listener, sends the open editor's write, then flushes
+  the queue.
+- **`@cat-tool/core/model`** is the SPA's one runtime `core` import, so
+  which tags are hidden is one definition in browser and server; the
+  first draft had a second copy in `pieces.ts`. `model/` importing
+  nothing but its own `./` siblings is now a lint rule (the first
+  version caught `node:crypto` but not `crypto`, nor `@cat-tool/core`
+  itself).
+- **The smoke run needed a person's pauses.** ProseMirror reads the
+  selection from `selectionchange`, which lags when automation sends a
+  key the instant after a selection move; with 60 ms between them all
+  26 checks passed (35 after the final reviews' clipboard and `pagehide`
+  checks). A second trap turned up with those: for 200 ms after focus,
+  ProseMirror undoes a caret moved to the document's start (it takes it
+  for the browser resetting the selection), so a script pressing
+  Ctrl+Home the moment an editor opened typed in the wrong place — in
+  roughly one run in three, which is how it passed three times first. Not a user-visible race at human speed, but a
+  Playwright script that looks flaky here is probably this.
+
+Not here, recorded for their cards: field placeholders (begin,
+separator, end) can be reordered and tag structure cannot see it — a QA
+rule or a palette unit (#33/#44 area); the tokenizer's `w:position`
+(raised text) is incidental, so a hand-raised note number is a hidden
+run the verbatim rule protects only when kept verbatim; autosave (#31)
+must respect audit-spec §2.2's "segment boundaries, never per
+keystroke".
+
+81 new tests in web, 22 + 9 in core for the carry rule and its corpus
+run, 10 for `editSegmentTarget`, renderer and remap tests including a
+seeded 400-stream nesting property (20,000 checked once); full gate,
+`test:gate` and `test:golden` green, the golden diff read line by line.
 
 **#30 · Keyboard model · M** · [issue #6]
-Confirm-and-advance, copy source, tag insert, merge/split, filter focus
-(spec §7).
+Confirm-and-advance, copy source, merge/split, filter focus (spec §7).
+Tag insertion (`Ctrl+,`, `Ctrl+Shift+,`) shipped with the editor in #29.
 
 **#31 · Autosave · S** · [issue #7]
-Debounced per keystroke. No save action; crash costs seconds.
+Debounced per keystroke. No save action; crash costs seconds. #29 saves
+when the editor leaves a segment and on `pagehide`; audit-spec §2.2 says
+the audited write happens at segment boundaries, never per keystroke,
+so keystroke drafts need a home outside it, or §2.2 amended first.
 
 **#32 · Project and TM management UI · M** · [issue #8]
 Create project, add files, attach TMs, set priority and write target.
@@ -2193,8 +2380,9 @@ forward once implementation starts:
 
 Broken into sized issues 2026-09-23, split the same way Epic 8a was so
 the headless part doesn't wait on Epic 6's editor UI — none of backlog
-`#28`–`#35` has shipped yet, so there is no authenticated UI shell for
-any of this to render into until those land:
+`#28`–`#35` had shipped then. The SPA's login and grid (#28) and its
+target editor (#29) have since; the screens below still wait on the
+rest of that range:
 
 - **#45 · Account role + `project_authorization` model · M** ·
   [issue #17] — foundational, everything else depends on it; also where
@@ -2423,7 +2611,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #2]: https://github.com/louisbaudry/tessera/issues/2
 [issue #3]: https://github.com/louisbaudry/tessera/issues/3
 [issue #4]: https://github.com/louisbaudry/tessera/issues/4
-[issue #11]: https://github.com/louisbaudry/tessera/issues/11
 [issue #6]: https://github.com/louisbaudry/tessera/issues/6
 [issue #7]: https://github.com/louisbaudry/tessera/issues/7
 [issue #8]: https://github.com/louisbaudry/tessera/issues/8

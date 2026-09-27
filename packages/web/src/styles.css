@@ -342,3 +342,122 @@ button.link {
   white-space: nowrap;
   user-select: none;
 }
+
+/* A chip shows its number, or with "show full tags" its formatting in
+   words (v1-spec.md §7.2). Both are always rendered; the grid's class
+   picks one, so toggling re-renders nothing. */
+.chip .chip-full {
+  display: none;
+}
+
+.full-tags .chip .chip-short {
+  display: none;
+}
+
+.full-tags .chip .chip-full {
+  display: inline;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* --- the target editor -------------------------------------------- */
+
+.cell.target.editable {
+  cursor: text;
+}
+
+.row.active .cell.target {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.row.unsaved .gutter .status {
+  color: var(--qa-error);
+}
+
+.target-editor {
+  min-height: 22px;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Inline, and selectable as text: an inline-block that refuses selection
+   is where a caret beside a chip goes astray in contenteditable. */
+.target-editor .chip {
+  display: inline;
+  cursor: default;
+  user-select: auto;
+}
+
+.editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: normal;
+}
+
+.editor-bar .unplaced {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+button.chip-button {
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: 0.75rem;
+  line-height: 18px;
+}
+
+button.chip-button:hover {
+  outline: 1px solid var(--chip-text);
+}
+
+.editor-note {
+  color: var(--status-draft);
+}
+
+.tag-list {
+  max-height: 14rem;
+  margin: 6px 0 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+  white-space: normal;
+}
+
+.tag-list:focus {
+  outline: 2px solid var(--accent);
+}
+
+.tag-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 2px 0.6rem;
+  cursor: pointer;
+}
+
+.tag-list li.active {
+  background: var(--chip-bg);
+}

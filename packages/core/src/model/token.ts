@@ -134,15 +134,72 @@ export class TokenShapeError extends Error {
 const isIndex = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
 /**
+ * A character XML 1.0 cannot carry, even escaped: a C0 control other than
+ * tab, line feed and carriage return, U+FFFE, U+FFFF, or half a surrogate
+ * pair. A part holding one is a file Word will not open. Text from a DOCX
+ * never has one — its parser would have refused it — but a paste can (a
+ * vertical tab is PowerPoint's soft line break), and so can a memory.
+ */
+const XML_ILLEGAL =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+/** The first character in `s` XML cannot carry, as `U+XXXX`, or null. */
+export function xmlIllegalChar(s: string): string | null {
+  const match = XML_ILLEGAL.exec(s);
+  if (!match) return null;
+  return `U+${match[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+/**
+ * `s` made something XML can carry: a vertical tab or a form feed — a
+ * soft line break or a page break where it came from — becomes a space,
+ * and any other character {@link xmlIllegalChar} would name is dropped.
+ * For text that reaches a target without passing `parseTokens`: a paste,
+ * a TM match (`placeMatch`).
+ */
+export function xmlLegalText(s: string): string {
+  return s
+    .replace(/[\u000B\u000C]/g, ' ')
+    .replace(new RegExp(XML_ILLEGAL.source, 'g'), '');
+}
+
+/**
+ * Whether a tag token's role fits its format: a pair (`open`/`close`) is
+ * a `run` or `inline` tag, a placeholder an `in-run` or `block` one. The
+ * other way round is XML with no close, or a close with nothing open —
+ * a mismatched TM remap once produced exactly that, silently.
+ */
+export function roleFits(
+  role: Exclude<Token['t'], 'text'>,
+  placement: FormatEntry['placement'],
+): boolean {
+  return role === 'ph'
+    ? placement === 'in-run' || placement === 'block'
+    : placement === 'run' || placement === 'inline';
+}
+
+/**
  * Checks that `value` — JSON from outside, e.g. a request body — is a
- * `Token[]` whose every `fmt` indexes `formats`, and returns it typed.
- * Shape only: a well-formed target with the wrong tags is QA's to flag
- * (`tag.*`), not a refusal, but a `fmt` pointing nowhere is a target
- * export could not render at all.
+ * `Token[]` export could render, and returns it typed: every tag one of
+ * the table's, its `fmt` its own id (as everywhere a segment's tokens are
+ * made, and what the renderer looks it up by), in a role its format fits
+ * (`roleFits`), and text XML can carry (`xmlIllegalChar`). Shape only: a
+ * well-formed target with the wrong tags is QA's to flag (`tag.*`), and
+ * a broken structure is the caller's to refuse or flag.
  */
 export function parseTokens(value: unknown, formats: readonly FormatEntry[]): Token[] {
   if (!Array.isArray(value)) throw new TokenShapeError('tokens must be an array');
-  const fmtIds = new Set(formats.map((f) => f.id));
+  const byId = new Map(formats.map((f) => [f.id, f]));
+  const fitting = (where: string, role: Exclude<Token['t'], 'text'>, id: number) => {
+    const format = byId.get(id);
+    if (!format)
+      throw new TokenShapeError(`${where}: tag ${id} is not in this file's format table`);
+    if (!roleFits(role, format.placement)) {
+      throw new TokenShapeError(
+        `${where}: tag ${id} is a ${format.placement} tag, not a ${role}`,
+      );
+    }
+  };
   return value.map((raw: unknown, i): Token => {
     const token = raw as Record<string, unknown> | null;
     const where = `token ${i}`;
@@ -150,21 +207,32 @@ export function parseTokens(value: unknown, formats: readonly FormatEntry[]): To
       throw new TokenShapeError(`${where} is not an object`);
     }
     switch (token['t']) {
-      case 'text':
+      case 'text': {
         if (typeof token['v'] !== 'string') {
           throw new TokenShapeError(`${where}: text needs a string "v"`);
         }
+        const illegal = xmlIllegalChar(token['v']);
+        if (illegal) {
+          throw new TokenShapeError(
+            `${where}: text holds ${illegal}, which XML cannot carry`,
+          );
+        }
         return { t: 'text', v: token['v'] };
-      case 'close':
-        if (!isIndex(token['id'])) throw new TokenShapeError(`${where}: bad "id"`);
-        return { t: 'close', id: token['id'] };
+      }
+      case 'close': {
+        const id = token['id'];
+        if (!isIndex(id)) throw new TokenShapeError(`${where}: bad "id"`);
+        fitting(where, 'close', id);
+        return { t: 'close', id };
+      }
       case 'open':
       case 'ph': {
         const { id, fmt } = token;
         if (!isIndex(id)) throw new TokenShapeError(`${where}: bad "id"`);
-        if (!isIndex(fmt) || !fmtIds.has(fmt)) {
-          throw new TokenShapeError(`${where}: "fmt" is not in this file's format table`);
+        if (!isIndex(fmt) || fmt !== id) {
+          throw new TokenShapeError(`${where}: "fmt" must be the tag's own id`);
         }
+        fitting(where, token['t'], id);
         return token['t'] === 'open' ? { t: 'open', id, fmt } : { t: 'ph', id, fmt };
       }
       default:

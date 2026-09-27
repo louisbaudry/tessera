@@ -429,12 +429,29 @@ file matches a segment in today's document, the bold applied must be
 foreign formatting into a file that never asked for it.
 
 `k` is a hint, not payload. It drives tag re-mapping on retrieval: TM tags
-are matched to the current segment's tags by `(kind, order)`. All kinds
-match → clean insert. Otherwise the `tm_exact_tagdiff` path in
-`v1-spec.md` §6.1 applies.
+are matched to the current segment's *visible* tags by `(kind, order)`,
+pairs and placeholders counted apart — `other` names both a colour run
+and a symbol, and matching by kind alone once gave a placeholder a run's
+id (backlog #29). All match → clean insert. Otherwise the
+`tm_exact_tagdiff` path in `v1-spec.md` §6.1 applies — unless the
+receiving source has no visible tag, which leaves the translator
+nothing to reapply: the text alone is placed, as `tm_exact`
+(`placeMatch`). Either way the stored target's hidden tags are the
+receiving source's, carried when it is written (`v1-spec.md` §7.2), not
+the unit's.
 
 Writing a variant: drop `fmt`, derive `k` from the file's format entry,
-renumber `id` from 1 in source order.
+drop hidden tags (`FormatEntry.visible` false), renumber `id` from 1 in
+source order. A hidden tag is the document's — a paragraph's font, a
+spell-check marker — and where it sits in a stored target is the
+carrying rule's choice, not the translator's: the dominant font run
+wraps the whole sentence. Learned, that order gave a visible run's id to
+a hidden run of the same kind on the next match, and moved the visible
+formatting onto the wrong words, as a clean `tm_exact` (backlog #29). A
+unit from before that, or from another tool (a Trados export tags every
+run), can still hold tags the receiving document hides: when the visible
+tags do not correspond, it is matched against all of the source's tags
+in source order, and the hidden ones it placed are dropped.
 
 ---
 
@@ -796,7 +813,10 @@ tags (§3). Inventing one would be exactly the guessed correspondence
 stating plainly: **a `.sdltm`-sourced match that has tags takes
 `v1-spec.md` §6.1's `tm_exact_tagdiff` path** — target text placed, tags
 dropped, flagged for review — rather than a full tagged placement.
-Text-only units, the large majority of a real memory, are unaffected.
+Since backlog #29 the one exception is a receiving segment whose source
+has no visible tag: there is nothing to reapply, and the text is placed
+as `tm_exact` (§3, `v1-spec.md` §6.1). Text-only units, the large
+majority of a real memory, are unaffected.
 Recovering kinds (from `TagID` plus the originating document, or from
 Trados's own tag definitions if they turn out to be stored) would be its
 own item.

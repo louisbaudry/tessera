@@ -121,6 +121,21 @@ describe('tokenizeRegion — placeholders', () => {
     }
   });
 
+  it('shows what shows on the page: a simple field, a carriage return, an equation (backlog #29)', () => {
+    // Hidden, each of these once trailed its sentence when a translation
+    // was carried: "Page 1 of 3" delivered as "Seite von 13".
+    for (const [xml, kind] of [
+      ['<w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>', 'field'],
+      ['<w:r><w:cr/></w:r>', 'br'],
+      ['<w:r><w:pgNum/></w:r>', 'field'],
+      ['<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>', 'other'],
+    ] as const) {
+      const r = tokenizeRegion(xml);
+      expect(r.formats[0]!.kind, xml).toBe(kind);
+      expect(r.formats[0]!.visible, xml).toBe(true);
+    }
+  });
+
   it('hides spell-check and bookmark noise from the translator', () => {
     // These carry no meaning for a translation. Showing them would put
     // junk tags in front of the translator on every other sentence.
@@ -149,6 +164,19 @@ describe('tokenizeRegion — tracked changes', () => {
       '<w:ins w:id="1" w:author="Reviewer"><w:r><w:t>added</w:t></w:r></w:ins>',
     );
     expect(tokensText(r.tokens)).toBe('added');
+  });
+
+  it("treats a tracked move's destination as current text (backlog #29)", () => {
+    // Hidden whole, its words were never offered, and a carried target
+    // put them after the translated sentence, in the source language.
+    const r = tokenizeRegion(
+      '<w:r><w:t xml:space="preserve">Press the button </w:t></w:r>' +
+        '<w:moveTo w:id="1" w:author="R" w:date="2026-01-01T00:00:00Z">' +
+        '<w:r><w:t xml:space="preserve">firmly </w:t></w:r></w:moveTo>' +
+        '<w:r><w:t>and wait.</w:t></w:r>',
+    );
+    expect(tokensText(r.tokens)).toBe('Press the button firmly and wait.');
+    expect(r.formats).toMatchObject([{ visible: false, placement: 'inline' }]);
   });
 
   it('treats a deletion as opaque and not translatable', () => {

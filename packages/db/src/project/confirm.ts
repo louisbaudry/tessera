@@ -19,6 +19,7 @@ import {
   confirmedTargetContext,
   sourceDocumentContext,
   toTmTokens,
+  isBlankTarget,
   type AuditActor,
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
@@ -71,7 +72,9 @@ export function confirmSegment(
   if (!segment) {
     throw new ConfirmError(`no segment with id ${segmentId}`);
   }
-  if (!segment.targetTokens) {
+  // A target of hidden tags alone, or of spaces, is nothing a reader would
+  // call a translation, and nothing a memory should learn (backlog #29).
+  if (isBlankTarget(segment.targetTokens, segment.formatTable)) {
     throw new ConfirmError(`segment ${segmentId} has no target to confirm`);
   }
   if (segment.locked || segment.status === 'locked') {

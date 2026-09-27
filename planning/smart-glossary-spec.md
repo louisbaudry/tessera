@@ -78,9 +78,11 @@ portal and the CAT tool are actually joined (`portal-v0-spec.md` §8's
 `CatToolProductionAdapter`). Not before; that join is Epic 8's, not this
 spec's.
 
-### 2.2 No editor, no AI translation exist yet
+### 2.2 No AI translation exists yet, and the editor is partial
 
-Epic 6 (#27–#35) is unbuilt; Epic 8 is a placeholder. A "side panel
+Epic 6 (#27–#35) was unbuilt when this was written; the server (#27),
+the grid (#28) and the tag-aware target editor (#29) have landed since,
+with no side panel. Epic 8 is still a placeholder. A "side panel
 during AI translation" therefore has nowhere to live today. This spec
 splits accordingly (§9): the format, repositories, deterministic
 detection and the session state machine are buildable and provable now,

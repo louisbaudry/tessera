@@ -1,7 +1,7 @@
 import type { QaIssue } from '@cat-tool/core';
 import { describe, expect, it } from 'vitest';
 
-import { originBadge, qaMarks, statusOf } from './gutter.js';
+import { originBadge, qaMarks, replaceIssues, statusOf } from './gutter.js';
 
 let nextId = 1;
 const issue = (
@@ -56,5 +56,35 @@ describe('statusOf', () => {
   it('shows a locked segment as locked whatever its status', () => {
     expect(statusOf({ status: 'new', locked: true })).toBe('locked');
     expect(statusOf({ status: 'draft', locked: false })).toBe('draft');
+  });
+});
+
+describe('replaceIssues', () => {
+  const found = (id: number, segmentId: number): QaIssue => ({
+    id,
+    segmentId,
+    rule: 'punct.terminal',
+    severity: 'warning',
+    message: 'x',
+    dismissed: false,
+    runAt: '2026-09-27T00:00:00.000Z',
+  });
+
+  const inFile = new Set([10, 11, 12]);
+
+  it("replaces a rerun segment's issues, clears one that has none now, keeps the rest", () => {
+    const before = [found(1, 10), found(2, 11), found(3, 12)];
+    expect(replaceIssues(before, [10, 11], [found(4, 10)], inFile)).toEqual([
+      found(3, 12),
+      found(4, 10),
+    ]);
+  });
+
+  it("takes nothing about another file's segments from the answer", () => {
+    // Segment 99 shares segment 10's source, in another file: QA reran it too.
+    const before = [found(1, 10), found(2, 11)];
+    expect(replaceIssues(before, [10, 99], [found(4, 10), found(5, 99)], inFile)).toEqual(
+      [found(2, 11), found(4, 10)],
+    );
   });
 });

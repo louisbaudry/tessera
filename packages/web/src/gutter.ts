@@ -89,3 +89,23 @@ export function qaMarks(issues: readonly QaIssue[]): ReadonlyMap<number, QaMark>
   }
   return marks;
 }
+
+/**
+ * The file's issues after a save: those of every segment QA reran
+ * replaced by what it found now — none, for a segment it cleared — and
+ * everyone else's kept. QA reruns project-wide (a segment sharing the
+ * source may be in another file), so only the segments of this file
+ * (`inFile`) are taken from the answer.
+ */
+export function replaceIssues(
+  issues: readonly QaIssue[],
+  rerun: readonly number[],
+  fresh: readonly QaIssue[],
+  inFile: ReadonlySet<number>,
+): QaIssue[] {
+  const replaced = new Set(rerun.filter((id) => inFile.has(id)));
+  return [
+    ...issues.filter((i) => !replaced.has(i.segmentId)),
+    ...fresh.filter((i) => inFile.has(i.segmentId)),
+  ];
+}
