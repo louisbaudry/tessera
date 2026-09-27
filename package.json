@@ -19,6 +19,7 @@
     "test:golden": "vitest run golden.test",
     "test:all": "vitest run",
     "bench:tm": "pnpm --filter @cat-tool/db... run build && node --experimental-strip-types --disable-warning=ExperimentalWarning packages/db/src/tm/bench/run.ts",
+    "bench:e001": "pnpm --filter @cat-tool/db... run build && node --experimental-strip-types --disable-warning=ExperimentalWarning packages/db/src/tm/bench/e001.ts",
     "cat-tool": "node packages/cli/dist/main.js"
   },
   "devDependencies": {

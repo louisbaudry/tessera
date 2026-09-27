@@ -11,3 +11,6 @@ code/
 
 # Editor config, hand-maintained. Prettier rewrites it with trailing commas.
 *.code-workspace
+
+# Machine-written and never edited after writing (research README, rule 2).
+research/semantic-matching/results/**/*.json

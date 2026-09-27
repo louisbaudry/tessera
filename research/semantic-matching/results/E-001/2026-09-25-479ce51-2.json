@@ -1,0 +1,139 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-09-25-479ce51-2",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-09-25T17:26:34.416Z",
+  "finished_at": "2026-09-25T17:37:32.884Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "479ce5149f6e3085b4f17b54ec5636192a3f69c0",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "synthetic-100k",
+    "sha256": "5d3dfd51973b5f4c33138a488b548ef80b321a3de96a95d7bd71f43f54d7bdf3",
+    "units": 100000,
+    "langs": [
+      "en-US",
+      "fr-FR"
+    ],
+    "para_eligible": 0
+  },
+  "model": {
+    "id": "Xenova/multilingual-e5-small",
+    "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+    "dim": 384,
+    "pooling": "mean",
+    "dtype": "q8",
+    "prefix": "query: "
+  },
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "exact",
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": null
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v37",
+    "node": "v22.22.2",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "budget_met.lex.union_m10": false,
+    "budget_met.lex.union_m25": false,
+    "budget_met.lex.union_m50": false,
+    "discordant.lex.union_m10": {
+      "union_only": 22,
+      "ftsK_only": 0
+    },
+    "discordant.lex.union_m25": {
+      "union_only": 22,
+      "ftsK_only": 1
+    },
+    "discordant.lex.union_m50": {
+      "union_only": 20,
+      "ftsK_only": 1
+    },
+    "embed.ms": 403309.715783,
+    "embed.peak_rss_mib": 949.99609375,
+    "embed.units": 100000,
+    "embed.units_per_sec": 247.9484031418792,
+    "latency_ms.embed_query": {
+      "n": 1200,
+      "p50": 7.161921,
+      "p99": 15.872171,
+      "max": 48.172638
+    },
+    "latency_ms.lex.union_m10": {
+      "n": 400,
+      "p50": 85.685398,
+      "p99": 114.218691,
+      "max": 121.148176
+    },
+    "latency_ms.lex.union_m25": {
+      "n": 400,
+      "p50": 84.98502,
+      "p99": 114.089023,
+      "max": 137.055404
+    },
+    "latency_ms.lex.union_m50": {
+      "n": 400,
+      "p50": 85.996864,
+      "p99": 115.911509,
+      "max": 180.25866
+    },
+    "latency_ms.lex.vecOnly_m10": {
+      "n": 400,
+      "p50": 81.896803,
+      "p99": 107.727369,
+      "max": 123.381855
+    },
+    "latency_ms.lex.vecOnly_m25": {
+      "n": 400,
+      "p50": 93.919741,
+      "p99": 135.820861,
+      "max": 156.688981
+    },
+    "latency_ms.lex.vecOnly_m50": {
+      "n": 400,
+      "p50": 101.390124,
+      "p99": 129.109899,
+      "max": 167.510324
+    },
+    "latency_ms.vector_search.exact": {
+      "n": 1200,
+      "p50": 73.474051,
+      "p99": 99.549311,
+      "max": 169.500326
+    },
+    "mcnemar_p.lex.union_m10": 2.3841857910156247e-7,
+    "mcnemar_p.lex.union_m25": 0.000002861022949218749,
+    "mcnemar_p.lex.union_m50": 0.000010490417480468745,
+    "recall.lex.union_m10": 0.985,
+    "recall.lex.union_m25": 0.9925,
+    "recall.lex.union_m50": 0.9925,
+    "recall.lex.vecOnly_m10": 0.9575,
+    "recall.lex.vecOnly_m25": 0.975,
+    "recall.lex.vecOnly_m50": 0.9775,
+    "storage.bytes_per_unit": 4687.17568,
+    "storage.ctm_bytes_after": 625438720,
+    "storage.ctm_bytes_before": 157515776,
+    "storage.tuv_vec_bytes": 468717568
+  },
+  "notes": "embed.peak_rss_mib is the whole process, naive-scan index included"
+}

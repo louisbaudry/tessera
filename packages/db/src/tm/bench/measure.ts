@@ -22,15 +22,7 @@ import {
 } from '@cat-tool/db';
 import Database from 'better-sqlite3';
 
-import { SDLTM_APPLICATION_ID } from '../sdltm.fixture.ts';
-
-import {
-  prng,
-  syntheticUnits,
-  tmxDocument,
-  vocabulary,
-  type SyntheticUnit,
-} from './corpus.ts';
+import { prng, syntheticUnits, tmxDocument, type SyntheticUnit } from './corpus.ts';
 import {
   fuzzyScore,
   msSince,
@@ -40,6 +32,8 @@ import {
   words,
   type Summary,
 } from './stats.ts';
+import { withTradosApplicationId } from './sdltm-shim.ts';
+import { wordLists } from './words.ts';
 
 const { values } = parseArgs({
   options: {
@@ -90,39 +84,6 @@ let sdltmImport: {
   tucountMismatch: boolean;
   applicationIdShimmed: boolean;
 } | null = null;
-
-/**
- * Real `.sdltm` files carry `application_id` 0, and `parseSdltm` still
- * refuses anything but the one sample's value (tm-format-spec.md §8a.3:
- * "the guard rejects every real file"; dropping it is issue #68's job,
- * not this bench's). So for a file that says 0 — and only then — the
- * bench hands the reader a handle whose `PRAGMA application_id` answers
- * with the value the guard wants; every other statement goes to the
- * real, read-only connection. Nothing in the product changes, and the
- * results record that the shim was used. Once #68 lands, this never
- * triggers.
- */
-function withTradosApplicationId(h: Database.Database): {
-  handle: Database.Database;
-  shimmed: boolean;
-} {
-  if (h.pragma('application_id', { simple: true }) !== 0) {
-    return { handle: h, shimmed: false };
-  }
-  const handle = new Proxy(h, {
-    get(target, prop) {
-      if (prop === 'prepare') {
-        return (sql: string) =>
-          /^\s*PRAGMA\s+application_id\b/i.test(sql)
-            ? { get: () => ({ application_id: SDLTM_APPLICATION_ID }), all: () => [] }
-            : target.prepare(sql);
-      }
-      const value: unknown = Reflect.get(target, prop, target);
-      return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
-    },
-  });
-  return { handle, shimmed: true };
-}
 
 if (SDLTM !== undefined) {
   // The real path, whole: importSdltmFrom parses the entire memory, then
@@ -205,41 +166,11 @@ function randomSources(n: number): Array<{ hash: string; plain: string }> {
 }
 const hitSources = randomSources(2000);
 
-/**
- * Word lists for concordance, stopwords and fuzzy perturbation. The
- * synthetic corpus knows its own Zipf ranks; a real memory's are
- * estimated from a sample of its source sentences by document
- * frequency, so "common" and "rare" mean the same thing in both modes.
- */
-function wordLists(): {
-  common: string[];
-  rare: string[];
-  stopwords: Set<string>;
-  replacements: string[];
-} {
-  if (SDLTM === undefined) {
-    const vocab = vocabulary(1);
-    return {
-      common: vocab.en.slice(0, 20),
-      rare: Array.from({ length: 50 }, () => vocab.en[3000 + Math.floor(rand() * 3000)]!),
-      stopwords: new Set(vocab.en.slice(0, 100)),
-      replacements: vocab.en.slice(0, 2000),
-    };
-  }
-  const df = new Map<string, number>();
-  for (const s of randomSources(20_000)) {
-    for (const w of new Set(words(s.plain))) df.set(w, (df.get(w) ?? 0) + 1);
-  }
-  const byDf = [...df.entries()].sort((a, b) => b[1] - a[1]).map(([w]) => w);
-  const once = byDf.filter((w) => df.get(w) === 1 && /^\p{L}{4,}$/u.test(w));
-  return {
-    common: byDf.slice(0, 20),
-    rare: Array.from({ length: 50 }, () => once[Math.floor(rand() * once.length)]!),
-    stopwords: new Set(byDf.slice(0, 100)),
-    replacements: byDf.slice(0, 2000),
-  };
-}
-const lists = wordLists();
+const lists = wordLists({
+  synthetic: SDLTM === undefined,
+  rand,
+  sampleSources: randomSources,
+});
 const missHashes = Array.from({ length: 2000 }, (_, i) =>
   hashOf(`Qzxv${i} absent sentence.`),
 );
