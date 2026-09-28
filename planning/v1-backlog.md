@@ -2405,8 +2405,8 @@ Split so the headless part does not wait on the editor:
 - **#43 · Glossary panel · M** · [issue #14] — after #28–#35.
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
-  a CHECK constraint. After `#64`, whose rebuild helper that migration
-  needs.
+  a CHECK constraint: it widens both QA tables with `rebuildTable`
+  (`db/migrate.ts`, since `#64`), as project v7 did.
 
 ### Epic 9 — Language Provider tools (spec'd 2026-09-22, not started)
 

@@ -34,7 +34,7 @@ packages/
     glossary/  termKey — the one definition of "the same term" across core and db
     project/   assembleFile — DOCX import -> persistable file + segments; exportProjectFile — the inverse, segments folded back into DOCX
     qa/        QA rule engine — all thirteen v1-spec.md §6.4 rules, locale tables, numeral matching
-  db/          @cat-tool/db     versioned SQLite migration runner; project, platform, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export and .sdltm import
+  db/          @cat-tool/db     versioned SQLite migration runner; project, platform, portal, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export and .sdltm import
   cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export, history, audit-verify (v1-spec.md §2.4)
   server/      @cat-tool/server Fastify API — login, accounts, projects, file import (v1-spec.md §2.5)
   web/         @cat-tool/web    React SPA — login, project/file picker, the virtualised segment grid (v1-spec.md §7.1) and its tag-aware target editor (§7.2); `pnpm --filter @cat-tool/web dev` against a running server
@@ -144,9 +144,11 @@ project file, naming who made it — `cli:<OS user>` from the CLI, the
 session's account from the server (`planning/audit-spec.md`). The
 server's own `platform.sqlite` keeps the same log for logins, projects
 created and deleted, and downloads. The translation portal's
-`portal.sqlite` keeps it too, for admin logins, deliveries and
+`portal.sqlite` keeps it too, for admin logins, pricing, deliveries and
 downloads. Its `order_event` history names who made each transition,
-and triggers make it append-only.
+and triggers make it append-only. An order is priced only while it
+awaits approval, and a client's approval is bound to the price their
+page showed (`planning/portal-v0-spec.md` §2–§3).
 
 The API server (`v1-spec.md` §2.5) keeps `platform.sqlite` and a storage
 volume under `./data` by default; a deployment overrides `CAT_PORT`,
@@ -198,6 +200,9 @@ full row of green checks — see CLAUDE.md's gotcha list.
   [`planning/tm-format-spec.md`](planning/tm-format-spec.md) §4 and §9. The
   versioned migration runner in `@cat-tool/db` (`migrate.ts`) is shared by
   every SQLite file this product writes — extend it there, not per-schema.
+  A migration's DDL is a frozen snapshot: a closed-set `CHECK` is a
+  literal list, never a live constant, and a new member is a migration
+  that widens it with `rebuildTable`.
 - **Bulk TM/DB operations must run off the request-handling thread.**
   `better-sqlite3` is synchronous; a large import inline would stall
   whatever else the server is doing for other requests.
