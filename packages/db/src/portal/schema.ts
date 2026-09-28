@@ -9,8 +9,8 @@
 import type { PortalAuditAction } from '@cat-tool/core';
 import type { OrderStatus } from '@cat-tool/portal-core';
 
-import { auditEventDdl } from '../audit/events.js';
-import { sqlList, type Migration } from '../migrate.js';
+import { appendAuditEvent, auditEventDdl } from '../audit/events.js';
+import { rebuildTable, sqlList, type Migration } from '../migrate.js';
 
 /** "CATO" — portal bookkeeping, distinct from platform ("CATL"), project ("CATP"), TM ("CATM"). */
 export const PORTAL_APPLICATION_ID = 0x4341544f;
@@ -189,4 +189,52 @@ const v3: Migration = {
   },
 };
 
-export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3];
+/** `audit_event.action` since v4: v3's list plus pricing (backlog #63). */
+const V4_AUDIT_ACTIONS = [
+  'auth.login',
+  'auth.login_failed',
+  'file.downloaded',
+  'file.delivered',
+  'order.priced',
+  'order.price_baseline',
+] as const satisfies readonly PortalAuditAction[];
+
+/** The actor of everything the migration itself writes (audit-spec.md §6). */
+const MIGRATION_ACTOR = {
+  actor: { kind: 'system', name: 'migration' },
+  label: null,
+} as const;
+
+/**
+ * Pricing is audited (audit-spec.md §2.6, §6; backlog #63). `audit_event`
+ * is rebuilt with `order.priced` and `order.price_baseline` admitted,
+ * keeping every row, id and chain hash: `rebuildTable` renames first, so
+ * `batch_id`'s self-reference survives. Then each order already priced
+ * gets one `order.price_baseline`: what its price was when recording
+ * began, never an invented author.
+ */
+const v4: Migration = {
+  version: 4,
+  description:
+    'audit_event admits order.priced; a price baseline per priced order (backlog #63)',
+  up: (db) => {
+    rebuildTable(db, 'audit_event', auditEventDdl(V4_AUDIT_ACTIONS));
+    const priced = db
+      .prepare(
+        `SELECT id, word_count, price FROM translation_order
+         WHERE price IS NOT NULL AND word_count IS NOT NULL ORDER BY id`,
+      )
+      .all() as Array<{ id: number; word_count: number; price: number }>;
+    for (const order of priced) {
+      appendAuditEvent(db, {
+        actor: MIGRATION_ACTOR,
+        action: 'order.price_baseline',
+        subjectType: 'translation_order',
+        subjectId: String(order.id),
+        detail: { word_count: order.word_count, price: order.price },
+      });
+    }
+  },
+};
+
+export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4];

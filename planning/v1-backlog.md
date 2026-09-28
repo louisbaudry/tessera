@@ -2614,11 +2614,48 @@ Sized issues:
   - A client's view of an order's history drops `actorLabel`: it shows
     who acted (`admin:1`), never an admin's email.
 
-- **#63 · Portal: audit the word count and price (`order.priced`) · M** ·
-  [issue #62] — the price a client approves leaves no trace today, and
-  nothing on the server stops an unpriced order being approved. Widens
-  portal's `audit_event` with `#64`'s rebuild helper, so it lands after
-  `#64`.
+- ~~**#63 · Portal: audit the word count and price (`order.priced`) ·
+  M**~~ — **DONE** — `portal-core/src/order.ts` (`assertCanPrice`,
+  `assertCanApprove`, `OrderPricingError`), `db/portal/orders.ts`,
+  portal schema v4 (`db/portal/schema.ts`) and the two portal routes.
+  Before this, the price a client approved left no trace:
+  `setWordCountAndPrice` took no actor and wrote no event. The admin
+  `PATCH` could re-price a delivered order. And the server approved an
+  unpriced order; only the client UI's disabled button stood in the way.
+  - **Decided with Louis, 2026-09-28** (`portal-v0-spec.md` §2, §3):
+    pricing only while `submitted`; one first pricing for an order
+    approved or in progress with no price (only the old admin path could
+    make one), so it can still be invoiced; a baseline for prices set
+    before recording began; and approval bound to the price the client
+    saw.
+  - **The rules sit beside the transition table**, in `portal-core`,
+    and the repository runs them: `setWordCountAndPrice` calls
+    `assertCanPrice`, and `setStatus` calls `assertCanApprove` on every
+    approval. So both approve paths refuse an unpriced order with one
+    409, and no route encodes a rule of its own.
+  - **`order.priced`** (`{ word_count, price }`, subject
+    `translation_order`, actor `admin:<id>`) is written in the pricing's
+    transaction. Pricing again with the same numbers changes nothing and
+    writes nothing, and that check comes before the status rule: a
+    repeat of the settled price on an approved order is a no-op, not a
+    refusal.
+  - **The approve request carries `price`**, the number the client's
+    page showed (`data-price` on the button). If it differs from the
+    stored price, the order was re-priced after the page loaded, and the
+    answer is a 409; the page re-renders with the new price. A request
+    with no price is a 400. JSON round-trips a double exactly, so
+    comparing with `!==` is sound.
+  - **v4 is `rebuildTable`'s first use on a live log.** It widens
+    `audit_event` to admit `order.priced` and `order.price_baseline`,
+    keeps every row, id and chain hash, then appends one
+    `order.price_baseline` (`system:migration`) per order already priced.
+    The test builds a v3 file with real login events and a priced order,
+    migrates it, and checks that the old rows are identical, the baseline
+    chains on (`verifyAudit` clean), and the rebuilt table's
+    `sqlite_master` entries equal a blank database's.
+  - The `#58` tests that approved unpriced orders now price them first.
+    `schema.test.ts` asserted `user_version` 3 literally; it now reads
+    `PORTAL_MIGRATIONS.length`, so `#62`'s migration won't trip it.
 
 Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration

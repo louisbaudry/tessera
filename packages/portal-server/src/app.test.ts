@@ -184,6 +184,7 @@ describe('one order, end to end', () => {
       method: 'POST',
       url: `/api/client/orders/${order.id}/approve`,
       headers: auth(ada.accessToken),
+      payload: { price: 20 },
     });
     expect(approved.statusCode, approved.body).toBe(200);
     for (const status of ['in_progress']) {
@@ -262,10 +263,18 @@ describe('the audit trail (backlog #58)', () => {
       { name: 'brief.txt', body: 'hello world' },
     ]);
     const admin = await adminLogin();
+    const priced = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${order.id}`,
+      headers: auth(admin),
+      payload: { wordCount: 2 },
+    });
+    expect(priced.statusCode, priced.body).toBe(200);
     const approved = await app.inject({
       method: 'POST',
       url: `/api/client/orders/${order.id}/approve`,
       headers: auth(ada.accessToken),
+      payload: { price: 20 },
     });
     expect(approved.statusCode, approved.body).toBe(200);
     const started = await app.inject({
@@ -310,7 +319,9 @@ describe('the audit trail (backlog #58)', () => {
         e.actor,
         e.actorLabel,
       ]),
-      events: (['admin_user', 'source_file', 'delivered_file'] as const).flatMap((t) =>
+      events: (
+        ['admin_user', 'translation_order', 'source_file', 'delivered_file'] as const
+      ).flatMap((t) =>
         listEvents(db, { subjectType: t }).map((e) => ({
           action: e.action,
           actor: e.actor,
@@ -336,6 +347,13 @@ describe('the audit trail (backlog #58)', () => {
         label: adminLabel,
         subject: 'admin_user:1',
         detail: null,
+      },
+      {
+        action: 'order.priced',
+        actor: 'admin:1',
+        label: adminLabel,
+        subject: `translation_order:${order.id}`,
+        detail: { word_count: 2, price: 20 },
       },
       {
         action: 'file.downloaded',
@@ -367,7 +385,7 @@ describe('the audit trail (backlog #58)', () => {
         },
       },
     ]);
-    expect(logs.verified).toEqual({ events: 4, brokenAt: null });
+    expect(logs.verified).toEqual({ events: 5, brokenAt: null });
   });
 
   it('records a refused admin login as the gate, telling the reasons apart only in the log', async () => {
@@ -522,5 +540,63 @@ describe('where uploaded bytes land', () => {
       headers: auth(admin),
     });
     expect(res.statusCode).toBe(500);
+  });
+});
+
+describe('pricing and approval (backlog #63)', () => {
+  const approve = (orderId: number, payload?: object) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/client/orders/${orderId}/approve`,
+      headers: auth(ada.accessToken),
+      ...(payload ? { payload } : {}),
+    });
+  const patch = (admin: string, orderId: number, payload: object) =>
+    app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${orderId}`,
+      headers: auth(admin),
+      payload,
+    });
+
+  it('refuses to approve an unpriced order through either route', async () => {
+    const { order } = await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'a' }]);
+    const admin = await adminLogin();
+    expect((await approve(order.id, { price: 0 })).statusCode).toBe(409);
+    const byAdmin = await patch(admin, order.id, { status: 'approved' });
+    expect(byAdmin.statusCode, byAdmin.body).toBe(409);
+    expect(byAdmin.json()).toEqual({
+      error: 'cannot approve an order that has no price yet',
+    });
+  });
+
+  it('binds the approval to the price the client saw', async () => {
+    const { order } = await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'a' }]);
+    const admin = await adminLogin();
+    await patch(admin, order.id, { wordCount: 2 });
+    expect((await approve(order.id)).statusCode).toBe(400);
+
+    // Re-priced after the client's page loaded: the old price is refused.
+    const repriced = await patch(admin, order.id, { wordCount: 1000 });
+    const price = (repriced.json() as { price: number }).price;
+    expect(price).not.toBe(20);
+    const stale = await approve(order.id, { price: 20 });
+    expect(stale.statusCode, stale.body).toBe(409);
+    const fresh = await approve(order.id, { price });
+    expect(fresh.statusCode, fresh.body).toBe(200);
+
+    // Approved: the price is settled.
+    const again = await patch(admin, order.id, { wordCount: 2 });
+    expect(again.statusCode, again.body).toBe(409);
+    const events = readLogs((db) =>
+      listEvents(db, {
+        subjectType: 'translation_order',
+        subjectId: String(order.id),
+      }).map((e) => [e.action, e.actor]),
+    );
+    expect(events).toEqual([
+      ['order.priced', 'admin:1'],
+      ['order.priced', 'admin:1'],
+    ]);
   });
 });

@@ -57,9 +57,19 @@ rule. Logins, deliveries and downloads go to `audit_event`
 (`audit-spec.md` §2.6).
 
 Legal transitions are enforced in `@cat-tool/portal-core`
-(`transitionOrder`), not scattered across route handlers — the same
+(`assertValidTransition`), not scattered across route handlers — the same
 "one frozen fact, one definition" rule the root `CLAUDE.md` already applies
 to `primarySubtag`/`NORMALIZER_VERSION`.
+
+**Approval needs a price, and the price the client saw** (backlog
+`#63`). `submitted → approved` is refused while the order has no price,
+whoever asks: the client's approve route and the admin's `PATCH` alike.
+That check sits beside the transition table in `portal-core`
+(`assertCanApprove`), and `setStatus` runs it, so no route can skip it.
+The client's approve request also carries the price its page showed.
+If the admin re-priced the order after the page loaded, the numbers
+differ, and the server answers 409 instead of recording an approval of
+a price the client never saw. The client reloads and sees the new one.
 
 ## 3. Pricing
 
@@ -82,11 +92,26 @@ functions, no DB/HTTP — same headless discipline `CLAUDE.md` requires of
 `@cat-tool/core`, and for the same reason: provable by a test with nothing
 else in the loop.
 
-Not yet recorded (found 2026-09-27): `setWordCountAndPrice` takes no
-actor and writes no event, so the price a client approves leaves no
-trace, and the server approves an order with no price (only the client
-UI waits for one). Backlog `#63` adds an audited `order.priced` and a
-server-side price check on approval.
+**Setting a price is audited and bounded** (backlog `#63`, decided
+2026-09-28):
+
+- **Who and what.** `setWordCountAndPrice` takes the admin as a
+  required actor and writes `order.priced` (`audit-spec.md` §2.6) in the
+  same transaction. Pricing again with the same count and price
+  changes nothing, so it writes nothing.
+- **Only while `submitted`.** Once the client has approved, the price
+  they approved is the price, so re-pricing an order in any later status
+  is a 409. The rule lives in `portal-core` (`assertCanPrice`) beside the
+  transition table.
+- **One exception: an order approved with no price.** Before `#63`, the
+  admin `PATCH` could approve an unpriced order. Such an order, if
+  `approved` or `in_progress`, may be priced **once**, so it can still be
+  invoiced; after that it is priced and the rule above applies. No such
+  approval can happen any more.
+- **Prices set before `#63`** have no author on record. Portal schema v4
+  writes one `order.price_baseline` per priced order, actor
+  `system:migration`: what the price was when recording began, the way
+  `segment.baseline` records a segment (`audit-spec.md` §6).
 
 ## 4. Word count
 
@@ -155,7 +180,8 @@ SMTP provider shouldn't fail the order-submit/deliver API call itself.
 - `order_event` — id, order_id, from_status (nullable, null for the
   creation event), to_status, note, created_at, actor, actor_label
   (v3; append-only by trigger)
-- `audit_event` — the shared audit log (v3, `audit-spec.md` §2, §2.6)
+- `audit_event` — the shared audit log (v3, `audit-spec.md` §2, §2.6);
+  v4 admits `order.priced` and `order.price_baseline` (backlog `#63`)
 
 Files are stored on local disk under a configurable storage root
 (mirrors the existing `account.storage_root` pattern in

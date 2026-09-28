@@ -15,7 +15,7 @@ import {
   setWordCountAndPrice,
 } from './index.js';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
-import { PORTAL_APPLICATION_ID } from './schema.js';
+import { PORTAL_APPLICATION_ID, PORTAL_MIGRATIONS } from './schema.js';
 import { PLATFORM_APPLICATION_ID } from '../platform/schema.js';
 
 let dir: string;
@@ -38,7 +38,7 @@ describe('openPortalDb', () => {
 
   it('carries append-only order_event and audit_event from v3 (backlog #58)', () => {
     const db = openPortalDb(dbPath());
-    expect(db.pragma('user_version', { simple: true })).toBe(3);
+    expect(db.pragma('user_version', { simple: true })).toBe(PORTAL_MIGRATIONS.length);
     const triggers = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name")
       .all();
@@ -98,6 +98,7 @@ describe('openPortalDb', () => {
       { actor: TEST_ACTOR },
     );
 
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: TEST_ACTOR });
     const approved = setStatus(db, order.id, 'approved', { actor: TEST_ACTOR });
     expect(approved.status).toBe('approved');
 
@@ -123,7 +124,7 @@ describe('openPortalDb', () => {
       { actor: TEST_ACTOR },
     );
 
-    const priced = setWordCountAndPrice(db, order.id, 1000, 120);
+    const priced = setWordCountAndPrice(db, order.id, 1000, 120, { actor: TEST_ACTOR });
     expect(priced.wordCount).toBe(1000);
     expect(priced.price).toBe(120);
 

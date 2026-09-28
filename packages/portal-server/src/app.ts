@@ -53,6 +53,7 @@ import {
   estimateOrder,
   generateSessionToken,
   InvalidTransitionError,
+  OrderPricingError,
   RateNotFoundError,
   verifyPassword,
   type AuditActor,
@@ -383,13 +384,21 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (!order || order.clientId !== client.id) {
       return reply.code(404).send({ error: 'order not found' });
     }
+    // The price the client's page showed: an approval is consent to it,
+    // so a price changed since then is a 409, not an approval
+    // (portal-v0-spec.md §2).
+    const { price } = (req.body ?? {}) as { price?: unknown };
+    if (typeof price !== 'number') {
+      return reply.code(400).send({ error: 'price (the price shown) is required' });
+    }
     try {
       return setStatus(db, id, 'approved', {
         actor: clientActor(client),
         note: 'approved by client',
+        seenPrice: price,
       });
     } catch (err) {
-      if (err instanceof InvalidTransitionError) {
+      if (err instanceof InvalidTransitionError || err instanceof OrderPricingError) {
         return reply.code(409).send({ error: err.message });
       }
       throw err;
@@ -492,10 +501,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           order.tgtLangs,
           body.wordCount,
         );
-        updated = setWordCountAndPrice(db, id, body.wordCount, estimate.total);
+        updated = setWordCountAndPrice(db, id, body.wordCount, estimate.total, {
+          actor: adminSessionActor(req),
+        });
       } catch (err) {
         if (err instanceof RateNotFoundError) {
           return reply.code(422).send({ error: err.message });
+        }
+        if (err instanceof OrderPricingError) {
+          return reply.code(409).send({ error: err.message });
         }
         throw err;
       }
@@ -508,7 +522,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           note: body.note,
         });
       } catch (err) {
-        if (err instanceof InvalidTransitionError) {
+        if (err instanceof InvalidTransitionError || err instanceof OrderPricingError) {
           return reply.code(409).send({ error: err.message });
         }
         throw err;

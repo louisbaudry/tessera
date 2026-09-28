@@ -312,10 +312,15 @@ engine, but follows the same discipline:
   `portal-server/src/app.ts` are where a route's actor is built.
   `client:` is the client's id with no label, because the link proves
   the link and not a person. `order_event` is append-only by trigger
-  and is the only record of a transition. Logins, deliveries and
-  downloads go to `audit_event`. Not yet covered: setting an order's
-  word count and price (`setWordCountAndPrice`, backlog `#63`), and
-  rate and client writes.
+  and is the only record of a transition. Logins, deliveries,
+  downloads and pricing (`order.priced`, backlog `#63`) go to
+  `audit_event`. Not yet covered: rate and client writes.
+- **A price is set only while `submitted`, and approval is consent to
+  that price** (backlog `#63`, `portal-v0-spec.md` §2–§3). The rules
+  are `assertCanPrice`/`assertCanApprove` in `portal-core`, run by
+  `setWordCountAndPrice` and `setStatus`, never re-encoded in a route.
+  The client's approve request carries the price its page showed, and a
+  different stored price is a 409.
 
 ## The QA engine
 

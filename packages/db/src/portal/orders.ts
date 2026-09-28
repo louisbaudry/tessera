@@ -11,11 +11,22 @@
  * a required parameter on both writers: `admin:<id>` for an admin's
  * session, `client:<id>` for whoever holds a client's private link.
  * Transitions are recorded here and nowhere else (spec decision 7).
+ *
+ * Pricing is not a transition, so it goes to `audit_event` as
+ * `order.priced` (spec §2.6; backlog #63), written by
+ * `setWordCountAndPrice` in the same transaction as the price.
  */
 
 import { formatActor, type AuditActor } from '@cat-tool/core';
-import { assertValidTransition, type OrderStatus } from '@cat-tool/portal-core';
+import {
+  assertCanApprove,
+  assertCanPrice,
+  assertValidTransition,
+  type OrderStatus,
+} from '@cat-tool/portal-core';
 import type Database from 'better-sqlite3';
+
+import { appendAuditEvent } from '../audit/events.js';
 
 export interface TranslationOrder {
   readonly id: number;
@@ -186,16 +197,24 @@ export function listOrdersForClient(
   return rows.map((row) => withTgtLangs(db, row));
 }
 
+export interface SetStatusOptions extends OrderWriteOptions {
+  readonly note?: string;
+  /**
+   * For an approval: the price the approver was shown. The client's
+   * route always passes it, so a price changed since its page loaded is
+   * refused rather than approved unseen (portal-v0-spec.md §2).
+   */
+  readonly seenPrice?: number;
+}
+
 /**
  * Moves an order to a new status, validating the transition and
  * recording the `order_event` in the same transaction. Throws
  * `InvalidTransitionError` (from `@cat-tool/portal-core`) rather than
- * writing an illegal state.
+ * writing an illegal state, and `OrderPricingError` for an approval of
+ * an unpriced order or of a price other than `seenPrice` — here, so no
+ * route can approve around it.
  */
-export interface SetStatusOptions extends OrderWriteOptions {
-  readonly note?: string;
-}
-
 export function setStatus(
   db: Database.Database,
   orderId: number,
@@ -208,6 +227,9 @@ export function setStatus(
       throw new Error(`order ${orderId} not found`);
     }
     assertValidTransition(current.status, toStatus);
+    if (toStatus === 'approved') {
+      assertCanApprove(current.price, options.seenPrice);
+    }
 
     const now = new Date().toISOString();
     db.prepare(
@@ -226,22 +248,44 @@ export function setStatus(
   })();
 }
 
-/** Sets the authoritative word count and, with it, the priced total. */
+/**
+ * Sets the authoritative word count and, with it, the priced total, and
+ * records who did (`order.priced`, audit-spec.md §2.6) in the same
+ * transaction. Pricing again with the same count and price changes
+ * nothing and records nothing (§2.4). Otherwise `assertCanPrice` decides
+ * whether the order may be priced in its status, and throws
+ * `OrderPricingError` if not (portal-v0-spec.md §3).
+ */
 export function setWordCountAndPrice(
   db: Database.Database,
   orderId: number,
   wordCount: number,
   price: number,
+  options: OrderWriteOptions,
 ): TranslationOrder {
-  const now = new Date().toISOString();
-  db.prepare(
-    'UPDATE translation_order SET word_count = ?, price = ?, updated_at = ? WHERE id = ?',
-  ).run(wordCount, price, now, orderId);
-  const order = getOrder(db, orderId);
-  if (!order) {
-    throw new Error(`order ${orderId} not found`);
-  }
-  return order;
+  return db.transaction((): TranslationOrder => {
+    const current = getOrder(db, orderId);
+    if (!current) {
+      throw new Error(`order ${orderId} not found`);
+    }
+    if (current.wordCount === wordCount && current.price === price) {
+      return current;
+    }
+    assertCanPrice(current.status, current.price);
+
+    const now = new Date().toISOString();
+    db.prepare(
+      'UPDATE translation_order SET word_count = ?, price = ?, updated_at = ? WHERE id = ?',
+    ).run(wordCount, price, now, orderId);
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'order.priced',
+      subjectType: 'translation_order',
+      subjectId: String(orderId),
+      detail: { word_count: wordCount, price },
+    });
+    return getOrder(db, orderId)!;
+  })();
 }
 
 export function listOrderEvents(db: Database.Database, orderId: number): OrderEvent[] {
