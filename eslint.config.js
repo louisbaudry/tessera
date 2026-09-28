@@ -64,4 +64,43 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // A migration's DDL is a historical snapshot and never reads a live
+    // list (`db/migrate.ts`, backlog #64). A CHECK built from one of
+    // these constants means one thing in a fresh file and another in
+    // every existing one; the guard test only checks the newest list,
+    // so this is what keeps the older ones frozen.
+    files: ['packages/db/src/**/schema.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@cat-tool/core',
+              importNames: [
+                'QA_RULES',
+                'QA_SEVERITIES',
+                'SEGMENT_STATUSES',
+                'DECISION_KINDS',
+                'PROJECT_AUDIT_ACTIONS',
+                'PLATFORM_AUDIT_ACTIONS',
+                'PORTAL_AUDIT_ACTIONS',
+              ],
+              message:
+                'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
+              allowTypeImports: true,
+            },
+            {
+              name: '@cat-tool/portal-core',
+              importNames: ['ORDER_STATUSES'],
+              message:
+                'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
+              allowTypeImports: true,
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

@@ -4,10 +4,11 @@
  *
  * A rule with no row is enabled. `qa_rule_setting` only ever holds rows for
  * rules someone has explicitly turned off, so a rule added to `QA_RULES`
- * later is on for every existing project without a migration touching
- * their data — the same reasoning `segment.origin`'s missing CHECK
- * constraint documents for itself in `schema.ts`, applied to a settings
- * table instead of a column.
+ * later is on for every existing project without touching their rows —
+ * the same reasoning `segment.origin`'s missing CHECK constraint documents
+ * for itself in `schema.ts`, applied to a settings table instead of a
+ * column. The table's `rule` CHECK is another matter: it is a frozen list,
+ * so a new rule still needs the migration that widens it (backlog #64).
  */
 
 import { QA_RULES, type QaRule } from '@cat-tool/core';

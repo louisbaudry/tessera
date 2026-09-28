@@ -1,10 +1,11 @@
 /** Glossary model. See planning/smart-glossary-spec.md §3. */
 
 /**
- * Why a `term_decision` row exists. Closed set: the `.ctg` schema's
- * CHECK constraint is generated from this list, the same way the
- * project schema's `segment.status` is generated from `SEGMENT_STATUSES`
- * — one list to keep in sync, never two.
+ * Why a `term_decision` row exists. Closed set, and the one definition
+ * of it: the `.ctg` schema's CHECK constraint is a frozen snapshot of
+ * this list, written as a literal in the migration that created it
+ * (`db/migrate.ts`, backlog #64), and a guard test fails when the two
+ * differ. A new kind is a migration that widens the CHECK.
  */
 export const DECISION_KINDS = [
   /** Picked one of the renderings the aligner offered. */

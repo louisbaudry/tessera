@@ -1,6 +1,8 @@
 /** QA rules and issues. See planning/v1-spec.md §6.4. */
 
-export type QaSeverity = 'error' | 'warning' | 'info';
+export const QA_SEVERITIES = ['error', 'warning', 'info'] as const;
+
+export type QaSeverity = (typeof QA_SEVERITIES)[number];
 
 export const QA_RULES = [
   'tag.missing',

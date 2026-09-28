@@ -6,17 +6,37 @@
  * business data (orders, files, rates), never translation content.
  */
 
-import { PORTAL_AUDIT_ACTIONS } from '@cat-tool/core';
-import { ORDER_STATUSES } from '@cat-tool/portal-core';
+import type { PortalAuditAction } from '@cat-tool/core';
+import type { OrderStatus } from '@cat-tool/portal-core';
 
 import { auditEventDdl } from '../audit/events.js';
-import type { Migration } from '../migrate.js';
+import { sqlList, type Migration } from '../migrate.js';
 
 /** "CATO" — portal bookkeeping, distinct from platform ("CATL"), project ("CATP"), TM ("CATM"). */
 export const PORTAL_APPLICATION_ID = 0x4341544f;
 
-const sqlList = (values: readonly string[]): string =>
-  values.map((v) => `'${v}'`).join(', ');
+/*
+ * Frozen snapshots, never the live constants (`db/migrate.ts`, backlog
+ * #64): each is exactly the list its migration created. A new member
+ * is a new migration, never an edit here.
+ */
+
+/** `translation_order.status` since v1: `ORDER_STATUSES` as of portal v0. */
+const V1_ORDER_STATUSES = [
+  'submitted',
+  'approved',
+  'in_progress',
+  'delivered',
+  'cancelled',
+] as const satisfies readonly OrderStatus[];
+
+/** `audit_event.action` since v3: `PORTAL_AUDIT_ACTIONS` as of backlog #58. */
+const V3_AUDIT_ACTIONS = [
+  'auth.login',
+  'auth.login_failed',
+  'file.downloaded',
+  'file.delivered',
+] as const satisfies readonly PortalAuditAction[];
 
 const v1: Migration = {
   version: 1,
@@ -45,7 +65,7 @@ const v1: Migration = {
         client_id    INTEGER NOT NULL REFERENCES client(id),
         src_lang     TEXT NOT NULL,
         notes        TEXT,
-        status       TEXT NOT NULL CHECK (status IN (${sqlList(ORDER_STATUSES)})),
+        status       TEXT NOT NULL CHECK (status IN (${sqlList(V1_ORDER_STATUSES)})),
         word_count   INTEGER,
         price        REAL,
         created_at   TEXT NOT NULL,
@@ -165,7 +185,7 @@ const v3: Migration = {
         OR NEW.actor_label IS NOT '[erased]'
       BEGIN SELECT RAISE(ABORT, 'order_event is append-only'); END;
     `);
-    db.exec(auditEventDdl(PORTAL_AUDIT_ACTIONS));
+    db.exec(auditEventDdl(V3_AUDIT_ACTIONS));
   },
 };
 

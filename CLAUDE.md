@@ -163,6 +163,22 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
   `glossary/terms.ts` had it once already for `.ctg`, backlog #19
   needed the same thing for `.ctm`, so it moved to one shared module
   before landing twice.
+- **A migration's DDL is a historical snapshot and never reads a live
+  list** — the one place the rule above deliberately does not reach
+  (backlog #64, `db/migrate.ts`). A migration runs once per file, so a
+  `CHECK (x IN (...))` built from `QA_RULES` or an audit-action list
+  means today's list in a fresh file and the old one in every existing
+  file: a new member is then rejected everywhere but in files nobody
+  has used yet. So each migration writes its closed set as a literal,
+  the constant in `core` stays the one definition, and
+  `db/check-lists.test.ts` ties the newest snapshot of each list to its
+  constant. An ESLint rule keeps the constants out of every
+  `schema.ts`; don't "fix" a literal back into an import. A new member
+  is a migration that widens the CHECK with `rebuildTable`
+  (`db/migrate.ts`), which renames first so `audit_event`'s
+  self-reference survives, and refuses a table other tables reference
+  (that needs foreign keys off before `BEGIN`, which the runner can't
+  do yet).
 - **A repository read that can also run against an `ATTACH`ed file uses
   `(db, params, options: { schema? })`** — a third argument, not a field
   stuffed into `params` — matching `qualifySchema` above. `tm/retrieve.ts`'s
@@ -196,9 +212,9 @@ writing any new write path, know these three rules:
   transaction**, in the same file as the data it describes. The table is
   append-only by trigger. Its row type, action list and hash chain live
   once, in `core/audit/`. A new action widens the `CHECK`; it never
-  becomes free text. Until backlog `#64` lands, that CHECK is built
-  from the live list (`audit-spec.md` §2), so don't add an action
-  before it.
+  becomes free text: each file's list is a frozen literal in its
+  migration, so a new action is a migration that widens it with
+  `rebuildTable` (see the snapshot invariant above).
 - **The actor is a required parameter, never optional or defaulted.**
   A write that can't name who caused it shouldn't compile. In `db` it is
   an `AuditActor` (`core/audit/actor.ts`), written through
@@ -351,12 +367,10 @@ through. Those rules also need the project's language pair
   instead of a column: a rule with no row is enabled, so a rule added
   to `QA_RULES` later is on by default for every existing project with
   no migration touching their data. The CHECKs on `qa_issue.rule` and
-  `qa_rule_setting.rule` are a different matter. Old migrations build
-  them from the live list, so a fresh file accepts a new rule that
-  every existing file rejects, and no test on a fresh file notices. A
-  new rule needs a migration that widens both CHECKs. Backlog `#64`
-  freezes the lists and adds the rebuild helper that migration uses;
-  don't add a rule before it lands.
+  `qa_rule_setting.rule` are a different matter: each is a frozen
+  literal in its migration, so a new rule needs a migration that
+  widens both, as project v7 did with `rebuildTable` (backlog #64).
+  Adding the rule without one fails `db/check-lists.test.ts`.
 
 ## The CLI (`@cat-tool/cli`)
 
