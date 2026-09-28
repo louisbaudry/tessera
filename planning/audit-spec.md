@@ -153,16 +153,17 @@ WHEN NEW.id IS NOT OLD.id OR NEW.at IS NOT OLD.at
 BEGIN SELECT RAISE(ABORT, 'audit_event is append-only'); END;
 ```
 
-`action` gets a `CHECK (action IN (...))` generated from `core`'s action
-list, the way `qa_issue.rule` is generated from `QA_RULES` — adding an
-action is a migration that widens the CHECK, deliberately: an action
-nobody declared is a write path nobody reviewed.
-
-Caveat (2026-09-27): each migration builds that CHECK from the live
-list, so a later member changes what an old migration creates on a
-fresh file while every existing file still rejects it. Backlog `#64`
-freezes the lists and adds the table-rebuild helper that the first
-widening needs (`#63`'s `order.priced`).
+`action` gets a `CHECK (action IN (...))` admitting that file's actions,
+and adding an action is a migration that widens the CHECK, deliberately:
+an action nobody declared is a write path nobody reviewed. The list in
+each migration is a frozen literal, a snapshot of `core`'s list as it
+stood when that migration was written, never the live constant (backlog
+`#64`, `db/migrate.ts`). A migration runs once per file, so a list read
+live would mean today's actions in a fresh file and the old ones in
+every existing file. `db/check-lists.test.ts` ties each file's newest
+snapshot to `core`'s list. A widening rebuilds the table with
+`rebuildTable`, rename-first, so `batch_id`'s self-reference survives;
+portal schema v4 (`order.priced`, backlog `#63`) was the first.
 
 ### 2.1 Actor
 
@@ -236,9 +237,10 @@ their `*_by` columns have always been free text; writers pass the
 `project.deleted`, `file.downloaded`.
 
 `portal.sqlite`: `auth.login` / `auth.login_failed` for admins,
-`file.downloaded` (by client or admin), `file.delivered`. Order
-transitions stay in `order_event` (decision 7), which gains `actor` and
-`actor_label` columns and the same append-only triggers.
+`file.downloaded` (by client or admin), `file.delivered`, and since
+schema v4 `order.priced` and `order.price_baseline` (backlog `#63`).
+Order transitions stay in `order_event` (decision 7), which gains
+`actor` and `actor_label` columns and the same append-only triggers.
 
 **In code** (backlog #55, `core/audit/actions.ts`): one list per
 database — `PROJECT_AUDIT_ACTIONS`, `PLATFORM_AUDIT_ACTIONS`,
@@ -273,8 +275,8 @@ What the first file to carry the log settled, for `#57`/`#58` to reuse
 rather than re-decide:
 
 - **One writer, in `db/audit/events.ts`**, shared by every database:
-  the table's DDL (`auditEventDdl(actions)`, the `CHECK` generated from
-  that file's action list), `appendAuditEvent`, `listEvents`,
+  the table's DDL (`auditEventDdl(actions)`, the `CHECK` built from the
+  action list its migration passes — a frozen snapshot, `#64`), `appendAuditEvent`, `listEvents`,
   `listBatch` and `verifyAudit`. The genesis reads the file's own
   `PRAGMA application_id`, so no caller can chain a log against the
   wrong kind of file. The next id is `max(id) + 1`, read inside the
@@ -317,7 +319,8 @@ rather than re-decide:
 ### 2.5 In `platform.sqlite` (backlog #57)
 
 Platform schema v3 adds the same table through `auditEventDdl`, its
-`CHECK` generated from `PLATFORM_AUDIT_ACTIONS`. No baseline: nothing
+`CHECK` admitting `PLATFORM_AUDIT_ACTIONS` as they stood then (a frozen
+snapshot since `#64`). No baseline: nothing
 before v3 recorded who created an account, and §6's rule is never to
 invent an author. What the second file to carry the log settled:
 
@@ -379,8 +382,9 @@ invent an author. What the second file to carry the log settled:
 
 Portal schema v3 does two things. It gives `order_event` its actor and
 the append-only triggers. It also adds `audit_event` through
-`auditEventDdl`, with a `CHECK` generated from `PORTAL_AUDIT_ACTIONS`.
-The third file to carry the log settled these points:
+`auditEventDdl`, with a `CHECK` admitting `PORTAL_AUDIT_ACTIONS` as
+they stood then (a frozen snapshot since `#64`; v4 widened it). The
+third file to carry the log settled these points:
 
 - **`order_event` is rebuilt, not `ALTER`ed.** `actor` is `NOT NULL`
   with no default. SQLite adds a `NOT NULL` column only with a default,
@@ -422,6 +426,19 @@ The third file to carry the log settled these points:
 - **A client's view of an order's history carries `actor` and drops
   `actor_label`.** It shows that `admin:1` moved the order, never the
   admin's email.
+- **Pricing is `order.priced`** (schema v4, backlog `#63`). The subject
+  is `translation_order` and the order's row id, the table-name
+  convention of `admin_user`, `source_file` and `delivered_file`. The
+  detail is `{ word_count, price }`: the count the admin confirmed and
+  the total it priced to. The actor is `admin:<id>`. Pricing is not a
+  transition, so it belongs here, not in `order_event` (decision 7).
+  Pricing again with the same count and price writes nothing (§2.4).
+- **`order.price_baseline`** has the same subject and detail, actor
+  `system:migration`, one per order already priced when v4 ran (§6).
+- **Widening the `CHECK` rebuilt the table.** v4 is `rebuildTable`'s
+  first use on `audit_event`: every row, id and chain hash is copied,
+  so `verifyAudit` still passes, and the baselines chain on after
+  them.
 
 ## 3. The chain, and what it proves
 
@@ -532,7 +549,9 @@ then complete from the migration forward and honest about before: a
 baseline says "this is what it was when recording began", never
 inventing an author. The same pattern applies to `order_event` rows
 that predate the `actor` column: `actor` is `system:migration`,
-`actor_label` is NULL.
+`actor_label` is NULL. And to prices set before `order.priced`
+existed: portal v4 writes one `order.price_baseline` per priced order,
+`system:migration`, with the count and price as they stood (§2.6).
 
 ## 7. Reading it back
 
@@ -562,8 +581,6 @@ work, gated behind Epic 6 like every other screen.
    thing, but `.ctm` is a frozen, specified format (`tm-format-spec.md`)
    and triggers are part of the file; it needs a `user_version` bump and
    its own spec change, not a rider on this one.
-4. **Pricing in `portal.sqlite`.** A gap found on 2026-09-27, not a
-   choice made with `#58`. Setting an order's word count and price
-   writes no event, so the price a client approves is unrecorded.
-   Backlog `#63` adds `order.priced` (subject `translation_order`,
-   actor `admin:<id>`), after `#64`.
+4. ~~**Pricing in `portal.sqlite`.**~~ Closed by backlog `#63`
+   (`order.priced`, §2.6). Still unaudited there: rate and client
+   writes.

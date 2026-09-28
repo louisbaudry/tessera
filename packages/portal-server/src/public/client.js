@@ -207,7 +207,7 @@ async function renderHome() {
         <div class="muted">Words: ${o.wordCount ?? 'estimate pending'} · Price: ${money(o.price)}</div>
         ${
           o.status === 'submitted'
-            ? `<button data-approve="${o.id}" ${o.price == null ? 'disabled title="Waiting on a word-count estimate before you can approve."' : ''}>Approve</button>`
+            ? `<button data-approve="${o.id}" data-price="${o.price}" ${o.price == null ? 'disabled title="Waiting on a word-count estimate before you can approve."' : ''}>Approve</button>`
             : ''
         }
         <button class="secondary" data-detail="${o.id}">${
@@ -225,13 +225,18 @@ async function renderHome() {
       btn.addEventListener('click', async () => {
         btn.disabled = true;
         try {
+          // The price shown is part of the approval: if the order was
+          // re-priced since this page loaded, the server refuses (409).
           await api(`/api/client/orders/${btn.dataset.approve}/approve`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ price: Number(btn.dataset.price) }),
           });
           renderHome();
         } catch (err) {
           alert(err.message);
-          btn.disabled = false;
+          // Show the order as it is now, current price included.
+          renderHome();
         }
       });
     });

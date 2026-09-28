@@ -42,6 +42,8 @@ export const PORTAL_AUDIT_ACTIONS = [
   'auth.login_failed',
   'file.downloaded',
   'file.delivered',
+  'order.priced',
+  'order.price_baseline',
 ] as const;
 
 export type ProjectAuditAction = (typeof PROJECT_AUDIT_ACTIONS)[number];
@@ -129,4 +131,14 @@ export interface AuditDetail {
     readonly name: string;
     readonly sha256: string;
   };
+  /** The count the admin confirmed and the total it priced to (backlog #63). */
+  'order.priced': OrderPrice;
+  /** The price as it stood when portal v4 began recording (spec §6). */
+  'order.price_baseline': OrderPrice;
+}
+
+/** An order's price and the word count it was computed from (spec §2.6). */
+export interface OrderPrice {
+  readonly word_count: number;
+  readonly price: number;
 }

@@ -8,13 +8,18 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { AuditActor } from '@cat-tool/core';
-import { hashPassword } from '@cat-tool/portal-core';
-import type Database from 'better-sqlite3';
+import { PORTAL_AUDIT_ACTIONS, type AuditActor } from '@cat-tool/core';
+import { hashPassword, OrderPricingError } from '@cat-tool/portal-core';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
-import { appendAuditEvent, listEvents, verifyAudit } from '../audit/events.js';
+import {
+  appendAuditEvent,
+  auditEventDdl,
+  listEvents,
+  verifyAudit,
+} from '../audit/events.js';
 import { openAndMigrate } from '../migrate.js';
 import {
   createAdminSession,
@@ -28,6 +33,7 @@ import {
   recordFailedAdminLogin,
   recordFileDownload,
   setStatus,
+  setWordCountAndPrice,
 } from './index.js';
 import { PORTAL_APPLICATION_ID, PORTAL_MIGRATIONS } from './schema.js';
 
@@ -72,6 +78,7 @@ const allEvents = () =>
 describe('order_event', () => {
   it('records the actor of every transition', () => {
     const order = newOrder();
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
     setStatus(db, order.id, 'approved', { actor: CLIENT, note: 'approved by client' });
     setStatus(db, order.id, 'in_progress', { actor: ADMIN });
     expect(
@@ -85,6 +92,7 @@ describe('order_event', () => {
 
   it('aborts an UPDATE and a DELETE, and lets only a label erasure through', () => {
     const order = newOrder();
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
     setStatus(db, order.id, 'approved', { actor: ADMIN });
     expect(() =>
       db.prepare("UPDATE order_event SET to_status = 'cancelled'").run(),
@@ -279,4 +287,146 @@ describe('portal audit_event', () => {
       n: 0,
     });
   });
+});
+
+describe('pricing (backlog #63)', () => {
+  const pricedEvents = (orderId: number) =>
+    listEvents(db, { subjectType: 'translation_order', subjectId: String(orderId) }).map(
+      (e) => [e.action, e.actor, e.actorLabel, e.detail],
+    );
+
+  it('records one order.priced naming the admin, and nothing for a repeat', () => {
+    const order = newOrder();
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
+    expect(pricedEvents(order.id)).toEqual([
+      [
+        'order.priced',
+        'admin:1',
+        'admin@example.com',
+        JSON.stringify({ word_count: 1000, price: 120 }),
+      ],
+    ]);
+    // A real change while still submitted is a second event.
+    setWordCountAndPrice(db, order.id, 1200, 144, { actor: ADMIN });
+    expect(pricedEvents(order.id)).toHaveLength(2);
+    expect(verifyAudit(db)).toEqual({ events: 2, brokenAt: null });
+  });
+
+  it('refuses to re-price an approved order, and writes nothing', () => {
+    const order = newOrder();
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
+    setStatus(db, order.id, 'approved', { actor: CLIENT, seenPrice: 120 });
+    expect(() => setWordCountAndPrice(db, order.id, 2000, 240, { actor: ADMIN })).toThrow(
+      OrderPricingError,
+    );
+    expect(db.prepare('SELECT word_count, price FROM translation_order').get()).toEqual({
+      word_count: 1000,
+      price: 120,
+    });
+    expect(pricedEvents(order.id)).toHaveLength(1);
+  });
+
+  it('prices an order approved without a price once, then refuses', () => {
+    // Only reachable before #63, through the admin PATCH: built directly.
+    const order = newOrder();
+    db.prepare("UPDATE translation_order SET status = 'approved' WHERE id = ?").run(
+      order.id,
+    );
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
+    expect(() => setWordCountAndPrice(db, order.id, 1100, 132, { actor: ADMIN })).toThrow(
+      /re-price/,
+    );
+    expect(pricedEvents(order.id)).toHaveLength(1);
+  });
+
+  it('refuses to approve an unpriced order, or a price other than the one seen', () => {
+    const order = newOrder();
+    expect(() => setStatus(db, order.id, 'approved', { actor: ADMIN })).toThrow(
+      OrderPricingError,
+    );
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
+    expect(() =>
+      setStatus(db, order.id, 'approved', { actor: CLIENT, seenPrice: 100 }),
+    ).toThrow(/reload/);
+    expect(listOrderEvents(db, order.id).map((e) => e.toStatus)).toEqual(['submitted']);
+    setStatus(db, order.id, 'approved', { actor: CLIENT, seenPrice: 120 });
+    expect(listOrderEvents(db, order.id).map((e) => e.toStatus)).toEqual([
+      'submitted',
+      'approved',
+    ]);
+  });
+});
+
+describe('portal v4: audit_event widened, prices baselined (backlog #63)', () => {
+  const V3_INSERT_PRICED = `
+    INSERT INTO audit_event (at, actor, action, subject_type, subject_id, chain_hash)
+      VALUES ('t', 'admin:1', 'order.priced', 'translation_order', '1', 'h')`;
+
+  it('keeps every row, id and the chain, admits order.priced, and baselines prices', () => {
+    db.close();
+    const path = join(dir, 'v3.sqlite');
+    const old = openAndMigrate(path, {
+      applicationId: PORTAL_APPLICATION_ID,
+      migrations: PORTAL_MIGRATIONS.slice(0, 3),
+    });
+    old.exec(`
+      INSERT INTO client (id, name, email, access_token, created_at)
+        VALUES (1, 'Ada', 'ada@example.com', 'tok', '2026-01-01');
+      INSERT INTO translation_order
+        (id, client_id, src_lang, notes, status, word_count, price, created_at, updated_at)
+        VALUES (1, 1, 'en', NULL, 'approved', 1000, 120, '2026-01-01', '2026-01-02'),
+               (2, 1, 'en', NULL, 'submitted', NULL, NULL, '2026-01-03', '2026-01-03');
+    `);
+    const admin = createAdminUser(old, 'admin@example.com', hashPassword('pw'));
+    createAdminSession(old, admin.id, 'token', { actor: ADMIN });
+    recordFailedAdminLogin(old, {
+      actor: GATE,
+      adminUserId: null,
+      reason: 'unknown_email',
+    });
+    expect(() => old.prepare(V3_INSERT_PRICED).run()).toThrow(/CHECK constraint failed/);
+    const before = old.prepare('SELECT * FROM audit_event ORDER BY id').all();
+    old.close();
+
+    db = openPortalDb(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(4);
+    const rows = db.prepare('SELECT * FROM audit_event ORDER BY id').all();
+    expect(rows.slice(0, before.length)).toEqual(before);
+    // One baseline, for the one priced order, and no author invented.
+    expect(pricedEventsFor(db, 1)).toEqual([
+      [
+        'order.price_baseline',
+        'system:migration',
+        null,
+        JSON.stringify({ word_count: 1000, price: 120 }),
+      ],
+    ]);
+    expect(pricedEventsFor(db, 2)).toEqual([]);
+    expect(verifyAudit(db)).toEqual({ events: 3, brokenAt: null });
+
+    setWordCountAndPrice(db, 2, 500, 60, { actor: ADMIN });
+    expect(pricedEventsFor(db, 2).map((e) => e[0])).toEqual(['order.priced']);
+    expect(verifyAudit(db).brokenAt).toBeNull();
+
+    // The rebuilt table is exactly a fresh one: table, indexes and triggers.
+    const blank = new Database(':memory:');
+    blank.exec(auditEventDdl(PORTAL_AUDIT_ACTIONS));
+    expect(auditSchema(db)).toEqual(auditSchema(blank));
+    blank.close();
+  });
+
+  const pricedEventsFor = (target: Database.Database, orderId: number) =>
+    listEvents(target, {
+      subjectType: 'translation_order',
+      subjectId: String(orderId),
+    }).map((e) => [e.action, e.actor, e.actorLabel, e.detail]);
+
+  const auditSchema = (target: Database.Database) =>
+    target
+      .prepare(
+        `SELECT type, name, sql FROM sqlite_master
+         WHERE tbl_name = 'audit_event' ORDER BY type, name`,
+      )
+      .all();
 });
