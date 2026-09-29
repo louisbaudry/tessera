@@ -70,7 +70,7 @@ Each session's scope is **one phase, or a logical partition of a large phase**, 
 - Create synthetic test database helper
 - Commit: `8da5a4b Backlog #18b: Native .sdltm parser foundation (Phase 1)`
 - Backlog: what the reverse-engineering found — schema cookie `0x2f`, `parameters.VERSION = 8.06`, one sample file only
-- PR, reviewed, awaiting explicit merge go-ahead
+- PR, merged after go-ahead
 
 **Session 2 (Phase 2a — Parser Implementation)**
 - Implement `parseSdltmSegment()` — segment XML parsing
@@ -83,7 +83,7 @@ Each session's scope is **one phase, or a logical partition of a large phase**, 
 - Known unknowns recorded for Phase 2b: Trados's context-hash algorithm, tag ordering, version-specific schema differences
 - PR, merged after go-ahead
 
-**Session 3 (Phase 2b — Database Integration)** — not started; tracked in an issue of the former private repository
+**Session 3 (Phase 2b — Database Integration)**
 - Create `packages/db/src/tm/import-sdltm.ts` — mirror `import-tmx.ts`
 - Validate against real pseudonymised `.sdltm` files
 - Document any schema differences by Trados version

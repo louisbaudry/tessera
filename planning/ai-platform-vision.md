@@ -64,7 +64,7 @@ Each ring is a real, separately shippable product state — not a phase
 that has to finish before the next starts thinking begins, but a
 sequencing of *building* effort.
 
-### Ring 0 — "Get rid of Trados." *(in progress; unchanged by this doc)*
+### Ring 0 — "Get rid of Trados."
 
 Asked directly what to fix first, across 22 years and every tool tried,
 the answer was **the CAT tool itself** — clunky, slow, or ugly — not the

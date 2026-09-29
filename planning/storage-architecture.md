@@ -1,6 +1,6 @@
 # Storage architecture — RDBMS migration (placeholder)
 
-Status: not designed. This document exists to hold a decision raised
+This document exists to hold a decision raised
 during Vendor Component scoping (`vendor-spec.md`, 2026-09-21) that is
 explicitly **not** Vendor-scoped and must not be decided implicitly by
 however Vendor's schema happens to land.

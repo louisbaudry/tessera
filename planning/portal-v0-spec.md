@@ -1,6 +1,6 @@
 # Translation Portal v0 — spec
 
-Status: v0 implementation in progress. This is Ring 2 (`ai-platform-vision.md`
+This is Ring 2 (`ai-platform-vision.md`
 §"Client-facing") pulled forward, deliberately, ahead of Ring 0 finishing —
 the CAT tool itself doesn't need to be ready until 2027, but the business
 needs a client-facing intake/delivery surface now. Pilot client: one
