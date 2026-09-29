@@ -44,9 +44,9 @@ the public
   internal hostnames, in any form.
 
 Louis's private profile (`ai_profile.md`) is loaded alongside it when a
-session can reach it. This file adds only what is specific to tessera,
-and where the two differ, this file wins; flag a real contradiction to
-Louis rather than resolving it silently.
+session can reach it. This file adds only what is specific to tessera
+and never contradicts the shared rules: a rule here that does is a bug
+in this file, so fix it or flag it to Louis rather than follow it.
 
 ## This repository is public
 
@@ -92,8 +92,8 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
    record into `planning/v1-backlog.md`, which makes that file a single
    point of contention by design. Two sessions on the same epic conflict
    there, in entries neither was editing on purpose. Phased work across
-   several sessions has its own protocol:
-   `planning/multi-session-workflow.md`.
+   several sessions runs one phase at a time, each branched from `main`
+   (`planning/multi-session-workflow.md`).
 5. **After each merge, ask Louis if the public GitHub website is worth
    updating with the new developments.** As a shared-rules question:
    options and a recommendation, not an open question.
@@ -423,8 +423,9 @@ and its own CI job. When it goes red, read the diff before touching
 anything: a changed transcript line is the pipeline saying or delivering
 something different, which is either the point of your change or a
 regression. `UPDATE_GOLDEN=1 pnpm test:golden` rewrites the expected
-file; never do that to make a red run green without having read what
-moved. `fixtures/golden/README.md` says what each unit of the memory is
+file, and it is for one case only: the diff is the intended change, and
+the PR explains what moved and why. Never use it to turn a red run
+green. `fixtures/golden/README.md` says what each unit of the memory is
 there to exercise, so a new case goes into that file and that README
 together.
 
