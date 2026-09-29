@@ -17,23 +17,28 @@ implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
 
-## Shared rules, loaded at session start
+## Shared rules
 
-How to work with Louis — communication, asking questions as options
-with a recommendation, never merging without being asked, branching
-from `main`, not regenerating a red check away, the public-repo data
-rules — is shared across all his repos and lives once, in the public
-`louisbaudry/claude-shared` (`CLAUDE.md`).
-`.claude/hooks/load-shared-context.sh` loads it at session start, plus
-Louis's private profile when the session can reach it (see that repo's
-`hooks/README.md`). This file adds only what is specific to tessera,
-and where the two differ, this file wins.
+How to work with Louis is shared across all his repos and lives once, in
+the public
+[`louisbaudry/claude-shared`](https://github.com/louisbaudry/claude-shared/blob/main/CLAUDE.md)
+(`CLAUDE.md`). Read it at the start of every session. It covers:
 
-If the session context has no "Shared context for working with Louis"
-block, or it shows a NOTE that the shared rules were not loaded, say so
-at the start. Until it is fixed, still never merge
-without an explicit go-ahead, and still push nothing that identifies a
-client or a person.
+- **Communication** — concise, in Louis's language; questions asked one
+  at a time, as options with a recommendation.
+- **Git and pull requests** — never merge without being asked; one task
+  per branch and PR (`Closes #NN`); branch from `main`; file new bugs as
+  issues rather than fixing them on the current branch.
+- **Where work is tracked** — issues and the board hold status; files
+  hold the record.
+- **Before calling work done** — run the repo's full checks and report
+  honestly; a red check is a problem in the change, never something to
+  regenerate or weaken away.
+- **Design decisions on the record**, **AI output as a proposal, not a
+  fact**, and **public repositories** (no personal or client data).
+
+This file adds only what is specific to tessera, and where the two
+differ, this file wins.
 
 ## This repository is public
 
