@@ -102,7 +102,7 @@ Note what the issue carries that this document deliberately does not: whether Ph
 ## Coordination with Code Review
 
 - **Phase PRs are not merged until explicitly approved.** No "auto-merge on green CI" — every merge is a deliberate go-ahead from the team.
-- **Prefer merging the earlier phase before starting the later one.** The temptation is to stack Phase 2a on Phase 1's unmerged branch and keep going; that is exactly how trunk drifts, and it turns one review into a diff nobody can read in isolation. If a phase cannot start until the earlier one is merged, it waits: never branch from another session's branch (shared rule, `claude-shared` CLAUDE.md).
+- **Prefer merging the earlier phase before starting the later one.** The temptation is to stack Phase 2a on Phase 1's unmerged branch and keep going; that is exactly how trunk drifts, and it turns one review into a diff nobody can read in isolation.
 - **Backlog updates are part of the same commit/PR as the implementation**, not separate documentation PRs. The code and its summary live together.
 
 ## When to Use This Pattern

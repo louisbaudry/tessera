@@ -422,10 +422,7 @@ own script (`pnpm test:golden`, a positional filter like `test:gate`)
 and its own CI job. When it goes red, read the diff before touching
 anything: a changed transcript line is the pipeline saying or delivering
 something different, which is either the point of your change or a
-regression. `UPDATE_GOLDEN=1 pnpm test:golden` rewrites the expected
-file, and it is for one case only: the diff is the intended change, and
-the PR explains what moved and why. Never use it to turn a red run
-green. `fixtures/golden/README.md` says what each unit of the memory is
+regression. `fixtures/golden/README.md` says what each unit of the memory is
 there to exercise, so a new case goes into that file and that README
 together.
 
