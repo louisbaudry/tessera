@@ -24,21 +24,29 @@ the public
 [`louisbaudry/claude-shared`](https://github.com/louisbaudry/claude-shared/blob/main/CLAUDE.md)
 (`CLAUDE.md`). Read it at the start of every session. It covers:
 
-- **Communication** — concise, in Louis's language; questions asked one
-  at a time, as options with a recommendation.
-- **Git and pull requests** — never merge without being asked; one task
-  per branch and PR (`Closes #NN`); branch from `main`; file new bugs as
-  issues rather than fixing them on the current branch.
-- **Where work is tracked** — issues and the board hold status; files
-  hold the record.
-- **Before calling work done** — run the repo's full checks and report
-  honestly; a red check is a problem in the change, never something to
-  regenerate or weaken away.
-- **Design decisions on the record**, **AI output as a proposal, not a
-  fact**, and **public repositories** (no personal or client data).
+- **Communication** — concise, in Louis's language (French, English or
+  Spanish); one question at a time, always with options and a
+  recommendation; fact, inference and guess kept apart.
+- **Git and pull requests** — never merge without being asked; one task,
+  one branch, one PR (`Closes #NN`); branch from `main` and merge back
+  promptly; one session at a time on one area; check open PRs and
+  unmerged branches before starting; file something broken that isn't
+  the task as an issue; after a merge, say whether the session can be
+  archived and why.
+- **Where work is tracked** — issues and the board hold status, never
+  markdown; the repo's files hold the record; the code is the final word.
+- **Before calling work done** — run the full set of checks and report
+  honestly what was and wasn't verified; a failing check means the change
+  is presumed wrong, never regenerate or loosen it to reach green.
+- **Design decisions on the record**, and shared facts defined once.
+- **AI output is a proposal, not a fact** — never invent source data.
+- **Public repositories** — no personal or client data, credentials or
+  internal hostnames, in any form.
 
-This file adds only what is specific to tessera, and where the two
-differ, this file wins.
+Louis's private profile (`ai_profile.md`) is loaded alongside it when a
+session can reach it. This file adds only what is specific to tessera,
+and where the two differ, this file wins; flag a real contradiction to
+Louis rather than resolving it silently.
 
 ## This repository is public
 
