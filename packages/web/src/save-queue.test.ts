@@ -20,7 +20,8 @@ function harness() {
   const answers: Array<(ok: boolean) => void> = [];
   const saved: string[] = [];
   const latest: boolean[] = [];
-  const failed: Array<[number, boolean]> = [];
+  const failed: Array<[number, boolean, string]> = [];
+  const confirms: Array<{ id: number; base: string | undefined }> = [];
   let version = 0;
   const queue = createSaveQueue({
     send: (id, tokens, base, urgent) => {
@@ -39,13 +40,24 @@ function harness() {
       saved.push(result.segment.updatedAt);
       latest.push(isLatest);
     },
-    onFailed: (id, _error, isLatest) => failed.push([id, isLatest]),
+    onFailed: (id, _error, isLatest, kind) => failed.push([id, isLatest, kind]),
+    confirm: (id, base) => {
+      confirms.push({ id, base });
+      const updatedAt = `v${++version}`;
+      return new Promise<SaveResult>((resolve, reject) =>
+        answers.push((ok) =>
+          ok
+            ? resolve({ segment: { id, updatedAt } as Segment, rerun: [id], issues: [] })
+            : reject(new Error('no memory')),
+        ),
+      );
+    },
   });
   const answer = async (ok = true, which = 0) => {
     answers.splice(which, 1)[0]!(ok);
     await new Promise((r) => setTimeout(r, 0));
   };
-  return { queue, sent, saved, latest, failed, answer };
+  return { queue, sent, confirms, saved, latest, failed, answer };
 }
 
 describe('createSaveQueue', () => {
@@ -82,15 +94,15 @@ describe('createSaveQueue', () => {
     h.queue.save(1, text('a'));
     h.queue.save(1, text('b'));
     await h.answer(false);
-    expect(h.failed).toEqual([[1, false]]);
+    expect(h.failed).toEqual([[1, false, 'save']]);
     expect(h.sent.map((s) => [s.v, s.base])).toEqual([
       ['a', 'v0'],
       ['b', 'v0'],
     ]);
     await h.answer(false);
     expect(h.failed).toEqual([
-      [1, false],
-      [1, true],
+      [1, false, 'save'],
+      [1, true, 'save'],
     ]);
   });
 
@@ -186,6 +198,83 @@ describe('createSaveQueue', () => {
     expect(h.saved).toEqual(['v2', 'v1']);
     h.queue.save(1, text('c'));
     expect(h.sent[2]).toMatchObject({ v: 'c', base: 'v2' });
+  });
+});
+
+describe('createSaveQueue confirm', () => {
+  it('confirms at once when the segment has no write on its way', () => {
+    const h = harness();
+    h.queue.confirm(1);
+    expect(h.confirms).toEqual([{ id: 1, base: 'v0' }]);
+  });
+
+  it("waits for the segment's write, then confirms over the version it returned", async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.confirm(1);
+    expect(h.confirms).toEqual([]);
+    await h.answer();
+    expect(h.confirms).toEqual([{ id: 1, base: 'v1' }]);
+    await h.answer();
+    // Both answers reach the row; the confirm's is the newest version.
+    expect(h.saved).toEqual(['v1', 'v2']);
+    expect(h.latest).toEqual([true, true]);
+  });
+
+  it('sends a waiting write first, then confirms once, over the last version', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.save(1, text('b'));
+    h.queue.confirm(1);
+    await h.answer();
+    expect(h.sent.map((s) => s.v)).toEqual(['a', 'b']);
+    expect(h.confirms).toEqual([]);
+    await h.answer();
+    expect(h.confirms).toEqual([{ id: 1, base: 'v2' }]);
+  });
+
+  it('never confirms after a write failed: it would approve the text that write replaced', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.confirm(1);
+    await h.answer(false);
+    expect(h.confirms).toEqual([]);
+    expect(h.failed).toEqual([[1, true, 'save']]);
+  });
+
+  it('drops a confirm that has not gone when the segment is edited again', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.confirm(1);
+    h.queue.save(1, text('b'));
+    await h.answer();
+    await h.answer();
+    expect(h.sent.map((s) => s.v)).toEqual(['a', 'b']);
+    expect(h.confirms).toEqual([]);
+  });
+
+  it("holds an edit made while its confirm is on its way, over the confirm's version", async () => {
+    const h = harness();
+    h.queue.confirm(1);
+    h.queue.save(1, text('b'));
+    expect(h.sent).toEqual([]);
+    await h.answer();
+    expect(h.sent.map((s) => [s.v, s.base])).toEqual([['b', 'v1']]);
+    // The confirm's answer is not for the text now on screen.
+    expect(h.latest).toEqual([false]);
+  });
+
+  it('reports a failed confirm as one, and keeps segments apart', async () => {
+    const h = harness();
+    h.queue.save(2, text('x'));
+    h.queue.confirm(1);
+    expect(h.confirms).toEqual([{ id: 1, base: 'v0' }]);
+    await h.answer(true, 1);
+    await h.answer(true, 0);
+    expect(h.failed).toEqual([]);
+    h.queue.confirm(1);
+    await h.answer(false);
+    expect(h.failed).toEqual([[1, true, 'confirm']]);
   });
 });
 

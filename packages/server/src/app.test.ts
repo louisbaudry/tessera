@@ -22,6 +22,8 @@ import {
 } from '@cat-tool/core';
 import {
   addQaIssue,
+  addTmRef,
+  createTm,
   createAccount,
   dismissQaIssue,
   listEvents,
@@ -625,6 +627,74 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
       });
       expect(history.map((e) => [e.action, e.actor, e.actorLabel])).toEqual([
         ['segment.target_set', `account:${alice.id}`, 'alice@example.com'],
+      ]);
+      expect(verifyAudit(db).brokenAt).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('confirms a segment as its translator: the memory, the log and the version it saw', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const segment = await firstSegment(token, fileId);
+    const saved = await app.inject({
+      method: 'PUT',
+      url: `/api/projects/job/segments/${segment.id}`,
+      headers: auth(token),
+      payload: { targetTokens: [{ t: 'text', v: 'Ein Zieltext' }] },
+    });
+    const version = (saved.json() as { segment: Segment }).segment.updatedAt;
+    const confirm = (payload: Record<string, unknown>, id: number = segment.id) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/projects/job/segments/${id}/confirm`,
+        headers: auth(token),
+        payload,
+      });
+
+    // A project the server just made has no memory to write to: refused,
+    // and said so, with the segment still as saved.
+    const noMemory = await confirm({ baseUpdatedAt: version });
+    expect(noMemory.statusCode).toBe(409);
+    expect(noMemory.body).toContain('write-target');
+
+    const projectDb = openProjectDb(projectFile(alice, 'job'));
+    try {
+      createTm(join(dir, 'w.ctm'), { name: 'w', generator: 'test' }).close();
+      addTmRef(projectDb, { path: join(dir, 'w.ctm'), priority: 1, isWriteTarget: true });
+    } finally {
+      projectDb.close();
+    }
+
+    expect(
+      (await confirm({ baseUpdatedAt: '1999-01-01T00:00:00.000Z' })).statusCode,
+    ).toBe(409);
+    expect((await confirm({ baseUpdatedAt: 7 })).statusCode).toBe(400);
+    expect((await confirm({}, 99999)).statusCode).toBe(404);
+
+    const ok = await confirm({ baseUpdatedAt: version });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json()).toMatchObject({
+      changed: true,
+      segment: { id: segment.id, status: 'confirmed' },
+    });
+    // Confirming again writes nothing.
+    const again = await confirm({});
+    expect(again.json()).toMatchObject({ changed: false });
+
+    const db = openProjectDb(projectFile(alice, 'job'));
+    try {
+      const history = listEvents(db, {
+        subjectType: 'segment',
+        subjectId: String(segment.id),
+      });
+      // The edit's write, then `confirmSegment`'s own status write and
+      // its `segment.confirmed`; a second confirm added nothing.
+      expect(history.map((e) => [e.action, e.actor])).toEqual([
+        ['segment.target_set', `account:${alice.id}`],
+        ['segment.target_set', `account:${alice.id}`],
+        ['segment.confirmed', `account:${alice.id}`],
       ]);
       expect(verifyAudit(db).brokenAt).toBeNull();
     } finally {

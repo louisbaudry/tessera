@@ -2,7 +2,8 @@
  * The segment grid (v1-spec.md §7.1; backlog #28): source left, target
  * right, a status/origin/QA gutter, and only the rows on screen in the
  * DOM. Clicking a target opens it in the tag-aware editor (§7.2; backlog
- * #29) — one row at a time; the keyboard model around it is #30.
+ * #29) — one row at a time. Ctrl+Enter in it confirms the segment and
+ * opens the next one still to do (§7.3; backlog #30).
  */
 import type { FormatEntry, QaIssue, Segment, Token } from '@cat-tool/core';
 import { isBlankTarget } from '@cat-tool/core/model';
@@ -22,6 +23,7 @@ import {
   statusOf,
   type QaMark,
 } from './gutter.js';
+import { nextUnconfirmed } from './advance.js';
 import { estimateRowHeight } from './layout.js';
 import { toPieces } from './pieces.js';
 import { loadFullTags, saveFullTags } from './prefs.js';
@@ -121,6 +123,10 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           { targetTokens: tokens, baseUpdatedAt },
           { keepalive: urgent },
         ),
+      confirm: (segmentId, baseUpdatedAt) =>
+        api.confirm(session.current.token, session.current.project, segmentId, {
+          baseUpdatedAt,
+        }),
       loadedVersion: (segmentId) => loadedVersions.current.get(segmentId),
       onSaved: (segmentId, result, latest) => {
         // The row takes what the server stored — unless a later edit of
@@ -143,19 +149,20 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           return next;
         });
       },
-      onFailed: (segmentId, err, latest) => {
+      onFailed: (segmentId, err, latest, kind) => {
         if (err instanceof ApiError && err.status === 401) {
           session.current.signOut();
           return;
         }
         // A later write of the segment answers for it.
         if (!latest) return;
+        const what = err instanceof Error ? err.message : String(err);
         const message =
-          err instanceof ApiError && err.status === 409
-            ? `${err.message}: this edit was not saved. Reload the file to see the segment as it is now.`
-            : err instanceof Error
-              ? err.message
-              : String(err);
+          kind === 'confirm'
+            ? `Not confirmed: ${what}`
+            : err instanceof ApiError && err.status === 409
+              ? `${err.message}: this edit was not saved. Reload the file to see the segment as it is now.`
+              : `Not saved: ${what}`;
         setUnsaved((all) => new Map(all).set(segmentId, { message }));
       },
     });
@@ -175,6 +182,30 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     setActiveId(id);
   }, []);
   const leave = useCallback(() => setActiveId(null), []);
+  // Ctrl+Enter: the editor has sent any change; the queue confirms after
+  // it. The next segment opens at once — the answer, or a refusal shown on
+  // the row, follows — and scrolls into view if it is not.
+  const segmentsNow = useRef(segments);
+  useEffect(() => {
+    segmentsNow.current = segments;
+  });
+  const confirmAndAdvance = useCallback(
+    (segmentId: number) => {
+      queue.confirm(segmentId);
+      const all = segmentsNow.current;
+      const to = nextUnconfirmed(
+        all,
+        all.findIndex((s) => s.id === segmentId),
+      );
+      if (to === null) {
+        setActiveId(null);
+        return;
+      }
+      activate(all[to]!.id);
+      virtualizer.scrollToIndex(to, { align: 'auto' });
+    },
+    [queue, activate, virtualizer],
+  );
   const commit = useCallback(
     (segmentId: number, tokens: Token[], options: CommitOptions) => {
       // Shown at once; the server's answer replaces it with what it stored,
@@ -264,6 +295,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
                   onActivate={activate}
                   onCommit={commit}
                   onLeave={leave}
+                  onConfirm={confirmAndAdvance}
                   registerPageHide={pageHide.register}
                 />
               </div>
@@ -289,6 +321,7 @@ const SegmentRow = memo(function SegmentRow({
   onActivate,
   onCommit,
   onLeave,
+  onConfirm,
   registerPageHide,
 }: {
   segment: Segment;
@@ -304,6 +337,7 @@ const SegmentRow = memo(function SegmentRow({
   onActivate: (segmentId: number, at: { x: number; y: number }) => void;
   onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
   onLeave: () => void;
+  onConfirm: (segmentId: number) => void;
   registerPageHide: (leaveNow: () => void) => () => void;
 }) {
   const groups = useMemo(
@@ -323,7 +357,7 @@ const SegmentRow = memo(function SegmentRow({
         <span className="ord">{position}</span>
         <span
           className="status"
-          title={unsaved === undefined ? badge.title : `Not saved: ${unsaved.message}`}
+          title={unsaved === undefined ? badge.title : unsaved.message}
         >
           {unsaved === undefined ? badge.text : '!'}
         </span>
@@ -365,6 +399,7 @@ const SegmentRow = memo(function SegmentRow({
             failed={unsaved}
             onCommit={onCommit}
             onLeave={onLeave}
+            onConfirm={onConfirm}
             registerPageHide={registerPageHide}
           />
         ) : (

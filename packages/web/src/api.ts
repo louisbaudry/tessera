@@ -129,6 +129,30 @@ export const api = {
     void write.catch(() => undefined).finally(() => writes.delete(write));
     return write;
   },
+  /**
+   * Confirms a segment as stored, over the version the page last saw
+   * (v1-spec.md §7.3). Answered like a save; `changed` is false when it
+   * was already confirmed.
+   */
+  confirm: (
+    token: string,
+    name: string,
+    segmentId: number,
+    body: { baseUpdatedAt: string | undefined },
+  ) => {
+    const write = call<{
+      segment: Segment;
+      changed: boolean;
+      rerun: number[];
+      issues: QaIssue[];
+    }>(`${project(name)}/segments/${segmentId}/confirm`, token, {
+      method: 'POST',
+      body,
+    });
+    writes.add(write);
+    void write.catch(() => undefined).finally(() => writes.delete(write));
+    return write;
+  },
   /** Resolves once every write sent so far, and any it set off, has settled. */
   settled: async (): Promise<void> => {
     while (writes.size > 0) await Promise.allSettled([...writes]);

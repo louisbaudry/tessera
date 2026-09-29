@@ -19,6 +19,7 @@ export * from './edit-target.js';
 export * from './tm-refs.js';
 export * from './pretranslate.js';
 export * from './confirm.js';
+export * from './confirm-target.js';
 export * from './glossary-refs.js';
 export * from './qa-settings.js';
 export * from './qa-issues.js';

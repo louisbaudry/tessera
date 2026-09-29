@@ -7,6 +7,7 @@
  * `TargetEditor.tsx` puts a view on it.
  */
 import type { FormatEntry, Token } from '@cat-tool/core';
+import { withoutHiddenTags } from '@cat-tool/core/model';
 import { closeHistory } from 'prosemirror-history';
 import {
   DOMSerializer,
@@ -375,6 +376,24 @@ export function nextUnplaced(
 /** A paste from elsewhere, as the one line of plain text it may be (`pastedText`). */
 export function pasteText(state: EditorState, text: string): Transaction {
   return state.tr.insertText(pastedText(text)).scrollIntoView();
+}
+
+/**
+ * Ctrl+Ins (v1-spec.md §7.3): the target becomes the source, its visible
+ * tags as chips in the source's order — the same ids, so every tag reads
+ * as placed. One transaction, so Ctrl+Z gives the old target back. The
+ * source's hidden tags are not the editor's to place (`carryHiddenTags`
+ * puts them on save), so they are left out as they are for a target.
+ */
+export function copySource(
+  state: EditorState,
+  source: readonly Token[],
+  formats: readonly FormatEntry[],
+  groups: ReadonlyMap<number, readonly number[]>,
+): Transaction {
+  const { doc } = docFromTokens(withoutHiddenTags(source, formats), formats, groups);
+  const tr = state.tr.replaceWith(0, state.doc.content.size, doc.content);
+  return tr.setSelection(TextSelection.atEnd(tr.doc)).scrollIntoView();
 }
 
 /** The attribute naming the segment a copy came from (`SegmentClipboard`). */
