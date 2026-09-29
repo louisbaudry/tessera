@@ -1,7 +1,6 @@
 # Telemetry — spec
 
-Status: design, 2026-09-23. Not yet built, no backlog entries or issues
-yet. The owner asked for the spec first, to review before it is broken
+Status: design, 2026-09-23. The owner asked for the spec first, to review before it is broken
 into cards. Written now, before any surface emits anything, for the same
 reason `audit-spec.md` was: **an event nobody declared, once it ships, is
 data nobody reviewed.** It is cheaper to decide what may leave the process

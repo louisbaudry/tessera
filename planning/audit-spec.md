@@ -1,8 +1,6 @@
 # Auditability — spec
 
-Status: design, 2026-09-23. `#55` (`core/audit`), `#56` (`project.catdb`),
-`#57` (`platform.sqlite`) and `#58` (`portal.sqlite`) built 2026-09-24
-(`v1-backlog.md`, "Cross-cutting — Auditability"). Written now, ahead of
+Status: design, 2026-09-23. Written now, ahead of
 the epics that need it, for the same reason the `.ctm` context columns
 were populated before any feature read them (`v1-spec.md` §4.3): **history
 not recorded at write time cannot be recovered afterwards.** The context

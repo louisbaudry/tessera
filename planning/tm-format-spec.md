@@ -1012,11 +1012,6 @@ of the real storage types (64-bit integers, text dates, NULL blobs), with
 the real files used only for a local, uncommitted run of the importer that
 checks unit count against `tucount`.
 
-**Still to do, none of it started:** drop the `application_id` guard;
-correct the six fixture mistakes and add a regression test built on the
-older schema's real shape; decide between the two fixture approaches
-above; then the local real-file run that issue #26 asks for.
-
 ## 9. Versioning
 
 `PRAGMA user_version` is the format version, a single integer.

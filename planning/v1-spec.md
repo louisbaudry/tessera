@@ -267,8 +267,7 @@ the delivered document, is compared to a committed transcript, byte for
 byte. Since backlog #56 the transcript ends with the reviewed segment's
 `history` and an `audit-verify` of the whole job. A golden file rather than a list of assertions on purpose: a
 change to what the pipeline says or delivers becomes a diff to read and
-approve, not a test nobody wrote. `UPDATE_GOLDEN=1 pnpm test:golden`
-regenerates it; the diff is the review. Its own CI job, for the gate's
+approve, not a test nobody wrote. Its own CI job, for the gate's
 reason: drift in what is delivered should be unmistakable.
 
 ### 2.5 The API server (`@cat-tool/server`, backlog #27)

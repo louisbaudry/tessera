@@ -1,6 +1,6 @@
 # Worldwide deployment and compliance by design
 
-Status: **direction decided, nothing built.** Written 2026-09-23, from a
+Status: **direction decided.** Written 2026-09-23, from a
 session with the owner that started as "how do we deploy this" and
 became "who is this deployed _for_". Reasoning is kept on the record, not
 just the conclusions, so that none of it is re-litigated per feature.

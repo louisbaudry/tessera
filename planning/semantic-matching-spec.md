@@ -1,7 +1,6 @@
 # Semantic matching — spec
 
-Status: design, 2026-09-25. Not yet built, no backlog entries or issues
-yet. The owner asked for the spec first, to review before it is broken
+Status: design, 2026-09-25. The owner asked for the spec first, to review before it is broken
 into cards. Nothing in this document is measured yet, and every number
 in it is either arithmetic or a citation.
 

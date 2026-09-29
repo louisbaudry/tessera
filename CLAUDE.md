@@ -17,23 +17,36 @@ implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
 
-## Shared rules, loaded at session start
+## Shared rules
 
-How to work with Louis — communication, asking questions as options
-with a recommendation, never merging without being asked, branching
-from `main`, not regenerating a red check away, the public-repo data
-rules — is shared across all his repos and lives once, in the public
-`louisbaudry/claude-shared` (`CLAUDE.md`).
-`.claude/hooks/load-shared-context.sh` loads it at session start, plus
-Louis's private profile when the session can reach it (see that repo's
-`hooks/README.md`). This file adds only what is specific to tessera,
-and where the two differ, this file wins.
+How to work with Louis is shared across all his repos and lives once, in
+the public
+[`louisbaudry/claude-shared`](https://github.com/louisbaudry/claude-shared/blob/main/CLAUDE.md)
+(`CLAUDE.md`). Read it at the start of every session. It covers:
 
-If the session context has no "Shared context for working with Louis"
-block, or it shows a NOTE that the shared rules were not loaded, say so
-at the start. Until it is fixed, still never merge
-without an explicit go-ahead, and still push nothing that identifies a
-client or a person.
+- **Communication** — concise, in Louis's language (French, English or
+  Spanish); one question at a time, always with options and a
+  recommendation; fact, inference and guess kept apart.
+- **Git and pull requests** — never merge without being asked; one task,
+  one branch, one PR (`Closes #NN`); branch from `main` and merge back
+  promptly; one session at a time on one area; check open PRs and
+  unmerged branches before starting; file something broken that isn't
+  the task as an issue; after a merge, say whether the session can be
+  archived and why.
+- **Where work is tracked** — issues and the board hold status, never
+  markdown; the repo's files hold the record; the code is the final word.
+- **Before calling work done** — run the full set of checks and report
+  honestly what was and wasn't verified; a failing check means the change
+  is presumed wrong, never regenerate or loosen it to reach green.
+- **Design decisions on the record**, and shared facts defined once.
+- **AI output is a proposal, not a fact** — never invent source data.
+- **Public repositories** — no personal or client data, credentials or
+  internal hostnames, in any form.
+
+Louis's private profile (`ai_profile.md`) is loaded alongside it when a
+session can reach it. This file adds only what is specific to tessera
+and never contradicts the shared rules: a rule here that does is a bug
+in this file, so fix it or flag it to Louis rather than follow it.
 
 ## This repository is public
 
@@ -79,8 +92,8 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
    record into `planning/v1-backlog.md`, which makes that file a single
    point of contention by design. Two sessions on the same epic conflict
    there, in entries neither was editing on purpose. Phased work across
-   several sessions has its own protocol:
-   `planning/multi-session-workflow.md`.
+   several sessions runs one phase at a time, each branched from `main`
+   (`planning/multi-session-workflow.md`).
 5. **After each merge, ask Louis if the public GitHub website is worth
    updating with the new developments.** As a shared-rules question:
    options and a recommendation, not an open question.
@@ -409,9 +422,7 @@ own script (`pnpm test:golden`, a positional filter like `test:gate`)
 and its own CI job. When it goes red, read the diff before touching
 anything: a changed transcript line is the pipeline saying or delivering
 something different, which is either the point of your change or a
-regression. `UPDATE_GOLDEN=1 pnpm test:golden` rewrites the expected
-file; never do that to make a red run green without having read what
-moved. `fixtures/golden/README.md` says what each unit of the memory is
+regression. `fixtures/golden/README.md` says what each unit of the memory is
 there to exercise, so a new case goes into that file and that README
 together.
 

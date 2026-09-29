@@ -70,7 +70,7 @@ Each session's scope is **one phase, or a logical partition of a large phase**, 
 - Create synthetic test database helper
 - Commit: `8da5a4b Backlog #18b: Native .sdltm parser foundation (Phase 1)`
 - Backlog: what the reverse-engineering found — schema cookie `0x2f`, `parameters.VERSION = 8.06`, one sample file only
-- PR, reviewed, awaiting explicit merge go-ahead
+- PR, merged after go-ahead
 
 **Session 2 (Phase 2a — Parser Implementation)**
 - Implement `parseSdltmSegment()` — segment XML parsing
@@ -83,7 +83,7 @@ Each session's scope is **one phase, or a logical partition of a large phase**, 
 - Known unknowns recorded for Phase 2b: Trados's context-hash algorithm, tag ordering, version-specific schema differences
 - PR, merged after go-ahead
 
-**Session 3 (Phase 2b — Database Integration)** — not started; tracked in an issue of the former private repository
+**Session 3 (Phase 2b — Database Integration)**
 - Create `packages/db/src/tm/import-sdltm.ts` — mirror `import-tmx.ts`
 - Validate against real pseudonymised `.sdltm` files
 - Document any schema differences by Trados version
@@ -102,7 +102,7 @@ Note what the issue carries that this document deliberately does not: whether Ph
 ## Coordination with Code Review
 
 - **Phase PRs are not merged until explicitly approved.** No "auto-merge on green CI" — every merge is a deliberate go-ahead from the team.
-- **Prefer merging the earlier phase before starting the later one.** The temptation is to stack Phase 2a on Phase 1's unmerged branch and keep going; that is exactly how trunk drifts, and it turns one review into a diff nobody can read in isolation. If a phase genuinely cannot wait, stack deliberately — the earlier phase merges first, the later branch then rebases onto `main` — and never let a third phase join the stack.
+- **Prefer merging the earlier phase before starting the later one.** The temptation is to stack Phase 2a on Phase 1's unmerged branch and keep going; that is exactly how trunk drifts, and it turns one review into a diff nobody can read in isolation.
 - **Backlog updates are part of the same commit/PR as the implementation**, not separate documentation PRs. The code and its summary live together.
 
 ## When to Use This Pattern
