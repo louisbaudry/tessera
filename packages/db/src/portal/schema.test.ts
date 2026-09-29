@@ -135,6 +135,7 @@ describe('openPortalDb', () => {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       byteSize: 12345,
       storagePath: `orders/${order.id}/source/brochure.docx`,
+      wordCount: null,
     });
     expect(file.orderId).toBe(order.id);
     expect(file.byteSize).toBe(12345);

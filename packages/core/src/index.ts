@@ -1,6 +1,7 @@
 export * from './model/token.js';
 export * from './model/tags.js';
 export * from './model/hidden-tags.js';
+export * from './model/words.js';
 export * from './model/segment.js';
 export * from './model/qa.js';
 export * from './qa/rules.js';
@@ -29,6 +30,7 @@ export * from './glossary/key.js';
 export * from './project/assemble.js';
 export * from './project/parts.js';
 export * from './project/export.js';
+export * from './project/count.js';
 export * from './auth/credentials.js';
 export * from './audit/actor.js';
 export * from './audit/actions.js';

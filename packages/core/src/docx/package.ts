@@ -117,9 +117,14 @@ export function replacePart(
  * Everything else passes through untouched.
  */
 export function translatableParts(pkg: DocxPackage): string[] {
-  return pkg.parts
-    .map((p) => p.name)
-    .filter((n) =>
-      /^word\/(document|footnotes|endnotes|header\d+|footer\d+)\.xml$/.test(n),
-    );
+  return pkg.parts.map((p) => p.name).filter(isTranslatablePart);
+}
+
+/**
+ * Whether a package part holds translatable text. The one definition:
+ * `translatableParts` reads it, and so does a caller that unzips only
+ * these parts (`project/count.ts`) instead of the whole package.
+ */
+export function isTranslatablePart(name: string): boolean {
+  return /^word\/(document|footnotes|endnotes|header\d+|footer\d+)\.xml$/.test(name);
 }

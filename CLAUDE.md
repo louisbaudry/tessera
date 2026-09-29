@@ -328,6 +328,14 @@ engine, but follows the same discipline:
   and is the only record of a transition. Logins, deliveries,
   downloads and pricing (`order.priced`, backlog `#63`) go to
   `audit_event`. Not yet covered: rate and client writes.
+- **A word count is advice, and there is one definition of a word.**
+  `source_file.word_count` is what `core`'s counter made of an upload
+  (backlog `#62`, `v1-spec.md` §3.6), summed and pre-filled for the
+  admin, who confirms it; only that confirmation prices. It is never on
+  a client route (`clientFile` drops it by name) and is `null` rather
+  than wrong (`.pptx`, a bad DOCX, zh/ja/th…). The editor's progress and
+  vendor pay count words with the same `countRegionWords`, never a
+  splitter of their own.
 - **A price is set only while `submitted`, and approval is consent to
   that price** (backlog `#63`, `portal-v0-spec.md` §2–§3). The rules
   are `assertCanPrice`/`assertCanApprove` in `portal-core`, run by
