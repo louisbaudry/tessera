@@ -110,6 +110,9 @@ importers:
         specifier: ^6.9.16
         version: 6.10.1
     devDependencies:
+      '@cat-tool/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1

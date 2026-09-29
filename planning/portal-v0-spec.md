@@ -115,28 +115,55 @@ else in the loop.
 
 ## 4. Word count
 
-v0 does **not** reuse `@cat-tool/core`'s DOCX segmenter for this — that
-pipeline is Ring 0 infrastructure built around TM/QA correctness, not a
-quick estimate, and wiring the portal to it now would couple a business
-object to engine internals exactly backwards from §1's principle.
+**The count is advice, computed by `@cat-tool/core` (backlog `#62`,
+decided 2026-09-27).** A `.docx` or `.txt` upload is counted at submit
+and the figure stored on its `source_file` row (§6). The admin's screen
+pre-fills the order's total from those figures, and the admin's
+confirmation of a total is what sets `translation_order.word_count` and,
+through §3, the price. The client sees "estimate pending" until then,
+`.txt` included: the count is never shown to them, and their API never
+carries it. The conservative principle stands: a wrong automated figure
+on a real quote is worse than an honest "pending", so a machine's number
+is something a person signs off, not something a client is quoted.
 
-Instead: a naive whitespace word count for `.txt` uploads (exact), and for
-every other supported type (`.docx`, `.pptx`, `.xlsx`, `.pdf`) the estimate
-is left `null` and shown to the client as "estimate pending" — the admin
-fills in a word count manually when reviewing the order, which also sets
-the authoritative number the price is computed from. This is the
-conservative choice: a wrong automated estimate on a real quote is worse
-than an honest "pending".
+What counts as a word is defined once, in `core`
+(`v1-spec.md` §3.6, `model/words.ts`), and shared with the editor's
+progress and vendor pay: `portal-core`'s `countWords` is a re-export of
+it, not a third splitter.
 
-**Decided 2026-09-27 (backlog `#62`): the count moves to
-`@cat-tool/core`, as advice only.** A `.docx` or `.txt` upload is
-counted at submit and stored per file. The admin sees the total
-pre-filled and confirms it, and only that confirmation sets the price.
-The client sees "pending" until then, `.txt` included. So the
-conservative principle above stands. Two things in this section do
-not: the "not core" rationale, and the `.txt` exception shown to the
-client unreviewed. `#62` rewrites this section, §6 and §8 before its
-code, together with one definition of a word in `v1-spec.md`.
+How a file is counted (`portal-core`'s `estimateWordCount`, over
+`core`'s `countDocxWords` / `countTextWords`, both in `project/`):
+
+- **The format is read from the name and the bytes, never from the
+  declared content type.** `.docx` must also start with the ZIP magic;
+  `.txt` is decoded as UTF-8 with `{ ignoreBOM: true, fatal: true }`. A
+  client-supplied `Content-Type` is a claim, and a wrong one must not
+  choose the parser.
+- **`.pptx`, `.xlsx`, `.pdf` and anything else are `null`**: `core` has
+  no filter for them, so there is no honest number.
+- **`null`, never a wrong number**, also for: a source language that
+  does not space its words (`v1-spec.md` §3.6); a DOCX that will not
+  parse (not a ZIP, no `word/document.xml`, malformed XML, a numeric
+  entity past U+10FFFF); a package whose translatable parts inflate past
+  32 MiB; and `.txt` that is not valid UTF-8 or holds a NUL or other C0
+  control (BOM-less UTF-16 of ASCII text is valid UTF-8 full of NULs, so
+  the decoder alone would not reject it).
+- **A DOCX is counted without the segmenter.** It goes
+  `extractSkeleton` → `tokenizeRegion` → `countRegionWords` over the
+  translatable parts only, which is `importDocx`'s path minus reading the
+  media and fonts. `assembleFile`, which §8 first named, is the wrong
+  tool: sentence splitting moves no word, `rulesFor` throws on a source
+  language with no segmentation rules (an order may name any), and
+  hashing every segment is cost for nothing. The parts are unzipped with a
+  filter, so an upload that is mostly images costs its XML only, and the
+  cap is enforced on the declared size before anything inflates
+  (`fflate` writes no more than the declared size, so a lying header
+  gives a truncated part and, in practice, a parse error and `null`).
+- **Counting never fails an order.** It runs before the order is
+  created, on the buffers already in memory, so a count that goes wrong
+  cannot leave a committed order behind a 500; any error is `null` and a
+  log line. It is synchronous on the request thread (timings in the
+  backlog record).
 
 ## 5. Notification
 
@@ -169,12 +196,15 @@ SMTP provider shouldn't fail the order-submit/deliver API call itself.
   link), created_at
 - `rate` — id, src_lang, tgt_lang, rate_per_word, minimum_price
 - `translation_order` — id, client_id, src_lang, notes, status, word_count
-  (nullable until admin sets it), price (nullable until word_count is set),
-  created_at, updated_at
+  (nullable until admin sets it: the admin-confirmed figure the price
+  comes from, never a file's advisory count), price (nullable until
+  word_count is set), created_at, updated_at
 - `order_target_lang` — order_id, tgt_lang (an order can request more than
   one target language; one row per requested pair)
 - `source_file` — id, order_id, filename, content_type, byte_size,
-  storage_path, uploaded_at
+  storage_path, uploaded_at, word_count (v5; nullable, **advisory**: §4.
+  `NULL` is "not counted". It prices nothing and no client route
+  returns it)
 - `delivered_file` — id, order_id, filename, content_type, byte_size,
   storage_path, uploaded_at
 - `order_event` — id, order_id, from_status (nullable, null for the
@@ -243,10 +273,12 @@ a `fetch` and hand the browser a blob.
 
 ## 8. What's manual in v0 / where the CAT tool plugs in later
 
-Manual today: actual translation production (Trados/DeepL by hand), the
-word count for every format (the `.txt` estimator in `portal-core` is
-not called by the server; backlog `#62`), deciding when to move an order
-to `in_progress`. Moving the files themselves is not: since 2026-09-22 the
+Manual today: actual translation production (Trados/DeepL by hand),
+**confirming** the word count (the count itself is automatic for `.docx`
+and `.txt`, but advisory: the admin checks the pre-filled total and
+confirms it, and only that sets the price, §4; for `.pptx`, `.xlsx`,
+`.pdf` and an unspaced source language there is no figure and the admin
+counts by hand), deciding when to move an order to `in_progress`. Moving the files themselves is not: since 2026-09-22 the
 admin downloads the client's uploads and the client downloads the
 delivered translation from the portal (§6), which is what §1 said the
 portal was for. Notification delivery now has a real channel
@@ -254,7 +286,10 @@ portal was for. Notification delivery now has a real channel
 deployment needs to stop relying on console logs.
 
 Future CAT integration point: a `CatToolProductionAdapter` implementing
-`ProductionAdapter`, and a word-count service that calls
-`@cat-tool/core`'s `assembleFile`/segmenter instead of the naive estimator
-above — both are additive, neither requires touching `translation_order`,
-pricing, or the status machine.
+`ProductionAdapter`. It is additive; it does not require touching
+`translation_order`, pricing, or the status machine. The word count no
+longer waits on the CAT tool: it already runs on `@cat-tool/core`, by the
+lighter path §4 describes and not through `assembleFile`/the segmenter.
+What a CAT project would add is a count of the *segmented* file (matches
+and repetitions), which is a different number from this one and belongs
+to analysis and pay (`#49`), not to the quote.

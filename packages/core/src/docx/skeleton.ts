@@ -17,7 +17,7 @@
  * translatable (§3.5) and a real manuscript can carry ten or more footers.
  */
 
-import { contains, outermost, scanElements, type XmlElement } from './xml-scan.js';
+import { contains, scanElements, type XmlElement } from './xml-scan.js';
 
 /** A translatable region — currently one paragraph's run content. */
 export interface SkeletonRegion {
@@ -64,17 +64,21 @@ const MARKER_RE = /<!--cat:([A-Za-z0-9_]+)-->/g;
  *
  * Identified by position rather than nesting depth: the schema requires
  * `w:pPr` to be the paragraph's first child, and depth is only comparable
- * between elements found in the same scan.
+ * between elements found in the same scan. `propsAt` maps a `w:pPr`'s
+ * start offset to it, so this is a lookup at the first non-whitespace
+ * offset in the paragraph, not a search of every `w:pPr` in the part
+ * (which made extraction quadratic in the paragraph count — 12 s for
+ * 40,000 paragraphs, on an upload anyone holding a portal link can send).
  */
 function contentStartOf(
   xml: string,
   para: XmlElement,
-  propsList: readonly XmlElement[],
+  propsAt: ReadonlyMap<number, XmlElement>,
 ): number {
-  const own = propsList.find(
-    (pr) => contains(para, pr) && xml.slice(para.contentStart, pr.start).trim() === '',
-  );
-  return own ? own.end : para.contentStart;
+  let at = para.contentStart;
+  while (at < para.contentEnd && /\s/.test(xml[at]!)) at++;
+  const own = propsAt.get(at);
+  return own && contains(para, own) ? own.end : para.contentStart;
 }
 
 export function extractSkeleton(part: string, xml: string): PartSkeleton {
@@ -82,11 +86,29 @@ export function extractSkeleton(part: string, xml: string): PartSkeleton {
   if (paragraphs.length === 0) {
     return { part, skeleton: xml, regions: [] };
   }
-  const propsList = scanElements(xml, PARA_PROPS);
+  const propsAt = new Map(scanElements(xml, PARA_PROPS).map((pr) => [pr.start, pr]));
 
   // Assign keys in document order so `ord` is stable across runs.
   const keyOf = new Map<XmlElement, string>();
   paragraphs.forEach((para, index) => keyOf.set(para, `s${index + 1}`));
+
+  // Each paragraph's outermost nested paragraphs (a text box's), found
+  // in one pass: `paragraphs` is in document order, so a stack of the
+  // open ones names each paragraph's parent.
+  const nestedOf = new Map<XmlElement, XmlElement[]>();
+  const top: XmlElement[] = [];
+  const open: XmlElement[] = [];
+  for (const para of paragraphs) {
+    while (open.length > 0 && !contains(open[open.length - 1]!, para)) open.pop();
+    const parent = open[open.length - 1];
+    if (!parent) top.push(para);
+    else {
+      const list = nestedOf.get(parent);
+      if (list) list.push(para);
+      else nestedOf.set(parent, [para]);
+    }
+    open.push(para);
+  }
 
   const regions: SkeletonRegion[] = [];
 
@@ -96,9 +118,9 @@ export function extractSkeleton(part: string, xml: string): PartSkeleton {
    * children's markers by the time it is captured.
    */
   const materialize = (para: XmlElement): string => {
-    const from = contentStartOf(xml, para, propsList);
+    const from = contentStartOf(xml, para, propsAt);
     const to = para.contentEnd;
-    const nested = outermost(paragraphs.filter((p) => contains(para, p)));
+    const nested = nestedOf.get(para) ?? [];
 
     const childKeys: string[] = [];
     let out = '';
@@ -111,7 +133,7 @@ export function extractSkeleton(part: string, xml: string): PartSkeleton {
       // Replace only the child's *content*. Its <w:p> wrapper and w:pPr stay
       // in the parent, exactly as a top-level paragraph keeps them in the
       // skeleton — otherwise splicing the child back loses its element.
-      const childFrom = contentStartOf(xml, child, propsList);
+      const childFrom = contentStartOf(xml, child, propsAt);
       out += xml.slice(cursor, childFrom) + marker(key);
       cursor = child.contentEnd;
     }
@@ -124,13 +146,12 @@ export function extractSkeleton(part: string, xml: string): PartSkeleton {
 
   // Only outermost paragraphs are replaced in the skeleton; nested ones are
   // reached through their parent.
-  const top = outermost(paragraphs);
   let skeleton = '';
   let cursor = 0;
   for (const para of top) {
     materialize(para);
     const key = keyOf.get(para)!;
-    const from = contentStartOf(xml, para, propsList);
+    const from = contentStartOf(xml, para, propsAt);
     skeleton += xml.slice(cursor, from) + marker(key);
     cursor = para.contentEnd;
   }

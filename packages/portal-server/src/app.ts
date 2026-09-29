@@ -42,15 +42,18 @@ import {
   setRate,
   setStatus,
   setWordCountAndPrice,
+  sumSourceWordCounts,
   type AdminUser,
   type Client,
   type OrderEvent,
+  type SourceFile,
   type StoredFile,
   type TranslationOrder,
 } from '@cat-tool/db';
 import {
   ConsoleNotificationService,
   estimateOrder,
+  estimateWordCount,
   generateSessionToken,
   InvalidTransitionError,
   OrderPricingError,
@@ -134,9 +137,29 @@ function serializeOrder(order: TranslationOrder) {
   return { ...order };
 }
 
-/** A file as the API shows it: where it is on disk is nobody's business. */
-function serializeFile(file: StoredFile) {
+/**
+ * A file as the admin API shows it: where it is on disk is nobody's
+ * business, but the advisory word count is the admin's to confirm.
+ */
+function serializeFile(file: StoredFile | SourceFile) {
   const { storagePath: _storagePath, ...rest } = file;
+  return rest;
+}
+
+/**
+ * A file as the client API shows it: no per-file count either. The count
+ * is advice for the admin (portal-v0-spec.md §4); the client sees
+ * "pending" until the admin confirms one, so a wrong estimate is never a
+ * quote. Dropped by name, the way `clientOrderEvent` drops `actorLabel`,
+ * so a field added to `SourceFile` later is shown to the client only if
+ * someone decides it should be.
+ */
+function clientFile(file: StoredFile | SourceFile) {
+  const {
+    storagePath: _storagePath,
+    wordCount: _wordCount,
+    ...rest
+  } = file as SourceFile;
   return rest;
 }
 
@@ -182,6 +205,23 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   }
 
   // --- file helpers ---------------------------------------------------
+
+  // The advisory count of one upload (§4), or null. It is synchronous on
+  // the request thread; `estimateWordCount` gives `null` for everything
+  // it cannot count and does not throw, so the catch is for a bug in it,
+  // which must cost a number and never an order.
+  function countUpload(file: UploadedPart, srcLang: string): number | null {
+    try {
+      return estimateWordCount({
+        filename: displayFilename(file.filename),
+        bytes: file.buffer,
+        srcLang,
+      });
+    } catch (err) {
+      app.log.error({ err, byteSize: file.buffer.byteLength }, 'word count failed');
+      return null;
+    }
+  }
 
   // Writes an upload under a server-minted name and returns the row
   // that describes it; the caller inserts it with whatever it records.
@@ -295,13 +335,23 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return reply.code(400).send({ error: 'at least one file is required' });
     }
 
+    // Counted first, from the buffers already in memory, so a count that
+    // goes wrong can never leave a committed order behind a 500. It is
+    // advice for the admin (§4): any failure is a file with no number.
+    const counts = files.map((file) => countUpload(file, srcLang));
+
     const order = createOrder(
       db,
       { clientId: client.id, srcLang, tgtLangs, notes },
       { actor: clientActor(client) },
     );
 
-    for (const file of files) insertSourceFile(db, writeUpload('source', order.id, file));
+    files.forEach((file, i) =>
+      insertSourceFile(db, {
+        ...writeUpload('source', order.id, file),
+        wordCount: counts[i] ?? null,
+      }),
+    );
 
     void Promise.resolve(
       notifications.notifyAdmin({
@@ -315,7 +365,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
     return reply.code(201).send({
       order: serializeOrder(order),
-      files: listSourceFiles(db, order.id).map(serializeFile),
+      files: listSourceFiles(db, order.id).map(clientFile),
     });
   });
 
@@ -330,8 +380,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     }
     return {
       order: serializeOrder(order),
-      sourceFiles: listSourceFiles(db, id).map(serializeFile),
-      deliveredFiles: listDeliveredFiles(db, id).map(serializeFile),
+      sourceFiles: listSourceFiles(db, id).map(clientFile),
+      deliveredFiles: listDeliveredFiles(db, id).map(clientFile),
       events: listOrderEvents(db, id).map(clientOrderEvent),
     };
   });
@@ -455,9 +505,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const id = Number((req.params as { id: string }).id);
     const order = getOrder(db, id);
     if (!order) return reply.code(404).send({ error: 'order not found' });
+    const sourceFiles = listSourceFiles(db, id);
     return {
       order: serializeOrder(order),
-      sourceFiles: listSourceFiles(db, id).map(serializeFile),
+      sourceFiles: sourceFiles.map(serializeFile),
+      // The counts' sum when every file has one: what the screen
+      // pre-fills, and the admin's confirmation is what prices (§4).
+      suggestedWordCount: sumSourceWordCounts(sourceFiles),
       deliveredFiles: listDeliveredFiles(db, id).map(serializeFile),
       events: listOrderEvents(db, id),
     };

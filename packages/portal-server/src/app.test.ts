@@ -21,6 +21,7 @@ import {
   verifyAudit,
   type Client,
 } from '@cat-tool/db';
+import { writeDocx } from '@cat-tool/core';
 import { hashPassword } from '@cat-tool/portal-core';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -598,5 +599,150 @@ describe('pricing and approval (backlog #63)', () => {
       ['order.priced', 'admin:1'],
       ['order.priced', 'admin:1'],
     ]);
+  });
+});
+
+describe('the advisory word count (backlog #62)', () => {
+  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const bytes = (s: string) => new TextEncoder().encode(s);
+  const docxOf = (text: string) =>
+    writeDocx({
+      parts: [
+        { name: '[Content_Types].xml', data: bytes('<Types/>') },
+        {
+          name: 'word/document.xml',
+          data: bytes(
+            `<w:document ${NS}><w:body><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:body></w:document>`,
+          ),
+        },
+      ],
+    });
+
+  interface Upload {
+    name: string;
+    body: Uint8Array;
+    /** What the client claims. The count must not read it. */
+    type?: string;
+  }
+
+  async function submit(files: Upload[]) {
+    const form = new FormData();
+    form.append('srcLang', 'en');
+    form.append('tgtLangs', 'es');
+    for (const f of files) {
+      form.append(
+        'files',
+        new Blob([new Uint8Array(f.body)], {
+          type: f.type ?? 'application/octet-stream',
+        }),
+        f.name,
+      );
+    }
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/client/orders',
+      headers: auth(ada.accessToken),
+      payload: form,
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json() as { order: { id: number }; files: Array<Record<string, unknown>> };
+  }
+
+  const adminOrder = async (admin: string, id: number) =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: `/api/admin/orders/${id}`,
+        headers: auth(admin),
+      })
+    ).json() as {
+      order: { wordCount: number | null; price: number | null };
+      sourceFiles: Array<{ filename: string; wordCount: number | null }>;
+      suggestedWordCount: number | null;
+    };
+
+  it('counts a DOCX and a .txt, pre-fills the sum for the admin, and one confirm prices', async () => {
+    const { order } = await submit([
+      { name: 'a.docx', body: docxOf('five words in this file'), type: 'text/plain' },
+      { name: 'b.txt', body: bytes('three more words'), type: 'application/pdf' },
+    ]);
+    const admin = await adminLogin();
+    const seen = await adminOrder(admin, order.id);
+    expect(seen.sourceFiles.map((f) => f.wordCount)).toEqual([5, 3]);
+    expect(seen.suggestedWordCount).toBe(8);
+    // Advice only: nothing is priced until the admin confirms.
+    expect(seen.order).toMatchObject({ wordCount: null, price: null });
+
+    const priced = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${order.id}`,
+      headers: auth(admin),
+      payload: { wordCount: seen.suggestedWordCount },
+    });
+    expect(priced.statusCode, priced.body).toBe(200);
+    expect(await adminOrder(admin, order.id)).toMatchObject({
+      order: { wordCount: 8, price: 20 },
+    });
+  });
+
+  it('keeps every per-file count off the client API', async () => {
+    const { order, files } = await submit([{ name: 'a.txt', body: bytes('one two') }]);
+    expect(files[0]).not.toHaveProperty('wordCount');
+    expect(files[0]).not.toHaveProperty('storagePath');
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/client/orders/${order.id}`,
+      headers: auth(ada.accessToken),
+    });
+    const json = res.json() as {
+      order: { wordCount: number | null };
+      sourceFiles: object[];
+    };
+    expect(json.order.wordCount).toBeNull();
+    expect(json.sourceFiles[0]).not.toHaveProperty('wordCount');
+    expect(res.body).not.toContain('suggestedWordCount');
+  });
+
+  it('submits successfully with a null count for what cannot be counted', async () => {
+    const utf16 = (s: string, bom: boolean) => {
+      const out = new Uint8Array((s.length + (bom ? 1 : 0)) * 2);
+      let o = 0;
+      if (bom) {
+        out[o++] = 0xff;
+        out[o++] = 0xfe;
+      }
+      for (const ch of s) {
+        out[o++] = ch.charCodeAt(0);
+        out[o++] = 0;
+      }
+      return out;
+    };
+    const cases: Upload[] = [
+      { name: 'bad.docx', body: docxOf('has &#x110000; in it') },
+      { name: 'not-a-zip.docx', body: bytes('plain text posing as a docx') },
+      { name: 'deck.pptx', body: docxOf('a deck') },
+      { name: 'sheet.xlsx', body: docxOf('a sheet') },
+      { name: 'doc.pdf', body: bytes('%PDF-1.4') },
+      { name: 'bom.txt', body: utf16('two words', true) },
+      { name: 'nobom.txt', body: utf16('two words', false) },
+    ];
+    const { order } = await submit(cases);
+    const admin = await adminLogin();
+    const seen = await adminOrder(admin, order.id);
+    expect(seen.sourceFiles.map((f) => [f.filename, f.wordCount])).toEqual(
+      cases.map((c) => [c.name, null]),
+    );
+    expect(seen.suggestedWordCount).toBeNull();
+  });
+
+  it('suggests nothing when one file among several has no count', async () => {
+    const { order } = await submit([
+      { name: 'a.txt', body: bytes('one two') },
+      { name: 'deck.pptx', body: bytes('x') },
+    ]);
+    const seen = await adminOrder(await adminLogin(), order.id);
+    expect(seen.sourceFiles.map((f) => f.wordCount)).toEqual([2, null]);
+    expect(seen.suggestedWordCount).toBeNull();
   });
 });

@@ -215,3 +215,24 @@ describe('isUntranslatable', () => {
     expect(isUntranslatable(region('<w:p><w:r><w:t>1. a</w:t></w:r></w:p>'))).toBe(false);
   });
 });
+
+describe('extractSkeleton scales with the paragraph count', () => {
+  // It once filtered every paragraph and every `w:pPr` in the part for
+  // each paragraph: 12 s for 40,000 paragraphs, on an upload anyone
+  // holding a portal link can send (backlog #62). The bound is loose
+  // enough for a slow CI runner and an order of magnitude under that.
+  it('extracts 40,000 paragraphs, some with properties and some nested, in seconds', () => {
+    const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const plain = '<w:p><w:r><w:t>plain paragraph text</w:t></w:r></w:p>';
+    const styled =
+      '<w:p><w:pPr><w:pStyle w:val="A"/></w:pPr><w:r><w:t>styled</w:t></w:r></w:p>';
+    const boxed =
+      '<w:p><w:r><w:drawing><w:txbxContent><w:p><w:r><w:t>in a box</w:t></w:r></w:p></w:txbxContent></w:drawing></w:r></w:p>';
+    const xml = `<w:document ${NS}><w:body>${(plain + styled + boxed + plain).repeat(8000)}</w:body></w:document>`;
+    const started = performance.now();
+    const sk = extractSkeleton('word/document.xml', xml);
+    expect(performance.now() - started).toBeLessThan(3000);
+    expect(sk.regions).toHaveLength(8000 * 5);
+    expect(renderSkeleton(sk)).toBe(xml);
+  });
+});

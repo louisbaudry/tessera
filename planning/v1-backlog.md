@@ -2116,7 +2116,11 @@ Create project, add files, attach TMs, set priority and write target.
 Filter by rule and severity, jump to segment, dismiss.
 
 **#34 · Filters and progress · S** · [issue #10]
-Status/origin/QA/text filters; segment and word progress.
+Status/origin/QA/text filters; segment and word progress. Words are
+counted by `core`'s `countRegionWords`, the one definition
+(`v1-spec.md` §3.6, backlog `#62`). Needs a per-segment "fallback copy"
+flag recorded at assembly, so a text box stored as `mc:Choice` and
+`mc:Fallback` is not counted twice.
 
 **#35 · Dark mode and visual pass · M** · [issue #20]
 Calm palette, no layout shift when panels open.
@@ -2272,9 +2276,10 @@ configured rates -> client approves -> admin moves to in_progress ->
 admin uploads final files and marks delivered -> both notifications fire
 (console-logged in v0).
 
-What's manual in v0: actual translation production, word count for every
-file type (admin enters it by hand; `portal-core`'s `.txt` estimator is
-not called by the server, see `#62`), notification delivery
+What's manual in v0: actual translation production, confirming the word
+count (admin enters or confirms it; since `#62` `.docx` and `.txt`
+uploads arrive with an advisory count, and the other types with none),
+notification delivery
 (console log, not real email). `ProductionAdapter` is a named seam
 (`ManualProductionAdapter` today) for the CAT tool to plug into later
 without touching the order model, pricing, or status machine — see
@@ -2337,18 +2342,10 @@ Two things this fixed on the way, both worth remembering:
   it, so the quoted-name case lives in `storage.test.ts`, against
   `attachmentDisposition` directly.
 
-Still manual: the word count (the `.txt` auto-count `portal-core` ships
-is not yet called by the server), and a client-side cancel.
+Still manual: confirming the word count (the count itself became an
+advisory, automatic one in `#62`), and a client-side cancel.
 
 Sized issues:
-
-- **#62 · Portal word count through core (advisory) · L** · [issue #61] —
-  computed at submit through `core`, stored per file, pre-filled for the
-  admin to confirm; the client still sees "pending" until then (owner
-  decision, 2026-09-27: §4's principle kept, its "not core" rationale
-  reversed). Spec first: `portal-v0-spec.md` §4, §6, §8, and one
-  definition of a word in `v1-spec.md`, which `#34` and `#49` will read
-  too.
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)
 
@@ -2470,7 +2467,11 @@ rest of that range:
   gets decided, once the route count here plus `#50`/`#51` is known.
 - **#49 · Tiered rate/payable calculation · M** · [issue #28] —
   `db/vendor` reading `db/tm`'s `retrievePair` output, the cross-package
-  dependency spec §1 decision 9 calls out explicitly.
+  dependency spec §1 decision 9 calls out explicitly. Words are counted by
+  `core`'s `countRegionWords` (`v1-spec.md` §3.6, `#62`), which returns
+  `null` for zh/ja/th/lo/km/my/bo: decide their unit here. Needs the
+  same per-segment "fallback copy" flag as `#34`, or a text box is paid
+  twice.
 - **#50 · Vendor-facing API: job feed, offer detail, accept/decline/
   claim · S** · [issue #29] — JSON only; the UI for it is `#52`.
 - **#51 · PM-facing API: assign vendor, review/close assignment · S** ·
@@ -2657,6 +2658,79 @@ Sized issues:
     `schema.test.ts` asserted `user_version` 3 literally; it now reads
     `PORTAL_MIGRATIONS.length`, so `#62`'s migration won't trip it.
 
+- ~~**#62 · Portal word count through core (advisory) · L**~~ —
+  **DONE** — `core/model/words.ts` (the definition),
+  `core/project/count.ts` (`countDocxWords`, `countTextWords`),
+  `portal-core/src/word-count.ts` (`estimateWordCount`), portal schema
+  v5 (`source_file.word_count`), `db/portal/files.ts`, the portal's
+  submit and admin-order routes and the admin screen. Before this the
+  admin typed every order's count by hand and `portal-core`'s `.txt`
+  estimator had no caller.
+  - **Decided with Louis, 2026-09-27: the count is advice.** Computed at
+    submit, stored per file, summed and pre-filled for the admin, who
+    confirms it; only that confirmation prices (`portal-v0-spec.md` §4,
+    rewritten). The client keeps seeing "pending" and no client route
+    returns a count: `clientFile` drops `wordCount` by name, the way
+    `clientOrderEvent` drops `actorLabel`. It writes no audit event: a
+    source upload is not an event (`audit-spec.md` §2.6) and the count
+    sets no price.
+  - **One definition of a word** (`v1-spec.md` §3.6, new): a run of
+    non-separators holding a letter or number. Decided per placeholder
+    element (`w:tab`, `w:br` split; `w:noBreakHyphen` is `-`; the rest
+    join), locked paragraphs do not count, hidden text does, unspaced
+    languages give `null`. **`#34` (editor progress) and `#49` (vendor
+    pay) read this same counter, and both need what the portal does with
+    a text box:** Word stores one as `mc:Choice` and `mc:Fallback`, `core`
+    extracts both, and the count excludes the fallback copy by re-scanning
+    the part. A per-segment "fallback copy" flag recorded at assembly is
+    what they need instead, so a segment is neither shown as progress nor
+    paid twice. Not built here.
+  - **The count is not `assembleFile`.** It goes `extractSkeleton` →
+    `tokenizeRegion` → `countRegionWords` over the translatable parts,
+    unzipped with a filter (`isTranslatablePart`, now the one definition
+    `translatableParts` also reads) so media and fonts are never
+    inflated. No segmenter (a sentence split moves no word), so no throw
+    for a source language `rulesFor` lacks.
+  - **`extractSkeleton` was quadratic in the paragraph count, and no test
+    at fixture scale showed it.** It filtered every paragraph and searched
+    every `w:pPr` once per paragraph: 2.6 s for 20,000 paragraphs and
+    12.5 s for 40,000. The counting the portal does on an upload from
+    anyone holding a client link would have been a way to hold the request
+    thread for minutes. Now one pass with a stack (nested paragraphs) and
+    a map keyed by start offset (`w:pPr`): 0.16 s for 40,000. Output is
+    identical, which the roundtrip gate asserts. The same shape was in
+    the fallback scan and was written linear. Exactly the
+    "function around an indexed column" lesson, for a scan: the only test
+    that shows it is one with a large input, so
+    `skeleton.test.ts` and `count.test.ts` each carry one.
+  - **Timed near the limits** (this container, one run): a DOCX whose
+    `document.xml` is 31.5 MiB (167,000 paragraphs, 3.0 M words) counts in
+    about 3 s at 375 MiB RSS; a 100 MB `.txt` in 0.9 s. It is synchronous
+    on the request thread, so a crafted upload at the cap still holds it
+    for those seconds. That is why the inflated cap is 32 MiB, not the
+    64 MiB first written (6.4 s), and why `countWords` is one pass with
+    no array (the `split` version took 6.8 s on the same text). Moving it
+    off the thread is `#16a`'s kind of work; if the portal is ever exposed
+    beyond a private-link pilot, do it before raising the cap.
+  - **`fflate` honours a declared size and no more.** A header that
+    understates the size gives a truncated part, not a bomb, so the cap
+    is checked on the declared sizes before inflating. A truncated part
+    almost always fails to scan (`null`); one cut on a tag boundary would
+    count fewer words, which is what an advisory figure the admin checks
+    can absorb.
+  - **Never a wrong number.** `null` for: `.pptx`/`.xlsx`/`.pdf`, an
+    extension the bytes do not bear out (the declared content type is
+    never read), a malformed DOCX, a numeric entity past U+10FFFF
+    (`RangeError` from `tokenizeRegion`, caught with everything else),
+    BOM-less UTF-16 `.txt` (valid UTF-8 full of NULs, so the decoder does
+    not reject it; a C0 control does), and an unspaced source language.
+    Counting runs before `createOrder`, so none of that can leave an
+    order behind a 500.
+  - `PORTAL_MIGRATIONS.length` was asserted as a literal `4` in a second
+    place (`audit.test.ts`) that `#63` missed; both read the array now.
+    `portal-server` gained `@cat-tool/core` as a dev dependency, for its
+    test to build a DOCX with `writeDocx`.
+
 Also binding on work already carded: backlog `#46`/`#48` (`.ctv` rate
 history, `assignment_event`) carry an `actor` from their first migration
 (spec §8.2).
@@ -2734,7 +2808,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
-[issue #61]: https://github.com/louisbaudry/tessera/issues/61
 [issue #62]: https://github.com/louisbaudry/tessera/issues/62
 [issue #66]: https://github.com/louisbaudry/tessera/issues/66
 [issue #17]: https://github.com/louisbaudry/tessera/issues/17

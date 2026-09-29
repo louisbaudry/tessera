@@ -221,7 +221,7 @@ describe('portal audit_event', () => {
 
   it('records a delivery with its row, and a download of either kind of file', () => {
     const order = newOrder();
-    const source = insertSourceFile(db, { ...FILE, orderId: order.id });
+    const source = insertSourceFile(db, { ...FILE, orderId: order.id, wordCount: null });
     const delivered = insertDeliveredFile(
       db,
       { ...FILE, orderId: order.id, filename: 'brochure.fr.docx' },
@@ -390,7 +390,7 @@ describe('portal v4: audit_event widened, prices baselined (backlog #63)', () =>
     old.close();
 
     db = openPortalDb(path);
-    expect(db.pragma('user_version', { simple: true })).toBe(4);
+    expect(db.pragma('user_version', { simple: true })).toBe(PORTAL_MIGRATIONS.length);
     const rows = db.prepare('SELECT * FROM audit_event ORDER BY id').all();
     expect(rows.slice(0, before.length)).toEqual(before);
     // One baseline, for the one priced order, and no author invented.

@@ -82,14 +82,17 @@ async function downloadFile(path, filename) {
   URL.revokeObjectURL(url);
 }
 
-function fileRows(files, downloadPath) {
-  if (files.length === 0) return '<tr><td colspan="4" class="muted">none</td></tr>';
+function fileRows(files, downloadPath, withCounts = false) {
+  if (files.length === 0) {
+    return `<tr><td colspan="${withCounts ? 5 : 4}" class="muted">none</td></tr>`;
+  }
   return files
     .map(
       (f) => `<tr>
         <td>${escapeHtml(f.filename)}</td>
         <td>${escapeHtml(f.contentType)}</td>
         <td>${f.byteSize.toLocaleString()}</td>
+        ${withCounts ? `<td>${f.wordCount == null ? '—' : f.wordCount.toLocaleString()}</td>` : ''}
         <td><button class="secondary" data-download="${downloadPath(f)}" data-filename="${escapeHtml(f.filename)}">Download</button></td>
       </tr>`,
     )
@@ -109,7 +112,7 @@ const NEXT_STATUSES = {
 };
 
 async function renderOrderDetail(id) {
-  const { order, sourceFiles, deliveredFiles, events } = await api(
+  const { order, sourceFiles, suggestedWordCount, deliveredFiles, events } = await api(
     `/api/admin/orders/${id}`,
   );
 
@@ -122,9 +125,16 @@ async function renderOrderDetail(id) {
     <div class="card">
       <label>Word count</label>
       <form id="wc-form" style="display:flex; gap:0.5rem; align-items:end">
-        <input type="number" name="wordCount" min="0" value="${order.wordCount ?? ''}" style="width:8rem" />
+        <input type="number" name="wordCount" min="0" value="${order.wordCount ?? suggestedWordCount ?? ''}" style="width:8rem" />
         <button type="submit" style="margin-top:0">Set &amp; price</button>
       </form>
+      <p class="muted">${
+        order.wordCount == null && suggestedWordCount != null
+          ? 'Pre-filled from the uploads’ counts. An estimate: check it, then confirm to price.'
+          : order.wordCount == null
+            ? 'No automatic count for these files. Count them and enter it.'
+            : ''
+      }</p>
       <p>Price: <strong>${money(order.price)}</strong></p>
       <p class="error" id="wc-error"></p>
     </div>
@@ -136,8 +146,8 @@ async function renderOrderDetail(id) {
 
     <h2>Source files</h2>
     <table>
-      <tr><th>Filename</th><th>Type</th><th>Size</th><th></th></tr>
-      ${fileRows(sourceFiles, (f) => `/api/admin/orders/${order.id}/source-files/${f.id}`)}
+      <tr><th>Filename</th><th>Type</th><th>Size</th><th>Words (est.)</th><th></th></tr>
+      ${fileRows(sourceFiles, (f) => `/api/admin/orders/${order.id}/source-files/${f.id}`, true)}
     </table>
 
     <h2>Deliver final files</h2>

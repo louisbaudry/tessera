@@ -462,8 +462,8 @@ bodies**.
 
 As built (checked 2026-09-27): `core` extracts neither SmartArt text
 nor image alt-text. Nothing reads `word/diagrams/` or a `descr`
-attribute. Treat those two as not yet extracted. Backlog `#62` counts
-words over what `core` actually extracts.
+attribute. Treat those two as not yet extracted. The word count (§3.6)
+counts what `core` actually extracts.
 
 Footnote bodies are in scope because the source texts this tool is built
 for — scholarly, legal, religious — carry real content in their notes. A
@@ -498,6 +498,84 @@ Skipped as untranslatable: paragraphs whose extracted text, with tags
 removed, is empty or contains no letter in any supported language
 (pure numbers, punctuation, whitespace). These are locked, not shown as
 segments, and pass through the skeleton unchanged.
+
+### 3.6 What a word is
+
+Decided 2026-09-29 (backlog `#62`). One definition, frozen, in `core`
+(`model/words.ts`: `countWords`, `readingText`, `countRegionWords`),
+read by everything that quotes, shows or pays by a count: the portal's
+advisory estimate (`portal-v0-spec.md` §4), the editor's "words
+confirmed / total" (§7, backlog `#34`) and vendor pay (`#49`). Two
+splitters had already drifted apart: the portal's `\s+`, and the TM
+bench's `[^\p{L}\p{N}]+` (`db/tm/bench/stats.ts`), which reads
+`e-mail` as two words and `1,000.50` as three. The bench measures TM
+size, not a count anyone is charged for, so it keeps its own splitter;
+it is not this definition.
+
+**A word is a run of non-separator characters that holds at least one
+letter or number.** A separator is any Unicode whitespace (which
+includes a no-break space, U+202F and a byte-order mark) or U+200B, the
+zero-width space. Written test vectors (`words.test.ts`):
+
+| Text | Words | Why |
+|---|---|---|
+| `e-mail` | 1 | a hyphen is not a separator |
+| `l'homme` | 1 | nor is an apostrophe |
+| `1,000.50` | 1 | nor a thousands or decimal mark |
+| `one<TAB>two` | 2 | a tab is whitespace |
+| `10<NBSP>000` | 2 | a no-break space separates: a French number is two words, a conservative over-count the admin can see |
+| `a — b`, `• item`, `« bonjour »` | 2, 1, 1 | a run with no letter or number is not read as a word |
+| `<BOM>one two` | 2 | a byte-order mark neither counts nor joins |
+
+**Placeholders are decided per element, not by whether the translator
+sees them** (`readingText`). `visibleText` (`qa/rules.ts`) turns every
+placeholder into U+FFFC whatever it is, and `num.*`/`punct.*` rely on
+that, so QA keeps its own; a counter that reused it would treat a hidden
+`w:proofErr` mid-word like a visible tab. Instead:
+
+| Element | Reads as |
+|---|---|
+| `w:tab`, `w:ptab`, `w:br`, `w:cr` | a space: it splits |
+| `w:noBreakHyphen` | `-`: `e<noBreakHyphen/>mail` is one word |
+| `w:softHyphen`, `w:sym` | nothing: they join |
+| hidden placeholders (`w:bookmarkStart`, `w:proofErr`, …) | nothing: they join |
+| anything else (a drawing, a note reference, a field) | nothing: it joins, so an unlisted element can only under-count |
+
+The counter therefore takes a `TokenizedRegion` (tokens *and* formats),
+because the element is in the format entry. A paired tag (bold,
+hyperlink) puts nothing between the text on either side of it.
+
+Five further decisions, each the conservative or the consistent one:
+
+- **Locked paragraphs do not count.** A paragraph with no letter (§3.5)
+  is locked, never translated and never priced, so a paragraph of
+  `2024` or `1,000.50` is zero words. A paragraph with any letter counts
+  every word in it, numbers included.
+- **Hidden text counts.** Direct `w:vanish` is in the run's format
+  entry; a style-inherited one is unreachable, because `core` never
+  reads `styles.xml`. A definition that excluded one and counted the
+  other would depend on how the author applied the formatting. Hidden
+  text is extracted, shown in the editor and translated, so it is a word.
+- **A source language that does not space its words has no count.** zh,
+  ja, th, lo, km, my and bo (`UNSPACED_LANGUAGES`, by primary subtag)
+  give `null`, never a wrong number. What a "word" is for them, or
+  whether pay is by character, is a decision for `#49`, not a
+  whitespace split.
+- **A text box counts once.** Word stores a text box twice, as DrawingML
+  in `mc:Choice` and as VML in `mc:Fallback`, and `core` extracts both
+  copies as regions. That is right for translation, where both must be
+  rendered, and wrong for a count, since the reader sees the text once.
+  The count excludes every region inside an `mc:Fallback`, transitively,
+  and does so *in the counter*, never in the filter. **`#34` and `#49`
+  will need the same exclusion** and must not repeat the count's
+  by-re-scan: each needs a per-segment "fallback copy" flag recorded at
+  assembly time, so a segment's words are not counted twice or paid
+  twice. Not built here; noted on both cards.
+- **The count follows what `core` extracts** (§3.5): body, tables, text
+  boxes, headers, footers, footnotes and endnotes. SmartArt text and
+  image alt-text are listed in §3.5's first paragraph but nothing reads
+  either, so they are not in any count. A count is a lower bound by
+  that much, and says so rather than silently inheriting the gap.
 
 ---
 

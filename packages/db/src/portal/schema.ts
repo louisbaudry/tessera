@@ -237,4 +237,19 @@ const v4: Migration = {
   },
 };
 
-export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4];
+/**
+ * The advisory word count of each source file (portal-v0-spec.md §4, §6;
+ * backlog #62). Nullable and additive: `NULL` is "not counted", which is
+ * every file uploaded before this version and every one the counter
+ * declined. `translation_order.word_count` stays the admin-confirmed
+ * figure the price comes from.
+ */
+const v5: Migration = {
+  version: 5,
+  description: 'source_file.word_count, an advisory count per upload (backlog #62)',
+  up: (db) => {
+    db.exec('ALTER TABLE source_file ADD COLUMN word_count INTEGER');
+  },
+};
+
+export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];
