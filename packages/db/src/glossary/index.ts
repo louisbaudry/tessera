@@ -75,3 +75,4 @@ export function createGlossary(
 
 export { GLOSSARY_APPLICATION_ID, GLOSSARY_MIGRATIONS } from './schema.js';
 export * from './terms.js';
+export * from './session.js';
