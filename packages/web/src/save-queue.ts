@@ -81,6 +81,20 @@ export interface SaveQueue {
   /** Confirms the segment once its writes have landed (see above). */
   confirm(segmentId: number): void;
   /**
+   * Resolves once no write, waiting write or confirm of any of these
+   * segments is left (v1-spec.md §7.4): a merge or split reads the
+   * segments *as stored*, so it goes after every write asked for.
+   */
+  whenIdle(segmentIds: readonly number[]): Promise<void>;
+  /** The version of a segment the next write of it goes over. */
+  version(segmentId: number): string | undefined;
+  /**
+   * These segments were replaced or removed by a merge or split: what the
+   * queue remembers of them (versions, the newest write) is of rows that
+   * no longer read that way, and the page has their new versions.
+   */
+  forget(segmentIds: readonly number[]): void;
+  /**
    * The page is going away: every waiting write goes now, urgent. Called
    * after the open editor's own urgent write, which has already replaced
    * any waiting write of its segment — sent the other way round, the two
@@ -105,6 +119,16 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
     versions.has(id) ? versions.get(id)!.updatedAt : deps.loadedVersion(id);
   // Confirms asked for and not yet sent, by segment.
   const confirming = new Set<number>();
+  const idle = (id: number) =>
+    !inFlight.has(id) && !waiting.has(id) && !confirming.has(id);
+  const idleWaiters: Array<{ ids: readonly number[]; resolve: () => void }> = [];
+  const wake = () => {
+    for (const waiter of [...idleWaiters]) {
+      if (!waiter.ids.every(idle)) continue;
+      idleWaiters.splice(idleWaiters.indexOf(waiter), 1);
+      waiter.resolve();
+    }
+  };
 
   const drain = (id: number) => {
     const left = inFlight.get(id)! - 1;
@@ -120,6 +144,7 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
     } else if (confirming.delete(id)) {
       startConfirm(id);
     }
+    wake();
   };
 
   const startConfirm = (id: number) => {
@@ -168,6 +193,18 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
   };
 
   return {
+    whenIdle(ids) {
+      if (ids.every(idle)) return Promise.resolve();
+      return new Promise<void>((resolve) => idleWaiters.push({ ids, resolve }));
+    },
+    version: versionOf,
+    forget(ids) {
+      for (const id of ids) {
+        versions.delete(id);
+        newest.delete(id);
+        confirming.delete(id);
+      }
+    },
     confirm(id) {
       if (inFlight.has(id) || waiting.has(id)) confirming.add(id);
       else startConfirm(id);

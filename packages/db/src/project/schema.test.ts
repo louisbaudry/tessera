@@ -191,7 +191,7 @@ describe('v7: qa_issue and qa_rule_setting rebuilt (backlog #64)', () => {
     before.close();
 
     const db = openProjectDb(path);
-    expect(db.pragma('user_version', { simple: true })).toBe(7);
+    expect(db.pragma('user_version', { simple: true })).toBe(PROJECT_MIGRATIONS.length);
     expect(db.prepare('SELECT * FROM qa_issue ORDER BY id').all()).toEqual(issues);
     expect(db.prepare('SELECT * FROM qa_rule_setting ORDER BY rule').all()).toEqual(
       settings,

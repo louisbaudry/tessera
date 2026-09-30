@@ -659,6 +659,10 @@ without it; the file-wide one, a nested loop over the file's segments,
 took 0.9 s at 10,800 segments and 2,176 issues, where the index makes it
 a lookup per segment.
 
+v7 rebuilds `qa_issue` and `qa_rule_setting` from a frozen rule list
+(backlog #64); v8 rebuilds `audit_event` with `segment.split` and
+`segment.merged` in its action CHECK (backlog #30a, §7.4).
+
 Multiple TMs with `priority` is what "projects, multiple TMs" buys: on a
 tie between two exact hits, lowest `priority` wins. Exactly one TM may be
 the write target, enforced by the partial unique index.
@@ -1355,15 +1359,78 @@ listener; the exported DOCX well-formed with no run inside a run.
   the ordinary one: a saved target with anything visible is `translated`,
   no machine origin; it is not a confirm. Both keys have a control in the
   editor's bar (a Mac keyboard has no Insert).
-- **Not here:** merge/split (`Ctrl+M`, `Ctrl+Shift+M`) needs a `db` write
-  path that does not exist yet (backlog #30a); filter focus waits for the
-  filter bar (backlog #34).
+- **Not here:** merge/split (`Ctrl+M`, `Ctrl+Shift+M`) is §7.4 (backlog
+  #30a); filter focus waits for the filter bar (backlog #34).
 
 Measured in a Chromium smoke run against the real server: type,
 `Ctrl+Enter` → segment confirmed and the next one open; `Ctrl+Ins`, then
 `Ctrl+Z`; `Ctrl+Enter` on an empty target; and the same in a project with
 no write-target memory, where the row carries the refusal and the flow
 still advances.
+
+### 7.4 Merge and split (`@cat-tool/db`, `@cat-tool/web`, backlog #30a)
+
+The escape hatch §5.3 promised: `Ctrl+M` merges a segment with the next
+one, `Ctrl+Shift+M` splits one at a caret. The pure policy was #14
+(`core/segment/edit.ts`); this is the write path it never had.
+
+- **Within one paragraph, never across.** A merge takes the segment and
+  the one with the next `para_ord` in the same `(file, part, para_key)`;
+  the last segment of a paragraph has no next and is refused. A locked
+  segment, either half of a merge included, is refused.
+- **What a row does.** A split keeps the row's id on the first half (its
+  audit history, its QA rows, its place in the grid) and inserts a new
+  row for the second; a merge keeps the first row's id and deletes the
+  second's, with its `qa_issue` rows. Later segments of the paragraph
+  have their `para_ord`, and of the file their `ord`, moved by one — the
+  fold (§3.4) reads `para_ord`, so getting it wrong misorders the
+  paragraph on export. Both halves' `source_hash` is recomputed
+  (`normalizeTokens`) and their tag ids renumbered from 1, as any segment's
+  are (§3.3).
+- **The target is never mechanically cut** (`splitEditableSegment`,
+  #14): a split leaves the whole target on the first half; the second
+  starts empty. A merge joins two targets with a space. Either way the
+  result is a `draft` with no `origin` — never `confirmed`, the source it
+  was confirmed against is gone — and a segment with no target stays
+  `new`. What is *stored* is the translator's part only: visible tags are
+  kept by their id where the source still has them, and a tag that belongs
+  to the half the target was not kept with is dropped from it; hidden tags
+  are carried again from the new source (`carryHiddenTags`, backlog #29),
+  as for any write. A pair the split closed and reopened at the seam is
+  one pair again after a merge, in the target too: the first target's
+  opening and the second's closing stand, the seam's close and open go.
+- **A version check, as an edit's** (`baseUpdatedAt`): a stale segment is
+  a 409 carrying the current one. Both segments of a merge are checked.
+- **Audited, in the same transaction, actor required** (audit-spec §2.2):
+  `segment.split` (subject: the row that kept its id;
+  `{ new_segment_id, offset, first, second }`) and `segment.merged`
+  (subject: the survivor; `{ removed_segment_id, state }`), each halves'
+  or the result's state being the ordinary `SegmentStateDetail`, so "what
+  did it say" stays one row lookup. The rows of a merge that disappears
+  are still in the log under their old id. A new action widens the CHECK:
+  project schema v8, `rebuildTable`.
+- **QA reruns** for every segment the operation touched, in the same
+  transaction, and the answer carries their issues.
+- **Export still folds one paragraph.** A merged pair, and a split
+  segment, render back into the paragraph's one marker through the same
+  fold; a split then a merge returns the original XML, byte for byte
+  (tested through the database, on the corpus).
+- **Where the caret is.** The source cell is where a break is chosen —
+  the target's caret has no place in the source. `Ctrl+Shift+M` splits at
+  the caret the translator put in the *source* text (a click; chips count
+  for no characters); with none there, the editor says so instead of
+  guessing. `Ctrl+M` merges the open segment, or the one whose source
+  holds the caret, with the next. Both have a button in the grid's bar,
+  for a browser that keeps the chord (the button does not take the caret,
+  so a split still finds it there).
+  Pending edits of the segments involved are sent, and their answers
+  awaited, before the request (the save queue's `whenIdle`), for the same
+  reason a confirm is ordered after them (§7.3): the merge reads the
+  target *as stored*.
+- **The grid re-keys.** The answer lists the segments that now exist in
+  place of the ones asked about, and those that are gone; the grid swaps
+  them into its list, moves the queue's cached versions, and keeps the
+  first half open when it was open.
 
 ---
 

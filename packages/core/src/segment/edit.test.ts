@@ -185,6 +185,185 @@ describe('editable segments — the policy layer', () => {
   });
 });
 
+describe('editable segments — targets and their tags', () => {
+  const opens = (tokens: readonly { t: string; id?: number }[]) =>
+    tokens.filter((t) => t.t === 'open').map((t) => t.id);
+  /** A source of `One ` + bold `two. Three.` and a target that placed the pair. */
+  const boldSource = () =>
+    plain(
+      `<w:r><w:t xml:space="preserve">One </w:t></w:r>${BOLD}two. Three.</w:t></w:r>`,
+    );
+  const targetOver = (source: TokenizedRegion, text: string): TokenizedRegion => ({
+    tokens: [
+      { t: 'text', v: 'Uno ' },
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: text },
+      { t: 'close', id: 1 },
+    ],
+    formats: source.formats,
+  });
+
+  it("a split keeps the first half's tags on the target and drops the second half's", () => {
+    // The break is before the bold: the pair belongs to the second half only.
+    const source = boldSource();
+    const [first, second] = splitEditableSegment(
+      { source, target: targetOver(source, 'dos.'), status: 'translated', locked: false },
+      4,
+    );
+    expect(opens(first.source.tokens)).toEqual([]);
+    expect(first.target!.tokens).toEqual([
+      { t: 'text', v: 'Uno ' },
+      { t: 'text', v: 'dos.' },
+    ]);
+    expect(opens(second.source.tokens)).toEqual([1]);
+    expect(second.target).toBeNull();
+  });
+
+  it('a split through a pair keeps the pair on the first half, with the tags it had', () => {
+    const source = boldSource();
+    const target = targetOver(source, 'dos.');
+    const [first] = splitEditableSegment(
+      { source, target, status: 'draft', locked: false },
+      9,
+    );
+    expect(opens(first.source.tokens)).toEqual([1]);
+    expect(first.target!.tokens).toEqual(target.tokens);
+    expect(validateTagStructure(first.target!.tokens)).toEqual({ ok: true });
+  });
+
+  it("a merge follows the renumbering: the second target's tag keeps meaning its tag", () => {
+    const a = plain(
+      `${ITALIC}One.</w:t></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>`,
+    );
+    const b = plain(`${BOLD}Two.</w:t></w:r>`);
+    const merged = mergeEditableSegments(
+      {
+        source: a,
+        target: {
+          tokens: [
+            { t: 'open', id: 1, fmt: 1 },
+            { t: 'text', v: 'Uno.' },
+            { t: 'close', id: 1 },
+          ],
+          formats: a.formats,
+        },
+        status: 'draft',
+        locked: false,
+      },
+      {
+        source: b,
+        target: {
+          tokens: [
+            { t: 'open', id: 1, fmt: 1 },
+            { t: 'text', v: 'Dos.' },
+            { t: 'close', id: 1 },
+          ],
+          formats: b.formats,
+        },
+        status: 'draft',
+        locked: false,
+      },
+    );
+    // Two different pairs: the second's id 1 is now 2, in the source and the target.
+    expect(opens(merged.source.tokens)).toEqual([1, 2]);
+    expect(merged.target!.tokens).toEqual([
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: 'Uno.' },
+      { t: 'close', id: 1 },
+      { t: 'text', v: ' ' },
+      { t: 'open', id: 2, fmt: 2 },
+      { t: 'text', v: 'Dos.' },
+      { t: 'close', id: 2 },
+    ]);
+  });
+
+  it('merging a split unifies a pair placed on both sides into one', () => {
+    const source = plain(`${ITALIC}One thing. Another.</w:t></w:r>`);
+    const [a, b] = splitSegment(source, 11);
+    const pair = (region: TokenizedRegion, text: string): TokenizedRegion => ({
+      tokens: [
+        { t: 'open', id: 1, fmt: 1 },
+        { t: 'text', v: text },
+        { t: 'close', id: 1 },
+      ],
+      formats: region.formats,
+    });
+    const merged = mergeEditableSegments(
+      { source: a, target: pair(a, 'Una cosa.'), status: 'draft', locked: false },
+      { source: b, target: pair(b, 'Otra.'), status: 'draft', locked: false },
+    );
+    expect(merged.source).toEqual(source);
+    expect(merged.target!.tokens).toEqual([
+      { t: 'open', id: 1, fmt: 1 },
+      { t: 'text', v: 'Una cosa. Otra.' },
+      { t: 'close', id: 1 },
+    ]);
+  });
+
+  it("a pair that cannot be unified keeps the first and loses the second's tags", () => {
+    const italic = plain(`${ITALIC}x</w:t></w:r>`).formats[0]!;
+    const bold = plain(`${BOLD}x</w:t></w:r>`).formats[0]!;
+    // a: <1>One <2>thing. </2></1>   b: <1>Another.</1> — pair 1 spans the seam.
+    const a: TokenizedRegion = {
+      tokens: [
+        { t: 'open', id: 1, fmt: 1 },
+        { t: 'text', v: 'One ' },
+        { t: 'open', id: 2, fmt: 2 },
+        { t: 'text', v: 'thing. ' },
+        { t: 'close', id: 2 },
+        { t: 'close', id: 1 },
+      ],
+      formats: [
+        { ...italic, id: 1 },
+        { ...bold, id: 2 },
+      ],
+    };
+    const b: TokenizedRegion = {
+      tokens: [
+        { t: 'open', id: 1, fmt: 1 },
+        { t: 'text', v: 'Another.' },
+        { t: 'close', id: 1 },
+      ],
+      formats: [{ ...italic, id: 1 }],
+    };
+    const merged = mergeEditableSegments(
+      {
+        source: a,
+        // Pair 1 inside pair 2 — legal for a target; unifying would cross them.
+        target: {
+          tokens: [
+            { t: 'open', id: 2, fmt: 2 },
+            { t: 'open', id: 1, fmt: 1 },
+            { t: 'text', v: 'Una cosa.' },
+            { t: 'close', id: 1 },
+            { t: 'close', id: 2 },
+          ],
+          formats: a.formats,
+        },
+        status: 'draft',
+        locked: false,
+      },
+      {
+        source: b,
+        target: {
+          tokens: [
+            { t: 'open', id: 1, fmt: 1 },
+            { t: 'text', v: 'Otra.' },
+            { t: 'close', id: 1 },
+          ],
+          formats: b.formats,
+        },
+        status: 'draft',
+        locked: false,
+      },
+    );
+    expect(opens(merged.source.tokens)).toEqual([1, 2]);
+    expect(validateTagStructure(merged.target!.tokens)).toEqual({ ok: true });
+    expect(plainText(merged.target!.tokens)).toBe('Una cosa. Otra.');
+    expect(opens(merged.target!.tokens)).toEqual([2, 1]); // one pair 1, not two
+  });
+});
+
 describe('split and merge — against the real corpus', () => {
   const es = rulesFor('es');
   const paragraphs = translatableSegments(importDocx(load('footnotes-manuscript.docx')))

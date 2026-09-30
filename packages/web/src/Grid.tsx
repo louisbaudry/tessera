@@ -13,8 +13,15 @@ import {
   type Range,
 } from '@tanstack/react-virtual';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
-import { api, ApiError, type FileSegments, type ProjectDetail } from './api.js';
+import {
+  api,
+  ApiError,
+  type FileSegments,
+  type ProjectDetail,
+  type Restructured,
+} from './api.js';
 import {
   originBadge,
   qaMarks,
@@ -29,6 +36,7 @@ import { toPieces } from './pieces.js';
 import { loadFullTags, saveFullTags } from './prefs.js';
 import { createPageHide, createSaveQueue } from './save-queue.js';
 import { useSession } from './session-context.js';
+import { splitOffset, type SourceChild } from './split-point.js';
 import { pairGroups } from './tags.js';
 import { TargetEditor, type CommitOptions } from './TargetEditor.js';
 import { useLoad } from './use-load.js';
@@ -72,6 +80,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const [clickAt, setClickAt] = useState<{ x: number; y: number } | undefined>();
   const [unsaved, setUnsaved] = useState<ReadonlyMap<number, SaveFailure>>(new Map());
   const [fullTags, setFullTags] = useState(loadFullTags);
+  const [note, setNote] = useState<string | null>(null);
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -112,8 +121,9 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     session.current = { token, project, signOut };
   });
   const loadedVersions = useRef(new Map(file.segments.map((s) => [s.id, s.updatedAt])));
+  // The segments of this file, for the answers that cover the project's.
+  const [inFile] = useState(() => new Set(file.segments.map((s) => s.id)));
   const [queue] = useState(() => {
-    const inFile = new Set(file.segments.map((s) => s.id));
     return createSaveQueue({
       send: (segmentId, tokens, baseUpdatedAt, urgent) =>
         api.saveTarget(
@@ -225,6 +235,130 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     [queue],
   );
 
+  // Merge and split (§7.4). Both read the segments as stored, so the open
+  // editor is closed first — it sends its change as it goes — and the
+  // requests wait for every write of these segments already asked for.
+  const activeNow = useRef(activeId);
+  useEffect(() => {
+    activeNow.current = activeId;
+  });
+  const busy = useRef(false);
+  const restructure = useCallback(
+    async (kind: 'split' | 'merge') => {
+      if (busy.current) return;
+      const all = segmentsNow.current;
+      const caret = sourceCaret();
+      const id =
+        kind === 'split' ? caret?.segmentId : (activeNow.current ?? caret?.segmentId);
+      if (id === undefined) {
+        setNote(
+          kind === 'split'
+            ? 'Click in the source where the segment should break, then split.'
+            : 'Open a segment, or click in its source, to merge it with the next.',
+        );
+        return;
+      }
+      const at = all.findIndex((s) => s.id === id);
+      const segment = all[at];
+      const next = kind === 'merge' ? all[at + 1] : undefined;
+      if (!segment || segment.locked || statusOf(segment) === 'locked') {
+        setNote('A locked segment cannot be merged or split.');
+        return;
+      }
+      if (kind === 'merge') {
+        if (!next || next.part !== segment.part || next.paraKey !== segment.paraKey) {
+          setNote(
+            'This is the last segment of its paragraph: there is nothing to merge it with.',
+          );
+          return;
+        }
+        if (next.locked || statusOf(next) === 'locked') {
+          setNote('A locked segment cannot be merged or split.');
+          return;
+        }
+      }
+      const involved = next ? [id, next.id] : [id];
+      const wasActive =
+        activeNow.current !== null && involved.includes(activeNow.current);
+      busy.current = true;
+      setNote(null);
+      try {
+        if (wasActive) flushSync(() => setActiveId(null));
+        await queue.whenIdle(involved);
+        const { token: bearer, project: name } = session.current;
+        const result =
+          kind === 'split'
+            ? await api.split(bearer, name, id, {
+                offset: caret!.offset,
+                baseUpdatedAt: queue.version(id),
+              })
+            : await api.merge(bearer, name, id, {
+                baseUpdatedAt: queue.version(id),
+                nextBaseUpdatedAt: queue.version(next!.id),
+              });
+        applyRestructure(result);
+        if (wasActive) activate(result.segments[0]!.id);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          session.current.signOut();
+          return;
+        }
+        const what = err instanceof Error ? err.message : String(err);
+        setNote(
+          err instanceof ApiError && err.status === 409
+            ? `${what}. Reload the file to see the segment as it is now.`
+            : what,
+        );
+      } finally {
+        busy.current = false;
+      }
+    },
+    // `applyRestructure` only touches state setters and refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queue, activate],
+  );
+  const applyRestructure = (result: Restructured) => {
+    const standing = result.segments;
+    setSegments((all) =>
+      all.flatMap((s) =>
+        result.removed.includes(s.id) ? [] : s.id === standing[0]!.id ? standing : [s],
+      ),
+    );
+    for (const s of standing) {
+      loadedVersions.current.set(s.id, s.updatedAt);
+      inFile.add(s.id);
+    }
+    for (const id of result.removed) {
+      loadedVersions.current.delete(id);
+      inFile.delete(id);
+    }
+    queue.forget([...standing.map((s) => s.id), ...result.removed]);
+    setIssues((all) =>
+      replaceIssues(
+        all.filter((i) => !result.removed.includes(i.segmentId)),
+        result.rerun,
+        result.issues,
+        inFile,
+      ),
+    );
+    setUnsaved((all) => {
+      if (!result.removed.some((id) => all.has(id))) return all;
+      const kept = new Map(all);
+      for (const id of result.removed) kept.delete(id);
+      return kept;
+    });
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Literal Ctrl on every platform, as the editor's other keys (§7.2).
+      if (!e.ctrlKey || e.altKey || e.metaKey || e.code !== 'KeyM') return;
+      e.preventDefault();
+      void restructure(e.shiftKey ? 'split' : 'merge');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [restructure]);
+
   const flagged = useMemo(() => {
     let n = 0;
     for (const mark of marks.values()) if (mark.severity === 'error') n++;
@@ -253,6 +387,32 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           />{' '}
           Show full tags
         </label>
+        <span className="restructure">
+          <button
+            type="button"
+            className="link"
+            // Keep the caret where it is: a split reads it.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void restructure('merge')}
+            title="Merge the open segment with the next one of its paragraph (Ctrl+M)"
+          >
+            Merge with next
+          </button>
+          <button
+            type="button"
+            className="link"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void restructure('split')}
+            title="Split at the caret you put in a source (Ctrl+Shift+M)"
+          >
+            Split at source caret
+          </button>
+        </span>
+        {note && (
+          <span className="error" role="status">
+            {note}
+          </span>
+        )}
       </div>
       <div className="row head" role="row">
         <div className="gutter" role="columnheader">
@@ -372,7 +532,12 @@ const SegmentRow = memo(function SegmentRow({
           {mark ? mark.count : ''}
         </span>
       </div>
-      <div className="cell source" role="cell" lang={srcLang}>
+      <div
+        className="cell source"
+        role="cell"
+        lang={srcLang}
+        data-segment-id={segment.id}
+      >
         <TokenText
           tokens={segment.sourceTokens}
           formats={segment.formatTable}
@@ -415,6 +580,48 @@ const SegmentRow = memo(function SegmentRow({
     </div>
   );
 });
+
+/**
+ * The caret the translator put in a source cell: which segment, and the
+ * plain-text offset into its source (`splitOffset` — a chip counts no
+ * characters). Null when the selection is not in a source. The cell's
+ * children are its pieces (`TokenText`), a `<span>` of text or a chip each.
+ */
+function sourceCaret(): { segmentId: number; offset: number } | null {
+  const selection = window.getSelection();
+  const anchor = selection?.anchorNode;
+  if (!selection || !anchor) return null;
+  const cell = (
+    anchor instanceof Element ? anchor : anchor.parentElement
+  )?.closest<HTMLElement>('.cell.source[data-segment-id]');
+  if (!cell) return null;
+  const segmentId = Number(cell.dataset.segmentId);
+  const pieces = [...cell.children];
+  const children: SourceChild[] = pieces.map((el) =>
+    el.classList.contains('chip')
+      ? { kind: 'chip' }
+      : { kind: 'text', length: el.textContent?.length ?? 0 },
+  );
+  let index: number;
+  let within = 0;
+  if (anchor === cell) {
+    // The caret is between the cell's children: `anchorOffset` of them precede it.
+    index = selection.anchorOffset;
+  } else {
+    let node: Node = anchor;
+    while (node.parentNode !== cell) node = node.parentNode!;
+    index = pieces.indexOf(node as Element);
+    // In a text node the offset counts characters; on the span itself, its
+    // child nodes — 0 is its start, anything more its end.
+    within =
+      anchor.nodeType === Node.TEXT_NODE
+        ? selection.anchorOffset
+        : selection.anchorOffset > 0
+          ? (node.textContent?.length ?? 0)
+          : 0;
+  }
+  return { segmentId, offset: splitOffset(children, index, within) };
+}
 
 function TokenText({
   tokens,

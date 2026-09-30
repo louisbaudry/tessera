@@ -2146,12 +2146,48 @@ stale version, 404, bad body), 7 for the queue's confirm ordering, 3 for
 (transcript unchanged: the CLI has no confirm), and a Chromium smoke run
 against the real server.
 
-**#30a · Merge and split segments · M** · [issue #74]
-`Ctrl+M` merge with next, `Ctrl+Shift+M` split at cursor, one paragraph
-only (spec §7). Split out of `#30`: the pure policy (`EditableSegment`,
-#14) exists, the write path does not — a `db` function applying it
-(renumbering, hashes, QA rows, a target already stored), an audit action
-(a migration widening the CHECK), a route, then the two keys. Spec first.
+**#30a · ~~Merge and split segments~~ · DONE — `db/project/restructure.ts`, `core/segment/edit.ts`, `POST /api/projects/:name/segments/:id/split` and `/merge`, `web/Grid.tsx`, `web/split-point.ts`, project schema v8**
+`Ctrl+M` merges a segment with the next of its paragraph,
+`Ctrl+Shift+M` splits at the caret put in the source; a button each in the
+grid's bar. A merge and a split each round-trip through the database and
+the exported DOCX, audited (`segment.split`, `segment.merged`). Decisions
+in `v1-spec.md` §7.4; the actions in `audit-spec.md` §2.2.
+
+**The pure policy was half of what it seemed.** `EditableSegment` (#14)
+kept a split's target and merged two, but on tokens whose tag ids named the
+*old* segment: after `renumberRegion` (ids from 1, by first appearance) a
+stored target would have pointed at the wrong tags — or at none. Both
+operations now report the id map they applied (`renumberRegionWithMap`) and
+the target follows it. A pair a split closed and reopened is one pair again
+in a merged target too, when the translator placed it on both sides (and
+the second's tags are dropped, text kept, when unifying would cross another
+pair: never a refused merge over tags that can be re-placed).
+
+**The corpus test found what a unit test would not.** Split-then-merge is
+*not* a token identity on real files: a cut on a seam between two adjacent
+runs of one formatting fuses them, as `mergeSegments` documents — the
+exported XML is the invariant, so the test compares text, hash and
+position per segment and the exported part digests across the whole
+corpus, not tokens. SQLite's `UNIQUE (file_id, ord)` is checked row by
+row, so shifting `ord` goes through negative values (`shiftOrd`); and
+`para_ord` has to move too, because the fold reads it, not `ord`.
+
+**Found, not fixed:** after a split the whole target sits on the first
+half, which is right for the translator to redistribute but exports the
+translation and the second half's *source* side by side until they do; a
+draft with nothing confirmed is the only guard, and not worth a rule yet.
+Also: `Ctrl+Shift+M` is a browser shortcut on some platforms (Chromium
+under Playwright let it through); the two buttons are there for one that
+does not.
+
+Tests: 5 in `core/segment/edit.test.ts` for targets and their tags, 30 in
+`db/project/restructure.test.ts` (rows, ords, audit, refusals, QA, the
+whole corpus through export, a v7 file migrating), 1 for the routes, 4 for
+the queue's `whenIdle`/`forget`/`version`, 4 for `splitOffset`. A Chromium
+smoke run against the real server: a click in the source and
+`Ctrl+Shift+M` (18 → 19 rows), a target typed, `Ctrl+M` with the editor
+open (back to 18 rows, the target kept as a draft, the editor reopened on
+the survivor).
 
 **#31 · Autosave · S** · [issue #7]
 Debounced per keystroke. No save action; crash costs seconds. #29 saves

@@ -289,3 +289,44 @@ export function rerunQaAfterEdit(
     return { rerun, issues: runChecks(db, rerun, index) };
   })();
 }
+
+/**
+ * QA after segments were split or merged (backlog #30a): the segments
+ * now standing, and every segment whose `consistency.*` findings the
+ * change can move — those sharing a source they have now or had before
+ * (`target_differs`), and those whose target reads as one they have now
+ * or had before (`source_differs`). As {@link rerunQaAfterEdit}, for an
+ * operation that changes sources and touches several rows at once.
+ */
+export function rerunQaAfterRestructure(
+  db: Database.Database,
+  segmentIds: readonly number[],
+  before: {
+    readonly sourceHashes: readonly string[];
+    readonly targets: readonly (readonly Token[] | null)[];
+  },
+): { rerun: number[]; issues: QaIssue[] } {
+  return db.transaction(() => {
+    const index = readTranslated(db);
+    const neighbours = new Set<number>();
+    const hashes = new Set(before.sourceHashes);
+    const targets: (readonly Token[] | null)[] = [...before.targets];
+    for (const id of segmentIds) {
+      const segment = getSegment(db, id);
+      if (!segment) throw new SegmentRepoError(`no segment with id ${id}`);
+      hashes.add(segment.sourceHash);
+      targets.push(segment.targetTokens);
+    }
+    for (const hash of hashes) {
+      for (const row of index.bySource.get(hash) ?? []) neighbours.add(row.id);
+    }
+    for (const tokens of targets) {
+      if (tokens === null) continue;
+      for (const row of index.byTarget.get(plainText(tokens)) ?? [])
+        neighbours.add(row.id);
+    }
+    for (const id of segmentIds) neighbours.delete(id);
+    const rerun = [...segmentIds, ...[...neighbours].sort((a, b) => a - b)];
+    return { rerun, issues: runChecks(db, rerun, index) };
+  })();
+}

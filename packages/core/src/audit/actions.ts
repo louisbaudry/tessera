@@ -18,6 +18,8 @@ export const PROJECT_AUDIT_ACTIONS = [
   'segment.locked',
   'segment.unlocked',
   'segment.baseline',
+  'segment.split',
+  'segment.merged',
   'file.added',
   'project.pretranslate',
   'project.exported',
@@ -93,6 +95,26 @@ export interface AuditDetail {
   'segment.unlocked': null;
   /** What the segment was when recording began (spec §6) — never an invented author. */
   'segment.baseline': SegmentStateDetail;
+  /**
+   * One segment became two (v1-spec.md §7.4). The subject is the row that
+   * kept its id — the first half; the second is a new row, named here.
+   * Both states are as stored after the split.
+   */
+  'segment.split': {
+    readonly new_segment_id: number;
+    /** Plain-text offset into the source at which it was cut. */
+    readonly offset: number;
+    readonly first: SegmentStateDetail;
+    readonly second: SegmentStateDetail;
+  };
+  /**
+   * Two segments became one. The subject is the survivor (the first); the
+   * second's row is gone, its history still in the log under its id.
+   */
+  'segment.merged': {
+    readonly removed_segment_id: number;
+    readonly state: SegmentStateDetail;
+  };
   'file.added': { readonly rel_path: string; readonly sha256: string };
   'project.pretranslate': {
     readonly tm_refs: readonly string[];
