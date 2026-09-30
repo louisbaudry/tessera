@@ -417,6 +417,18 @@ export function renumberRegion(
   tokens: readonly Token[],
   formats: readonly FormatEntry[],
 ): TokenizedRegion {
+  return renumberRegionWithMap(tokens, formats).region;
+}
+
+/**
+ * {@link renumberRegion}, and which id each old one became. A caller
+ * that holds something else keyed by the old ids — a target, written
+ * against its source's tags — needs the map to follow the renumbering.
+ */
+export function renumberRegionWithMap(
+  tokens: readonly Token[],
+  formats: readonly FormatEntry[],
+): { readonly region: TokenizedRegion; readonly idMap: ReadonlyMap<number, number> } {
   const source = new Map(formats.map((f) => [f.id, f]));
   const mapped = new Map<number, number>();
   const out: Token[] = [];
@@ -436,7 +448,7 @@ export function renumberRegion(
     }
     out.push(token.t === 'close' ? { t: 'close', id } : { ...token, id, fmt: id });
   }
-  return { tokens: out, formats: table };
+  return { region: { tokens: out, formats: table }, idMap: mapped };
 }
 
 /** True when every segment produced is independently well-formed. */

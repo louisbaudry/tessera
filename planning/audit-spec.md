@@ -223,6 +223,8 @@ their `*_by` columns have always been free text; writers pass the
 | `segment.confirmed` | segment | `{ tm_write: { tu_uuid, rev } \| null }` |
 | `segment.locked` / `segment.unlocked` | segment | — |
 | `segment.baseline` | segment | as `target_set`; §6 |
+| `segment.split` | segment (the first half, which keeps its row) | `{ new_segment_id, offset, first, second }` — both states after, as `target_set` (`v1-spec.md` §7.4) |
+| `segment.merged` | segment (the survivor) | `{ removed_segment_id, state }` — the removed row's history stays in the log under its id |
 | `file.added` | file | `{ rel_path, sha256 }` |
 | `project.pretranslate` | project | `{ tm_refs, counts }` — batch parent |
 | `project.exported` | file | `{ sha256 }` of the DOCX produced — what exactly was delivered |

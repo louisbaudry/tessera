@@ -278,6 +278,48 @@ describe('createSaveQueue confirm', () => {
   });
 });
 
+describe('createSaveQueue — before a merge or split', () => {
+  it('is idle at once for segments with nothing outstanding', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    await expect(h.queue.whenIdle([2, 3])).resolves.toBeUndefined();
+  });
+
+  it('waits for every write of the segments, including one that waited its turn', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.save(1, text('b'));
+    h.queue.save(2, text('x'));
+    let idle = false;
+    void h.queue.whenIdle([1, 2]).then(() => (idle = true));
+    await h.answer(true, 1); // segment 2's write
+    expect(idle).toBe(false);
+    await h.answer(); // segment 1's first write; its second is sent next
+    expect(idle).toBe(false);
+    await h.answer();
+    expect(idle).toBe(true);
+  });
+
+  it('is idle when the last write failed too: the merge reads what is stored', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    let idle = false;
+    void h.queue.whenIdle([1]).then(() => (idle = true));
+    await h.answer(false);
+    expect(idle).toBe(true);
+  });
+
+  it('knows the version the next write goes over, and forgets it once replaced', async () => {
+    const h = harness();
+    expect(h.queue.version(1)).toBe('v0');
+    h.queue.save(1, text('a'));
+    await h.answer();
+    expect(h.queue.version(1)).toBe('v1');
+    h.queue.forget([1]);
+    expect(h.queue.version(1)).toBe('v0'); // the page's own copy, which it has updated
+  });
+});
+
 describe('createPageHide', () => {
   it("sends the open editor's write before the waiting ones, and none twice", () => {
     // 5 left ("a" in flight), left again ("b" waits), reopened and edited

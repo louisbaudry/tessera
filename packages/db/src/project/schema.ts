@@ -80,6 +80,25 @@ const V5_AUDIT_ACTIONS = [
   'ai.requested',
 ] as const satisfies readonly ProjectAuditAction[];
 
+/**
+ * `audit_event.action` since v8: v5's list, and `segment.split` and
+ * `segment.merged` (backlog #30a, `v1-spec.md` §7.4).
+ */
+const V8_AUDIT_ACTIONS = [
+  'segment.target_set',
+  'segment.confirmed',
+  'segment.locked',
+  'segment.unlocked',
+  'segment.baseline',
+  'segment.split',
+  'segment.merged',
+  'file.added',
+  'project.pretranslate',
+  'project.exported',
+  'project.setting_changed',
+  'ai.requested',
+] as const satisfies readonly ProjectAuditAction[];
+
 const v1: Migration = {
   version: 1,
   description: 'initial project schema (v1-spec.md §4.1)',
@@ -301,9 +320,20 @@ const v7: Migration = {
   },
 };
 
+const v8: Migration = {
+  version: 8,
+  description:
+    'audit_event widened with segment.split and segment.merged (v1-spec.md §7.4, backlog #30a)',
+  up: (db) => {
+    // Rows, ids, hashes and the append-only triggers all survive: the
+    // table is rebuilt, never rewritten (`rebuildTable`, backlog #64).
+    rebuildTable(db, 'audit_event', auditEventDdl(V8_AUDIT_ACTIONS));
+  },
+};
+
 /**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
  */
-export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];
+export const PROJECT_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7, v8];
