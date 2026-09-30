@@ -2099,9 +2099,59 @@ run, 10 for `editSegmentTarget`, renderer and remap tests including a
 seeded 400-stream nesting property (20,000 checked once); full gate,
 `test:gate` and `test:golden` green, the golden diff read line by line.
 
-**#30 · Keyboard model · M** · [issue #6]
-Confirm-and-advance, copy source, merge/split, filter focus (spec §7).
-Tag insertion (`Ctrl+,`, `Ctrl+Shift+,`) shipped with the editor in #29.
+**#30 · ~~Keyboard model~~ · DONE (confirm and copy source; merge/split is #30a) — `web/TargetEditor.tsx`, `web/advance.ts`, `web/save-queue.ts`, `db/project/confirm-target.ts`, `POST /api/projects/:name/segments/:id/confirm`**
+`Ctrl+Enter` confirms the segment and opens the next one still to do;
+`Ctrl+Ins` copies the source over the target (one undoable step). Both
+have a button or note in the editor's bar for a keyboard without the key
+(a Mac has no Insert). Decisions in `v1-spec.md` §7.3.
+
+**The card was two features smaller than it read, and one larger.**
+"Confirm-and-advance" needed no editor work that mattered, but it had no
+route: `confirmSegment` (backlog #20) existed and nothing in `server`
+called it, so `confirmEditedSegment` and the route came first.
+"Merge/split ... the keyboard binding drives that, it doesn't re-decide
+it" was wrong in the direction that matters: `core/segment/edit.ts` is
+pure and **nothing in `db` or `server` applies a split or merge to a
+project file** — an entire write path (renumbering, audit action, QA,
+export) sits behind two keys. That is `#30a`, split off rather than
+smuggled into an M. Filter focus has no bar to focus until `#34`.
+
+**A confirm is ordered through the save queue, not sent beside it.** It
+approves the text *as stored*, so it must go after every write of that
+segment already asked for, on the version the last one returned; the
+queue drops it if one of those writes fails (it would approve the text
+that write was meant to replace) or another is asked for first (the
+translator changed what they confirmed). A confirm that races its own
+save is the bug this prevents, and nothing at unit scale would show it
+without the queue's tests. The next segment opens at once, without
+waiting for the answer; a refusal shows on the row it belongs to.
+
+**Found, not fixed: a server-created project has no write-target TM, and
+`confirmSegment` refuses without one.** Until `#32` (TM management UI)
+exists, every `Ctrl+Enter` in a fresh project answers "no enabled
+write-target TM configured" on the row. The smoke run confirmed both
+paths (a TM attached by script: ✓ and advance; none: the refusal, and
+the flow still moves on). Whether the server should create a default
+memory per project or `#32` attaches one is a design decision for that
+card — it decides where a memory file lives.
+
+Also noted: `confirmSegment` writes a `segment.target_set` for its
+status change before `segment.confirmed`, so a confirm leaves two events;
+a second confirm leaves none (`confirmEditedSegment` returns before
+writing).
+
+Tests: 4 for `confirmEditedSegment`, 1 for the route (memory, log,
+stale version, 404, bad body), 7 for the queue's confirm ordering, 3 for
+`nextUnconfirmed`, 2 for `copySource`. Full gate and `test:golden` green
+(transcript unchanged: the CLI has no confirm), and a Chromium smoke run
+against the real server.
+
+**#30a · Merge and split segments · M** · [issue #74]
+`Ctrl+M` merge with next, `Ctrl+Shift+M` split at cursor, one paragraph
+only (spec §7). Split out of `#30`: the pure policy (`EditableSegment`,
+#14) exists, the write path does not — a `db` function applying it
+(renumbering, hashes, QA rows, a target already stored), an audit action
+(a migration widening the CHECK), a route, then the two keys. Spec first.
 
 **#31 · Autosave · S** · [issue #7]
 Debounced per keystroke. No save action; crash costs seconds. #29 saves
@@ -2111,12 +2161,17 @@ so keystroke drafts need a home outside it, or §2.2 amended first.
 
 **#32 · Project and TM management UI · M** · [issue #8]
 Create project, add files, attach TMs, set priority and write target.
+Until this lands `Ctrl+Enter` (#30) refuses in every project the server
+creates — none has a write-target TM — so it decides whether a project is
+born with one.
 
 **#33 · QA panel · M** · [issue #9]
 Filter by rule and severity, jump to segment, dismiss.
 
 **#34 · Filters and progress · S** · [issue #10]
-Status/origin/QA/text filters; segment and word progress. Words are
+Status/origin/QA/text filters, and the key that focuses the filter bar
+(spec §7's "filter focus", left out of #30 because there was no bar);
+segment and word progress. Words are
 counted by `core`'s `countRegionWords`, the one definition
 (`v1-spec.md` §3.6, backlog `#62`). Needs a per-segment "fallback copy"
 flag recorded at assembly, so a text box stored as `mc:Choice` and

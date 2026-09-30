@@ -8,6 +8,7 @@ import {
   chipNode,
   choicesIn,
   clipboardSegment,
+  copySource,
   createTargetState,
   insertTag,
   nextUnplaced,
@@ -900,6 +901,38 @@ describe('tag integrity', () => {
     let state = createTargetState([text('A')], formats).state;
     state = state.apply(pasteText(state, 'uno\ndos\ttres'));
     expect(tokens(state)).toEqual([text('Auno dos tres')]);
+  });
+
+  it('copies the source over the target as one undoable step, tags placed', () => {
+    let state = createTargetState([text('Algo previo')], formats, new Map(), [
+      history(),
+    ]).state;
+    state = state.apply(copySource(state, source, formats, pairGroups(source, formats)));
+    expect(tokens(state)).toEqual(source);
+    expect(nextUnplaced(state, palette, formats)).toBeUndefined();
+    let undone: EditorState = state;
+    undo(state, (tr) => (undone = state.apply(tr)));
+    expect(tokens(undone)).toEqual([text('Algo previo')]);
+  });
+
+  it("leaves the source's hidden tags to the save, as for any target", () => {
+    const hidden: FormatEntry = {
+      id: 9,
+      kind: 'bookmark',
+      visible: false,
+      placement: 'in-run',
+      open: '<w:proofErr/>',
+      close: '',
+    };
+    const all = [...formats, hidden];
+    const withHidden: Token[] = [
+      text('Hola '),
+      { t: 'ph', id: 9, fmt: 9 },
+      text('mundo'),
+    ];
+    let state = createTargetState([], all).state;
+    state = state.apply(copySource(state, withHidden, all, new Map()));
+    expect(tokens(state)).toEqual([text('Hola mundo')]);
   });
 
   it('keeps every reachable state tag-valid', () => {

@@ -7,8 +7,10 @@
  * `Ctrl+,` places the next unplaced tag, `Ctrl+Shift+,` opens the tag
  * list; both are literal Ctrl on every platform, as in Trados — on a Mac,
  * Cmd+, is the browser's own settings — and both have a button in the
- * row for a keyboard layout where they misfire. The rest of the keyboard
- * model (confirm-and-advance, copy source, merge/split) is backlog #30's.
+ * row for a keyboard layout where they misfire. So does Ctrl+Ins, copy
+ * source (a Mac keyboard has no Insert key); Ctrl+Enter confirms the
+ * segment and moves on (backlog #30, v1-spec.md §7.3). Merge/split is not
+ * here yet.
  *
  * The editor sends what the translator placed when it leaves the segment
  * — blur, Esc, the row going away, the page going away — and only if the
@@ -18,7 +20,7 @@
  * the grid, not the text under the caret.
  */
 import type { Segment, Token } from '@cat-tool/core';
-import { withoutHiddenTags } from '@cat-tool/core/model';
+import { isBlankTarget, withoutHiddenTags } from '@cat-tool/core/model';
 import { baseKeymap } from 'prosemirror-commands';
 import { history, redo, undo } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
@@ -33,6 +35,7 @@ import { describeFormat } from './tag-label.js';
 import {
   choicesIn,
   clipboardSegment,
+  copySource,
   createTargetState,
   docFromTokens,
   nextUnplaced,
@@ -69,6 +72,12 @@ interface TargetEditorProps {
   /** Esc: done with this segment. */
   readonly onLeave: () => void;
   /**
+   * Ctrl+Enter, after the editor has sent any change (`onCommit`): confirm
+   * this segment and go to the next one. Never called for a target with
+   * nothing visible in it, which there is nothing to confirm in.
+   */
+  readonly onConfirm: (segmentId: number) => void;
+  /**
    * Hands the grid this editor's leave for the page going away (urgent),
    * and returns its release. The grid's one `pagehide` listener calls it
    * before sending the writes still waiting (`createPageHide`), so this
@@ -99,6 +108,7 @@ export function TargetEditor({
   failed,
   onCommit,
   onLeave,
+  onConfirm,
   registerPageHide,
 }: TargetEditorProps) {
   // The segment as the editor opened it. A save replaces the grid's copy;
@@ -132,10 +142,12 @@ export function TargetEditor({
   // What was last sent, to tell a change from a click-through; null when
   // the next leave must send whatever is there.
   const committed = useRef<PmNode | null>(null);
-  const callbacks = useRef({ onCommit, onLeave });
+  const callbacks = useRef({ onCommit, onLeave, onConfirm });
   useEffect(() => {
-    callbacks.current = { onCommit, onLeave };
+    callbacks.current = { onCommit, onLeave, onConfirm };
   });
+  // Set with the editor below: send what changed, then confirm.
+  const confirmNow = useRef<(editor: EditorView) => void>(() => undefined);
 
   useEffect(() => {
     const visible = withoutHiddenTags(opened.targetTokens ?? [], opened.formatTable);
@@ -164,13 +176,25 @@ export function TargetEditor({
           callbacks.current.onLeave();
           return true;
         },
+        'Ctrl-Insert': (state, dispatch) => {
+          dispatch?.(copySource(state, opened.sourceTokens, opened.formatTable, groups));
+          return true;
+        },
+        // Cmd+Enter on a Mac, where Ctrl+Enter is the same key for the hand.
+        'Ctrl-Enter': (_state, _dispatch, editor) => {
+          if (editor) confirmNow.current(editor);
+          return true;
+        },
+        'Mod-Enter': (_state, _dispatch, editor) => {
+          if (editor) confirmNow.current(editor);
+          return true;
+        },
         'Mod-z': undo,
         'Mod-y': redo,
         'Shift-Mod-z': redo,
         // One line: a line break is a tag, not a keystroke.
         Enter: swallow,
         'Shift-Enter': swallow,
-        'Mod-Enter': swallow,
         // Formatting is tags, never the browser's own bold.
         'Mod-b': swallow,
         'Mod-i': swallow,
@@ -186,6 +210,16 @@ export function TargetEditor({
       if (committed.current && doc.eq(committed.current)) return;
       committed.current = doc;
       callbacks.current.onCommit(opened.id, targetFromDoc(doc), { urgent });
+    };
+
+    confirmNow.current = (editor) => {
+      if (isBlankTarget(targetFromDoc(editor.state.doc), opened.formatTable)) {
+        setNote('Nothing to confirm: the target is empty.');
+        return;
+      }
+      // Whatever changed goes first; the queue then confirms after it.
+      commit(editor);
+      callbacks.current.onConfirm(opened.id);
     };
 
     const clipboard = new SegmentClipboard(project, opened.id);
@@ -280,49 +314,63 @@ export function TargetEditor({
     editor.focus();
   };
 
+  const copyFromSource = () => {
+    const editor = view.current;
+    if (!editor) return;
+    editor.dispatch(copySource(editor.state, opened.sourceTokens, formats, groups));
+    editor.focus();
+  };
+
   const choices = choicesIn(doc, palette, formats);
   const unplaced = choices.filter((c) => !c.placed).map((c) => c.tag);
 
   return (
     <div className="editor-shell" ref={shell}>
       <div ref={host} />
-      {(palette.length > 0 || note) && (
-        <div className="editor-bar">
-          {unplaced.length > 0 && (
-            <span className="unplaced">
-              {unplaced.map((tag) => (
-                <button
-                  key={`${tag.role}${tag.id}`}
-                  type="button"
-                  className="chip chip-button"
-                  title={`Place ${describeFormat(formats.find((f) => f.id === tag.fmt))} (Ctrl+,)`}
-                  // Keep the caret where it is in the editor.
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => insert(tag)}
-                >
-                  <ChipText tag={tag} formats={formats} />
-                </button>
-              ))}
-            </span>
-          )}
-          {palette.length > 0 && (
-            <button
-              type="button"
-              className="link"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setListOpen(true)}
-              title="Tag list (Ctrl+Shift+,)"
-            >
-              {unplaced.length > 0 ? 'Tags…' : 'All tags placed · list…'}
-            </button>
-          )}
-          {note && (
-            <span className="editor-note" role="status">
-              {note}
-            </span>
-          )}
-        </div>
-      )}
+      <div className="editor-bar">
+        {unplaced.length > 0 && (
+          <span className="unplaced">
+            {unplaced.map((tag) => (
+              <button
+                key={`${tag.role}${tag.id}`}
+                type="button"
+                className="chip chip-button"
+                title={`Place ${describeFormat(formats.find((f) => f.id === tag.fmt))} (Ctrl+,)`}
+                // Keep the caret where it is in the editor.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insert(tag)}
+              >
+                <ChipText tag={tag} formats={formats} />
+              </button>
+            ))}
+          </span>
+        )}
+        {palette.length > 0 && (
+          <button
+            type="button"
+            className="link"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setListOpen(true)}
+            title="Tag list (Ctrl+Shift+,)"
+          >
+            {unplaced.length > 0 ? 'Tags…' : 'All tags placed · list…'}
+          </button>
+        )}
+        <button
+          type="button"
+          className="link"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={copyFromSource}
+          title="Copy source to target (Ctrl+Ins)"
+        >
+          Copy source
+        </button>
+        {note && (
+          <span className="editor-note" role="status">
+            {note}
+          </span>
+        )}
+      </div>
       {listOpen && (
         <TagList
           choices={choices}

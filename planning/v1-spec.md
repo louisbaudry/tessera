@@ -1322,6 +1322,49 @@ tag 1 bold, like this one's — and another project's segment 1 arriving
 as words, and `pagehide` saving the open edit through the grid's
 listener; the exported DOCX well-formed with no run inside a run.
 
+### 7.3 Confirm, advance and copy source (`@cat-tool/web`, backlog #30)
+
+- **`Ctrl+Enter` confirms, then advances.** The editor first sends any
+  change (§7.2), then asks the save queue to confirm; the grid opens the
+  next segment that is neither `confirmed` nor `locked` (`nextUnconfirmed`
+  — forward only, no wrap: at the end of the file the editor closes) and
+  scrolls it into view, without waiting for the answer. `Ctrl+Enter` and
+  `Cmd+Enter` both do it. A target with nothing visible in it is not
+  confirmed (`isBlankTarget`, as `confirmSegment` refuses it); the editor
+  says so and stays.
+- **A confirm is the translator's act, and is a request of its own:**
+  `POST /api/projects/:name/segments/:id/confirm` with the version the
+  editor saw (`baseUpdatedAt`; a stale one is a 409, as for an edit).
+  `confirmEditedSegment` (`db/project/confirm-target.ts`) is `confirmSegment`
+  — the write-target memory, the audit event, the status — plus that
+  version check and a QA rerun, since `seg.empty` and its kin read the
+  status. Confirming a confirmed segment writes nothing (`changed:
+  false`). A project with no enabled write-target memory refuses with a
+  409 naming it (`ConfirmError`), and a server-created project has none
+  until backlog #32.
+- **The save queue orders it** (`save-queue.ts`): after every write of
+  that segment already asked for, on the version the last returned;
+  dropped, never sent, if one of those writes fails or another is asked
+  for before it goes; not sent on `pagehide`. A confirm approves the text
+  as stored, so it can never run ahead of, or past the failure of, the
+  write of the text.
+- **`Ctrl+Ins` copies the source over the target**, one transaction — so
+  `Ctrl+Z` restores the old target — with the source's visible tags as
+  chips under the same ids (all placed), hidden tags left to the save
+  (`carryHiddenTags`), the caret at the end. The status it leads to is
+  the ordinary one: a saved target with anything visible is `translated`,
+  no machine origin; it is not a confirm. Both keys have a control in the
+  editor's bar (a Mac keyboard has no Insert).
+- **Not here:** merge/split (`Ctrl+M`, `Ctrl+Shift+M`) needs a `db` write
+  path that does not exist yet (backlog #30a); filter focus waits for the
+  filter bar (backlog #34).
+
+Measured in a Chromium smoke run against the real server: type,
+`Ctrl+Enter` → segment confirmed and the next one open; `Ctrl+Ins`, then
+`Ctrl+Z`; `Ctrl+Enter` on an empty target; and the same in a project with
+no write-target memory, where the row carries the refusal and the flow
+still advances.
+
 ---
 
 ## 8. Risks

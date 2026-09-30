@@ -31,6 +31,8 @@ import {
   createAccountSession,
   createProject,
   deleteAccountSession,
+  confirmEditedSegment,
+  ConfirmError,
   editSegmentTarget,
   exportFile,
   getAccountByEmail,
@@ -510,6 +512,47 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           return reply.code(400).send({ error: `targetTokens: ${err.message}` });
         }
         if (err instanceof SegmentRepoError) {
+          return reply.code(409).send({ error: err.message });
+        }
+        throw err;
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  // The translator's confirm of one segment: `confirmEditedSegment` with
+  // the session's actor (v1-spec.md §7.3). It approves the stored target
+  // at the version the editor saw, so the client's own writes go first
+  // (the save queue orders them); what confirming means — the memory's
+  // write-back, the audit event, QA — is db's.
+  app.post<{
+    Params: { name: string; segmentId: string };
+    Body: { baseUpdatedAt?: unknown };
+  }>('/api/projects/:name/segments/:segmentId/confirm', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    const { db } = opened;
+    try {
+      const id = Number(req.params.segmentId);
+      if (!Number.isInteger(id) || !getSegment(db, id)) {
+        return reply.code(404).send({ error: `no segment #${req.params.segmentId}` });
+      }
+      const body = req.body ?? {};
+      if (typeof body !== 'object' || Array.isArray(body)) {
+        return reply.code(400).send({ error: 'the body must be a JSON object' });
+      }
+      const { baseUpdatedAt } = body;
+      if (baseUpdatedAt !== undefined && typeof baseUpdatedAt !== 'string') {
+        return reply.code(400).send({ error: 'baseUpdatedAt must be a string' });
+      }
+      try {
+        return confirmEditedSegment(db, id, { actor: sessionActor(req), baseUpdatedAt });
+      } catch (err) {
+        if (err instanceof TargetConflictError) {
+          return reply.code(409).send({ error: err.message, segment: err.current });
+        }
+        if (err instanceof ConfirmError || err instanceof SegmentRepoError) {
           return reply.code(409).send({ error: err.message });
         }
         throw err;
