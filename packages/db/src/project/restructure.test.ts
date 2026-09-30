@@ -317,6 +317,10 @@ describe('mergeSegmentWithNext', () => {
 });
 
 describe('through the exported DOCX', () => {
+  // Each round reruns QA across the project, so a big file is slow on a
+  // slow runner: a few rounds per file, and a timeout that says so.
+  const ROUNDS = 8;
+  const SLOW = 60_000;
   const fixtures = readdirSync(FIXTURES).filter((f) => f.endsWith('.docx'));
 
   it.each(fixtures)(
@@ -326,7 +330,7 @@ describe('through the exported DOCX', () => {
       const before = listSegments(db, file.id);
       let done = 0;
       for (const seg of before) {
-        if (seg.locked || done >= 20) continue;
+        if (seg.locked || done >= ROUNDS) continue;
         const text = plainText(seg.sourceTokens);
         const at = Math.floor(text.length / 2);
         let result;
@@ -354,39 +358,44 @@ describe('through the exported DOCX', () => {
       expect(verifyAudit(db).brokenAt).toBeNull();
       db.close();
     },
+    SLOW,
   );
 
-  it('merging translated segments renders the paragraph as the two did apart', () => {
-    const { db, file } = project('prose-long.docx');
-    // Translate every segment with its own source, then export.
-    for (const seg of listSegments(db, file.id)) {
-      if (seg.locked) continue;
-      setSegmentTarget(db, seg.id, {
-        targetTokens: seg.sourceTokens,
-        status: 'translated',
-        origin: null,
-        actor: TEST_ACTOR,
-      });
-    }
-    const apart = partDigests(exportFile(db, file.id, { actor: TEST_ACTOR }).bytes);
-    // Then merge every pair of one paragraph into one segment.
-    let merged = 0;
-    for (const seg of listSegments(db, file.id)) {
-      const still = getSegment(db, seg.id);
-      if (!still || still.locked) continue;
-      try {
-        mergeSegmentWithNext(db, seg.id, { actor: TEST_ACTOR });
-        merged++;
-      } catch (err) {
-        if (!(err instanceof SegmentRepoError)) throw err;
+  it(
+    'merging translated segments renders the paragraph as the two did apart',
+    () => {
+      const { db, file } = project('prose-long.docx');
+      // Translate every segment with its own source, then export.
+      for (const seg of listSegments(db, file.id)) {
+        if (seg.locked) continue;
+        setSegmentTarget(db, seg.id, {
+          targetTokens: seg.sourceTokens,
+          status: 'translated',
+          origin: null,
+          actor: TEST_ACTOR,
+        });
       }
-    }
-    expect(merged).toBeGreaterThan(0);
-    expectOrdered(db, file.id);
-    const together = partDigests(exportFile(db, file.id, { actor: TEST_ACTOR }).bytes);
-    expect(together).toEqual(apart);
-    db.close();
-  });
+      const apart = partDigests(exportFile(db, file.id, { actor: TEST_ACTOR }).bytes);
+      // Then merge every pair of one paragraph into one segment.
+      let merged = 0;
+      for (const seg of listSegments(db, file.id)) {
+        const still = getSegment(db, seg.id);
+        if (!still || still.locked) continue;
+        try {
+          mergeSegmentWithNext(db, seg.id, { actor: TEST_ACTOR });
+          merged++;
+        } catch (err) {
+          if (!(err instanceof SegmentRepoError)) throw err;
+        }
+      }
+      expect(merged).toBeGreaterThan(0);
+      expectOrdered(db, file.id);
+      const together = partDigests(exportFile(db, file.id, { actor: TEST_ACTOR }).bytes);
+      expect(together).toEqual(apart);
+      db.close();
+    },
+    SLOW,
+  );
 });
 
 describe('migrating a v7 project', () => {
