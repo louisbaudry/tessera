@@ -56,7 +56,7 @@ exit 0
 exit 0
 
 ## $ cat-tool audit-verify <job>/job.catdb
-Audit chain intact: 23 events
+Audit chain intact: 24 events
 exit 0
 
 ## delivered

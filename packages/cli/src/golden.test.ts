@@ -186,7 +186,7 @@ describe('🏁 golden end-to-end', () => {
       //    as one decimal number where two were expected.
       const citation = listQaIssues(db).filter((i) => i.rule === 'num.missing');
       expect(citation).toHaveLength(1);
-      dismissQaIssue(db, citation[0]!.id);
+      dismissQaIssue(db, citation[0]!, { actor: REVIEWER });
       t.note(`dismissed #${citation[0]!.segmentId} num.missing`);
     } finally {
       db.close();

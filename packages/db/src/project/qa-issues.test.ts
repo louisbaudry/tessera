@@ -16,6 +16,8 @@ import {
   dismissQaIssue,
   listFileQaIssues,
   listQaIssues,
+  QaIssueError,
+  reinstateQaIssue,
   replaceQaIssues,
   runQaRules,
 } from './qa-issues.js';
@@ -23,6 +25,9 @@ import { setRuleEnabled } from './qa-settings.js';
 import { addUntranslatedAllowlistEntry } from './qa-untranslated-allowlist.js';
 import { getSegment, listSegments, setSegmentTarget } from './segments.js';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
+import { listEvents, verifyAudit } from '../audit/events.js';
+import { openAndMigrate } from '../migrate.js';
+import { PROJECT_APPLICATION_ID, PROJECT_MIGRATIONS } from './schema.js';
 import { capturePlans, scansOf } from '../query-plan.fixture.js';
 
 const FIXTURES = join(
@@ -107,7 +112,7 @@ describe('addQaIssue / listQaIssues / dismissQaIssue', () => {
       severity: 'error',
       message: 'empty',
     });
-    dismissQaIssue(db, early.id);
+    dismissQaIssue(db, early, { actor: TEST_ACTOR });
 
     expect(first!.id).toBe(segmentId);
     expect(listFileQaIssues(db, 1)).toEqual([{ ...early, dismissed: true }, late]);
@@ -135,9 +140,124 @@ describe('addQaIssue / listQaIssues / dismissQaIssue', () => {
       severity: 'error',
       message: 'empty',
     });
-    dismissQaIssue(db, issue.id);
+    dismissQaIssue(db, issue, { actor: TEST_ACTOR });
     const [after] = listQaIssues(db, segmentId);
     expect(after!.dismissed).toBe(true);
+    db.close();
+  });
+});
+
+describe('dismissing and reinstating (backlog #33)', () => {
+  const REVIEWER = {
+    actor: { kind: 'account', id: 7 },
+    label: 'reviewer@example.com',
+  } as const;
+
+  it('logs each decision against the segment, naming its rule and actor', () => {
+    const { db, segmentId } = openWithSegment();
+    addQaIssue(db, { segmentId, rule: 'seg.empty', severity: 'error', message: 'empty' });
+    const key = { segmentId, rule: 'seg.empty' } as const;
+    const before = verifyAudit(db).events;
+
+    expect(dismissQaIssue(db, key, { actor: REVIEWER }).dismissed).toBe(true);
+    expect(reinstateQaIssue(db, key, { actor: REVIEWER }).dismissed).toBe(false);
+    expect(listQaIssues(db, segmentId)[0]!.dismissed).toBe(false);
+
+    const events = listEvents(db, {
+      subjectType: 'segment',
+      subjectId: String(segmentId),
+    }).filter((e) => e.action.startsWith('qa.'));
+    expect(events).toMatchObject([
+      { action: 'qa.dismissed', actor: 'account:7', actorLabel: 'reviewer@example.com' },
+      { action: 'qa.reinstated', actor: 'account:7' },
+    ]);
+    expect(events.map((e) => JSON.parse(e.detail!) as unknown)).toEqual([
+      { rule: 'seg.empty' },
+      { rule: 'seg.empty' },
+    ]);
+    expect(verifyAudit(db)).toEqual({ events: before + 2, brokenAt: null });
+    db.close();
+  });
+
+  it('writes nothing when the finding is already in the asked state', () => {
+    const { db, segmentId } = openWithSegment();
+    addQaIssue(db, { segmentId, rule: 'seg.empty', severity: 'error', message: 'empty' });
+    const key = { segmentId, rule: 'seg.empty' } as const;
+    const before = verifyAudit(db).events;
+    reinstateQaIssue(db, key, { actor: TEST_ACTOR });
+    dismissQaIssue(db, key, { actor: TEST_ACTOR });
+    dismissQaIssue(db, key, { actor: TEST_ACTOR });
+    expect(verifyAudit(db).events).toBe(before + 1);
+    db.close();
+  });
+
+  it('finds the issue by segment and rule after a rerun replaced its row', () => {
+    const { db, segmentId } = openWithSegment();
+    const [first] = replaceQaIssues(db, segmentId, [
+      { rule: 'tag.missing', severity: 'error', message: 'missing tag 1' },
+    ]);
+    const [empty, missing] = replaceQaIssues(db, segmentId, [
+      { rule: 'seg.empty', severity: 'error', message: 'empty' },
+      { rule: 'tag.missing', severity: 'error', message: 'missing tag 2' },
+    ]);
+    // SQLite hands the freed row id to the next insert: the id the page
+    // held now names another finding, which is why it is never the key.
+    expect(empty!.id).toBe(first!.id);
+    const dismissed = dismissQaIssue(db, first!, { actor: TEST_ACTOR });
+    expect(dismissed).toMatchObject({ id: missing!.id, dismissed: true });
+    expect(listQaIssues(db, segmentId).map((i) => i.dismissed)).toEqual([false, true]);
+    db.close();
+  });
+
+  it('refuses a rule that is not firing on the segment, and logs nothing', () => {
+    const { db, segmentId } = openWithSegment();
+    const before = verifyAudit(db).events;
+    expect(() =>
+      dismissQaIssue(db, { segmentId, rule: 'seg.empty' }, { actor: TEST_ACTOR }),
+    ).toThrow(QaIssueError);
+    expect(verifyAudit(db).events).toBe(before);
+    db.close();
+  });
+
+  it('carrying a dismissal through a rerun is not a new decision', () => {
+    const { db, segmentId } = openWithSegment();
+    const [issue] = replaceQaIssues(db, segmentId, [
+      { rule: 'tag.missing', severity: 'error', message: 'missing tag 1' },
+    ]);
+    dismissQaIssue(db, issue!, { actor: TEST_ACTOR });
+    const before = verifyAudit(db).events;
+    replaceQaIssues(db, segmentId, [
+      { rule: 'tag.missing', severity: 'error', message: 'missing tag 1' },
+    ]);
+    expect(verifyAudit(db).events).toBe(before);
+    db.close();
+  });
+
+  it('a v8 project opens with its log intact and takes the new actions', () => {
+    dir = mkdtempSync(join(tmpdir(), 'cat-qa-migrate-'));
+    const path = join(dir, 'old.catdb');
+    const old = openAndMigrate(path, {
+      applicationId: PROJECT_APPLICATION_ID,
+      migrations: PROJECT_MIGRATIONS.slice(0, 8),
+    });
+    const file = insertFile(
+      old,
+      'a.docx',
+      assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
+    );
+    const segmentId = listSegments(old, file.id)[0]!.id;
+    addQaIssue(old, { segmentId, rule: 'seg.empty', severity: 'error', message: 'e' });
+    expect(() =>
+      dismissQaIssue(old, { segmentId, rule: 'seg.empty' }, { actor: TEST_ACTOR }),
+    ).toThrow(/CHECK constraint failed/);
+    old.close();
+
+    const db = openProjectDb(path);
+    expect(verifyAudit(db)).toEqual({ events: 1, brokenAt: null });
+    dismissQaIssue(db, { segmentId, rule: 'seg.empty' }, { actor: TEST_ACTOR });
+    expect(verifyAudit(db)).toEqual({ events: 2, brokenAt: null });
+    expect(() => db.prepare('DELETE FROM audit_event').run()).toThrow(/append-only/);
     db.close();
   });
 });
@@ -171,7 +291,7 @@ describe('replaceQaIssues', () => {
     const [issue] = replaceQaIssues(db, segmentId, [
       { rule: 'tag.missing', severity: 'error', message: 'missing tag 1' },
     ]);
-    dismissQaIssue(db, issue!.id);
+    dismissQaIssue(db, issue!, { actor: TEST_ACTOR });
 
     // The rule fires again with a different message — still the same rule.
     const [rerun] = replaceQaIssues(db, segmentId, [
@@ -188,7 +308,7 @@ describe('replaceQaIssues', () => {
     const [issue] = replaceQaIssues(db, segmentId, [
       { rule: 'tag.missing', severity: 'error', message: 'missing tag 1' },
     ]);
-    dismissQaIssue(db, issue!.id);
+    dismissQaIssue(db, issue!, { actor: TEST_ACTOR });
 
     replaceQaIssues(db, segmentId, []); // the problem was fixed
     expect(listQaIssues(db, segmentId)).toHaveLength(0);
@@ -200,7 +320,7 @@ describe('replaceQaIssues', () => {
     const [missing] = replaceQaIssues(db, segmentId, [
       { rule: 'tag.missing', severity: 'error', message: 'missing tag 1' },
     ]);
-    dismissQaIssue(db, missing!.id);
+    dismissQaIssue(db, missing!, { actor: TEST_ACTOR });
 
     const [, extra] = replaceQaIssues(db, segmentId, [
       { rule: 'tag.missing', severity: 'error', message: 'missing tag 1' },
@@ -266,7 +386,7 @@ describe('runQaRules', () => {
     const { db, segmentId } = openWithSegment();
     breakTargetTags(db, segmentId);
     const [first] = runQaRules(db, segmentId);
-    dismissQaIssue(db, first!.id);
+    dismissQaIssue(db, first!, { actor: TEST_ACTOR });
 
     const rerun = runQaRules(db, segmentId);
     const same = rerun.find((i) => i.rule === first!.rule);

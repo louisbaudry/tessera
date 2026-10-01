@@ -288,6 +288,7 @@ browser never touches SQLite.
 | `POST /api/projects/:name/files` (multipart: one DOCX, optional `relPath` field) | `assembleFile` + `insertFile`, exactly `add-file` (§2.4); 409 on a duplicate `rel_path`, 422 on a source language `rulesFor` refuses |
 | `GET /api/projects/:name/files/:id/segments` | the file's `Segment[]` as stored |
 | `GET /api/projects/:name/files/:id/qa-issues` | every `QaIssue` on the file's segments, dismissed ones included — the grid's QA gutter (backlog #28), and #33's panel |
+| `PUT /api/projects/:name/segments/:id/qa-issues/:rule` `{dismissed}` | sets that finding aside, or counts it again: `dismissQaIssue`/`reinstateQaIssue`, logged as `qa.dismissed`/`qa.reinstated`; asking for the state it is in writes nothing; 404 a rule not firing on the segment; → `{issue}` — backlog #33, §7.6 |
 | `DELETE /api/projects/:name` | deletes the `.catdb` (and its log with it); 204 — backlog #57 |
 | `GET /api/projects/:name/files/:id/export` | the delivered DOCX, `exportFile`, exactly `export` (§2.4) — backlog #57 |
 | `PUT /api/projects/:name/segments/:id` `{targetTokens, baseUpdatedAt?}` | the translator's edit: `editSegmentTarget` (§7.2) — what they placed, hidden tags carried, status and origin derived, QA rerun; tokens shape-checked (`parseTokens`); a `status` or `origin` in the body refused (400), a tag structure export could not render refused (400), a write over a newer version refused (409, with the segment as it is), a locked segment 409; → `{segment, changed, rerun, issues}` — backlog #57, reshaped by #29 |
@@ -1530,6 +1531,49 @@ HTTP around it (§2.5); what follows is what had to be decided.
   naming its file without stopping the rest.
 - **Pre-translate is the whole project**, from the project screen, and
   its counts are the answer; the grid shows the result when opened.
+
+### 7.6 The QA panel (`@cat-tool/server`, `@cat-tool/web`, backlog #33)
+
+The file's findings, under the grid: filter by severity and rule, jump
+to the segment, dismiss. What it settled:
+
+- **A finding is named by its segment and its rule, never its row id.**
+  One rule fires at most once per segment (§6.4, backlog #22), so the
+  pair names one finding; and it is what a dismissal is already kept
+  against (`replaceQaIssues`). The id is not even stable across a
+  rerun: QA replaces a segment's rows wholesale, and SQLite gives a
+  freed row id to the next insert, so an id the page held can name a
+  *different* finding of the same segment once a save has rerun QA —
+  a dismissal sent by id would set aside something the translator
+  never saw. The route is `…/segments/:id/qa-issues/:rule`.
+- **Dismissing is a decision, so it is logged; carrying it is not.**
+  `qa.dismissed` and `qa.reinstated` (audit-spec §2.4), subject the
+  segment, detail `{ rule }`, in the same transaction as the write, the
+  actor the session's — a dismissed error is one that no longer blocks
+  export (`isBlocking`), and who decided that is the question an audit
+  asks. A rerun that finds the rule again and keeps the dismissal
+  records nothing: no one decided anything then.
+- **A dismissal can be undone.** "Show dismissed" lists them, struck
+  through, with *Reinstate* — a misclick otherwise lasts until the rule
+  stops firing.
+- **A dismissal waits for the segment's writes already asked for**
+  (`queue.whenIdle`). Each save answers with the segment's findings as
+  its rerun left them; one landing after the dismissal's answer would
+  show the finding undismissed again, though the server kept it.
+- **Docked under the grid at a fixed height.** Opening it shortens the
+  grid's window and moves no column and no row (§7's "no layout shift";
+  the smoke run measures both), where a side panel would rewrap every
+  row and re-measure the virtualised heights. Its open state is a
+  per-browser preference, as "show full tags" is.
+- **A jump opens the segment**, as a click on its target would; a
+  locked one is scrolled to and not opened. A filter's count is what
+  choosing it lists: severities count within the chosen rule, rules
+  within the chosen severities, and a rule with nothing to list is not
+  offered (unless it is the one chosen — the list never silently widens
+  under the translator).
+- **No new key.** §7 names none for the panel, and its controls are
+  ordinary buttons in the tab order; a shortcut can come with #34's
+  filter-focus key, when there is a set to fit it into.
 
 ---
 

@@ -39,6 +39,7 @@ import {
   describeTm,
   deleteAccountSession,
   confirmEditedSegment,
+  dismissQaIssue,
   ConfirmError,
   editSegmentTarget,
   exportFile,
@@ -50,6 +51,7 @@ import {
   importSdltm,
   importTmxFile,
   insertFile,
+  isQaRule,
   listFileQaIssues,
   listFileSummaries,
   listSegments,
@@ -61,9 +63,11 @@ import {
   openTm,
   pretranslate,
   ProjectExportError,
+  QaIssueError,
   recordDownload,
   recordFailedLogin,
   recordProjectChange,
+  reinstateQaIssue,
   removeTmRef,
   reorderTmRefs,
   SegmentRepoError,
@@ -616,6 +620,48 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         }
         if (err instanceof ConfirmError || err instanceof SegmentRepoError) {
           return reply.code(409).send({ error: err.message });
+        }
+        throw err;
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  // A finding set aside, or counted again (backlog #33, spec §6.4):
+  // `dismissQaIssue`/`reinstateQaIssue` with the session's actor, so the
+  // decision lands in the project's log. The finding is named by its
+  // segment and rule, which a rerun keeps, never by its row id, which a
+  // rerun replaces — a dismissal sent while a save of the segment is
+  // landing still finds it. One already in the asked state is a no-op.
+  app.put<{
+    Params: { name: string; segmentId: string; rule: string };
+    Body: { dismissed?: unknown };
+  }>('/api/projects/:name/segments/:segmentId/qa-issues/:rule', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    const { db } = opened;
+    try {
+      const segmentId = Number(req.params.segmentId);
+      const { rule } = req.params;
+      if (!Number.isInteger(segmentId) || !isQaRule(rule)) {
+        return reply.code(404).send({
+          error: `no ${req.params.rule} finding on segment #${req.params.segmentId}`,
+        });
+      }
+      const body = req.body ?? {};
+      if (typeof body !== 'object' || Array.isArray(body)) {
+        return reply.code(400).send({ error: 'the body must be a JSON object' });
+      }
+      if (typeof body.dismissed !== 'boolean') {
+        return reply.code(400).send({ error: 'dismissed must be true or false' });
+      }
+      const write = body.dismissed ? dismissQaIssue : reinstateQaIssue;
+      try {
+        return { issue: write(db, { segmentId, rule }, { actor: sessionActor(req) }) };
+      } catch (err) {
+        if (err instanceof QaIssueError) {
+          return reply.code(404).send({ error: err.message });
         }
         throw err;
       }

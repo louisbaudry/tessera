@@ -2,7 +2,7 @@
  * The server's JSON surface (v1-spec.md §2.5), typed from `core`'s
  * models. The SPA never sees anything but `/api/`.
  */
-import type { Project, QaIssue, Segment, Token } from '@cat-tool/core';
+import type { Project, QaIssue, QaRule, Segment, Token } from '@cat-tool/core';
 
 export class ApiError extends Error {
   constructor(
@@ -207,6 +207,25 @@ export const api = {
     call<{ issues: QaIssue[] }>(`${project(name)}/files/${fileId}/qa-issues`, token, {
       signal,
     }),
+  /**
+   * Sets a finding aside, or counts it again (backlog #33) — named by its
+   * segment and rule, which a QA rerun keeps; its row id is not.
+   */
+  setQaDismissed: (
+    token: string,
+    name: string,
+    segmentId: number,
+    rule: QaRule,
+    dismissed: boolean,
+  ) =>
+    call<{ issue: QaIssue }>(
+      `${project(name)}/segments/${segmentId}/qa-issues/${rule}`,
+      token,
+      {
+        method: 'PUT',
+        body: { dismissed },
+      },
+    ),
   /**
    * One segment's target: what the translator placed (§7.2), over the
    * version of the segment the page last saw — or, with no version (left

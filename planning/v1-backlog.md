@@ -2282,8 +2282,45 @@ Not here: glossary references (`glossary-refs.ts`), which want the same
 panel once #39 has a surface; deleting a memory or a document; enabling
 and disabling a ref without detaching it.
 
-**#33 · QA panel · M** · [issue #9]
-Filter by rule and severity, jump to segment, dismiss.
+**#33 · ~~QA panel~~ · DONE — `web/QaPanel.tsx`, `web/qa-panel.ts`, `PUT /api/projects/:name/segments/:id/qa-issues/:rule`, `db/project/qa-issues.ts`'s `dismissQaIssue`/`reinstateQaIssue`, project schema v9**
+Filter by rule and severity, jump to segment, dismiss — and reinstate.
+The decisions are `v1-spec.md` §7.6. What building it settled or found:
+
+- **A finding's key is its segment and rule, and the row id would have
+  been a bug.** The first test written against the id assumed a rerun
+  gives a new one; it failed, because SQLite hands a freed row id to the
+  next insert. So an id the page held across a save could name a
+  *different* finding of the same segment — a dismissal by id would
+  have set aside something the translator never saw. The pair is
+  stable, unique by #22's one-finding-per-rule rule, and is what the
+  dismissal was already kept against.
+- **Dismissals are audited now** — the gap audit-spec §2.4 recorded.
+  `dismissQaIssue` takes a required actor and logs `qa.dismissed`
+  (`qa.reinstated` for the undo) in its transaction; project v9 widens
+  the `CHECK` with `rebuildTable`. The carry-forward in
+  `replaceQaIssues` writes the flag directly and logs nothing: no one
+  decided anything on a rerun. The golden transcript moved for exactly
+  that: its one dismissal is an event, so the chain counts 24, not
+  23 — read as such, not regenerated.
+- **A dismissal waits for the segment's queued writes**, or a save's
+  answer landing after it would show the finding undismissed again.
+
+Tests: `db` (both actions' events and chain, a repeat writing nothing,
+a carried dismissal writing nothing, the key surviving a rerun that
+reused the id, a refusal logging nothing, a v8 file refusing the action
+and taking it once migrated), the server through `inject` (dismiss,
+repeat, reinstate and their two events under the session's actor; bad
+bodies, an unknown rule, segment or finding and another account each
+refused with nothing written), `web/qa-panel.test.ts` (order, filters,
+counts, replacing by key). A Chromium smoke run against the real
+server and Vite on `prose-short.docx`, pre-translated from the golden
+memory with four findings typed in through the edit route: the panel
+opened with the header columns (143/545/545 px) and a row's box
+unchanged; error, then error + *Missing number*, filtered to two, then
+one; a jump to segment 17 opened its editor; dismissing `num.missing`
+on segment 8 dropped its gutter count from 2 to 1; after a reload the
+panel was still open and the finding still dismissed; *Show dismissed*
+listed it struck through, and *Reinstate* put the gutter back to 2.
 
 **#34 · Filters and progress · S** · [issue #10]
 Status/origin/QA/text filters, and the key that focuses the filter bar

@@ -400,6 +400,12 @@ through. Those rules also need the project's language pair
   "simplify" `replaceQaIssues` back to a plain delete-and-reinsert;
   that silently reintroduces this bug with nothing loud enough to
   necessarily catch it in review.
+- **A finding is named by its segment and rule, never its `qa_issue`
+  id** (backlog #33). That rewrite gives a segment's findings new rows,
+  and SQLite reuses a freed id, so an id held across a rerun can name
+  a _different_ finding. `dismissQaIssue`/`reinstateQaIssue` take the
+  pair and an actor, and log `qa.dismissed`/`qa.reinstated`; the
+  carry-forward above is not a decision and logs nothing.
 - **`qa_rule_setting` is absence-based**, the same reasoning `origin`'s
   missing CHECK constraint gets a bullet for above, applied to a table
   instead of a column: a rule with no row is enabled, so a rule added
@@ -502,7 +508,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts` and `tm-order.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts` and `qa-panel.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

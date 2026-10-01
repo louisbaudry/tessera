@@ -23,6 +23,7 @@ import {
 } from '@cat-tool/core';
 import {
   addQaIssue,
+  listQaIssues,
   addTmRef,
   createTm,
   createAccount,
@@ -425,7 +426,7 @@ describe('QA issues for the grid', () => {
       severity: 'warning',
       message: 'untranslated',
     });
-    dismissQaIssue(db, dismissed.id);
+    dismissQaIssue(db, dismissed, { actor: SETUP });
     db.close();
 
     const res = await app.inject({
@@ -456,6 +457,101 @@ describe('QA issues for the grid', () => {
       headers: auth(bobToken),
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  const setDismissed = (
+    token: string,
+    segmentId: number,
+    rule: string,
+    payload: unknown,
+  ) =>
+    app.inject({
+      method: 'PUT',
+      url: `/api/projects/job/segments/${segmentId}/qa-issues/${rule}`,
+      headers: auth(token),
+      payload: payload as Record<string, unknown>,
+    });
+
+  it('dismisses and reinstates a finding by segment and rule, in the project log', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const segment = await firstSegment(token, fileId);
+    let db = openProjectDb(projectFile(alice, 'job'));
+    const issue = addQaIssue(db, {
+      segmentId: segment.id,
+      rule: 'seg.empty',
+      severity: 'error',
+      message: 'empty',
+    });
+    db.close();
+
+    const dismissed = await setDismissed(token, segment.id, 'seg.empty', {
+      dismissed: true,
+    });
+    expect(dismissed.statusCode, dismissed.body).toBe(200);
+    expect(dismissed.json()).toEqual({ issue: { ...issue, dismissed: true } });
+    // Asked twice: the same answer, and nothing more in the log.
+    expect(
+      (await setDismissed(token, segment.id, 'seg.empty', { dismissed: true })).json(),
+    ).toEqual({ issue: { ...issue, dismissed: true } });
+    const reinstated = await setDismissed(token, segment.id, 'seg.empty', {
+      dismissed: false,
+    });
+    expect(reinstated.json()).toEqual({ issue });
+
+    db = openProjectDb(projectFile(alice, 'job'));
+    try {
+      const history = listEvents(db, {
+        subjectType: 'segment',
+        subjectId: String(segment.id),
+      });
+      expect(history.map((e) => [e.action, e.actor, e.detail])).toEqual([
+        ['qa.dismissed', `account:${alice.id}`, JSON.stringify({ rule: 'seg.empty' })],
+        ['qa.reinstated', `account:${alice.id}`, JSON.stringify({ rule: 'seg.empty' })],
+      ]);
+      expect(verifyAudit(db).brokenAt).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('refuses a bad body, and 404s an unknown segment, rule or finding', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const segment = await firstSegment(token, fileId);
+    let db = openProjectDb(projectFile(alice, 'job'));
+    addQaIssue(db, {
+      segmentId: segment.id,
+      rule: 'seg.empty',
+      severity: 'error',
+      message: 'empty',
+    });
+    db.close();
+
+    for (const payload of [{}, { dismissed: 'yes' }, [true]]) {
+      const res = await setDismissed(token, segment.id, 'seg.empty', payload);
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+    }
+    for (const [id, rule] of [
+      [segment.id, 'num.missing'], // not firing on it
+      [segment.id, 'no.such-rule'],
+      [9999, 'seg.empty'],
+    ] as const) {
+      const res = await setDismissed(token, id, rule, { dismissed: true });
+      expect(res.statusCode, `${id} ${rule}`).toBe(404);
+    }
+    const bob = await login('bob@example.com', 'bob-pw');
+    expect(
+      (await setDismissed(bob, segment.id, 'seg.empty', { dismissed: true })).statusCode,
+    ).toBe(404);
+
+    db = openProjectDb(projectFile(alice, 'job'));
+    try {
+      expect(listEvents(db, { subjectType: 'segment' })).toEqual([]);
+      expect(listQaIssues(db, segment.id)[0]!.dismissed).toBe(false);
+    } finally {
+      db.close();
+    }
   });
 });
 
