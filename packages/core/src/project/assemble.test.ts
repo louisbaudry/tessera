@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,8 +7,10 @@ import { describe, expect, it } from 'vitest';
 import { renderRegion } from '../docx/render.js';
 import { isUntranslatable } from '../docx/skeleton.js';
 import { validateTagStructure } from '../model/tags.js';
+import { segmentWords } from '../model/words.js';
 import { rulesFor } from '../segment/rules.js';
 import { assembleFile } from './assemble.js';
+import { countDocxWords } from './count.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -116,5 +118,31 @@ describe('assembleFile', () => {
     }
     const lockedSegments = assembled.segments.filter((s) => s.locked).length;
     expect(lockedSegments).toBe(untranslatableRegions);
+  });
+});
+
+describe('fallbackCopy (backlog #34)', () => {
+  const fixtures = readdirSync(FIXTURES).filter((n) => n.endsWith('.docx'));
+
+  it.each(fixtures)(
+    "%s: the stored segments' words are the upload's count, text boxes once",
+    (name) => {
+      const bytes = load(name);
+      const assembled = assembleFile(bytes, rulesFor('en'));
+      const words = assembled.segments.reduce((n, s) => n + segmentWords(s), 0);
+      expect(words).toBe(countDocxWords(bytes, 'en'));
+    },
+  );
+
+  it('flags the Fallback copy of a text box, and only that', () => {
+    const assembled = assembleFile(load('rich-mixed-content.docx'), rulesFor('en'));
+    const copies = assembled.segments.filter((s) => s.fallbackCopy);
+    expect(copies.length).toBeGreaterThan(0);
+    expect(copies.length).toBeLessThan(assembled.segments.length);
+    expect(
+      assembleFile(load('prose-short.docx'), rulesFor('en')).segments.some(
+        (s) => s.fallbackCopy,
+      ),
+    ).toBe(false);
   });
 });

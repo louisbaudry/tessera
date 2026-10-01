@@ -23,6 +23,7 @@ import { openAndMigrate } from '../migrate.js';
 import { TargetConflictError } from './edit-target.js';
 import { exportFile } from './export.js';
 import { insertFile } from './files.js';
+import { insertFileBeforeV10 } from './legacy-file.fixture.js';
 import { openProjectDb } from './index.js';
 import { createProject } from './project.js';
 import { addQaIssue, listQaIssues } from './qa-issues.js';
@@ -407,13 +408,11 @@ describe('migrating a v7 project', () => {
       migrations: PROJECT_MIGRATIONS.slice(0, 7),
     });
     createProject(old, { name: 'p', srcLang: 'en', tgtLang: 'es' });
-    insertFile(
+    insertFileBeforeV10(
       old,
       'a.docx',
       assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
-      {
-        actor: TEST_ACTOR,
-      },
+      TEST_ACTOR,
     );
     old.close();
 

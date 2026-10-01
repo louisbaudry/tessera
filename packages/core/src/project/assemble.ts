@@ -15,6 +15,7 @@ import type { DocPart, SegmentStatus } from '../model/segment.js';
 import type { FormatEntry, Token } from '../model/token.js';
 import { segmentTokens, type SegmenterRules } from '../segment/segmenter.js';
 import { normalizeTokens } from '../tm/normalize.js';
+import { fallbackRegionKeys } from './fallback.js';
 import { toDocPart } from './parts.js';
 
 /** A segment as assembled, before it has an id, a file, or a target. */
@@ -30,6 +31,8 @@ export interface AssembledSegment {
   readonly sourceHash: string;
   readonly status: SegmentStatus;
   readonly locked: boolean;
+  /** Inside an `mc:Fallback` (`fallbackRegionKeys`): counted as its twin. */
+  readonly fallbackCopy: boolean;
 }
 
 export interface AssembledFile {
@@ -49,7 +52,7 @@ export interface AssembledFile {
 function assembleParagraph(
   docSeg: DocumentSegment,
   rules: SegmenterRules,
-): Array<Omit<AssembledSegment, 'ord'>> {
+): Array<Omit<AssembledSegment, 'ord' | 'fallbackCopy'>> {
   const region = tokenizeRegion(docSeg.xml);
   const part = toDocPart(docSeg.part);
 
@@ -92,11 +95,13 @@ function assembleParagraph(
  */
 export function assembleFile(bytes: Uint8Array, rules: SegmenterRules): AssembledFile {
   const doc = importDocx(bytes);
+  const fallbacks = new Map(doc.skeletons.map((sk) => [sk.part, fallbackRegionKeys(sk)]));
   const segments: AssembledSegment[] = [];
   let ord = 0;
   for (const docSeg of documentSegments(doc)) {
+    const fallbackCopy = fallbacks.get(docSeg.part)?.has(docSeg.key) ?? false;
     for (const piece of assembleParagraph(docSeg, rules)) {
-      segments.push({ ...piece, ord: ord++ });
+      segments.push({ ...piece, ord: ord++, fallbackCopy });
     }
   }
   return {

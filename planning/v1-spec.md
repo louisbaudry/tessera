@@ -575,10 +575,13 @@ Five further decisions, each the conservative or the consistent one:
   rendered, and wrong for a count, since the reader sees the text once.
   The count excludes every region inside an `mc:Fallback`, transitively,
   and does so *in the counter*, never in the filter. **`#34` and `#49`
-  will need the same exclusion** and must not repeat the count's
-  by-re-scan: each needs a per-segment "fallback copy" flag recorded at
-  assembly time, so a segment's words are not counted twice or paid
-  twice. Not built here; noted on both cards.
+  need the same exclusion** and must not repeat the count's
+  by-re-scan, so since `#34` each segment carries it:
+  `segment.fallback_copy` (project v10), set at assembly from the same
+  scan (`fallbackRegionKeys`, `project/fallback.ts`) and backfilled for
+  files stored before. A stored segment's words are `segmentWords`
+  (zero for a locked segment or a fallback copy), and over every
+  fixture they sum to exactly what the upload count says.
 - **The count follows what `core` extracts** (§3.5): body, tables, text
   boxes, headers, footers, footnotes and endnotes. SmartArt text and
   image alt-text are listed in §3.5's first paragraph but nothing reads
@@ -628,6 +631,7 @@ CREATE TABLE segment (
   status        TEXT NOT NULL,          -- new|draft|translated|confirmed|locked
   origin        TEXT,                   -- NULL|tm_exact|tm_exact_tagdiff|propagated
   locked        INTEGER NOT NULL DEFAULT 0,
+  fallback_copy INTEGER NOT NULL DEFAULT 0, -- in an mc:Fallback: words counted once (§3.6, v10)
   updated_at    TEXT NOT NULL,
   UNIQUE (file_id, ord)
 );
@@ -1401,7 +1405,7 @@ listener; the exported DOCX well-formed with no run inside a run.
   no machine origin; it is not a confirm. Both keys have a control in the
   editor's bar (a Mac keyboard has no Insert).
 - **Not here:** merge/split (`Ctrl+M`, `Ctrl+Shift+M`) is §7.4 (backlog
-  #30a); filter focus waits for the filter bar (backlog #34).
+  #30a); filter focus is `Ctrl+Shift+F` (§7.7, backlog #34).
 
 Measured in a Chromium smoke run against the real server: type,
 `Ctrl+Enter` → segment confirmed and the next one open; `Ctrl+Ins`, then
@@ -1574,6 +1578,44 @@ to the segment, dismiss. What it settled:
 - **No new key.** §7 names none for the panel, and its controls are
   ordinary buttons in the tab order; a shortcut can come with #34's
   filter-focus key, when there is a set to fit it into.
+
+### 7.7 Filters and progress (`@cat-tool/core`, `@cat-tool/db`, `@cat-tool/web`, backlog #34)
+
+A filter bar over the grid and a progress line in its header. What it
+settled:
+
+- **Four filters, all at once**: text (case-insensitive, in the source
+  or the target), status (any of the five; a segment locked by the
+  filter reads as `locked`, as in the gutter), origin, and QA state
+  (any, with findings, with errors, none — by the gutter's mark, so a
+  segment whose findings are all dismissed is clean). Logic in
+  `web/filter.ts`, tested in node.
+- **Origin is offered from the file, not from a list.** Origin is an
+  open string (§4.3): the choices are the values the file holds, each
+  with its count, `No origin` for none, a known one by its gutter title
+  and an unknown one (`tm_fuzzy_85`) verbatim.
+- **The open segment stays on screen whatever the filter says.** An edit
+  can take a segment out of its filter (a `new` one, typed into); pulling
+  the row from under the caret would unmount the editor mid-word.
+- **Confirm-and-advance stays within the filter**: the next segment
+  still to do *among those shown*, so "New only" is a queue to work
+  through. A QA-panel jump to a segment the filter hides clears the
+  filter first.
+- **`Ctrl+Shift+F` focuses the text filter** — §7's "filter focus".
+  Literal Ctrl on every platform, as the editor's keys; `Ctrl+F` stays
+  the browser's find. Escape leaves the box (and Chromium clears a
+  search box on it, which is the platform's convention).
+- **The bar is always there**, so filtering never moves the grid.
+- **Progress is "confirmed / to translate"**, for segments and words.
+  A locked segment is in neither: it is never translated (§3.5). A text
+  box's `mc:Fallback` copy is a segment to confirm, because it is
+  rendered too, but its words are its twin's (`segmentWords`, §3.6). A
+  source language that does not space its words shows no word count
+  (`hasSpacedWords`), never a wrong one. Counted in the browser from the
+  segments it already holds, with `core/model`'s functions, so it moves
+  as segments are confirmed and cannot differ from the portal's
+  estimate or vendor pay; `primarySubtag` moved into `model/lang.ts`
+  for that, re-exported from `segment/rules.ts`, still one definition.
 
 ---
 

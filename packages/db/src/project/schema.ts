@@ -6,13 +6,16 @@
  * files, `ATTACH`ed at query time, never copied in.
  */
 
-import type {
-  Origin,
-  ProjectAuditAction,
-  QaRule,
-  QaSeverity,
-  SegmentStatus,
-  Token,
+import {
+  fallbackRegionKeys,
+  toDocPart,
+  type Origin,
+  type PartSkeleton,
+  type ProjectAuditAction,
+  type QaRule,
+  type QaSeverity,
+  type SegmentStatus,
+  type Token,
 } from '@cat-tool/core';
 
 import { appendAuditEvent, auditEventDdl } from '../audit/events.js';
@@ -362,6 +365,36 @@ const v9: Migration = {
 };
 
 /**
+ * `segment.fallback_copy` (backlog #34, v1-spec.md §3.6): the segment is
+ * inside an `mc:Fallback`, the second copy of a text box, so the editor's
+ * progress and vendor pay count it once. Recorded at assembly from now
+ * on; a file already here is read once, from the skeleton it stored —
+ * the same scan the upload count makes, and a fact of the document, so
+ * nothing about it can be different on a later day.
+ */
+const v10: Migration = {
+  version: 10,
+  description:
+    'segment.fallback_copy, backfilled from the skeleton each file stored (v1-spec.md §3.6, backlog #34)',
+  up: (db) => {
+    db.exec('ALTER TABLE segment ADD COLUMN fallback_copy INTEGER NOT NULL DEFAULT 0;');
+    const mark = db.prepare(
+      'UPDATE segment SET fallback_copy = 1 WHERE file_id = ? AND part = ? AND para_key = ?',
+    );
+    const files = db.prepare('SELECT id, skeleton FROM file').all() as Array<{
+      id: number;
+      skeleton: string;
+    }>;
+    for (const file of files) {
+      for (const sk of JSON.parse(file.skeleton) as PartSkeleton[]) {
+        const part = toDocPart(sk.part);
+        for (const key of fallbackRegionKeys(sk)) mark.run(file.id, part, key);
+      }
+    }
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -376,4 +409,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v7,
   v8,
   v9,
+  v10,
 ];

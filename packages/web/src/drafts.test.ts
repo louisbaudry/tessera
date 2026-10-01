@@ -49,6 +49,7 @@ function segment(id: number, target: string | null, updatedAt = 'v1'): Segment {
     status: target === null ? 'new' : 'translated',
     origin: null,
     locked: false,
+    fallbackCopy: false,
     updatedAt,
   };
 }

@@ -200,10 +200,10 @@ export function splitSegmentAt(
         .prepare(
           `INSERT INTO segment
              (file_id, part, ord, para_key, para_ord, source_tokens, format_table,
-              source_hash, status, locked, updated_at)
+              source_hash, status, locked, fallback_copy, updated_at)
            VALUES
              (@file_id, @part, @ord, @para_key, @para_ord, @source_tokens, @format_table,
-              @source_hash, 'new', 0, @updated_at)`,
+              @source_hash, 'new', 0, @fallback_copy, @updated_at)`,
         )
         .run({
           file_id: segment.fileId,
@@ -214,6 +214,8 @@ export function splitSegmentAt(
           source_tokens: second.sourceTokens,
           format_table: second.formatTable,
           source_hash: second.sourceHash,
+          // Both halves are of one paragraph, so of one copy of it.
+          fallback_copy: segment.fallbackCopy ? 1 : 0,
           updated_at: now,
         }).lastInsertRowid,
     );

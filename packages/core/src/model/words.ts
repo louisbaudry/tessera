@@ -13,6 +13,8 @@
  * different splitter. `model/` imports nothing.
  */
 
+import { primarySubtag } from './lang.js';
+import type { Segment } from './segment.js';
 import type { FormatEntry, Token, TokenizedRegion } from './token.js';
 
 /**
@@ -119,4 +121,39 @@ export function readingText(region: TokenizedRegion): string {
 /** Words in one tokenized region (a paragraph's content). */
 export function countRegionWords(region: TokenizedRegion): number {
   return countWords(readingText(region));
+}
+
+/**
+ * Languages whose words are not separated by spaces (or, for Tibetan,
+ * by a mark this counter does not read): a whitespace count of them is
+ * a count of clauses. They get no count at all (v1-spec.md §3.6).
+ */
+export const UNSPACED_LANGUAGES: readonly string[] = [
+  'zh',
+  'ja',
+  'th',
+  'lo',
+  'km',
+  'my',
+  'bo',
+];
+
+/** Whether words in `lang` are separated well enough to be counted. */
+export function hasSpacedWords(lang: string): boolean {
+  return !UNSPACED_LANGUAGES.includes(primarySubtag(lang));
+}
+
+/**
+ * Words in one stored segment's source (backlog #34): the editor's
+ * progress, and vendor pay next (#49). Zero for a locked segment — never
+ * translated, never priced — and for a text box's `mc:Fallback` copy,
+ * which the reader sees once, in its `mc:Choice` twin (v1-spec.md §3.6).
+ * Whether the source language spaces its words at all is the caller's
+ * question ({@link hasSpacedWords}): this counts whatever it is given.
+ */
+export function segmentWords(
+  segment: Pick<Segment, 'sourceTokens' | 'formatTable' | 'locked' | 'fallbackCopy'>,
+): number {
+  if (segment.locked || segment.fallbackCopy) return 0;
+  return countRegionWords({ tokens: segment.sourceTokens, formats: segment.formatTable });
 }

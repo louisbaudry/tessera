@@ -9,6 +9,7 @@ import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { insertFile } from './files.js';
+import { insertFileBeforeV10 } from './legacy-file.fixture.js';
 import { openProjectDb } from './index.js';
 import { createProject } from './project.js';
 import {
@@ -240,13 +241,13 @@ describe('dismissing and reinstating (backlog #33)', () => {
       applicationId: PROJECT_APPLICATION_ID,
       migrations: PROJECT_MIGRATIONS.slice(0, 8),
     });
-    const file = insertFile(
+    const fileId = insertFileBeforeV10(
       old,
       'a.docx',
       assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
-      { actor: TEST_ACTOR },
+      TEST_ACTOR,
     );
-    const segmentId = listSegments(old, file.id)[0]!.id;
+    const segmentId = listSegments(old, fileId)[0]!.id;
     addQaIssue(old, { segmentId, rule: 'seg.empty', severity: 'error', message: 'e' });
     expect(() =>
       dismissQaIssue(old, { segmentId, rule: 'seg.empty' }, { actor: TEST_ACTOR }),
