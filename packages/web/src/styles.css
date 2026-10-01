@@ -198,6 +198,11 @@ button.link {
   border-bottom: 1px solid var(--border);
 }
 
+.grid-meta .restructure {
+  display: flex;
+  gap: 0.75rem;
+}
+
 .grid-scroll {
   flex: 1;
   min-height: 0;

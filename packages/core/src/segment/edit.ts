@@ -23,7 +23,7 @@ import type { FormatEntry, TokenizedRegion } from '../docx/tokenize.js';
 import type { SegmentStatus } from '../model/segment.js';
 import { validateTagStructure } from '../model/tags.js';
 import { plainText, type Token } from '../model/token.js';
-import { cutTokensAt, renumberRegion } from './segmenter.js';
+import { cutTokensAt, renumberRegionWithMap } from './segmenter.js';
 
 export class SegmentEditError extends Error {
   constructor(message: string) {
@@ -51,6 +51,20 @@ export function splitSegment(
   region: TokenizedRegion,
   offset: number,
 ): [TokenizedRegion, TokenizedRegion] {
+  const { first, second } = splitWithMap(region, offset);
+  return [first.region, second.region];
+}
+
+interface Half {
+  readonly region: TokenizedRegion;
+  /** Each id the half was cut from → the id it has now. */
+  readonly idMap: ReadonlyMap<number, number>;
+}
+
+function splitWithMap(
+  region: TokenizedRegion,
+  offset: number,
+): { first: Half; second: Half } {
   const length = plainText(region.tokens).length;
   if (!Number.isInteger(offset) || offset <= 0 || offset >= length) {
     throw new SegmentEditError(
@@ -61,10 +75,12 @@ export function splitSegment(
   if (groups.length !== 2 || !hasVisibleText(groups[0]!) || !hasVisibleText(groups[1]!)) {
     throw new SegmentEditError('a split must leave visible text on both sides');
   }
-  return [
-    renumberRegion(groups[0]!, region.formats),
-    renumberRegion(groups[1]!, region.formats),
-  ];
+  const first = renumberRegionWithMap(groups[0]!, region.formats);
+  const second = renumberRegionWithMap(groups[1]!, region.formats);
+  return {
+    first: { region: first.region, idMap: first.idMap },
+    second: { region: second.region, idMap: second.idMap },
+  };
 }
 
 /** Format equality, ignoring the id — the payload is what matters. */
@@ -126,6 +142,24 @@ export function mergeSegments(
   b: TokenizedRegion,
   options: MergeOptions = {},
 ): TokenizedRegion {
+  return mergeWithMaps(a, b, options).region;
+}
+
+interface Merged {
+  readonly region: TokenizedRegion;
+  /** Each id of `a` → the id it has in the merge. */
+  readonly aIds: ReadonlyMap<number, number>;
+  /** Each id of `b` → the id it has in the merge (a fused one takes `a`'s). */
+  readonly bIds: ReadonlyMap<number, number>;
+  /** The merged ids of the pairs fused across the seam. */
+  readonly fused: ReadonlySet<number>;
+}
+
+function mergeWithMaps(
+  a: TokenizedRegion,
+  b: TokenizedRegion,
+  options: MergeOptions,
+): Merged {
   // Shift b's ids past a's so the two tables can coexist.
   const shift = Math.max(
     0,
@@ -184,14 +218,30 @@ export function mergeSegments(
   }
   merged.push(...tail);
 
-  const region = renumberRegion(coalesceTextTokens(merged), [...a.formats, ...bFormats]);
+  const { region, idMap } = renumberRegionWithMap(coalesceTextTokens(merged), [
+    ...a.formats,
+    ...bFormats,
+  ]);
   const check = validateTagStructure(region.tokens);
   if (!check.ok) {
     // Both inputs were balanced, so this indicates a malformed input
     // region rather than a fusion bug — refuse rather than emit it.
     throw new SegmentEditError('merge would produce an invalid tag structure');
   }
-  return region;
+  const aIds = new Map<number, number>();
+  for (const id of new Set(a.tokens.flatMap((t) => (t.t === 'text' ? [] : [t.id])))) {
+    const to = idMap.get(id);
+    if (to !== undefined) aIds.set(id, to);
+  }
+  const bIds = new Map<number, number>();
+  const fusedIds = new Set<number>();
+  for (const id of new Set(b.tokens.flatMap((t) => (t.t === 'text' ? [] : [t.id])))) {
+    const to = idMap.get(remap.get(id + shift) ?? id + shift);
+    if (to === undefined) continue;
+    bIds.set(id, to);
+    if (remap.has(id + shift)) fusedIds.add(to);
+  }
+  return { region, aIds, bIds, fused: fusedIds };
 }
 
 /**
@@ -199,6 +249,11 @@ export function mergeSegments(
  * know, without the storage row around it. The store maps its rows into
  * this shape and writes the results back (origin becomes null — a manual
  * edit is not a TM hit any more).
+ *
+ * `target` is the translator's part of the target — its text and visible
+ * tags — over the segment's own format table, the tag ids being the
+ * source's (§3.3). Hidden tags are not the editing layer's to place: the
+ * store carries them again from the new source (`carryHiddenTags`).
  */
 export interface EditableSegment {
   readonly source: TokenizedRegion;
@@ -213,6 +268,28 @@ const assertEditable = (segment: EditableSegment, verb: string): void => {
   }
 };
 
+/** The tokens with every tag `keep` refuses removed, pairs and all. */
+const keepingTags = (tokens: readonly Token[], keep: (id: number) => boolean): Token[] =>
+  tokens.filter((t) => t.t === 'text' || keep(t.id));
+
+/** The tokens with every tag's id (and `fmt`, which is its id) mapped; an unmapped tag is dropped. */
+const remapTags = (
+  tokens: readonly Token[],
+  ids: ReadonlyMap<number, number>,
+): Token[] => {
+  const out: Token[] = [];
+  for (const t of tokens) {
+    if (t.t === 'text') out.push(t);
+    else {
+      const id = ids.get(t.id);
+      if (id !== undefined) {
+        out.push(t.t === 'close' ? { t: 'close', id } : { ...t, id, fmt: id });
+      }
+    }
+  }
+  return out;
+};
+
 /**
  * Splits a segment, deciding what happens to its target and status.
  *
@@ -222,22 +299,72 @@ const assertEditable = (segment: EditableSegment, verb: string): void => {
  * to redistribute, and that half becomes a draft; the second half starts
  * empty. A confirmed segment may be split, but neither half stays
  * confirmed — the source it was confirmed against no longer exists.
+ *
+ * The tags of the half the target does not stay with are dropped from
+ * it — they name tags that are no longer in its source. The pair a cut
+ * spanned stays with the first half, which still holds its opening.
  */
 export function splitEditableSegment(
   segment: EditableSegment,
   offset: number,
 ): [EditableSegment, EditableSegment] {
   assertEditable(segment, 'split');
-  const [first, second] = splitSegment(segment.source, offset);
+  const { first, second } = splitWithMap(segment.source, offset);
+  const target = segment.target
+    ? {
+        tokens: remapTags(segment.target.tokens, first.idMap),
+        formats: first.region.formats,
+      }
+    : null;
   return [
     {
-      source: first,
-      target: segment.target,
-      status: segment.target ? 'draft' : 'new',
+      source: first.region,
+      target,
+      status: target ? 'draft' : 'new',
       locked: false,
     },
-    { source: second, target: null, status: 'new', locked: false },
+    { source: second.region, target: null, status: 'new', locked: false },
   ];
+}
+
+/**
+ * Joins two targets, over the ids the merged source gave their tags.
+ *
+ * A pair the merge fused across the seam is one pair in the merged
+ * source, and a target that placed it on both sides gets one pair too:
+ * the first target's opening and the second's closing stand, the seam's
+ * close and open go. A target that cannot take that (the two placed it
+ * so the pair would cross another) keeps the first's pair and loses the
+ * second's tags, its text staying — never an invalid target, and never a
+ * refused merge over tags the translator can re-place.
+ */
+function joinTargets(
+  a: readonly Token[],
+  b: readonly Token[],
+  fused: ReadonlySet<number>,
+  separator: string,
+): Token[] {
+  const has = (tokens: readonly Token[], id: number): boolean =>
+    tokens.some((t) => t.t === 'open' && t.id === id);
+  const both = [...fused].filter((id) => has(a, id) && has(b, id));
+  const glue: Token[] =
+    separator.length > 0 && !/\s$/.test(plainText(a)) && !/^\s/.test(plainText(b))
+      ? [{ t: 'text', v: separator }]
+      : [];
+  const join = (left: readonly Token[], right: readonly Token[]): Token[] =>
+    coalesceTextTokens([...left, ...glue, ...right]);
+
+  const unified = join(
+    a.filter((t) => !(t.t === 'close' && both.includes(t.id))),
+    b.filter((t) => !(t.t === 'open' && both.includes(t.id))),
+  );
+  if (validateTagStructure(unified).ok) return unified;
+  const dropped = join(
+    a,
+    keepingTags(b, (id) => !both.includes(id)),
+  );
+  if (validateTagStructure(dropped).ok) return dropped;
+  throw new SegmentEditError('merge would produce an invalid target');
 }
 
 /**
@@ -247,7 +374,8 @@ export function splitEditableSegment(
  * whitespace lives in the source stream, not in what the translator
  * typed); a single target is kept as-is. Either way the result is a
  * draft — it has never been reviewed in its merged form. With no targets
- * the merge is just a wider untranslated segment.
+ * the merge is just a wider untranslated segment. The targets follow the
+ * source's renumbering: a tag keeps meaning the same tag.
  */
 export function mergeEditableSegments(
   a: EditableSegment,
@@ -255,10 +383,18 @@ export function mergeEditableSegments(
 ): EditableSegment {
   assertEditable(a, 'merged');
   assertEditable(b, 'merged');
-  const source = mergeSegments(a.source, b.source);
-  const target =
-    a.target && b.target
-      ? mergeSegments(a.target, b.target, { separator: ' ' })
-      : (a.target ?? b.target);
-  return { source, target, status: target ? 'draft' : 'new', locked: false };
+  const merged = mergeWithMaps(a.source, b.source, {});
+  const aTarget = a.target ? remapTags(a.target.tokens, merged.aIds) : null;
+  const bTarget = b.target ? remapTags(b.target.tokens, merged.bIds) : null;
+  const tokens =
+    aTarget && bTarget
+      ? joinTargets(aTarget, bTarget, merged.fused, ' ')
+      : (aTarget ?? bTarget);
+  const target = tokens ? { tokens, formats: merged.region.formats } : null;
+  return {
+    source: merged.region,
+    target,
+    status: target ? 'draft' : 'new',
+    locked: false,
+  };
 }

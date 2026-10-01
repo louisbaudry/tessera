@@ -82,6 +82,16 @@ async function call<T>(
   return (await res.json()) as T;
 }
 
+/** What a merge or split changed (`v1-spec.md` §7.4). */
+export interface Restructured {
+  /** The segments now standing in place of the ones asked about, in order. */
+  segments: Segment[];
+  /** Segment ids that no longer exist. */
+  removed: number[];
+  rerun: number[];
+  issues: QaIssue[];
+}
+
 const project = (name: string) => `/api/projects/${encodeURIComponent(name)}`;
 
 export const api = {
@@ -153,6 +163,31 @@ export const api = {
     void write.catch(() => undefined).finally(() => writes.delete(write));
     return write;
   },
+  /**
+   * Splits a segment at a plain-text offset of its source (§7.4). The
+   * answer lists the segments now standing and the ones gone.
+   */
+  split: (
+    token: string,
+    name: string,
+    segmentId: number,
+    body: { offset: number; baseUpdatedAt: string | undefined },
+  ) =>
+    call<Restructured>(`${project(name)}/segments/${segmentId}/split`, token, {
+      method: 'POST',
+      body,
+    }),
+  /** Merges a segment with the next one of its paragraph (§7.4). */
+  merge: (
+    token: string,
+    name: string,
+    segmentId: number,
+    body: { baseUpdatedAt: string | undefined; nextBaseUpdatedAt: string | undefined },
+  ) =>
+    call<Restructured>(`${project(name)}/segments/${segmentId}/merge`, token, {
+      method: 'POST',
+      body,
+    }),
   /** Resolves once every write sent so far, and any it set off, has settled. */
   settled: async (): Promise<void> => {
     while (writes.size > 0) await Promise.allSettled([...writes]);

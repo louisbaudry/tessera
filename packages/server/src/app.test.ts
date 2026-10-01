@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto';
 import {
   carryHiddenTags,
   hashPassword,
+  plainText,
   withoutHiddenTags,
   type AuditActor,
   type QaIssue,
@@ -695,6 +696,97 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
         ['segment.target_set', `account:${alice.id}`],
         ['segment.target_set', `account:${alice.id}`],
         ['segment.confirmed', `account:${alice.id}`],
+      ]);
+      expect(verifyAudit(db).brokenAt).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('splits and merges segments as their translator: the log, the versions, and where a break can be', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const all = async () =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/projects/job/files/${fileId}/segments`,
+          headers: auth(token),
+        })
+      ).json<{ segments: Segment[] }>().segments;
+    const before = await all();
+    const segment = before.find(
+      (s) => !s.locked && plainText(s.sourceTokens).length > 8,
+    )!;
+    const post = (
+      id: number,
+      action: 'split' | 'merge',
+      payload: Record<string, unknown>,
+    ) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/projects/job/segments/${id}/${action}`,
+        headers: auth(token),
+        payload,
+      });
+
+    expect((await post(segment.id, 'split', {})).statusCode).toBe(400);
+    expect((await post(segment.id, 'split', { offset: 'x' })).statusCode).toBe(400);
+    // Outside the source's interior: a bad request, not a conflict.
+    expect((await post(segment.id, 'split', { offset: 0 })).statusCode).toBe(400);
+    expect((await post(99999, 'split', { offset: 3 })).statusCode).toBe(404);
+    expect(
+      (
+        await post(segment.id, 'split', {
+          offset: 3,
+          baseUpdatedAt: '1999-01-01T00:00:00.000Z',
+        })
+      ).statusCode,
+    ).toBe(409);
+
+    const split = await post(segment.id, 'split', {
+      offset: 4,
+      baseUpdatedAt: segment.updatedAt,
+    });
+    expect(split.statusCode, split.body).toBe(200);
+    const done = split.json<{ segments: Segment[]; removed: number[] }>();
+    expect(done.segments.map((s) => s.id)[0]).toBe(segment.id);
+    expect(done.removed).toEqual([]);
+    expect(await all()).toHaveLength(before.length + 1);
+
+    // The merge takes both versions; the last of a paragraph has no next.
+    const [first, second] = done.segments;
+    expect(
+      (
+        await post(first!.id, 'merge', {
+          baseUpdatedAt: first!.updatedAt,
+          nextBaseUpdatedAt: '1999-01-01T00:00:00.000Z',
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect((await post(first!.id, 'merge', { baseUpdatedAt: 7 })).statusCode).toBe(400);
+    const merged = await post(first!.id, 'merge', {
+      baseUpdatedAt: first!.updatedAt,
+      nextBaseUpdatedAt: second!.updatedAt,
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+    expect(merged.json()).toMatchObject({
+      segments: [{ id: segment.id }],
+      removed: [second!.id],
+    });
+    expect((await all()).map((s) => s.id)).toEqual(before.map((s) => s.id));
+    const gone = await post(second!.id, 'merge', {});
+    expect(gone.statusCode).toBe(404);
+
+    const db = openProjectDb(projectFile(alice, 'job'));
+    try {
+      const history = listEvents(db, {
+        subjectType: 'segment',
+        subjectId: String(segment.id),
+      });
+      expect(history.map((e) => [e.action, e.actor])).toEqual([
+        ['segment.split', `account:${alice.id}`],
+        ['segment.merged', `account:${alice.id}`],
       ]);
       expect(verifyAudit(db).brokenAt).toBeNull();
     } finally {

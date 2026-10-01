@@ -21,6 +21,7 @@ import {
   generateSessionToken,
   parseTokens,
   rulesFor,
+  SegmentEditError,
   TokenShapeError,
   verifyPassword,
   type AuditActor,
@@ -44,6 +45,7 @@ import {
   listFileQaIssues,
   listFileSummaries,
   listSegments,
+  mergeSegmentWithNext,
   openPlatformDb,
   openProjectDb,
   ProjectExportError,
@@ -51,6 +53,7 @@ import {
   recordFailedLogin,
   recordProjectChange,
   SegmentRepoError,
+  splitSegmentAt,
   TargetConflictError,
   TargetStructureError,
   type Account,
@@ -553,6 +556,103 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           return reply.code(409).send({ error: err.message, segment: err.current });
         }
         if (err instanceof ConfirmError || err instanceof SegmentRepoError) {
+          return reply.code(409).send({ error: err.message });
+        }
+        throw err;
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  // Merge and split (v1-spec.md §7.4): `splitSegmentAt` and
+  // `mergeSegmentWithNext` with the session's actor. The body carries the
+  // versions the editor saw (a stale one is a 409, as for an edit) and,
+  // for a split, the plain-text offset into the source; what happens to
+  // rows, targets, hashes, the log and QA is db's. The answer names the
+  // segments now standing and the ones gone, so the grid can re-key.
+  app.post<{
+    Params: { name: string; segmentId: string };
+    Body: { offset?: unknown; baseUpdatedAt?: unknown };
+  }>('/api/projects/:name/segments/:segmentId/split', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    const { db } = opened;
+    try {
+      const id = Number(req.params.segmentId);
+      if (!Number.isInteger(id) || !getSegment(db, id)) {
+        return reply.code(404).send({ error: `no segment #${req.params.segmentId}` });
+      }
+      const body = req.body ?? {};
+      if (typeof body !== 'object' || Array.isArray(body)) {
+        return reply.code(400).send({ error: 'the body must be a JSON object' });
+      }
+      const { offset, baseUpdatedAt } = body;
+      if (typeof offset !== 'number' || !Number.isInteger(offset)) {
+        return reply.code(400).send({ error: 'offset must be an integer' });
+      }
+      if (baseUpdatedAt !== undefined && typeof baseUpdatedAt !== 'string') {
+        return reply.code(400).send({ error: 'baseUpdatedAt must be a string' });
+      }
+      try {
+        return splitSegmentAt(db, id, {
+          offset,
+          actor: sessionActor(req),
+          baseUpdatedAt,
+        });
+      } catch (err) {
+        if (err instanceof TargetConflictError) {
+          return reply.code(409).send({ error: err.message, segment: err.current });
+        }
+        if (err instanceof SegmentEditError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        if (err instanceof SegmentRepoError) {
+          return reply.code(409).send({ error: err.message });
+        }
+        throw err;
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  app.post<{
+    Params: { name: string; segmentId: string };
+    Body: { baseUpdatedAt?: unknown; nextBaseUpdatedAt?: unknown };
+  }>('/api/projects/:name/segments/:segmentId/merge', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    const { db } = opened;
+    try {
+      const id = Number(req.params.segmentId);
+      if (!Number.isInteger(id) || !getSegment(db, id)) {
+        return reply.code(404).send({ error: `no segment #${req.params.segmentId}` });
+      }
+      const body = req.body ?? {};
+      if (typeof body !== 'object' || Array.isArray(body)) {
+        return reply.code(400).send({ error: 'the body must be a JSON object' });
+      }
+      const { baseUpdatedAt, nextBaseUpdatedAt } = body;
+      for (const [key, value] of Object.entries({ baseUpdatedAt, nextBaseUpdatedAt })) {
+        if (value !== undefined && typeof value !== 'string') {
+          return reply.code(400).send({ error: `${key} must be a string` });
+        }
+      }
+      try {
+        return mergeSegmentWithNext(db, id, {
+          actor: sessionActor(req),
+          baseUpdatedAt: baseUpdatedAt as string | undefined,
+          nextBaseUpdatedAt: nextBaseUpdatedAt as string | undefined,
+        });
+      } catch (err) {
+        if (err instanceof TargetConflictError) {
+          return reply.code(409).send({ error: err.message, segment: err.current });
+        }
+        if (err instanceof SegmentEditError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        if (err instanceof SegmentRepoError) {
           return reply.code(409).send({ error: err.message });
         }
         throw err;
