@@ -1203,7 +1203,11 @@ route only parsing around it (the CLI rule, §2.4):
 - *A stale write is refused.* `baseUpdatedAt` is the segment as the page
   last saw it; a write over a newer one — another tab — is a 409 carrying
   the segment as it is; the row is marked not saved, with a note to
-  reload the file — never a silent overwrite. The
+  reload the file — never a silent overwrite. Every write of a segment
+  moves its version, even within one millisecond (`nextVersion`: now, or
+  one past the stored version): a timestamp at that resolution once let
+  an import and an edit share a value on a fast CI runner, and a stale
+  write then read as current. The
   page keeps one write per segment in flight (`save-queue.ts`), each
   sent with the version the last answer returned. An answer for a write
   a later one has superseded updates the row's version, status and

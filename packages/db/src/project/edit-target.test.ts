@@ -12,7 +12,7 @@ import {
   type Token,
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
 import { listEvents } from '../audit/events.js';
@@ -186,6 +186,33 @@ describe('editSegmentTarget', () => {
       }).changed,
     ).toBe(true);
     db.close();
+  });
+
+  it('refuses a stale write even when every write lands in one millisecond', () => {
+    // A fast machine: the import and two edits on the same clock tick.
+    // The version must still move, or the second tab's write reads as current.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T12:00:00.000Z'));
+    try {
+      const db = project('form-minimal.docx');
+      const segment = hiddenOnly(db);
+      const first = editSegmentTarget(db, segment.id, {
+        tokens: [text('Uno')],
+        actor: TEST_ACTOR,
+        baseUpdatedAt: segment.updatedAt,
+      });
+      expect(first.segment.updatedAt).not.toBe(segment.updatedAt);
+      expect(() =>
+        editSegmentTarget(db, segment.id, {
+          tokens: [text('Dos')],
+          actor: TEST_ACTOR,
+          baseUpdatedAt: segment.updatedAt,
+        }),
+      ).toThrow(TargetConflictError);
+      db.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('refuses tags that do not nest, which export could not render', () => {

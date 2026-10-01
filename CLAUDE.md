@@ -673,6 +673,13 @@ pattern.
   matching against an indexed `lang` goes through `matchingLangs`
   (`db/lang-match.ts`, backlog #19a), and `query-plan.fixture.ts`
   lets a test assert the plan rather than trusting a green run.
+- **A timestamp is not a version unless every write moves it.** A
+  segment's `updated_at` is the version an edit checks against
+  (`baseUpdatedAt`), at millisecond resolution; on a fast macOS runner
+  an import and an edit landed in one millisecond, so a stale write
+  carried a "current" version and went through. Writes now store
+  `nextVersion` (`db/project/segments.ts`), never a bare
+  `new Date()`; a test freezes the clock to prove it.
 - **A matrix job's real check name is the expanded one.**
   `name: 🚦 roundtrip gate` with a two-OS matrix produces
   `🚦 roundtrip gate (ubuntu-latest)` and `(windows-latest)`; the bare

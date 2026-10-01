@@ -128,6 +128,18 @@ export interface SetTargetOptions {
  * is no reason an interactive edit should be allowed to where
  * pre-translate isn't.
  */
+/**
+ * The `updated_at` a write of a segment stores: now, or one millisecond
+ * past the version it replaces, whichever is later. `updated_at` is the
+ * segment's version — an edit names the one it saw (`baseUpdatedAt`,
+ * `editSegmentTarget`) and a different stored one refuses it — so two
+ * writes must never leave the same value. At millisecond resolution a
+ * fast machine made two in one tick, and a stale write read as current.
+ */
+export function nextVersion(previous: string): string {
+  return new Date(Math.max(Date.now(), Date.parse(previous) + 1)).toISOString();
+}
+
 export function setSegmentTarget(
   db: Database.Database,
   id: number,
@@ -136,7 +148,8 @@ export function setSegmentTarget(
   return db.transaction((): boolean => {
     const current = db
       .prepare(
-        `SELECT target_tokens, status, origin, locked, source_tokens, format_table
+        `SELECT target_tokens, status, origin, locked, source_tokens, format_table,
+                updated_at
          FROM segment WHERE id = ?`,
       )
       .get(id) as
@@ -148,6 +161,7 @@ export function setSegmentTarget(
           | 'locked'
           | 'source_tokens'
           | 'format_table'
+          | 'updated_at'
         >
       | undefined;
     if (!current) {
@@ -181,7 +195,7 @@ export function setSegmentTarget(
       target_tokens: targetTokens,
       status: options.status,
       origin: options.origin,
-      updated_at: new Date().toISOString(),
+      updated_at: nextVersion(current.updated_at),
     });
     appendAuditEvent(db, {
       actor: options.actor,

@@ -36,7 +36,7 @@ import type Database from 'better-sqlite3';
 import { appendAuditEvent } from '../audit/events.js';
 import { TargetConflictError } from './edit-target.js';
 import { rerunQaAfterRestructure } from './qa-issues.js';
-import { getSegment, SegmentRepoError } from './segments.js';
+import { getSegment, nextVersion, SegmentRepoError } from './segments.js';
 
 export interface RestructureResult {
   /** The segments now standing in place of the ones asked about, in document order. */
@@ -176,7 +176,8 @@ export function splitSegmentAt(
     );
     const first = stored(firstPart);
     const second = stored(secondPart);
-    const now = new Date().toISOString();
+    // The row that keeps its id gets a version past the one it had.
+    const now = nextVersion(segment.updatedAt);
 
     shiftOrd(db, segment.fileId, segment.ord, 1);
     shiftParaOrd(db, segment, segment.paraOrd, 1);
@@ -285,7 +286,8 @@ export function mergeSegmentWithNext(
     }
 
     const merged = stored(mergeEditableSegments(editable(segment), editable(next)));
-    const now = new Date().toISOString();
+    // The row that keeps its id gets a version past the one it had.
+    const now = nextVersion(segment.updatedAt);
 
     db.prepare('DELETE FROM qa_issue WHERE segment_id = ?').run(next.id);
     db.prepare('DELETE FROM segment WHERE id = ?').run(next.id);
