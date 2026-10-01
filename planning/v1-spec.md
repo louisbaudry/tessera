@@ -1038,7 +1038,8 @@ Autosave on every keystroke, debounced (#31). There is no "save"
 action; a crash must never cost more than a few seconds. The audited
 write stays at segment boundaries — audit-spec §2.2; the editor saves
 when it leaves a segment and on `pagehide` (§7.2) — so keystroke drafts
-need a home outside it, or §2.2 amended first.
+live outside it, in the browser (§7.2, *Keystroke drafts*), and §2.2
+stands unamended.
 
 ### 7.1 The segment grid (`@cat-tool/web`, backlog #28)
 
@@ -1230,8 +1231,40 @@ the open editor's write goes before the waiting ones,
 — or if the segment's last write failed, changed or not, so leaving
 the row again is the retry. Signing out blurs the editor and waits for
 its write before revoking the session. Saving at segment boundaries, never per keystroke, is
-audit-spec §2.2's rule; autosave (#31) has to keep it — drafts outside
-the audited write, or an amended §2.2 first.
+audit-spec §2.2's rule; autosave (#31) keeps it, below.
+
+**Keystroke drafts (backlog #31, `drafts.ts`).** Between those writes the
+open editor keeps its target in the browser's `localStorage`, 500 ms
+after typing pauses (`DRAFT_DELAY_MS`) and at once when it leaves the
+segment, until the server answers for that write. A draft is never sent
+as it is typed: it is the visible target, the version of the segment
+its write would go over (the save queue's), the source's hash, and when
+it was written. Decisions, so they are not re-derived:
+- *The browser, not the server.* A server-side draft table would be
+  translation content changed with no audit event, or §2.2's event
+  storm; and what autosave guards against — the tab, the browser or the
+  network going — is exactly what a draft already in the browser
+  survives. What it does not survive is the machine, which the server's
+  last segment-boundary write covers.
+- *Recovered once, on the next load of the file, into the one audited
+  write* (`recoverDrafts`). A draft over the version still stored is the
+  leave-write the page never made: it goes through the save queue like
+  any other, so the server derives status and origin, reruns QA and
+  audits it. A draft that reads as what is stored is dropped — the
+  `pagehide` write landed and nobody was left to hear the answer — and so
+  is one typed against another source (a merge, a split, a project made
+  again under the same name).
+- *A segment saved elsewhere since is never overwritten by a draft* —
+  the 409 rule again. Its row is marked not saved, the draft's words in
+  the mark, the stored target kept; the draft is then forgotten, so a
+  reload shows the segment as it is.
+- *Scoped by account and project* (`cat-tool.draft.<account>.<project>.<segment>`;
+  the grid reads the account from `/api/me`), so one person's drafts are
+  never offered to another signed in on the same browser; a draft older
+  than 30 days is pruned unread. Signing out does not clear them: a
+  draft still there is an edit whose write failed, the only copy of it.
+- *Storage that is absent or throws* (a private window, a full quota)
+  is the editor as it was before #31, never an error.
 
 **ProseMirror, not a hand-rolled contentEditable.** The job is one line
 of text with atomic inline nodes — exactly ProseMirror's model — and the

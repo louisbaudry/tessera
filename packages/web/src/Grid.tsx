@@ -18,6 +18,7 @@ import { flushSync } from 'react-dom';
 import {
   api,
   ApiError,
+  type Account,
   type FileSegments,
   type ProjectDetail,
   type Restructured,
@@ -31,6 +32,13 @@ import {
   type QaMark,
 } from './gutter.js';
 import { nextUnconfirmed } from './advance.js';
+import {
+  browserStorage,
+  createDrafts,
+  draftText,
+  recoverDrafts,
+  sameTarget,
+} from './drafts.js';
 import { estimateRowHeight } from './layout.js';
 import { toPieces } from './pieces.js';
 import { loadFullTags, saveFullTags } from './prefs.js';
@@ -42,6 +50,8 @@ import { TargetEditor, type CommitOptions } from './TargetEditor.js';
 import { useLoad } from './use-load.js';
 
 interface GridData {
+  /** Whose drafts this browser may offer back (`drafts.ts`). */
+  readonly account: Account;
   readonly detail: ProjectDetail;
   readonly file: FileSegments;
   readonly issues: readonly QaIssue[];
@@ -56,12 +66,13 @@ export function Grid({ project, fileId }: { project: string; fileId: number }) {
   const data = useLoad(
     useCallback(
       async (token: string, signal: AbortSignal): Promise<GridData> => {
-        const [detail, file, qa] = await Promise.all([
+        const [account, detail, file, qa] = await Promise.all([
+          api.me(token, signal),
           api.project(token, project, signal),
           api.segments(token, project, fileId, signal),
           api.qaIssues(token, project, fileId, signal),
         ]);
-        return { detail, file, issues: qa.issues };
+        return { account, detail, file, issues: qa.issues };
       },
       [project, fileId],
     ),
@@ -123,6 +134,11 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const loadedVersions = useRef(new Map(file.segments.map((s) => [s.id, s.updatedAt])));
   // The segments of this file, for the answers that cover the project's.
   const [inFile] = useState(() => new Set(file.segments.map((s) => s.id)));
+  // Keystroke drafts (backlog #31): kept in this browser between the
+  // audited writes, cleared once a write says what they say.
+  const [drafts] = useState(() =>
+    createDrafts(browserStorage(), { account: data.account.id, project }),
+  );
   const [queue] = useState(() => {
     return createSaveQueue({
       send: (segmentId, tokens, baseUpdatedAt, urgent) =>
@@ -151,6 +167,12 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           ),
         );
         setIssues((all) => replaceIssues(all, result.rerun, result.issues, inFile));
+        // A draft this write already says is done with. One typed since
+        // now goes over the version this write returned — this tab's own.
+        const draft = drafts.read(segmentId);
+        if (draft && sameTarget(draft.tokens, result.segment)) drafts.clear(segmentId);
+        else if (draft)
+          drafts.write(segmentId, { ...draft, base: queue.version(segmentId) });
         if (!latest) return;
         setUnsaved((all) => {
           if (!all.has(segmentId)) return all;
@@ -216,8 +238,25 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     },
     [queue, activate, virtualizer],
   );
+  // The open editor's target, kept in this browser until a write of it
+  // lands; over the version that write would go over.
+  const keepDraft = useCallback(
+    (segmentId: number, tokens: Token[]) => {
+      const segment = segmentsNow.current.find((s) => s.id === segmentId);
+      if (!segment) return;
+      drafts.write(segmentId, {
+        base: queue.version(segmentId),
+        sourceHash: segment.sourceHash,
+        tokens,
+        savedAt: Date.now(),
+      });
+    },
+    [drafts, queue],
+  );
   const commit = useCallback(
     (segmentId: number, tokens: Token[], options: CommitOptions) => {
+      // Until the answer: the write may never land, and the page with it.
+      keepDraft(segmentId, tokens);
       // Shown at once; the server's answer replaces it with what it stored,
       // which for nothing visible but spaces is no target (`isBlankTarget`).
       setSegments((all) =>
@@ -232,8 +271,43 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
       );
       queue.save(segmentId, tokens, options.urgent);
     },
-    [queue],
+    [queue, keepDraft],
   );
+
+  // The drafts a page that went away left of this file's segments, once
+  // (`recoverDrafts`): one still over the stored version is the leave-write
+  // that page never made, and goes now; one whose segment was saved
+  // elsewhere since is shown, never applied.
+  const recovered = useRef(false);
+  useEffect(() => {
+    if (recovered.current) return;
+    recovered.current = true;
+    const { resend, conflicts, drop } = recoverDrafts(file.segments, drafts.all());
+    for (const id of drop) drafts.clear(id);
+    for (const { id } of conflicts) drafts.clear(id);
+    for (const { id, tokens } of resend) commit(id, [...tokens], { urgent: false });
+    if (conflicts.length > 0) {
+      setUnsaved((all) => {
+        const next = new Map(all);
+        for (const { id, tokens } of conflicts) {
+          next.set(id, {
+            message: `Not restored: "${draftText(tokens)}", typed before the page closed, was never saved, and the segment has been saved elsewhere since.`,
+          });
+        }
+        return next;
+      });
+    }
+    const said: string[] = [];
+    if (resend.length > 0) {
+      said.push(`${resend.length.toLocaleString()} unsaved edit(s) restored and sent`);
+    }
+    if (conflicts.length > 0) {
+      said.push(
+        `${conflicts.length.toLocaleString()} not restored — their segments changed since (marked !)`,
+      );
+    }
+    if (said.length > 0) setNote(`From before the page closed: ${said.join('; ')}.`);
+  }, [file.segments, drafts, commit]);
 
   // Merge and split (§7.4). Both read the segments as stored, so the open
   // editor is closed first — it sends its change as it goes — and the
@@ -332,6 +406,8 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
       loadedVersions.current.delete(id);
       inFile.delete(id);
     }
+    // Their writes all landed first (`whenIdle`); the rows now read otherwise.
+    for (const id of [...standing.map((s) => s.id), ...result.removed]) drafts.clear(id);
     queue.forget([...standing.map((s) => s.id), ...result.removed]);
     setIssues((all) =>
       replaceIssues(
@@ -454,6 +530,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
                   tgtLang={detail.project.tgtLang}
                   onActivate={activate}
                   onCommit={commit}
+                  onDraft={keepDraft}
                   onLeave={leave}
                   onConfirm={confirmAndAdvance}
                   registerPageHide={pageHide.register}
@@ -480,6 +557,7 @@ const SegmentRow = memo(function SegmentRow({
   tgtLang,
   onActivate,
   onCommit,
+  onDraft,
   onLeave,
   onConfirm,
   registerPageHide,
@@ -496,6 +574,7 @@ const SegmentRow = memo(function SegmentRow({
   tgtLang: string;
   onActivate: (segmentId: number, at: { x: number; y: number }) => void;
   onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
+  onDraft: (segmentId: number, tokens: Token[]) => void;
   onLeave: () => void;
   onConfirm: (segmentId: number) => void;
   registerPageHide: (leaveNow: () => void) => () => void;
@@ -563,6 +642,7 @@ const SegmentRow = memo(function SegmentRow({
             clickAt={clickAt}
             failed={unsaved}
             onCommit={onCommit}
+            onDraft={onDraft}
             onLeave={onLeave}
             onConfirm={onConfirm}
             registerPageHide={registerPageHide}

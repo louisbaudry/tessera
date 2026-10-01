@@ -2189,11 +2189,46 @@ smoke run against the real server: a click in the source and
 open (back to 18 rows, the target kept as a draft, the editor reopened on
 the survivor).
 
-**#31 · Autosave · S** · [issue #7]
-Debounced per keystroke. No save action; crash costs seconds. #29 saves
-when the editor leaves a segment and on `pagehide`; audit-spec §2.2 says
-the audited write happens at segment boundaries, never per keystroke,
-so keystroke drafts need a home outside it, or §2.2 amended first.
+**#31 · ~~Autosave~~ · DONE — `web/src/drafts.ts`, wired in `Grid.tsx`/`TargetEditor.tsx`**
+Debounced per keystroke, no save action, a crash costs at most 500 ms of
+typing. The open editor's target goes to `localStorage` a moment after
+each keystroke and at once on leaving, until the server answers for that
+write; the next load of the file resends a draft still over the stored
+version as the ordinary leave-write, drops one that already landed, and
+marks — never applies — one whose segment was saved elsewhere since.
+Decisions in `v1-spec.md` §7.2, *Keystroke drafts*.
+
+**§2.2 needed no amendment, which was the open question.** The choice was
+between a server-side draft table (translation content changed with no
+audit event, or one event per pause — the warning storm again) and the
+browser. The browser won on what autosave is for: everything it guards
+against short of losing the machine — the tab, the browser, the
+network — a draft already in the browser survives, and recovery turns
+it into the one audited write #29 already makes. Nothing new crosses
+the wire.
+
+**The draft's version is the queue's, not the page's.** A draft written
+while this tab's own write is in flight goes over the version that
+write *returns*; recorded with the version the page loaded, a crash a
+moment later would read this tab's own landed write as another tab's
+and refuse to restore the draft. So every answer re-bases a draft that
+still differs, and clears one it matches — visibly, by
+`sameVisibleTarget`, since the stored target carries hidden tags the
+draft never had.
+
+**The account is in the key.** The bearer token says nothing about who
+holds it, and a project slug is per account: two accounts on one browser
+with a project of the same name would otherwise be offered each other's
+drafts. The grid reads `/api/me` with the file for it.
+
+Tests: 12 in `web/src/drafts.test.ts` (scoping, pruning, blocked storage,
+every recovery outcome; the conflict and resend cases fail when the
+version check is inverted). A Chromium smoke run against the real server
+and the Vite dev server: text typed, the page crashed through CDP
+(`Page.crash` — no `pagehide`, no write sent), reopened: restored, sent, saved
+as `translated`, draft gone; a draft crashed over a segment then written
+through the API: row marked `!` with the draft's words, the other write
+kept; Esc after typing: draft cleared once saved.
 
 **#32 · Project and TM management UI · M** · [issue #8]
 Create project, add files, attach TMs, set priority and write target.

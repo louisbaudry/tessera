@@ -18,6 +18,11 @@
  * then lives only in the grid's copy, and leaving sends it again. It
  * never re-reads the segment after opening it: a save's answer updates
  * the grid, not the text under the caret.
+ *
+ * Between those writes it autosaves (backlog #31): a moment after each
+ * keystroke (`DRAFT_DELAY_MS`) the target goes to `onDraft`, which keeps
+ * it in this browser and never sends it (`drafts.ts`) — the audited write
+ * stays at the segment boundary.
  */
 import type { Segment, Token } from '@cat-tool/core';
 import { isBlankTarget, withoutHiddenTags } from '@cat-tool/core/model';
@@ -30,6 +35,7 @@ import { EditorView } from 'prosemirror-view';
 import 'prosemirror-view/style/prosemirror.css';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
+import { DRAFT_DELAY_MS } from './drafts.js';
 import { fullTagLabel, tagLabel, tagTitle } from './pieces.js';
 import { describeFormat } from './tag-label.js';
 import {
@@ -69,6 +75,11 @@ interface TargetEditorProps {
   readonly failed?: object;
   /** The visible target, when the editor leaves it changed (or `failed`). */
   readonly onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
+  /**
+   * The target as typed, a moment after a keystroke changed it: kept
+   * where a crash cannot take it, never sent (`drafts.ts`).
+   */
+  readonly onDraft: (segmentId: number, tokens: Token[]) => void;
   /** Esc: done with this segment. */
   readonly onLeave: () => void;
   /**
@@ -107,6 +118,7 @@ export function TargetEditor({
   clickAt,
   failed,
   onCommit,
+  onDraft,
   onLeave,
   onConfirm,
   registerPageHide,
@@ -142,9 +154,9 @@ export function TargetEditor({
   // What was last sent, to tell a change from a click-through; null when
   // the next leave must send whatever is there.
   const committed = useRef<PmNode | null>(null);
-  const callbacks = useRef({ onCommit, onLeave, onConfirm });
+  const callbacks = useRef({ onCommit, onDraft, onLeave, onConfirm });
   useEffect(() => {
-    callbacks.current = { onCommit, onLeave, onConfirm };
+    callbacks.current = { onCommit, onDraft, onLeave, onConfirm };
   });
   // Set with the editor below: send what changed, then confirm.
   const confirmNow = useRef<(editor: EditorView) => void>(() => undefined);
@@ -205,7 +217,18 @@ export function TargetEditor({
     // A stored target the editor had to repair has never been saved as
     // shown; one whose last write failed is resent (the effect below).
     committed.current = loaded.repaired ? null : loaded.state.doc;
+    // The draft waiting for typing to pause; a commit makes it moot.
+    let drafting: ReturnType<typeof setTimeout> | undefined;
+    const draftLater = (editor: EditorView) => {
+      clearTimeout(drafting);
+      drafting = setTimeout(() => {
+        const doc = editor.state.doc;
+        if (committed.current && doc.eq(committed.current)) return;
+        callbacks.current.onDraft(opened.id, targetFromDoc(doc));
+      }, DRAFT_DELAY_MS);
+    };
     const commit = (editor: EditorView, urgent = false) => {
+      clearTimeout(drafting);
       const doc = editor.state.doc;
       if (committed.current && doc.eq(committed.current)) return;
       committed.current = doc;
@@ -238,6 +261,7 @@ export function TargetEditor({
         const after = editor.state.doc;
         if (before === after) return;
         setDoc(after);
+        draftLater(editor);
         // A chip deleted by a keystroke takes its partner with it; say so,
         // since the translator may not have seen it go.
         const gone = [...chipKeys(before)].filter(([key]) => !chipKeys(after).has(key));
@@ -294,6 +318,7 @@ export function TargetEditor({
     return () => {
       release();
       commit(editor);
+      clearTimeout(drafting);
       editor.destroy();
       view.current = null;
     };
