@@ -2487,7 +2487,41 @@ Split so the headless part does not wait on the editor:
 - **#40 · Candidate extraction + flagging · M** · [issue #24] — buildable
   now, deterministic; the aligner is a seam (`TermAligner`), `core` ships
   only the static test implementation.
-- **#41 · Session state machine · S** · [issue #12] — buildable now.
+- **#41 · ~~Session state machine~~ · DONE — `core/glossary/session.ts`, `db/glossary/session.ts`**
+  `GlossarySession` is the panel's state, pure: each flag is `flagged`,
+  `decided`, `proposed` or `skipped`, and changes state (or `reopen`s)
+  until `commit` or `discard`, after which every operation throws;
+  `toJSON`/`fromJSON` for the server to hold it between requests.
+  `commitGlossarySession` is the one write — a `term_decision` row per
+  decided or proposed flag plus the `term_variant` upsert, in one
+  transaction. Decisions in `smart-glossary-spec.md` §5's implementation
+  note.
+  - **`core` decides, `db` writes, through a seam.** `commit(write)` hands
+    the entries to a writer and closes the session only if the writer
+    returns, so a failed write leaves every decision in place. Written the
+    other way round (commit, then close) a transaction that failed at the
+    last step would have left a session that says it is done.
+  - **The kind is read off the data.** `accepted_suggestion` against
+    `custom` is whether the rendering was among those offered; the caller
+    never claims it, as an edit never claims its status.
+  - **Choosing a forbidden rendering clears the flag** and says so in the
+    log. That is a call, not a finding: the translator is the authority
+    (decision 5), and the decision row is what records that they overrode
+    a "never call it X". Worth Louis's eye — the alternative is refusing at
+    commit, which would fail a whole session over one entry.
+  - **The card's `#40` dependency was smaller than it looked.** The
+    session takes a `SessionFlag` (the term, what was offered, its entry,
+    where it was first seen) rather than `#40`'s `TermFlag`, so the two
+    are built independently and `flagTerms` maps onto it.
+  - **A regional spelling is not a second variant.** A rendering the term
+    already holds as `fr` is found and used for a session in `fr-FR`
+    (`primarySubtag`, the one definition), not added beside it; and a flag
+    with no entry reuses a live term that has its source rendering,
+    through `matchingLangs` (an index seek, not a scan).
+  - Tests: 12 in `core/glossary/session.test.ts` (transitions, the kind,
+    commit, closed, serialisation) and 8 in `db/glossary/session.test.ts`,
+    including the card's own scenario (three decided, one proposed, two
+    skipped: four rows, the two re-flagged) and an all-or-nothing rollback.
 - **#42 · `ClaudeTermAligner` · M** · [issue #13] — with Epic 8,
   opt-in gated per `ai-platform-vision.md` §5.
 - **#43 · Glossary panel · M** · [issue #14] — after #28–#35.
@@ -2894,7 +2928,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #22]: https://github.com/louisbaudry/tessera/issues/22
 [issue #23]: https://github.com/louisbaudry/tessera/issues/23
 [issue #24]: https://github.com/louisbaudry/tessera/issues/24
-[issue #12]: https://github.com/louisbaudry/tessera/issues/12
 [issue #13]: https://github.com/louisbaudry/tessera/issues/13
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15

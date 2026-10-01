@@ -345,6 +345,53 @@ The session is serialisable (`toJSON`/`fromJSON`) so the server can keep
 it per project between requests without the panel holding it in a browser
 tab that may close.
 
+**Implementation note (#41).** What the build settled that §5's sketch
+left open:
+
+- **`core` decides, `db` writes.** `GlossarySession` (`core/glossary/
+  session.ts`) is pure and holds no connection. `commit(write)` hands the
+  decided entries, in flag order, to a writer it is given and closes the
+  session only if the writer returns: a failed write leaves the session
+  open and every decision in it. `commitGlossarySession`
+  (`db/glossary/session.ts`) is that writer inside one `db.transaction()`.
+  The seam is the `TermAligner`/`NotificationService` one, and keeps
+  `core` headless.
+- **The session's input is a `SessionFlag`, not `#40`'s `TermFlag`.** It
+  carries what a decision needs — the source term, the renderings offered,
+  the existing entry if there is one, the segment where it was first seen —
+  and nothing about how it was found. `#40`'s `flagTerms` maps onto it;
+  neither depends on the other.
+- **The kind is derived, not claimed.** `choose` records
+  `accepted_suggestion` when the rendering is one that was offered (by
+  `termKey`) and `custom` when it is not; a caller never names it, as an
+  editor's save never names a status (`v1-spec.md` §7.2). `propose_edit`
+  takes `override` or `deprecate`, and only on a flag that has an existing
+  entry: an edit to nothing is not a proposal.
+- **Any open state can change until `commit`.** A flag is `flagged`,
+  `decided`, `proposed` or `skipped`; `choose`, `propose_edit` and `skip`
+  each replace the last, and `reopen` returns a flag to `flagged`. After
+  `commit` or `discard` every operation throws. A decided and a proposed
+  flag each write exactly one `term_decision` row; a skipped or reopened one
+  writes none and is remembered nowhere.
+- **The variant upsert bumps `rev` only for a real change.** A chosen
+  rendering with a variant of that `termKey` already there keeps its text;
+  it changes (`rev + 1`, the old row to history — `updateVariant`) only if
+  its `forbidden` flag does. A rendering with no variant yet is added.
+  `deprecate` sets `forbidden`; **choosing a forbidden rendering clears
+  it**, and says so in the log: the translator is the authority (decision 5)
+  and the decision row is what records that they overrode "never call it X".
+- **A flag with no entry yet creates one**, unless a live term already has
+  that source rendering in the source language, which is reused. Terms are
+  language-neutral (§3.2), so the source variant and the target variant
+  land on one term.
+- **`decided_by` is the actor's label**, as `.ctm`'s `updated_by` is
+  (`audit-spec.md` §2.1): those files are portable, and the principal
+  (`account:3`) means nothing outside the installation. The actor is a
+  required parameter of the commit, never defaulted.
+- **Serialisable, and strict about it.** `toJSON` writes a versioned
+  plain object; `fromJSON` re-validates all of it and throws on anything it
+  does not recognise, since it reads what a client held.
+
 ---
 
 ## 6. Applying an entry (decision 5 — soft)

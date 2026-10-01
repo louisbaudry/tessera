@@ -27,6 +27,7 @@ export * from './tm/pretranslate.js';
 export * from './tm/tmx.js';
 export * from './tm/sdltm.js';
 export * from './glossary/key.js';
+export * from './glossary/session.js';
 export * from './project/assemble.js';
 export * from './project/parts.js';
 export * from './project/export.js';
