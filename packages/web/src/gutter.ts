@@ -53,7 +53,8 @@ export function originBadge(origin: Origin | null): Badge | null {
   );
 }
 
-const SEVERITY_RANK: Readonly<Record<QaSeverity, number>> = {
+/** Worst last: an error outranks a warning outranks an info. */
+export const SEVERITY_RANK: Readonly<Record<QaSeverity, number>> = {
   info: 0,
   warning: 1,
   error: 2,

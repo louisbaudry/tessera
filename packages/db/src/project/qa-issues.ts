@@ -1,7 +1,9 @@
 /** `qa_issue` repository (v1-spec.md §4.1; backlog #16, #22, #23). */
 
 import {
+  QA_RULES,
   plainText,
+  type AuditActor,
   runQaChecks,
   type QaIssue,
   type QaRule,
@@ -12,6 +14,7 @@ import {
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
+import { appendAuditEvent } from '../audit/events.js';
 import { getProject } from './project.js';
 import { listEnabledRules } from './qa-settings.js';
 import { getSegment, SegmentRepoError } from './segments.js';
@@ -99,8 +102,80 @@ export function listFileQaIssues(db: Database.Database, fileId: number): QaIssue
   return rows.map(fromRow);
 }
 
-export function dismissQaIssue(db: Database.Database, id: number): void {
-  db.prepare('UPDATE qa_issue SET dismissed = 1 WHERE id = ?').run(id);
+export class QaIssueError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'QaIssueError';
+  }
+}
+
+/**
+ * Which finding: a segment and a rule. A rule fires at most once per
+ * segment (backlog #22), so the pair names one issue — and, unlike the
+ * issue's row id, it still names it after a rerun replaces the row
+ * (`replaceQaIssues`), which is also what a dismissal is kept against.
+ */
+export interface QaIssueKey {
+  readonly segmentId: number;
+  readonly rule: QaRule;
+}
+
+/** Whether `rule` is one of `QA_RULES` — for a key that arrived as text. */
+export const isQaRule = (rule: string): rule is QaRule =>
+  (QA_RULES as readonly string[]).includes(rule);
+
+/**
+ * Sets a live finding aside (spec §6.4), with its actor in the project's
+ * log (`qa.dismissed`, audit-spec.md §2.4), in one transaction. It stays
+ * dismissed through every rerun that finds the rule again; it is listed
+ * still, but no longer blocks (`isBlocking`) or marks the gutter. An
+ * issue already dismissed is returned as it is, and nothing is written.
+ */
+export function dismissQaIssue(
+  db: Database.Database,
+  key: QaIssueKey,
+  options: { readonly actor: AuditActor },
+): QaIssue {
+  return setDismissed(db, key, true, options.actor);
+}
+
+/** Undoes {@link dismissQaIssue}: the finding counts again (`qa.reinstated`). */
+export function reinstateQaIssue(
+  db: Database.Database,
+  key: QaIssueKey,
+  options: { readonly actor: AuditActor },
+): QaIssue {
+  return setDismissed(db, key, false, options.actor);
+}
+
+function setDismissed(
+  db: Database.Database,
+  key: QaIssueKey,
+  dismissed: boolean,
+  actor: AuditActor,
+): QaIssue {
+  return db.transaction((): QaIssue => {
+    const row = db
+      .prepare('SELECT * FROM qa_issue WHERE segment_id = ? AND rule = ?')
+      .get(key.segmentId, key.rule) as QaIssueRow | undefined;
+    if (!row) {
+      throw new QaIssueError(`segment #${key.segmentId} has no ${key.rule} finding`);
+    }
+    const issue = fromRow(row);
+    if (issue.dismissed === dismissed) return issue;
+    db.prepare('UPDATE qa_issue SET dismissed = ? WHERE id = ?').run(
+      dismissed ? 1 : 0,
+      issue.id,
+    );
+    appendAuditEvent(db, {
+      actor,
+      action: dismissed ? 'qa.dismissed' : 'qa.reinstated',
+      subjectType: 'segment',
+      subjectId: String(key.segmentId),
+      detail: { rule: key.rule },
+    });
+    return { ...issue, dismissed };
+  })();
 }
 
 /**
@@ -134,7 +209,8 @@ export function replaceQaIssues(
     return findings.map((f) => {
       const issue = addQaIssue(db, { ...f, segmentId });
       if (!previouslyDismissed.has(f.rule)) return issue;
-      dismissQaIssue(db, issue.id);
+      // The decision was logged when it was made; carrying it is not a new one.
+      db.prepare('UPDATE qa_issue SET dismissed = 1 WHERE id = ?').run(issue.id);
       return { ...issue, dismissed: true };
     });
   })();

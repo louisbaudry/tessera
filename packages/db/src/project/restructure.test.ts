@@ -399,7 +399,7 @@ describe('through the exported DOCX', () => {
 });
 
 describe('migrating a v7 project', () => {
-  it('opens at v8 with its log intact, and takes the new actions', () => {
+  it('opens at the current version with its log intact, and takes the new actions', () => {
     dir = mkdtempSync(join(tmpdir(), 'cat-restructure-migrate-'));
     const path = join(dir, 'old.catdb');
     const old = openAndMigrate(path, {
@@ -418,7 +418,7 @@ describe('migrating a v7 project', () => {
     old.close();
 
     const db = openProjectDb(path);
-    expect(db.pragma('user_version', { simple: true })).toBe(8);
+    expect(db.pragma('user_version', { simple: true })).toBe(PROJECT_MIGRATIONS.length);
     expect(verifyAudit(db)).toEqual({ events: 1, brokenAt: null });
     const { seg, at } = splittable(db, 1);
     splitSegmentAt(db, seg.id, { offset: at, actor: TEST_ACTOR });

@@ -9,6 +9,7 @@
  * write path nobody reviewed.
  */
 
+import type { QaRule } from '../model/qa.js';
 import type { Origin, SegmentStatus } from '../model/segment.js';
 import type { Token } from '../model/token.js';
 
@@ -24,6 +25,8 @@ export const PROJECT_AUDIT_ACTIONS = [
   'project.pretranslate',
   'project.exported',
   'project.setting_changed',
+  'qa.dismissed',
+  'qa.reinstated',
   'ai.requested',
 ] as const;
 
@@ -127,6 +130,14 @@ export interface AuditDetail {
     readonly from: JsonValue;
     readonly to: JsonValue;
   };
+  /**
+   * A finding set aside, or set aside no longer (backlog #33). The subject
+   * is its segment: a dismissal is kept per segment and rule, across every
+   * rerun that finds the rule again (`replaceQaIssues`), so the issue's own
+   * row id — new on each rerun — would name nothing a reader could find.
+   */
+  'qa.dismissed': { readonly rule: QaRule };
+  'qa.reinstated': { readonly rule: QaRule };
   'ai.requested': AiProvenance;
   // platform.sqlite (backlog #57, spec §2.5). Nothing personal in a
   // detail: it is hashed, so erasure could never reach it.

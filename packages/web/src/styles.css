@@ -373,6 +373,126 @@ button.link {
   cursor: pointer;
 }
 
+/* --- the QA panel (backlog #33) ----------------------------------- */
+
+/* Docked under the grid at a fixed height: opening it shortens the
+   grid's window, and no column or row moves (v1-spec.md §7). */
+.qa-panel {
+  flex: 0 0 14rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.qa-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.qa-facet {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.qa-facet[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.qa-facet .count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.qa-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qa-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0 0.75rem 0 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.qa-list li.dismissed .qa-jump {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.qa-jump {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 3.5rem 0.75rem minmax(8rem, 14rem) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 0 0.3rem 0.5rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qa-jump:hover,
+.qa-jump:focus-visible {
+  background: var(--row-alt);
+}
+
+.qa-jump .ord {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.qa-jump .message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qa-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+}
+
+.qa-dot.qa-error {
+  background: var(--qa-error);
+}
+
+.qa-dot.qa-warning {
+  background: var(--qa-warning);
+}
+
+.qa-dot.qa-info {
+  background: var(--qa-info);
+}
+
+.qa-empty {
+  margin: 0;
+  padding: 0.75rem;
+}
+
 /* --- the target editor -------------------------------------------- */
 
 .cell.target.editable {

@@ -229,6 +229,7 @@ their `*_by` columns have always been free text; writers pass the
 | `project.pretranslate` | project | `{ tm_refs, counts }` — batch parent |
 | `project.exported` | file | `{ sha256 }` of the DOCX produced — what exactly was delivered |
 | `project.setting_changed` | project | `{ key, from, to }` — QA switches, AI opt-out, TM/glossary refs |
+| `qa.dismissed` / `qa.reinstated` | segment | `{ rule }` — a finding set aside, or counted again (backlog #33, `v1-spec.md` §7.6) |
 | `ai.requested` | segment | §4 |
 
 `platform.sqlite`: `auth.login`, `auth.login_failed`, `auth.logout`,
@@ -321,10 +322,17 @@ rather than re-decide:
   *is* the priority), each event starts where the previous one ended,
   and "which memories did this project use on that day" is one row
   lookup. The CLI's `add-tm --write-target` is one event, not two.
+- **QA dismissals** (backlog #33, project v9) are `qa.dismissed` and
+  `qa.reinstated`, subject the segment and detail `{ rule }` — a
+  segment's finding is named by its rule, which every rerun keeps, never
+  by the `qa_issue` row id, which a rerun replaces (and SQLite reuses).
+  Not a `project.setting_changed`: it is a decision about one segment,
+  not a project setting. A rerun carrying a dismissal forward logs
+  nothing; a dismissal asked for twice logs once.
 - **Not yet audited**: the other settings writes (`qa_rule_setting`,
-  `glossary_ref`, the untranslated allowlist) and QA dismissals. Their
-  `key` names are a design of their own; `tm_refs` is the pattern to
-  weigh first, not a rule already made.
+  `glossary_ref`, the untranslated allowlist). Their `key` names are a
+  design of their own; `tm_refs` is the pattern to weigh first, not a
+  rule already made.
 
 ### 2.5 In `platform.sqlite` (backlog #57)
 

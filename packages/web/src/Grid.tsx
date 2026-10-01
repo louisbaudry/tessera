@@ -3,7 +3,9 @@
  * right, a status/origin/QA gutter, and only the rows on screen in the
  * DOM. Clicking a target opens it in the tag-aware editor (§7.2; backlog
  * #29) — one row at a time. Ctrl+Enter in it confirms the segment and
- * opens the next one still to do (§7.3; backlog #30).
+ * opens the next one still to do (§7.3; backlog #30). The QA panel under
+ * it lists the file's findings, jumps to their segments and dismisses
+ * them (backlog #33).
  */
 import type { FormatEntry, QaIssue, Segment, Token } from '@cat-tool/core';
 import { isBlankTarget } from '@cat-tool/core/model';
@@ -41,7 +43,9 @@ import {
 } from './drafts.js';
 import { estimateRowHeight } from './layout.js';
 import { toPieces } from './pieces.js';
-import { loadFullTags, saveFullTags } from './prefs.js';
+import { loadFullTags, loadQaPanel, saveFullTags, saveQaPanel } from './prefs.js';
+import { withIssue } from './qa-panel.js';
+import { QaPanel } from './QaPanel.js';
 import { createPageHide, createSaveQueue } from './save-queue.js';
 import { useSession } from './session-context.js';
 import { splitOffset, type SourceChild } from './split-point.js';
@@ -92,7 +96,10 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const [unsaved, setUnsaved] = useState<ReadonlyMap<number, SaveFailure>>(new Map());
   const [fullTags, setFullTags] = useState(loadFullTags);
   const [note, setNote] = useState<string | null>(null);
+  const [qaOpen, setQaOpen] = useState(loadQaPanel);
+  const [dismissing, setDismissing] = useState<ReadonlySet<string>>(new Set());
   const marks = useMemo(() => qaMarks(issues), [issues]);
+  const positions = useMemo(() => new Map(segments.map((s, i) => [s.id, i])), [segments]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const activeIndex = useMemo(
@@ -435,6 +442,53 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [restructure]);
 
+  // The QA panel (backlog #33). A jump scrolls the segment into view and
+  // opens it, as a click on its target would; a locked one is only shown.
+  const jumpTo = useCallback(
+    (segmentId: number) => {
+      const at = segmentsNow.current.findIndex((s) => s.id === segmentId);
+      const segment = segmentsNow.current[at];
+      if (!segment) return;
+      virtualizer.scrollToIndex(at, { align: 'center' });
+      if (statusOf(segment) !== 'locked') activate(segmentId);
+    },
+    [virtualizer, activate],
+  );
+  // A dismissal waits for the segment's writes already asked for: their
+  // answers carry its findings as QA left them, and one landing after the
+  // dismissal's would put back the finding as it was before.
+  const setDismissed = useCallback(
+    async (issue: QaIssue, dismissed: boolean) => {
+      const key = `${issue.segmentId}:${issue.rule}`;
+      setDismissing((all) => new Set(all).add(key));
+      try {
+        await queue.whenIdle([issue.segmentId]);
+        const { token: bearer, project: name } = session.current;
+        const answer = await api.setQaDismissed(
+          bearer,
+          name,
+          issue.segmentId,
+          issue.rule,
+          dismissed,
+        );
+        setIssues((all) => withIssue(all, answer.issue));
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          session.current.signOut();
+          return;
+        }
+        setNote(err instanceof Error ? err.message : String(err));
+      } finally {
+        setDismissing((all) => {
+          const next = new Set(all);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [queue],
+  );
+
   const flagged = useMemo(() => {
     let n = 0;
     for (const mark of marks.values()) if (mark.severity === 'error') n++;
@@ -462,6 +516,17 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
             }}
           />{' '}
           Show full tags
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={qaOpen}
+            onChange={(e) => {
+              setQaOpen(e.target.checked);
+              saveQaPanel(e.target.checked);
+            }}
+          />{' '}
+          QA panel
         </label>
         <span className="restructure">
           <button
@@ -540,6 +605,15 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           })}
         </div>
       </div>
+      {qaOpen && (
+        <QaPanel
+          issues={issues}
+          positions={positions}
+          pending={dismissing}
+          onJump={jumpTo}
+          onDismiss={(issue, dismissed) => void setDismissed(issue, dismissed)}
+        />
+      )}
     </section>
   );
 }
