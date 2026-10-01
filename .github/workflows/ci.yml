@@ -72,8 +72,18 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
+      # Two test processes on Windows, the default (one per core) elsewhere
+      # (#82). The suites write and read many SQLite files in the temp dir;
+      # four forks at once on the 4-vCPU Windows runner starved it until
+      # millisecond tests took 6-10 s, ten hit the 5 s timeout, and vitest's
+      # own worker RPC timed out ("Timeout calling onTaskUpdate"): a red
+      # check with no test at fault, twice in one day. Fewer processes
+      # finish sooner there than many stalled ones. Vitest reads
+      # VITEST_MAX_FORKS; an empty value leaves its default alone.
       - name: Test
         run: pnpm test
+        env:
+          VITEST_MAX_FORKS: ${{ runner.os == 'Windows' && '2' || '' }}
 
   # 🚦 THE ROUNDTRIP GATE — backlog #8.
   #

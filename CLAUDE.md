@@ -680,6 +680,11 @@ pattern.
   carried a "current" version and went through. Writes now store
   `nextVersion` (`db/project/segments.ts`), never a bare
   `new Date()`; a test freezes the clock to prove it.
+- **`Timeout calling "onTaskUpdate"` on `check (windows-latest)` is the
+  runner starving, not a test** (#82). Four vitest forks of SQLite-heavy
+  suites on the 4-vCPU Windows runner slowed millisecond tests to
+  seconds; `ci.yml` now caps Windows at two (`VITEST_MAX_FORKS`). If it
+  comes back, look at that cap before at any test it names.
 - **A matrix job's real check name is the expanded one.**
   `name: 🚦 roundtrip gate` with a two-OS matrix produces
   `🚦 roundtrip gate (ubuntu-latest)` and `(windows-latest)`; the bare
