@@ -258,7 +258,10 @@ deliberate: a segment is a few hundred bytes of JSON, a diff format would
 be a second tokens-comparison to specify and maintain, and "what did it
 say at 14:02" becomes one row lookup. The editor saves at segment
 boundaries (leave, confirm), never per keystroke — an event per keystroke
-would be the warning-storm lesson again.
+would be the warning-storm lesson again. Autosave (backlog #31) keeps
+this: keystroke drafts stay in the browser and reach the server only as
+that same segment-boundary write, on the next load after a crash
+(`v1-spec.md` §7.2, *Keystroke drafts*).
 
 ### 2.3 Batches
 
