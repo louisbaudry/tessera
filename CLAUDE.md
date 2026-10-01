@@ -22,7 +22,8 @@ already settled differently.
 How to work with Louis is shared across all his repos and lives once, in
 the public
 [`louisbaudry/claude-shared`](https://github.com/louisbaudry/claude-shared/blob/main/CLAUDE.md)
-(`CLAUDE.md`). Read it at the start of every session. It covers:
+(`CLAUDE.md`), with its [coding rules](https://github.com/louisbaudry/claude-shared/blob/main/CODING.md) (`CODING.md`). Read both at the start of
+every session. They cover:
 
 - **Communication** — concise, in Louis's language (French, English or
   Spanish); one question at a time, always with options and a
