@@ -5,7 +5,8 @@
  * #29) — one row at a time. Ctrl+Enter in it confirms the segment and
  * opens the next one still to do (§7.3; backlog #30). The QA panel under
  * it lists the file's findings, jumps to their segments and dismisses
- * them (backlog #33).
+ * them (backlog #33). The filter bar above it narrows the rows shown, and
+ * the progress line counts segments and words confirmed (backlog #34).
  */
 import type { FormatEntry, QaIssue, Segment, Token } from '@cat-tool/core';
 import { isBlankTarget } from '@cat-tool/core/model';
@@ -34,6 +35,8 @@ import {
   type QaMark,
 } from './gutter.js';
 import { nextUnconfirmed } from './advance.js';
+import { FilterBar } from './FilterBar.js';
+import { NO_FILTER, progress, visibleSegments, type SegmentFilter } from './filter.js';
 import {
   browserStorage,
   createDrafts,
@@ -101,10 +104,21 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const positions = useMemo(() => new Map(segments.map((s, i) => [s.id, i])), [segments]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  const [filter, setFilter] = useState<SegmentFilter>(NO_FILTER);
+  // The rows on screen: the filter's, in document order, the open one kept.
+  const shown = useMemo(
+    () => visibleSegments(segments, marks, filter, activeId),
+    [segments, marks, filter, activeId],
+  );
+  const done = useMemo(
+    () => progress(segments, detail.project.srcLang),
+    [segments, detail.project.srcLang],
+  );
 
   const activeIndex = useMemo(
-    () => (activeId === null ? -1 : segments.findIndex((s) => s.id === activeId)),
-    [segments, activeId],
+    () => (activeId === null ? -1 : shown.findIndex((s) => s.id === activeId)),
+    [shown, activeId],
   );
   // The editing row stays in the DOM when scrolled away, so it keeps its
   // caret and undo history instead of being unmounted and saved.
@@ -121,13 +135,13 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   // lint knows; nothing here relies on memoising it.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
-    count: segments.length,
+    count: shown.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (i) => {
-      const s = segments[i]!;
+      const s = shown[i]!;
       return estimateRowHeight(s.sourceTokens, s.targetTokens);
     },
-    getItemKey: (i) => segments[i]!.id,
+    getItemKey: (i) => shown[i]!.id,
     overscan: 10,
     rangeExtractor,
   });
@@ -225,13 +239,16 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   // it. The next segment opens at once — the answer, or a refusal shown on
   // the row, follows — and scrolls into view if it is not.
   const segmentsNow = useRef(segments);
+  const shownNow = useRef(shown);
   useEffect(() => {
     segmentsNow.current = segments;
+    shownNow.current = shown;
   });
+  // Within the filter: the next segment still to do among those shown.
   const confirmAndAdvance = useCallback(
     (segmentId: number) => {
       queue.confirm(segmentId);
-      const all = segmentsNow.current;
+      const all = shownNow.current;
       const to = nextUnconfirmed(
         all,
         all.findIndex((s) => s.id === segmentId),
@@ -444,16 +461,41 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
 
   // The QA panel (backlog #33). A jump scrolls the segment into view and
   // opens it, as a click on its target would; a locked one is only shown.
+  // A segment the filter hides is shown by clearing the filter first;
+  // the jump then happens once it is on the list (`pendingJump`).
+  const pendingJump = useRef<number | null>(null);
   const jumpTo = useCallback(
     (segmentId: number) => {
-      const at = segmentsNow.current.findIndex((s) => s.id === segmentId);
-      const segment = segmentsNow.current[at];
-      if (!segment) return;
+      const at = shownNow.current.findIndex((s) => s.id === segmentId);
+      const segment = shownNow.current[at];
+      if (!segment) {
+        if (!segmentsNow.current.some((s) => s.id === segmentId)) return;
+        pendingJump.current = segmentId;
+        setFilter(NO_FILTER);
+        return;
+      }
       virtualizer.scrollToIndex(at, { align: 'center' });
       if (statusOf(segment) !== 'locked') activate(segmentId);
     },
     [virtualizer, activate],
   );
+  useEffect(() => {
+    const id = pendingJump.current;
+    if (id === null || !shown.some((s) => s.id === id)) return;
+    pendingJump.current = null;
+    jumpTo(id);
+  }, [shown, jumpTo]);
+  // The filter bar's key: literal Ctrl on every platform, as the editor's.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.code !== 'KeyF') return;
+      e.preventDefault();
+      filterRef.current?.focus();
+      filterRef.current?.select();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // A dismissal waits for the segment's writes already asked for: their
   // answers carry its findings as QA left them, and one landing after the
   // dismissal's would put back the finding as it was before.
@@ -499,8 +541,24 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     <section className={fullTags ? 'grid full-tags' : 'grid'}>
       <div className="grid-meta">
         <strong>{file.file.relPath}</strong>
-        <span className="muted">
-          {segments.length.toLocaleString()} segments
+        <span className="muted progress">
+          <span title="Confirmed segments, of those to translate (locked ones are not)">
+            {done.segments.confirmed.toLocaleString()} /{' '}
+            {done.segments.total.toLocaleString()} segments
+          </span>
+          {' · '}
+          {done.words ? (
+            <span title="Confirmed words, of the file's words (each text box once)">
+              {done.words.confirmed.toLocaleString()} /{' '}
+              {done.words.total.toLocaleString()} words
+            </span>
+          ) : (
+            <span
+              title={`${detail.project.srcLang} does not space its words: no word count`}
+            >
+              no word count
+            </span>
+          )}
           {flagged > 0 && ` · ${flagged.toLocaleString()} with QA errors`}
           {unsaved.size > 0 && (
             <span className="error"> · {unsaved.size.toLocaleString()} not saved</span>
@@ -555,6 +613,13 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           </span>
         )}
       </div>
+      <FilterBar
+        ref={filterRef}
+        filter={filter}
+        segments={segments}
+        shown={shown.length}
+        onChange={setFilter}
+      />
       <div className="row head" role="row">
         <div className="gutter" role="columnheader">
           #
@@ -574,7 +639,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
       >
         <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((item) => {
-            const segment = segments[item.index]!;
+            const segment = shown[item.index]!;
             return (
               <div
                 key={item.key}
@@ -586,7 +651,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
                 <SegmentRow
                   segment={segment}
                   project={project}
-                  position={item.index + 1}
+                  position={positions.get(segment.id)! + 1}
                   mark={marks.get(segment.id)}
                   active={segment.id === activeId}
                   clickAt={segment.id === activeId ? clickAt : undefined}

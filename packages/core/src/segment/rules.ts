@@ -11,6 +11,8 @@
  * demands it.
  */
 
+import { primarySubtag } from '../model/lang.js';
+
 export interface LanguageRules {
   /** BCP-47 primary subtag. */
   readonly lang: string;
@@ -578,16 +580,8 @@ export const LANGUAGE_RULES: Readonly<Record<string, LanguageRules>> = {
 
 export const SUPPORTED_LANGUAGES = Object.keys(LANGUAGE_RULES);
 
-/**
- * The primary subtag of a BCP-47 language tag, lowercased — `es-ES` and
- * `es-419` both give `es`. The one place this split happens; segmentation
- * rule lookup (below) and TM pair retrieval (`@cat-tool/db`,
- * tm-format-spec.md §12.2) both key off it, and both want the same
- * answer for the same tag.
- */
-export function primarySubtag(lang: string): string {
-  return lang.toLowerCase().split(/[-_]/)[0]!;
-}
+/** Defined once, in `model/lang.ts`; re-exported where it was always found. */
+export { primarySubtag };
 
 /**
  * Rules for a BCP-47 tag, falling back to the primary subtag.

@@ -19,33 +19,11 @@ import { isTranslatablePart } from '../docx/package.js';
 import {
   extractSkeleton,
   isUntranslatable,
-  renderSkeleton,
   type PartSkeleton,
 } from '../docx/skeleton.js';
 import { tokenizeRegion } from '../docx/tokenize.js';
-import { scanElements } from '../docx/xml-scan.js';
-import { countRegionWords, countWords } from '../model/words.js';
-import { primarySubtag } from '../segment/rules.js';
-
-/**
- * Languages whose words are not separated by spaces (or, for Tibetan,
- * by a mark this counter does not read): a whitespace count of them is
- * a count of clauses. They get `null` (v1-spec.md §3.6).
- */
-export const UNSPACED_LANGUAGES: readonly string[] = [
-  'zh',
-  'ja',
-  'th',
-  'lo',
-  'km',
-  'my',
-  'bo',
-];
-
-/** Whether words in `lang` are separated well enough to be counted. */
-export function hasSpacedWords(lang: string): boolean {
-  return !UNSPACED_LANGUAGES.includes(primarySubtag(lang));
-}
+import { countRegionWords, countWords, hasSpacedWords } from '../model/words.js';
+import { fallbackRegionKeys } from './fallback.js';
 
 /**
  * The most a count will inflate: the translatable parts' declared
@@ -58,41 +36,6 @@ export function hasSpacedWords(lang: string): boolean {
 export const MAX_COUNT_INFLATED_BYTES = 32 * 1024 * 1024;
 
 const decoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-
-const FALLBACK = new Set(['mc:Fallback']);
-const PARAGRAPH = new Set(['w:p']);
-
-/**
- * Keys of the regions that sit inside an `mc:Fallback`. A text box is
- * stored twice, as DrawingML in `mc:Choice` and as VML in `mc:Fallback`,
- * and both copies are regions — right for translation, where both must
- * be rendered, wrong for a count, where the reader sees the text once.
- *
- * The parent's token stream cannot say which copy is which (the whole
- * `mc:AlternateContent` is one opaque placeholder there), so this reads
- * the part itself and keys paragraphs the way `extractSkeleton` does:
- * `s<n>`, n-th `w:p` in document order.
- */
-function fallbackRegionKeys(sk: PartSkeleton): Set<string> {
-  const xml = renderSkeleton(sk);
-  const fallbacks = scanElements(xml, FALLBACK);
-  const keys = new Set<string>();
-  if (fallbacks.length === 0) return keys;
-  // Both lists are in document order, so one merge decides every
-  // paragraph: elements nest properly, so a paragraph that starts inside
-  // a fallback ends inside it. (Checking each fallback for each
-  // paragraph is quadratic, which a large upload turns into minutes.)
-  let next = 0;
-  let reach = -1; // furthest end of any fallback that has started
-  scanElements(xml, PARAGRAPH).forEach((para, index) => {
-    while (next < fallbacks.length && fallbacks[next]!.start <= para.start) {
-      reach = Math.max(reach, fallbacks[next]!.end);
-      next++;
-    }
-    if (para.start < reach) keys.add(`s${index + 1}`);
-  });
-  return keys;
-}
 
 /** Words in one part's skeleton, outside fallback copies and locked paragraphs. */
 function countSkeleton(sk: PartSkeleton): number {

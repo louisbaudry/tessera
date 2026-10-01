@@ -346,8 +346,10 @@ engine, but follows the same discipline:
   admin, who confirms it; only that confirmation prices. It is never on
   a client route (`clientFile` drops it by name) and is `null` rather
   than wrong (`.pptx`, a bad DOCX, zh/ja/th…). The editor's progress and
-  vendor pay count words with the same `countRegionWords`, never a
-  splitter of their own.
+  vendor pay count words with the same `countRegionWords` — a stored
+  segment through `segmentWords`, which counts a text box's
+  `mc:Fallback` copy once (`segment.fallback_copy`, backlog #34) —
+  never a splitter of their own.
 - **A price is set only while `submitted`, and approval is consent to
   that price** (backlog `#63`, `portal-v0-spec.md` §2–§3). The rules
   are `assertCanPrice`/`assertCanApprove` in `portal-core`, run by
@@ -508,7 +510,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts` and `qa-panel.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts` and `filter.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

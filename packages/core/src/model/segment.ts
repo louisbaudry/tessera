@@ -64,6 +64,12 @@ export interface Segment {
   readonly status: SegmentStatus;
   readonly origin: Origin | null;
   readonly locked: boolean;
+  /**
+   * Inside an `mc:Fallback`: the VML copy of a text box whose DrawingML
+   * copy is another segment (v1-spec.md §3.6). Translated and rendered
+   * like any other, counted once — as its twin (backlog #34).
+   */
+  readonly fallbackCopy: boolean;
   readonly updatedAt: string;
 }
 

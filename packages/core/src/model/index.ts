@@ -12,4 +12,5 @@ export * from './token.js';
 export * from './tags.js';
 export * from './hidden-tags.js';
 export * from './words.js';
+export * from './lang.js';
 export * from './slug.js';

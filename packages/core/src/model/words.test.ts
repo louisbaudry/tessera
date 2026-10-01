@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FormatEntry, Token, TokenizedRegion } from './token.js';
-import { countRegionWords, countWords, isWordSeparator } from './words.js';
+import { countRegionWords, countWords, isWordSeparator, segmentWords } from './words.js';
 
 describe('countWords', () => {
   it.each([
@@ -122,5 +122,18 @@ describe('countRegionWords', () => {
         formats: [],
       }),
     ).toBe(1);
+  });
+});
+
+describe('segmentWords (backlog #34)', () => {
+  const seg = {
+    sourceTokens: [{ t: 'text', v: 'three short words' }],
+    formatTable: [],
+  } as const;
+
+  it('counts a translatable segment, and nothing for a locked one or a fallback copy', () => {
+    expect(segmentWords({ ...seg, locked: false, fallbackCopy: false })).toBe(3);
+    expect(segmentWords({ ...seg, locked: true, fallbackCopy: false })).toBe(0);
+    expect(segmentWords({ ...seg, locked: false, fallbackCopy: true })).toBe(0);
   });
 });

@@ -373,6 +373,38 @@ button.link {
   cursor: pointer;
 }
 
+/* --- the filter bar (backlog #34) --------------------------------- */
+
+/* Always there, so filtering never moves the grid under it. */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.filter-bar input[type='search'] {
+  flex: 1 1 14rem;
+  min-width: 10rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.filter-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.grid-meta .progress {
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- the QA panel (backlog #33) ----------------------------------- */
 
 /* Docked under the grid at a fixed height: opening it shortens the

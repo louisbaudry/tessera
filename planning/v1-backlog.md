@@ -2322,14 +2322,44 @@ on segment 8 dropped its gutter count from 2 to 1; after a reload the
 panel was still open and the finding still dismissed; *Show dismissed*
 listed it struck through, and *Reinstate* put the gutter back to 2.
 
-**#34 · Filters and progress · S** · [issue #10]
-Status/origin/QA/text filters, and the key that focuses the filter bar
-(spec §7's "filter focus", left out of #30 because there was no bar);
-segment and word progress. Words are
-counted by `core`'s `countRegionWords`, the one definition
-(`v1-spec.md` §3.6, backlog `#62`). Needs a per-segment "fallback copy"
-flag recorded at assembly, so a text box stored as `mc:Choice` and
-`mc:Fallback` is not counted twice.
+**#34 · ~~Filters and progress~~ · DONE — `web/FilterBar.tsx`, `web/filter.ts`, `core/model/words.ts`'s `segmentWords`, `core/project/fallback.ts`, `segment.fallback_copy` (project v10)**
+Status/origin/QA/text filters, `Ctrl+Shift+F` to focus them, and
+segment and word progress. The decisions are `v1-spec.md` §7.7. What
+building it settled or found:
+
+- **The fallback flag is recorded at assembly and backfilled.** The
+  upload count's `fallbackRegionKeys` moved to its own module and
+  `assembleFile` marks every segment of an `mc:Fallback` paragraph;
+  project v10 adds the column and fills it for stored files from the
+  skeleton each one kept. The proof it is one definition: over all 21
+  fixtures, the stored segments' `segmentWords` sum to exactly
+  `countDocxWords` (`assemble.test.ts`); the five fixtures with text
+  boxes fail it if the flag is ignored. A split carries the flag to
+  both halves.
+- **Progress is counted in the browser**, from the segments the grid
+  already holds, with `@cat-tool/core/model`. That needed
+  `hasSpacedWords` (and `primarySubtag` under it) in `model/`: they
+  moved, and are imported back where they were, never copied.
+- **Tests that open an old schema now insert the old way.** Two
+  migration tests wrote with today's `insertFile` into a v7 and a v8
+  file; a new `segment` column broke both, which is that pattern's
+  failure, not the migration's. `legacy-file.fixture.ts` writes a file
+  the way v1–v9 did.
+
+Tests: `core` (`segmentWords`; the per-segment sum against the upload
+count for every fixture; the flag on a text-box fixture and not on
+prose), `db` (stored as assembled, carried by a split, backfilled when
+a v9 file opens), `web/filter.test.ts` (each filter, an unknown origin,
+the open row kept, progress leaving locked segments and fallback words
+out, no count for `ja`). A Chromium smoke run against the real server
+and Vite: progress read 0 / 17 segments · 0 / 332 words on
+`prose-short.docx` and 0 / 300 · 0 / 4,657 on `rich-mixed-content.docx`
+— both word totals `countDocxWords`'s; each filter narrowed the rows
+(Draft → 1; no origin → 3; `palisuf` → 6); `Ctrl+Shift+F` focused the
+box; under "New", typing kept the open row, `Ctrl+Enter` confirmed it
+(1 / 17 · 33 / 332) and closed the editor with nothing left to do in
+the filter; a QA-panel jump from a "No QA findings" filter cleared it
+and opened segment 1.
 
 **#35 · Dark mode and visual pass · M** · [issue #20]
 Calm palette, no layout shift when panels open.
@@ -2712,9 +2742,9 @@ rest of that range:
   `db/vendor` reading `db/tm`'s `retrievePair` output, the cross-package
   dependency spec §1 decision 9 calls out explicitly. Words are counted by
   `core`'s `countRegionWords` (`v1-spec.md` §3.6, `#62`), which returns
-  `null` for zh/ja/th/lo/km/my/bo: decide their unit here. Needs the
-  same per-segment "fallback copy" flag as `#34`, or a text box is paid
-  twice.
+  `null` for zh/ja/th/lo/km/my/bo: decide their unit here. Count a
+  stored segment with `segmentWords`, which reads `segment.fallback_copy`
+  (`#34`), or a text box is paid twice.
 - **#50 · Vendor-facing API: job feed, offer detail, accept/decline/
   claim · S** · [issue #29] — JSON only; the UI for it is `#52`.
 - **#51 · PM-facing API: assign vendor, review/close assignment · S** ·

@@ -7,13 +7,8 @@ import { describe, expect, it } from 'vitest';
 
 import { documentSegments, importDocx } from '../docx/document.js';
 import { tokenizeRegion } from '../docx/tokenize.js';
-import { countRegionWords } from '../model/words.js';
-import {
-  countDocxWords,
-  countTextWords,
-  hasSpacedWords,
-  MAX_COUNT_INFLATED_BYTES,
-} from './count.js';
+import { countRegionWords, hasSpacedWords } from '../model/words.js';
+import { countDocxWords, countTextWords, MAX_COUNT_INFLATED_BYTES } from './count.js';
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),

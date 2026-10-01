@@ -55,10 +55,10 @@ export function insertFile(
   const insertSegmentStmt = db.prepare(
     `INSERT INTO segment
        (file_id, part, ord, para_key, para_ord, source_tokens, format_table,
-        source_hash, status, locked, updated_at)
+        source_hash, status, locked, fallback_copy, updated_at)
      VALUES
        (@file_id, @part, @ord, @para_key, @para_ord, @source_tokens, @format_table,
-        @source_hash, @status, @locked, @updated_at)`,
+        @source_hash, @status, @locked, @fallback_copy, @updated_at)`,
   );
 
   return db.transaction((): ProjectFile => {
@@ -84,6 +84,7 @@ export function insertFile(
         source_hash: segment.sourceHash,
         status: segment.status,
         locked: segment.locked ? 1 : 0,
+        fallback_copy: segment.fallbackCopy ? 1 : 0,
         updated_at: importedAt,
       });
     }
