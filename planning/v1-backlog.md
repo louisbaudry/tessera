@@ -2230,11 +2230,57 @@ as `translated`, draft gone; a draft crashed over a segment then written
 through the API: row marked `!` with the draft's words, the other write
 kept; Esc after typing: draft cleared once saved.
 
-**#32 · Project and TM management UI · M** · [issue #8]
-Create project, add files, attach TMs, set priority and write target.
-Until this lands `Ctrl+Enter` (#30) refuses in every project the server
-creates — none has a write-target TM — so it decides whether a project is
-born with one.
+**#32 · ~~Project and TM management UI~~ · DONE — `web/Projects.tsx`, `web/ProjectMemories.tsx`, `web/Memories.tsx`, `web/tm-order.ts`, the `/api/tms` and `/api/projects/:name/tms` routes, `db/project/tm-refs.ts`, `core/model/slug.ts`**
+Create a project, add documents, create or import memories, attach them,
+order them, choose the write memory, detach, pre-translate — the
+decisions are `v1-spec.md` §7.5, the routes §2.5. What building it
+settled or found:
+
+- **A project is born with its write memory.** #30 left the question
+  open (every server-created project refused `Ctrl+Enter`); the answer
+  is `writeTm` on `POST /api/projects`, created empty if new, which the
+  form fills with the project's own name unless the translator picks
+  one of their memories or empties it. Memories are the account's
+  (`<root>/tms/`), not a project's, so the default never stops a
+  client memory from being shared.
+- **`tm_ref` writes are audited** — the follow-up #56 recorded. Every
+  write takes a required actor and logs `project.setting_changed`, key
+  `tm_refs`, with the whole list before and after (audit-spec §2.4).
+  The golden transcript moved for exactly that reason: its two `add-tm`
+  runs are now two events, so later ids rose by two and the chain
+  counts 23 events, not 21 — read as such, not regenerated.
+- **The slug rule moved to `core/model/slug.ts`** (`isSlug`, `slugify`)
+  rather than being copied into the SPA's form: it is the server's whole
+  defence against path traversal, and the form checking a different
+  rule from the one that refuses would be two definitions of one fact.
+- **The API never shows a path**: a ref is its memory's slug, or `null`
+  for one the CLI attached from elsewhere. A test asserts neither the
+  storage root nor an outside path is in a response.
+- **Priority is an order** (`reorderTmRefs`), never a number a client
+  sends; a move in the screen is a swap (`tm-order.ts`).
+- **An import in the request, no resume.** A failed upload's memory is
+  removed, unlike the CLI's interrupted TMX import, which keeps its
+  units; resuming and imports longer than a request are #16a's.
+  `importTmxFile` gained `sourceName`, so a memory names the client's
+  file as its source, never the server-minted temp name.
+
+Tests: `db` (list changes, refusals that log nothing, the chain), the
+server through `inject` (create, import, refuse bad names, formats and
+broken TMX with nothing left behind, attach/order/retarget/detach and
+their six events under the session's actor, another account's 404, a
+project born with its memory confirming from the start, pre-translate),
+`core/model/slug.test.ts`, `web/tm-order.test.ts`; two mutations (a
+failed import's memory kept, a path in place of a slug) each fail one.
+A Chromium smoke run against the real server and Vite: a project
+created from a title (`Smoke Job — Q3` → `smoke-job-q3`, its memory
+likewise), a document added, a TMX imported as `prior-work` from its
+filename, attached, moved first, pre-translated (1 exact), a segment
+confirmed with `Ctrl+Enter` into the project's memory (0 → 1 unit),
+the write memory detached and the warning shown.
+
+Not here: glossary references (`glossary-refs.ts`), which want the same
+panel once #39 has a surface; deleting a memory or a document; enabling
+and disabling a ref without detaching it.
 
 **#33 · QA panel · M** · [issue #9]
 Filter by rule and severity, jump to segment, dismiss.
@@ -2955,7 +3001,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #4]: https://github.com/louisbaudry/tessera/issues/4
 [issue #6]: https://github.com/louisbaudry/tessera/issues/6
 [issue #7]: https://github.com/louisbaudry/tessera/issues/7
-[issue #8]: https://github.com/louisbaudry/tessera/issues/8
 [issue #9]: https://github.com/louisbaudry/tessera/issues/9
 [issue #10]: https://github.com/louisbaudry/tessera/issues/10
 [issue #20]: https://github.com/louisbaudry/tessera/issues/20

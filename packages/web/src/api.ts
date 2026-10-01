@@ -52,6 +52,7 @@ async function call<T>(
   token: string | null,
   init: {
     method?: string;
+    /** JSON, or a `FormData` sent as multipart (an upload). */
     body?: unknown;
     signal?: AbortSignal;
     keepalive?: boolean;
@@ -59,11 +60,13 @@ async function call<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (token !== null) headers.authorization = `Bearer ${token}`;
-  if (init.body !== undefined) headers['content-type'] = 'application/json';
+  const form = init.body instanceof FormData ? init.body : null;
+  // The browser sets a multipart body's content type, boundary included.
+  if (init.body !== undefined && !form) headers['content-type'] = 'application/json';
   const res = await fetch(path, {
     method: init.method ?? 'GET',
     headers,
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    body: form ?? (init.body === undefined ? undefined : JSON.stringify(init.body)),
     signal: init.signal,
     // Outlives the page, for a save sent as it goes away; unlike a
     // beacon it can carry the Authorization header.
@@ -80,6 +83,38 @@ async function call<T>(
     throw new ApiError(res.status, message);
   }
   return (await res.json()) as T;
+}
+
+/** One of the account's memories (`v1-spec.md` §7.5): its slug, never its path. */
+export interface MemorySummary {
+  readonly slug: string;
+  readonly uuid: string;
+  readonly name: string;
+  readonly langs: readonly string[];
+  readonly units: number;
+  readonly createdAt: string;
+}
+
+/**
+ * A memory attached to a project. `tm` is null for one attached from
+ * outside the account's memories (by the CLI), which the API never
+ * shows by path.
+ */
+export interface TmRefView {
+  readonly id: number;
+  readonly tm: string | null;
+  readonly priority: number;
+  readonly writeTarget: boolean;
+  readonly enabled: boolean;
+}
+
+/** What a pre-translate run did (`v1-spec.md` §6.1). */
+export interface PretranslateSummary {
+  readonly exact: number;
+  readonly tagdiff: number;
+  readonly propagated: number;
+  readonly unmatched: number;
+  readonly skipped: number;
 }
 
 /** What a merge or split changed (`v1-spec.md` §7.4). */
@@ -107,6 +142,65 @@ export const api = {
     call<ProjectSummary[]>('/api/projects', token, { signal }),
   project: (token: string, name: string, signal?: AbortSignal) =>
     call<ProjectDetail>(project(name), token, { signal }),
+  /** A new project; `writeTm` is the memory it confirms into, created if new. */
+  createProject: (
+    token: string,
+    body: {
+      name: string;
+      title: string;
+      srcLang: string;
+      tgtLang: string;
+      writeTm?: string;
+    },
+  ) => call<ProjectSummary>('/api/projects', token, { method: 'POST', body }),
+  /** One DOCX into a project, exactly the CLI's `add-file`. */
+  addFile: (token: string, name: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return call<{ file: FileSummary; locked: number }>(`${project(name)}/files`, token, {
+      method: 'POST',
+      body: form,
+    });
+  },
+  memories: (token: string, signal?: AbortSignal) =>
+    call<MemorySummary[]>('/api/tms', token, { signal }),
+  /** An empty memory, or — with a `.tmx`/`.sdltm` file — one imported from it. */
+  createMemory: (token: string, name: string, file?: File) => {
+    let body: unknown = { name };
+    if (file) {
+      const form = new FormData();
+      form.append('name', name); // before the file: the server reads it first
+      form.append('file', file, file.name);
+      body = form;
+    }
+    return call<MemorySummary & { warnings: string[] }>('/api/tms', token, {
+      method: 'POST',
+      body,
+    });
+  },
+  projectMemories: (token: string, name: string, signal?: AbortSignal) =>
+    call<{ refs: TmRefView[] }>(`${project(name)}/tms`, token, { signal }),
+  attachMemory: (token: string, name: string, tm: string, writeTarget: boolean) =>
+    call<{ refs: TmRefView[] }>(`${project(name)}/tms`, token, {
+      method: 'POST',
+      body: { tm, writeTarget },
+    }),
+  /** The whole consultation order, first consulted first. */
+  orderMemories: (token: string, name: string, order: readonly number[]) =>
+    call<{ refs: TmRefView[] }>(`${project(name)}/tms`, token, {
+      method: 'PUT',
+      body: { order },
+    }),
+  setWriteMemory: (token: string, name: string, refId: number) =>
+    call<{ refs: TmRefView[] }>(`${project(name)}/tms/${refId}/write-target`, token, {
+      method: 'POST',
+    }),
+  detachMemory: (token: string, name: string, refId: number) =>
+    call<{ refs: TmRefView[] }>(`${project(name)}/tms/${refId}`, token, {
+      method: 'DELETE',
+    }),
+  pretranslate: (token: string, name: string) =>
+    call<PretranslateSummary>(`${project(name)}/pretranslate`, token, { method: 'POST' }),
   segments: (token: string, name: string, fileId: number, signal?: AbortSignal) =>
     call<FileSegments>(`${project(name)}/files/${fileId}/segments`, token, { signal }),
   qaIssues: (token: string, name: string, fileId: number, signal?: AbortSignal) =>

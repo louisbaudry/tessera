@@ -457,8 +457,11 @@ log, never translation data) and the storage volume, with `core` and
   builds every path from the account's minted `storage_root` and a
   project slug it validates; that alphabet is the whole defence against
   traversal, and there is nothing to sanitise because nothing arrives.
-  A new route that reads or writes a file goes through `projectPath`,
-  never `join` on something the client sent.
+  A new route that reads or writes a file goes through `projectPath`
+  (or `tmPath` for a memory, backlog #32), never `join` on something
+  the client sent. The slug alphabet is `isSlug` (`core/model/slug.ts`),
+  shared with the SPA's forms; and a response names a memory by slug,
+  never by its path.
 - **Password and session primitives have one home,
   `core/auth/credentials.ts`.** They began in `portal-core`, which now
   re-exports them; `db/portal/admin.ts` and `db/platform/accounts.ts`
@@ -499,7 +502,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts` and `drafts.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts` and `tm-order.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

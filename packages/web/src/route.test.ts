@@ -6,6 +6,7 @@ describe('parseRoute / formatRoute', () => {
   it('roundtrips every screen', () => {
     const routes: Route[] = [
       { screen: 'projects' },
+      { screen: 'tms' },
       { screen: 'project', project: 'job-2026' },
       { screen: 'grid', project: 'job-2026', fileId: 12 },
     ];
@@ -17,6 +18,7 @@ describe('parseRoute / formatRoute', () => {
       '',
       '#',
       '#/x',
+      '#/tms/x',
       '#/p',
       '#/p/job/f',
       '#/p/job/f/0',

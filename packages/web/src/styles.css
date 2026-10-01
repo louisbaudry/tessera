@@ -466,3 +466,117 @@ button.chip-button:hover {
 .tag-list li.active {
   background: var(--chip-bg);
 }
+
+/* --- management: projects, documents, memories (backlog #32) ------- */
+
+.page {
+  display: grid;
+  gap: 1.5rem;
+  align-content: start;
+  overflow-y: auto;
+  max-width: 48rem;
+}
+
+.panel {
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.panel h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+
+.form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.form label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.form input:not([type='file']),
+.panel select {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.form .pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.warning {
+  color: var(--qa-warning);
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.add-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.file-button {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.file-button input {
+  display: none;
+}
+
+.memories {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.memories li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.memories li > * {
+  vertical-align: middle;
+}
+
+.memory-name {
+  display: inline-block;
+  min-width: 12rem;
+}
+
+.write-target {
+  margin-right: 1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.memories .actions {
+  display: inline-flex;
+  gap: 0.75rem;
+}

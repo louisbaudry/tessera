@@ -12,6 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { isSlug } from '@cat-tool/core';
 import type { Account } from '@cat-tool/db';
 
 /** A project or memory slug outside the alphabet. */
@@ -25,16 +26,10 @@ export class InvalidNameError extends Error {
   }
 }
 
-/**
- * A project or a memory is addressed by a slug, which is also its file's
- * basename. The alphabet is the whole defence against path traversal:
- * nothing matching this can contain a separator, a dot, or be empty.
- */
-const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
-
-export function isProjectName(name: string): boolean {
-  return SLUG.test(name);
-}
+// A project or a memory is addressed by a slug, which is also its
+// file's basename. `isSlug`'s alphabet (`core/model/slug.ts`) is the
+// whole defence against path traversal: nothing matching it can contain
+// a separator, a dot, or be empty.
 
 const PROJECT_EXT = '.catdb';
 const TM_EXT = '.ctm';
@@ -46,7 +41,7 @@ export function projectsDir(storageRoot: string, account: Account): string {
 
 /** The `.catdb` path for a project name, after validating the name. */
 export function projectPath(storageRoot: string, account: Account, name: string): string {
-  if (!isProjectName(name)) throw new InvalidNameError('project', name);
+  if (!isSlug(name)) throw new InvalidNameError('project', name);
   return join(projectsDir(storageRoot, account), `${name}${PROJECT_EXT}`);
 }
 
@@ -56,7 +51,7 @@ function listSlugs(dir: string, ext: string): string[] {
   return readdirSync(dir)
     .filter((f) => f.endsWith(ext))
     .map((f) => f.slice(0, -ext.length))
-    .filter((slug) => SLUG.test(slug))
+    .filter((slug) => isSlug(slug))
     .sort();
 }
 
@@ -76,7 +71,7 @@ export function tmsDir(storageRoot: string, account: Account): string {
 
 /** The `.ctm` path for a memory slug, after validating it. */
 export function tmPath(storageRoot: string, account: Account, slug: string): string {
-  if (!SLUG.test(slug)) throw new InvalidNameError('memory', slug);
+  if (!isSlug(slug)) throw new InvalidNameError('memory', slug);
   return join(tmsDir(storageRoot, account), `${slug}${TM_EXT}`);
 }
 
@@ -98,7 +93,7 @@ export function tmSlugOf(
   if (dirname(path) !== tmsDir(storageRoot, account) || !path.endsWith(TM_EXT))
     return null;
   const slug = path.slice(dirname(path).length + 1, -TM_EXT.length);
-  return SLUG.test(slug) ? slug : null;
+  return isSlug(slug) ? slug : null;
 }
 
 /**

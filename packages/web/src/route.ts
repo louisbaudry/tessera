@@ -1,12 +1,14 @@
 /**
- * The SPA's three screens are a hash, not a router (v1-spec.md §7.1):
- * `#/` lists projects, `#/p/<name>` one project's files, and
- * `#/p/<name>/f/<id>` a file's grid. Anything else is the project list —
- * a stale or hand-typed link lands somewhere, never on a blank page.
+ * The SPA's screens are a hash, not a router (v1-spec.md §7.1):
+ * `#/` lists projects, `#/p/<name>` one project's files and memories,
+ * `#/p/<name>/f/<id>` a file's grid, and `#/tms` the account's memories
+ * (§7.5). Anything else is the project list — a stale or hand-typed
+ * link lands somewhere, never on a blank page.
  */
 
 export type Route =
   | { readonly screen: 'projects' }
+  | { readonly screen: 'tms' }
   | { readonly screen: 'project'; readonly project: string }
   | { readonly screen: 'grid'; readonly project: string; readonly fileId: number };
 
@@ -14,6 +16,7 @@ const HOME: Route = { screen: 'projects' };
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  if (parts.length === 1 && parts[0] === 'tms') return { screen: 'tms' };
   if (parts[0] !== 'p' || parts[1] === undefined) return HOME;
   let project: string;
   try {
@@ -32,6 +35,8 @@ export function formatRoute(route: Route): string {
   switch (route.screen) {
     case 'projects':
       return '#/';
+    case 'tms':
+      return '#/tms';
     case 'project':
       return `#/p/${encodeURIComponent(route.project)}`;
     case 'grid':
