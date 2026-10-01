@@ -49,7 +49,9 @@ shared rules' _Autonomous mode_ section). Take cards one after another:
 merge each PR yourself once the full gate passes, CI is green and nothing
 in it needs Louis, then take the next. Stop and ask Louis only in the
 cases the shared rules list. Any other question becomes an issue, not a
-stop.
+stop. A card session whose PR is merged, with nothing unpushed, no open
+PR, no running job and no pending question, may archive itself without
+asking.
 
 Louis's private profile (`ai_profile.md`) is loaded alongside it when a
 session can reach it. This file adds only what is specific to tessera
