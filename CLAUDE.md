@@ -27,7 +27,8 @@ the public
 - **Communication** — concise, in Louis's language (French, English or
   Spanish); one question at a time, always with options and a
   recommendation; fact, inference and guess kept apart.
-- **Git and pull requests** — never merge without being asked; one task,
+- **Git and pull requests** — never merge without being asked (except
+  in autonomous mode, which this repo runs in); one task,
   one branch, one PR (`Closes #NN`); branch from `main` and merge back
   promptly; one session at a time on one area; check open PRs and
   unmerged branches before starting; file something broken that isn't
@@ -42,6 +43,13 @@ the public
 - **AI output is a proposal, not a fact** — never invent source data.
 - **Public repositories** — no personal or client data, credentials or
   internal hostnames, in any form.
+
+**This repo runs in autonomous mode** (trial started 2026-10-01; see the
+shared rules' _Autonomous mode_ section). Take cards one after another:
+merge each PR yourself once the full gate passes, CI is green and nothing
+in it needs Louis, then take the next. Stop and ask Louis only in the
+cases the shared rules list. Any other question becomes an issue, not a
+stop.
 
 Louis's private profile (`ai_profile.md`) is loaded alongside it when a
 session can reach it. This file adds only what is specific to tessera
@@ -83,8 +91,8 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
    code lives, keep what it taught (a bug caught, a design choice made),
    and drop the issue link. Its **status** is the issue's job, never the
    file's; `v1-backlog.md`'s own header states the two heading forms.
-3. **Never merge without being asked; branch from `main`** — both
-   shared rules. The branch one was learned here: `main` quietly
+3. **Merge your own ready PR (autonomous mode, above); branch from
+   `main`** — both shared rules. The branch one was learned here: `main` quietly
    stopped being trunk once already — a PR reading "closed unmerged"
    while its code was live, and `main` a whole epic behind the real
    backlog until someone went looking.
@@ -94,9 +102,11 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
    there, in entries neither was editing on purpose. Phased work across
    several sessions runs one phase at a time, each branched from `main`
    (`planning/multi-session-workflow.md`).
-5. **After each merge, ask Louis if the public GitHub website is worth
-   updating with the new developments.** As a shared-rules question:
-   options and a recommendation, not an open question.
+5. **After each merge, judge whether the public GitHub website is worth
+   updating with the new developments.** Don't stop to ask: if it is, add
+   the merge to the single open "website update" issue (create it if none
+   is open). Publishing the site update itself is outward-facing, so that
+   is a stop-and-ask.
 
 ## Non-negotiable invariants
 
