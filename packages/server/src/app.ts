@@ -12,8 +12,9 @@
  * discipline the CLI set (§2.4): logic the server would need that
  * `core`/`db` lack goes there, not here.
  */
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { createWriteStream, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { dirname, extname } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 
 import {
   assembleFile,
@@ -21,7 +22,9 @@ import {
   generateSessionToken,
   parseTokens,
   rulesFor,
+  SdltmError,
   SegmentEditError,
+  TmxError,
   TokenShapeError,
   verifyPassword,
   type AuditActor,
@@ -29,8 +32,11 @@ import {
   type SegmenterRules,
 } from '@cat-tool/core';
 import {
+  addTmRef,
   createAccountSession,
   createProject,
+  createTm,
+  describeTm,
   deleteAccountSession,
   confirmEditedSegment,
   ConfirmError,
@@ -41,21 +47,32 @@ import {
   getFileSummary,
   getProject,
   getSegment,
+  importSdltm,
+  importTmxFile,
   insertFile,
   listFileQaIssues,
   listFileSummaries,
   listSegments,
+  listTmRefs,
   mergeSegmentWithNext,
+  nextTmPriority,
   openPlatformDb,
   openProjectDb,
+  openTm,
+  pretranslate,
   ProjectExportError,
   recordDownload,
   recordFailedLogin,
   recordProjectChange,
+  removeTmRef,
+  reorderTmRefs,
   SegmentRepoError,
+  setWriteTarget,
   splitSegmentAt,
   TargetConflictError,
   TargetStructureError,
+  TmError,
+  TmRefError,
   type Account,
 } from '@cat-tool/db';
 import multipart from '@fastify/multipart';
@@ -67,7 +84,15 @@ import Fastify, {
 } from 'fastify';
 
 import type { ServerConfig } from './config.js';
-import { InvalidProjectNameError, listProjectNames, projectPath } from './storage.js';
+import {
+  InvalidNameError,
+  listProjectNames,
+  listTmSlugs,
+  projectPath,
+  tmPath,
+  tmSlugOf,
+  uploadTempPath,
+} from './storage.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -100,6 +125,16 @@ function owner(req: FastifyRequest): Account {
 const LOGIN_PATH = '/api/login';
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+/**
+ * A memory upload streams to disk, never into a buffer, so it may be
+ * larger than a document: an agency's TMX or `.sdltm` runs to hundreds
+ * of megabytes (tm-format-spec.md §11).
+ */
+const MAX_TM_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** Written into a memory the server creates (tm-format-spec.md §2.1). */
+const TM_GENERATOR = 'cat-tool/server';
 
 function bearerToken(req: FastifyRequest): string | null {
   const header = req.headers.authorization;
@@ -207,7 +242,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     try {
       path = projectPath(config.storageRoot, owner(req), name);
     } catch (err) {
-      if (err instanceof InvalidProjectNameError) {
+      if (err instanceof InvalidNameError) {
         void reply.code(400).send({ error: err.message });
         return null;
       }
@@ -243,18 +278,33 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     });
   });
 
+  // `writeTm` names the memory the project's confirmed segments go to
+  // (v1-spec.md §7.5): attached first, as the write target, and created
+  // empty if the account has no memory by that name. Without one,
+  // confirming refuses until a write target is chosen.
   app.post<{
-    Body: { name?: string; srcLang?: string; tgtLang?: string; title?: string };
+    Body: {
+      name?: string;
+      srcLang?: string;
+      tgtLang?: string;
+      title?: string;
+      writeTm?: unknown;
+    };
   }>('/api/projects', async (req, reply) => {
-    const { name, srcLang, tgtLang, title } = req.body ?? {};
+    const { name, srcLang, tgtLang, title, writeTm } = req.body ?? {};
     if (!name || !srcLang || !tgtLang) {
       return reply.code(400).send({ error: 'name, srcLang and tgtLang are required' });
     }
+    if (writeTm !== undefined && typeof writeTm !== 'string') {
+      return reply.code(400).send({ error: 'writeTm must be a memory name' });
+    }
     let path: string;
+    let memory: string | null;
     try {
       path = projectPath(config.storageRoot, owner(req), name);
+      memory = writeTm ? tmPath(config.storageRoot, owner(req), writeTm) : null;
     } catch (err) {
-      if (err instanceof InvalidProjectNameError) {
+      if (err instanceof InvalidNameError) {
         return reply.code(400).send({ error: err.message });
       }
       throw err;
@@ -262,15 +312,24 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (existsSync(path)) {
       return reply.code(409).send({ error: `a project named "${name}" already exists` });
     }
+    const actor = sessionActor(req);
     const project = recordProjectChange(
       platform,
       'project.created',
-      { actor: sessionActor(req), project: { accountId: owner(req).id, name } },
+      { actor, project: { accountId: owner(req).id, name } },
       () => {
         mkdirSync(dirname(path), { recursive: true });
         const db = openProjectDb(path);
         try {
-          return createProject(db, { name: title ?? name, srcLang, tgtLang });
+          const created = createProject(db, { name: title ?? name, srcLang, tgtLang });
+          if (memory !== null && writeTm) {
+            if (!existsSync(memory)) {
+              mkdirSync(dirname(memory), { recursive: true });
+              createTm(memory, { name: writeTm, generator: TM_GENERATOR }).close();
+            }
+            addTmRef(db, { path: memory, priority: 1, isWriteTarget: true, actor });
+          }
+          return created;
         } finally {
           db.close();
         }
@@ -661,6 +720,287 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       db.close();
     }
   });
+
+  // --- memories: one `.ctm` each, the account's, attached to projects --
+
+  /** One memory as the API shows it: its slug, never its path. */
+  function memorySummary(slug: string, path: string) {
+    const tm = openTm(path);
+    try {
+      return { slug, ...describeTm(tm) };
+    } finally {
+      tm.close();
+    }
+  }
+
+  app.get('/api/tms', async (req) => {
+    const account = owner(req);
+    return listTmSlugs(config.storageRoot, account).map((slug) =>
+      memorySummary(slug, tmPath(config.storageRoot, account, slug)),
+    );
+  });
+
+  // A memory is created empty from JSON `{ name }`, or from an upload: a
+  // multipart `name` field, then one `.tmx` or `.sdltm` file, imported
+  // into a new memory by that name — the CLI's `add-tm`, minus attaching.
+  // The upload streams to a server-named file under the account's root
+  // and is deleted after; an import that fails leaves no memory behind.
+  app.post<{ Body: { name?: unknown } }>('/api/tms', async (req, reply) => {
+    const account = owner(req);
+    const slugOf = (value: unknown): string | null => {
+      if (typeof value !== 'string' || value === '') {
+        void reply.code(400).send({ error: 'a memory name is required' });
+        return null;
+      }
+      return value;
+    };
+    const claim = (slug: string): string | null => {
+      let path: string;
+      try {
+        path = tmPath(config.storageRoot, account, slug);
+      } catch (err) {
+        if (err instanceof InvalidNameError) {
+          void reply.code(400).send({ error: err.message });
+          return null;
+        }
+        throw err;
+      }
+      if (existsSync(path)) {
+        void reply.code(409).send({ error: `a memory named "${slug}" already exists` });
+        return null;
+      }
+      mkdirSync(dirname(path), { recursive: true });
+      return path;
+    };
+
+    if (!req.isMultipart()) {
+      const slug = slugOf(req.body?.name);
+      if (slug === null) return reply;
+      const path = claim(slug);
+      if (path === null) return reply;
+      createTm(path, { name: slug, generator: TM_GENERATOR }).close();
+      return reply.code(201).send({ ...memorySummary(slug, path), warnings: [] });
+    }
+
+    const part = await req.file({ limits: { fileSize: MAX_TM_UPLOAD_BYTES } });
+    if (!part) {
+      return reply.code(400).send({ error: 'a .tmx or .sdltm file part is required' });
+    }
+    const nameField = part.fields['name'];
+    const slug = slugOf(
+      nameField && !Array.isArray(nameField) && nameField.type === 'field'
+        ? nameField.value
+        : undefined,
+    );
+    if (slug === null) {
+      part.file.resume();
+      return reply;
+    }
+    const ext = extname(part.filename).toLowerCase();
+    if (ext !== '.tmx' && ext !== '.sdltm') {
+      part.file.resume();
+      return reply
+        .code(415)
+        .send({ error: `unsupported memory format "${ext}" — expected .tmx or .sdltm` });
+    }
+    const path = claim(slug);
+    if (path === null) {
+      part.file.resume();
+      return reply;
+    }
+    const upload = uploadTempPath(config.storageRoot, account);
+    mkdirSync(dirname(upload), { recursive: true });
+    try {
+      await pipeline(part.file, createWriteStream(upload));
+      if (part.file.truncated) {
+        return reply.code(413).send({ error: 'the memory file is too large' });
+      }
+      const tm = createTm(path, { name: slug, generator: TM_GENERATOR });
+      let warnings: readonly string[];
+      try {
+        warnings = (
+          ext === '.tmx'
+            ? importTmxFile(tm, upload, { sourceName: part.filename })
+            : importSdltm(tm, upload)
+        ).warnings;
+      } catch (err) {
+        tm.close();
+        rmSync(path, { force: true });
+        if (
+          err instanceof TmError ||
+          err instanceof TmxError ||
+          err instanceof SdltmError
+        ) {
+          return reply.code(422).send({ error: err.message });
+        }
+        throw err;
+      }
+      tm.close();
+      return reply.code(201).send({ ...memorySummary(slug, path), warnings });
+    } finally {
+      rmSync(upload, { force: true });
+    }
+  });
+
+  /** A project's attached memories as the API shows them: slugs, never paths. */
+  function tmRefsView(req: FastifyRequest, db: ReturnType<typeof openProjectDb>) {
+    return listTmRefs(db).map((ref) => ({
+      id: ref.id,
+      tm: tmSlugOf(config.storageRoot, owner(req), ref.path),
+      priority: ref.priority,
+      writeTarget: ref.isWriteTarget,
+      enabled: ref.enabled,
+    }));
+  }
+
+  /** A tm_ref id from the URL that names one of this project's references. */
+  function refIdOf(
+    reply: FastifyReply,
+    db: ReturnType<typeof openProjectDb>,
+    raw: string,
+  ): number | null {
+    const id = Number(raw);
+    if (!Number.isInteger(id) || !listTmRefs(db).some((r) => r.id === id)) {
+      void reply.code(404).send({ error: `no attached memory #${raw}` });
+      return null;
+    }
+    return id;
+  }
+
+  app.get<{ Params: { name: string } }>('/api/projects/:name/tms', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    try {
+      return { refs: tmRefsView(req, opened.db) };
+    } finally {
+      opened.db.close();
+    }
+  });
+
+  // Attaches one of the account's memories after every one already there
+  // (`addTmRef`), optionally as the write target.
+  app.post<{ Params: { name: string }; Body: { tm?: unknown; writeTarget?: unknown } }>(
+    '/api/projects/:name/tms',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      try {
+        const { tm, writeTarget } = req.body ?? {};
+        if (typeof tm !== 'string') {
+          return reply.code(400).send({ error: 'tm must be a memory name' });
+        }
+        if (writeTarget !== undefined && typeof writeTarget !== 'boolean') {
+          return reply.code(400).send({ error: 'writeTarget must be a boolean' });
+        }
+        let path: string;
+        try {
+          path = tmPath(config.storageRoot, owner(req), tm);
+        } catch (err) {
+          if (err instanceof InvalidNameError) {
+            return reply.code(400).send({ error: err.message });
+          }
+          throw err;
+        }
+        if (!existsSync(path)) {
+          return reply.code(404).send({ error: `no memory named "${tm}"` });
+        }
+        if (listTmRefs(db).some((r) => r.path === path)) {
+          return reply
+            .code(409)
+            .send({ error: `memory "${tm}" is already attached to this project` });
+        }
+        addTmRef(db, {
+          path,
+          priority: nextTmPriority(db),
+          isWriteTarget: writeTarget ?? false,
+          actor: sessionActor(req),
+        });
+        return reply.code(201).send({ refs: tmRefsView(req, db) });
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  // The consultation order, first consulted first: every attached
+  // memory's ref id exactly once (`reorderTmRefs`).
+  app.put<{ Params: { name: string }; Body: { order?: unknown } }>(
+    '/api/projects/:name/tms',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      try {
+        const { order } = req.body ?? {};
+        if (!Array.isArray(order) || !order.every((id) => Number.isInteger(id))) {
+          return reply.code(400).send({ error: 'order must be a list of ref ids' });
+        }
+        try {
+          reorderTmRefs(db, order as number[], { actor: sessionActor(req) });
+        } catch (err) {
+          if (err instanceof TmRefError) {
+            return reply.code(400).send({ error: err.message });
+          }
+          throw err;
+        }
+        return { refs: tmRefsView(req, db) };
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  app.post<{ Params: { name: string; refId: string } }>(
+    '/api/projects/:name/tms/:refId/write-target',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      try {
+        const id = refIdOf(reply, db, req.params.refId);
+        if (id === null) return reply;
+        setWriteTarget(db, id, { actor: sessionActor(req) });
+        return { refs: tmRefsView(req, db) };
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  // Detaching leaves the memory itself alone: it may serve other projects.
+  app.delete<{ Params: { name: string; refId: string } }>(
+    '/api/projects/:name/tms/:refId',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      try {
+        const id = refIdOf(reply, db, req.params.refId);
+        if (id === null) return reply;
+        removeTmRef(db, id, { actor: sessionActor(req) });
+        return { refs: tmRefsView(req, db) };
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  // The exact matcher over the whole project (v1-spec.md §6.1), exactly
+  // the CLI's `pretranslate`: one `project.pretranslate` in the project's
+  // log, its counts the answer.
+  app.post<{ Params: { name: string } }>(
+    '/api/projects/:name/pretranslate',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      try {
+        return pretranslate(opened.db, { actor: sessionActor(req) });
+      } finally {
+        opened.db.close();
+      }
+    },
+  );
 
   return app;
 }

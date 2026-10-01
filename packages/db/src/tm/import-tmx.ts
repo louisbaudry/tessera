@@ -74,6 +74,12 @@ export interface ImportTmxFileOptions {
   readonly resume?: number;
   /** Bytes read per chunk; only tests need to set it, to force chunk boundaries mid-character. */
   readonly chunkBytes?: number;
+  /**
+   * The name the import row records, when `path` is not the file's own
+   * name — an upload the server stored under a minted one (backlog #32).
+   * Defaults to `path`'s basename.
+   */
+  readonly sourceName?: string;
 }
 
 export const DEFAULT_IMPORT_BATCH_SIZE = 10_000;
@@ -165,7 +171,9 @@ export function importTmxFile(
   const fd = openSync(path, 'r');
   try {
     const sourceBytes = fstatSync(fd).size;
-    const importId = options.resume ?? startImport(db, basename(path), sourceBytes);
+    const importId =
+      options.resume ??
+      startImport(db, options.sourceName ?? basename(path), sourceBytes);
     let skip = 0;
     if (options.resume !== undefined) {
       const run = getTmImport(db, options.resume);

@@ -16,8 +16,10 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { MigrationError, openAndMigrate } from '../migrate.js';
+import { importTmx } from './import-tmx.js';
 import {
   createTm,
+  describeTm,
   openTm,
   TmError,
   TM_APPLICATION_ID,
@@ -339,4 +341,24 @@ describe('crash safety', () => {
     expect((db.prepare('SELECT COUNT(*) AS n FROM tu').get() as { n: number }).n).toBe(0);
     db.close();
   }, 15_000);
+});
+
+describe('describeTm', () => {
+  it('names the memory, its languages and its live units', () => {
+    const db = createTm(dbPath(), { name: 'Client A', generator: 'test' });
+    expect(describeTm(db)).toMatchObject({ name: 'Client A', langs: [], units: 0 });
+    importTmx(
+      db,
+      `<?xml version="1.0"?><tmx version="1.4"><header srclang="en"/><body>
+        <tu><tuv xml:lang="en"><seg>Hello</seg></tuv><tuv xml:lang="de"><seg>Hallo</seg></tuv></tu>
+        <tu><tuv xml:lang="en"><seg>Bye</seg></tuv><tuv xml:lang="de"><seg>Tschüss</seg></tuv></tu>
+      </body></tmx>`,
+    );
+    db.prepare('UPDATE tu SET deleted = 1 WHERE id = 1').run();
+    const summary = describeTm(db);
+    expect(summary.units).toBe(1);
+    expect([...summary.langs].sort()).toEqual(['de', 'en']);
+    expect(summary.uuid).toMatch(/^[0-9a-f-]{36}$/);
+    db.close();
+  });
 });

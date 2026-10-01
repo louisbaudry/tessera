@@ -8,33 +8,36 @@
  * per authenticated session before any file path is touched" means in
  * code: there is no function that takes a path from the outside.
  */
+import { randomBytes } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import type { Account } from '@cat-tool/db';
 
-export class InvalidProjectNameError extends Error {
-  constructor(name: string) {
+/** A project or memory slug outside the alphabet. */
+export class InvalidNameError extends Error {
+  constructor(what: 'project' | 'memory', name: string) {
     super(
-      `invalid project name "${name}": use 1–64 lowercase letters, digits and hyphens, ` +
+      `invalid ${what} name "${name}": use 1–64 lowercase letters, digits and hyphens, ` +
         'starting and ending with a letter or digit',
     );
-    this.name = 'InvalidProjectNameError';
+    this.name = 'InvalidNameError';
   }
 }
 
 /**
- * A project is addressed by a slug, which is also its file's basename.
- * The alphabet is the whole defence against path traversal: nothing
- * matching this can contain a separator, a dot, or be empty.
+ * A project or a memory is addressed by a slug, which is also its file's
+ * basename. The alphabet is the whole defence against path traversal:
+ * nothing matching this can contain a separator, a dot, or be empty.
  */
-const PROJECT_NAME = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 
 export function isProjectName(name: string): boolean {
-  return PROJECT_NAME.test(name);
+  return SLUG.test(name);
 }
 
 const PROJECT_EXT = '.catdb';
+const TM_EXT = '.ctm';
 
 /** The directory an account's projects live in, under the server's volume. */
 export function projectsDir(storageRoot: string, account: Account): string {
@@ -43,17 +46,66 @@ export function projectsDir(storageRoot: string, account: Account): string {
 
 /** The `.catdb` path for a project name, after validating the name. */
 export function projectPath(storageRoot: string, account: Account, name: string): string {
-  if (!isProjectName(name)) throw new InvalidProjectNameError(name);
+  if (!isProjectName(name)) throw new InvalidNameError('project', name);
   return join(projectsDir(storageRoot, account), `${name}${PROJECT_EXT}`);
+}
+
+/** Every slug with `ext` in `dir`, sorted; none before the directory exists. */
+function listSlugs(dir: string, ext: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(ext))
+    .map((f) => f.slice(0, -ext.length))
+    .filter((slug) => SLUG.test(slug))
+    .sort();
 }
 
 /** Every project name under an account's root, sorted; none before the first is created. */
 export function listProjectNames(storageRoot: string, account: Account): string[] {
-  const dir = projectsDir(storageRoot, account);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(PROJECT_EXT))
-    .map((f) => f.slice(0, -PROJECT_EXT.length))
-    .filter(isProjectName)
-    .sort();
+  return listSlugs(projectsDir(storageRoot, account), PROJECT_EXT);
+}
+
+/**
+ * The directory an account's memories live in (v1-spec.md §7.5): the
+ * account's, not a project's, because one memory serves every project
+ * it is attached to (§4.2).
+ */
+export function tmsDir(storageRoot: string, account: Account): string {
+  return join(storageRoot, account.storageRoot, 'tms');
+}
+
+/** The `.ctm` path for a memory slug, after validating it. */
+export function tmPath(storageRoot: string, account: Account, slug: string): string {
+  if (!SLUG.test(slug)) throw new InvalidNameError('memory', slug);
+  return join(tmsDir(storageRoot, account), `${slug}${TM_EXT}`);
+}
+
+/** Every memory slug under an account's root, sorted. */
+export function listTmSlugs(storageRoot: string, account: Account): string[] {
+  return listSlugs(tmsDir(storageRoot, account), TM_EXT);
+}
+
+/**
+ * The memory slug a stored `tm_ref.path` names, or null when it is not
+ * one of this account's memories (a path the CLI attached). The API
+ * speaks slugs, never paths: a path would show the storage root.
+ */
+export function tmSlugOf(
+  storageRoot: string,
+  account: Account,
+  path: string,
+): string | null {
+  if (dirname(path) !== tmsDir(storageRoot, account) || !path.endsWith(TM_EXT))
+    return null;
+  const slug = path.slice(dirname(path).length + 1, -TM_EXT.length);
+  return SLUG.test(slug) ? slug : null;
+}
+
+/**
+ * A fresh path for an upload on its way into a memory, under the
+ * account's own root: the name is minted here, never the client's, so
+ * an uploaded filename never becomes a path (the portal's rule).
+ */
+export function uploadTempPath(storageRoot: string, account: Account): string {
+  return join(storageRoot, account.storageRoot, 'tmp', randomBytes(12).toString('hex'));
 }

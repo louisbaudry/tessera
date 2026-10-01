@@ -43,7 +43,12 @@ function setUp(options: { writeTarget: boolean }) {
   );
   if (options.writeTarget) {
     createTm(join(dir, 'w.ctm'), { name: 'w', generator: 'test' }).close();
-    addTmRef(db, { path: join(dir, 'w.ctm'), priority: 1, isWriteTarget: true });
+    addTmRef(db, {
+      actor: TEST_ACTOR,
+      path: join(dir, 'w.ctm'),
+      priority: 1,
+      isWriteTarget: true,
+    });
   }
   const segment = listSegments(db, file.id).find((s) => !s.locked)!;
   setSegmentTarget(db, segment.id, {

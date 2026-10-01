@@ -58,6 +58,7 @@ function setUpProject() {
     generator: 'test',
   }).close();
   const ref = addTmRef(db, {
+    actor: TEST_ACTOR,
     path: ctmPath('write-target.ctm'),
     priority: 1,
     isWriteTarget: true,
