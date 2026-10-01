@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
 import { Grid } from './Grid.js';
 import { Login } from './Login.js';
+import { Memories } from './Memories.js';
 import { ProjectFiles, Projects } from './Projects.js';
 import { formatRoute, parseRoute, type Route } from './route.js';
 import { SessionContext, type SessionValue } from './session-context.js';
@@ -65,12 +66,14 @@ export function App() {
             Tessera
           </a>
           <Breadcrumbs route={route} />
+          <a href={formatRoute({ screen: 'tms' })}>Memories</a>
           <button type="button" className="link" onClick={() => void logOut()}>
             Sign out
           </button>
         </header>
         <main className="screen">
           {route.screen === 'projects' && <Projects />}
+          {route.screen === 'tms' && <Memories />}
           {route.screen === 'project' && <ProjectFiles name={route.project} />}
           {route.screen === 'grid' && (
             <Grid
@@ -87,6 +90,15 @@ export function App() {
 
 function Breadcrumbs({ route }: { route: Route }) {
   if (route.screen === 'projects') return <nav className="crumbs" />;
+  if (route.screen === 'tms') {
+    return (
+      <nav className="crumbs">
+        <a href={formatRoute({ screen: 'projects' })}>Projects</a>
+        <span aria-hidden="true">/</span>
+        <span>Memories</span>
+      </nav>
+    );
+  }
   return (
     <nav className="crumbs">
       <a href={formatRoute({ screen: 'projects' })}>Projects</a>

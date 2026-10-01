@@ -149,7 +149,12 @@ describe('every write path records its event', () => {
     const segment = plainSegment(db, addFile(db).id);
     const ctm = join(dir, 'w.ctm');
     createTm(ctm, { name: 'w', generator: 'test' }).close();
-    const ref = addTmRef(db, { path: ctm, priority: 1, isWriteTarget: true });
+    const ref = addTmRef(db, {
+      actor: TEST_ACTOR,
+      path: ctm,
+      priority: 1,
+      isWriteTarget: true,
+    });
     setSegmentTarget(db, segment.id, {
       targetTokens: text('hola'),
       status: 'translated',
@@ -192,7 +197,7 @@ describe('every write path records its event', () => {
     const donor = plainSegment(db, a.id);
     const ctm = join(dir, 'w.ctm');
     createTm(ctm, { name: 'w', generator: 'test' }).close();
-    addTmRef(db, { path: ctm, priority: 1, isWriteTarget: true });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctm, priority: 1, isWriteTarget: true });
     setSegmentTarget(db, donor.id, {
       targetTokens: text('hola'),
       status: 'translated',
@@ -202,7 +207,11 @@ describe('every write path records its event', () => {
     confirmSegment(db, donor.id, { actor: TEST_ACTOR });
 
     const summary = pretranslate(db, { fileId: b.id, actor: TEST_ACTOR });
-    const [run] = listEvents(db, { subjectType: 'project', subjectId: null });
+    const runsOf = () =>
+      listEvents(db, { subjectType: 'project', subjectId: null }).filter(
+        (e) => e.action === 'project.pretranslate',
+      );
+    const [run] = runsOf();
     expect(run!.action).toBe('project.pretranslate');
     expect(detailOf<'project.pretranslate'>(run!.detail)).toEqual({
       tm_refs: [ctm],
@@ -218,7 +227,7 @@ describe('every write path records its event', () => {
 
     // A re-run changes nothing: its parent is logged, with no children.
     pretranslate(db, { fileId: b.id, actor: TEST_ACTOR });
-    const runs = listEvents(db, { subjectType: 'project', subjectId: null });
+    const runs = runsOf();
     expect(runs).toHaveLength(2);
     expect(listBatch(db, runs[1]!.id)).toEqual([]);
     db.close();

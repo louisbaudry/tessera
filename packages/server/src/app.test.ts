@@ -4,7 +4,7 @@
  * against a real fixture DOCX.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -663,7 +663,12 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
     const projectDb = openProjectDb(projectFile(alice, 'job'));
     try {
       createTm(join(dir, 'w.ctm'), { name: 'w', generator: 'test' }).close();
-      addTmRef(projectDb, { path: join(dir, 'w.ctm'), priority: 1, isWriteTarget: true });
+      addTmRef(projectDb, {
+        actor: SETUP,
+        path: join(dir, 'w.ctm'),
+        priority: 1,
+        isWriteTarget: true,
+      });
     } finally {
       projectDb.close();
     }
@@ -965,6 +970,302 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
       expect(line).not.toContain('Vertraulicher');
       expect(line).not.toContain('alice-pw');
     }
+  });
+});
+
+describe('memories and what a project attaches', () => {
+  const tmFile = (account: Account, slug: string) =>
+    join(config.storageRoot, account.storageRoot, 'tms', `${slug}.ctm`);
+
+  const tmx = (units: ReadonlyArray<readonly [string, string]>) =>
+    `<?xml version="1.0" encoding="UTF-8"?>
+<tmx version="1.4"><header srclang="en" segtype="sentence" datatype="plaintext" adminlang="en" creationtool="test" creationtoolversion="1" o-tmf="test"/><body>
+${units
+  .map(
+    ([en, de]) =>
+      `<tu><tuv xml:lang="en"><seg>${en}</seg></tuv><tuv xml:lang="de"><seg>${de}</seg></tuv></tu>`,
+  )
+  .join('\n')}
+</body></tmx>`;
+
+  async function importMemory(
+    token: string,
+    name: string,
+    body: string,
+    filename: string,
+  ) {
+    const form = new FormData();
+    form.append('name', name);
+    form.append('file', new Blob([body]), filename);
+    return app.inject({
+      method: 'POST',
+      url: '/api/tms',
+      headers: auth(token),
+      payload: form,
+    });
+  }
+
+  const call = (
+    token: string,
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    url: string,
+    payload?: object,
+  ) => app.inject({ method, url, headers: auth(token), ...(payload ? { payload } : {}) });
+
+  type Ref = {
+    id: number;
+    tm: string | null;
+    priority: number;
+    writeTarget: boolean;
+    enabled: boolean;
+  };
+
+  it('creates an empty memory under the account root, lists it, and refuses a second by that name', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const created = await call(token, 'POST', '/api/tms', { name: 'client-a' });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json()).toMatchObject({
+      slug: 'client-a',
+      name: 'client-a',
+      units: 0,
+      langs: [],
+    });
+    expect(existsSync(tmFile(alice, 'client-a'))).toBe(true);
+
+    expect((await call(token, 'POST', '/api/tms', { name: 'client-a' })).statusCode).toBe(
+      409,
+    );
+    for (const name of ['../x', 'Client A', '', 7]) {
+      expect(
+        (await call(token, 'POST', '/api/tms', { name })).statusCode,
+        String(name),
+      ).toBe(400);
+    }
+
+    const listed = await call(token, 'GET', '/api/tms');
+    expect((listed.json() as Array<{ slug: string }>).map((m) => m.slug)).toEqual([
+      'client-a',
+    ]);
+    expect(listed.body).not.toContain(alice.storageRoot);
+    // Another account's memories are not this one's.
+    const bobs = await call(await login('bob@example.com', 'bob-pw'), 'GET', '/api/tms');
+    expect(bobs.json()).toEqual([]);
+  });
+
+  it('imports an uploaded TMX into a new memory, leaving no upload behind', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const res = await importMemory(
+      token,
+      'legal',
+      tmx([
+        ['Hello', 'Hallo'],
+        ['Goodbye', 'Auf Wiedersehen'],
+      ]),
+      'Legal 2024.tmx',
+    );
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json()).toMatchObject({ slug: 'legal', units: 2 });
+    expect([...(res.json() as { langs: string[] }).langs].sort()).toEqual(['de', 'en']);
+    const tmp = join(config.storageRoot, alice.storageRoot, 'tmp');
+    expect(existsSync(tmp) ? readdirSync(tmp) : []).toEqual([]);
+  });
+
+  it('refuses an upload it cannot import, and keeps no memory from it', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const wrongKind = await importMemory(token, 'notes', 'plain text', 'notes.txt');
+    expect(wrongKind.statusCode).toBe(415);
+    const broken = await importMemory(token, 'broken', '<tmx><body><tu>', 'broken.tmx');
+    expect(broken.statusCode, broken.body).toBe(422);
+    expect(existsSync(tmFile(alice, 'broken'))).toBe(false);
+    const noName = await importMemory(token, '', tmx([['a', 'b']]), 'a.tmx');
+    expect(noName.statusCode).toBe(400);
+    expect((await call(token, 'GET', '/api/tms')).json()).toEqual([]);
+  });
+
+  it('creates a project with its write-target memory, so confirming works from the start', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const created = await call(token, 'POST', '/api/projects', {
+      name: 'job',
+      srcLang: 'en',
+      tgtLang: 'de',
+      writeTm: 'job-memory',
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(existsSync(tmFile(alice, 'job-memory'))).toBe(true);
+    const refs = await call(token, 'GET', '/api/projects/job/tms');
+    expect(refs.json()).toEqual({
+      refs: [
+        {
+          id: expect.any(Number),
+          tm: 'job-memory',
+          priority: 1,
+          writeTarget: true,
+          enabled: true,
+        },
+      ],
+    });
+
+    expect((await upload(token, 'job')).statusCode).toBe(201);
+    const fileId = (
+      (await call(token, 'GET', '/api/projects/job')).json() as {
+        files: Array<{ id: number }>;
+      }
+    ).files[0]!.id;
+    const segment = await firstSegment(token, fileId);
+    await call(token, 'PUT', `/api/projects/job/segments/${segment.id}`, {
+      targetTokens: [{ t: 'text', v: 'Ein Zieltext' }],
+    });
+    const confirmed = await call(
+      token,
+      'POST',
+      `/api/projects/job/segments/${segment.id}/confirm`,
+      {},
+    );
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+    const memory = (await call(token, 'GET', '/api/tms')).json() as Array<{
+      units: number;
+    }>;
+    expect(memory[0]!.units).toBe(1);
+
+    // An existing memory is attached, not recreated; a bad name is refused before anything exists.
+    const second = await call(token, 'POST', '/api/projects', {
+      name: 'job-two',
+      srcLang: 'en',
+      tgtLang: 'de',
+      writeTm: 'job-memory',
+    });
+    expect(second.statusCode).toBe(201);
+    expect(((await call(token, 'GET', '/api/tms')).json() as unknown[]).length).toBe(1);
+    const bad = await call(token, 'POST', '/api/projects', {
+      name: 'job-three',
+      srcLang: 'en',
+      tgtLang: 'de',
+      writeTm: '../escape',
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(existsSync(projectFile(alice, 'job-three'))).toBe(false);
+  });
+
+  it('attaches, orders, retargets and detaches memories, each change in the project log under the session', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    expect((await createProject(token, 'job')).statusCode).toBe(201);
+    for (const name of ['a', 'b', 'c']) await call(token, 'POST', '/api/tms', { name });
+
+    const attach = (tm: unknown, writeTarget?: boolean) =>
+      call(
+        token,
+        'POST',
+        '/api/projects/job/tms',
+        writeTarget === undefined ? { tm } : { tm, writeTarget },
+      );
+    expect((await attach('a')).statusCode).toBe(201);
+    expect((await attach('b', true)).statusCode).toBe(201);
+    const last = await attach('c');
+    let refs = (last.json() as { refs: Ref[] }).refs;
+    expect(refs.map((r) => [r.tm, r.priority, r.writeTarget])).toEqual([
+      ['a', 1, false],
+      ['b', 2, true],
+      ['c', 3, false],
+    ]);
+    expect((await attach('a')).statusCode).toBe(409);
+    expect((await attach('nope')).statusCode).toBe(404);
+    expect((await attach('../x')).statusCode).toBe(400);
+    expect((await attach(5)).statusCode).toBe(400);
+
+    const [a, b, c] = refs as [Ref, Ref, Ref];
+    const reordered = await call(token, 'PUT', '/api/projects/job/tms', {
+      order: [c.id, a.id, b.id],
+    });
+    expect(reordered.statusCode, reordered.body).toBe(200);
+    refs = (reordered.json() as { refs: Ref[] }).refs;
+    expect(refs.map((r) => r.tm)).toEqual(['c', 'a', 'b']);
+    for (const order of [[c.id, a.id], [c.id, a.id, a.id], 'x', [c.id, a.id, 'b']]) {
+      expect(
+        (await call(token, 'PUT', '/api/projects/job/tms', { order })).statusCode,
+      ).toBe(400);
+    }
+
+    const retarget = await call(
+      token,
+      'POST',
+      `/api/projects/job/tms/${c.id}/write-target`,
+    );
+    expect(retarget.statusCode).toBe(200);
+    expect(
+      (retarget.json() as { refs: Ref[] }).refs
+        .filter((r) => r.writeTarget)
+        .map((r) => r.tm),
+    ).toEqual(['c']);
+    expect(
+      (await call(token, 'POST', '/api/projects/job/tms/999/write-target')).statusCode,
+    ).toBe(404);
+
+    const detached = await call(token, 'DELETE', `/api/projects/job/tms/${c.id}`);
+    expect((detached.json() as { refs: Ref[] }).refs.map((r) => r.tm)).toEqual([
+      'a',
+      'b',
+    ]);
+    expect(
+      (await call(token, 'DELETE', `/api/projects/job/tms/${c.id}`)).statusCode,
+    ).toBe(404);
+    // The memory itself is still there, for whatever else uses it.
+    expect(existsSync(tmFile(alice, 'c'))).toBe(true);
+
+    const db = openProjectDb(projectFile(alice, 'job'));
+    try {
+      const changes = listEvents(db, { subjectType: 'project', subjectId: null }).filter(
+        (e) => e.action === 'project.setting_changed',
+      );
+      // Three attaches, one reorder, one retarget, one detach; refusals log nothing.
+      expect(changes).toHaveLength(6);
+      expect(changes.every((e) => e.actor === `account:${alice.id}`)).toBe(true);
+      expect(verifyAudit(db).brokenAt).toBeNull();
+    } finally {
+      db.close();
+    }
+
+    // Bob cannot reach Alice's project's memories.
+    const bobToken = await login('bob@example.com', 'bob-pw');
+    expect((await call(bobToken, 'GET', '/api/projects/job/tms')).statusCode).toBe(404);
+  });
+
+  it('shows a memory attached from outside the account by no name, never by its path', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    expect((await createProject(token, 'job')).statusCode).toBe(201);
+    const outside = join(dir, 'outside.ctm');
+    createTm(outside, { name: 'outside', generator: 'test' }).close();
+    const db = openProjectDb(projectFile(alice, 'job'));
+    addTmRef(db, { actor: SETUP, path: outside, priority: 1 });
+    db.close();
+    const res = await call(token, 'GET', '/api/projects/job/tms');
+    expect((res.json() as { refs: Ref[] }).refs.map((r) => r.tm)).toEqual([null]);
+    expect(res.body).not.toContain(dir);
+  });
+
+  it('pre-translates the project from its memories', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const { fileId } = await jobWithFile(token);
+    const segment = await firstSegment(token, fileId);
+    const source = plainText(segment.sourceTokens);
+    expect(
+      (
+        await importMemory(
+          token,
+          'prior',
+          tmx([[source, 'Vorher übersetzt']]),
+          'prior.tmx',
+        )
+      ).statusCode,
+    ).toBe(201);
+    await call(token, 'POST', '/api/projects/job/tms', { tm: 'prior' });
+
+    const run = await call(token, 'POST', '/api/projects/job/pretranslate');
+    expect(run.statusCode, run.body).toBe(200);
+    const summary = run.json() as { exact: number; tagdiff: number };
+    expect(summary.exact + summary.tagdiff).toBeGreaterThan(0);
+    const after = await firstSegment(token, fileId);
+    expect(after.targetTokens).not.toBeNull();
+    expect(after.origin).toMatch(/^tm_exact/);
   });
 });
 

@@ -147,7 +147,7 @@ describe('pretranslate', () => {
       targetTokens: [{ t: 'text', v: 'Texto traducido' }],
     });
     tm.close();
-    addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
 
     const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.exact).toBe(1);
@@ -182,7 +182,7 @@ describe('pretranslate', () => {
       targetTokens: [{ t: 'text', v: 'Sin etiquetas' }],
     });
     tm.close();
-    addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
 
     const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.tagdiff).toBe(1);
@@ -225,7 +225,7 @@ describe('pretranslate', () => {
       targetTokens: [{ t: 'text', v: 'Sin etiquetas' }],
     });
     tm.close();
-    addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
 
     const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary).toMatchObject({ exact: 1, tagdiff: 0 });
@@ -273,8 +273,8 @@ describe('pretranslate', () => {
 
     // Registered out of priority order — listTmRefs/attachTms sort by
     // priority regardless of insertion order.
-    addTmRef(db, { path: ctmPath('low.ctm'), priority: 2 });
-    addTmRef(db, { path: ctmPath('high.ctm'), priority: 1 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('low.ctm'), priority: 2 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('high.ctm'), priority: 1 });
 
     pretranslate(db, { actor: TEST_ACTOR });
     const after = getSegment(db, segment.id)!;
@@ -334,7 +334,7 @@ describe('pretranslate', () => {
       targetTokens: [{ t: 'text', v: 'De la memoria' }],
     });
     tm.close();
-    addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
 
     const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.exact).toBe(1);
@@ -378,7 +378,7 @@ describe('pretranslate', () => {
       targetTokens: [{ t: 'text', v: 'Would overwrite the confirmation' }],
     });
     tm.close();
-    addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
 
     const summary = pretranslate(db, { actor: TEST_ACTOR });
     expect(summary.skipped).toBeGreaterThanOrEqual(2); // at least the locked + the confirmed segment
@@ -425,7 +425,7 @@ describe('pretranslate', () => {
       targetTokens: [{ t: 'text', v: 'Texto traducido' }],
     });
     tm.close();
-    addTmRef(db, { path: ctmPath('a.ctm'), priority: 1 });
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
 
     pretranslate(db, { actor: TEST_ACTOR });
     const firstRun = getSegment(db, segment.id)!;

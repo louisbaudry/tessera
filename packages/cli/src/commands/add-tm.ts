@@ -7,20 +7,19 @@ import {
   importSdltm,
   importTmxFile,
   listTmImports,
-  listTmRefs,
+  nextTmPriority,
   openTm,
-  setWriteTarget,
   type TmImport,
 } from '@cat-tool/db';
 
 import {
   CliError,
+  cliActor,
   integer,
   openExistingProject,
   parse,
   positional,
   type CliIo,
-  type ProjectDb,
 } from '../support.js';
 
 export const ADD_TM_USAGE =
@@ -48,9 +47,14 @@ export function addTm(args: readonly string[], io: CliIo): number {
     // Stored absolute: pre-translate re-attaches by this path from
     // wherever it is later run, not from where add-tm happened to be.
     const ctmPath = resolve(prepareMemory(tmPath, io));
-    const priority = requested ?? nextPriority(db);
-    const ref = addTmRef(db, { path: ctmPath, priority });
-    if (values['write-target']) setWriteTarget(db, ref.id);
+    // After every memory already attached, so add-tm order is consultation order.
+    const priority = requested ?? nextTmPriority(db);
+    const ref = addTmRef(db, {
+      path: ctmPath,
+      priority,
+      isWriteTarget: values['write-target'] ?? false,
+      actor: cliActor(),
+    });
     io.stdout(
       `Attached ${ctmPath} as TM #${ref.id} (priority ${priority}` +
         `${values['write-target'] ? ', write target' : ''})`,
@@ -59,11 +63,6 @@ export function addTm(args: readonly string[], io: CliIo): number {
     db.close();
   }
   return 0;
-}
-
-/** After every memory already attached, so add-tm order is consultation order. */
-function nextPriority(db: ProjectDb): number {
-  return listTmRefs(db).reduce((max, ref) => Math.max(max, ref.priority), 0) + 1;
 }
 
 /** Returns the path of a `.ctm` ready to attach, importing into one if needed. */

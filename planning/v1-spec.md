@@ -283,7 +283,7 @@ browser never touches SQLite.
 | `POST /api/logout` | revokes the bearer session |
 | `GET /api/me` | the account, without its password hash or storage root |
 | `GET /api/projects` | every project under the account's root: `{name, project, fileCount}` |
-| `POST /api/projects` `{name, srcLang, tgtLang, title?}` | creates `<root>/projects/<name>.catdb` with its identity row (`createProject`); 409 if it exists |
+| `POST /api/projects` `{name, srcLang, tgtLang, title?, writeTm?}` | creates `<root>/projects/<name>.catdb` with its identity row (`createProject`); 409 if it exists. `writeTm` (backlog #32) attaches that memory first, as the write target, creating it empty if the account has none by that name (§7.5) |
 | `GET /api/projects/:name` | identity plus files (`id`, `relPath`, `importedAt`, `segmentCount`) |
 | `POST /api/projects/:name/files` (multipart: one DOCX, optional `relPath` field) | `assembleFile` + `insertFile`, exactly `add-file` (§2.4); 409 on a duplicate `rel_path`, 422 on a source language `rulesFor` refuses |
 | `GET /api/projects/:name/files/:id/segments` | the file's `Segment[]` as stored |
@@ -291,6 +291,14 @@ browser never touches SQLite.
 | `DELETE /api/projects/:name` | deletes the `.catdb` (and its log with it); 204 — backlog #57 |
 | `GET /api/projects/:name/files/:id/export` | the delivered DOCX, `exportFile`, exactly `export` (§2.4) — backlog #57 |
 | `PUT /api/projects/:name/segments/:id` `{targetTokens, baseUpdatedAt?}` | the translator's edit: `editSegmentTarget` (§7.2) — what they placed, hidden tags carried, status and origin derived, QA rerun; tokens shape-checked (`parseTokens`); a `status` or `origin` in the body refused (400), a tag structure export could not render refused (400), a write over a newer version refused (409, with the segment as it is), a locked segment 409; → `{segment, changed, rerun, issues}` — backlog #57, reshaped by #29 |
+| `GET /api/tms` | the account's memories: `{slug, uuid, name, langs, units, createdAt}` (`describeTm`) — backlog #32, §7.5 |
+| `POST /api/tms` `{name}`, or multipart `name` + one `.tmx`/`.sdltm` | a new memory `<root>/tms/<name>.ctm`, empty or imported (`importTmxFile`/`importSdltm`); 409 if it exists, 415 another format, 422 an import that failed (no memory left behind) |
+| `GET /api/projects/:name/tms` | the attached memories in consultation order: `{id, tm, priority, writeTarget, enabled}`, `tm` a slug or `null`, never a path |
+| `POST /api/projects/:name/tms` `{tm, writeTarget?}` | attaches one after the rest (`addTmRef`); 404 no such memory, 409 already attached |
+| `PUT /api/projects/:name/tms` `{order}` | every ref id once, first consulted first (`reorderTmRefs`); 400 otherwise |
+| `POST /api/projects/:name/tms/:refId/write-target` | `setWriteTarget` |
+| `DELETE /api/projects/:name/tms/:refId` | `removeTmRef`; the memory itself stays |
+| `POST /api/projects/:name/pretranslate` | `pretranslate` over the whole project, exactly `pretranslate` (§2.4); → its counts |
 
 Decisions, so they are not re-derived:
 
@@ -334,9 +342,8 @@ Decisions, so they are not re-derived:
 
 Not here: the SPA. `@cat-tool/web` starts with #28, where there is a
 grid to show; a login page with nothing behind it would be scaffolding.
-Also not here: pre-translate, QA and TM routes — #32's management UI
-is where they get a caller, and each is one repository call away when
-it does. Export, project deletion and the segment write arrived with
+Pre-translate and the TM routes arrived with #32's management UI
+(§7.5), their first caller; a whole-project QA run is still the CLI's. Export, project deletion and the segment write arrived with
 backlog #57, whose audit trail needed a download and an edit to
 record; the editor (#28+) is the segment route's real caller.
 
@@ -1377,8 +1384,8 @@ listener; the exported DOCX well-formed with no run inside a run.
   version check and a QA rerun, since `seg.empty` and its kin read the
   status. Confirming a confirmed segment writes nothing (`changed:
   false`). A project with no enabled write-target memory refuses with a
-  409 naming it (`ConfirmError`), and a server-created project has none
-  until backlog #32.
+  409 naming it (`ConfirmError`); a server-created project has one when
+  it was created with one, as the SPA's form does by default (§7.5).
 - **The save queue orders it** (`save-queue.ts`): after every write of
   that segment already asked for, on the version the last returned;
   dropped, never sent, if one of those writes fails or another is asked
@@ -1464,6 +1471,65 @@ one, `Ctrl+Shift+M` splits one at a caret. The pure policy was #14
   place of the ones asked about, and those that are gone; the grid swaps
   them into its list, moves the queue's cached versions, and keeps the
   first half open when it was open.
+
+### 7.5 Projects and memories (`@cat-tool/server`, `@cat-tool/web`, backlog #32)
+
+The screens that make what the grid opens: a project, its documents,
+and the memories it consults. Every write is a repository call with
+HTTP around it (§2.5); what follows is what had to be decided.
+
+- **A memory is the account's, not a project's.** One `.ctm` per
+  memory at `<root>/tms/<slug>.ctm`, beside `projects/`, attached to
+  as many projects as use it — the multilingual memory of §4.2, which
+  outlives any one job. The slug alphabet is the project's, and is one
+  definition (`isSlug`, `core/model/slug.ts`) for the server, which
+  builds paths from it, and the SPA, which checks and suggests names.
+- **The API speaks slugs, never paths.** `tm_ref.path` stays the
+  absolute path the server built (the CLI's convention, which
+  `attachTms` reads); a route answers with the slug that path is in the
+  account's `tms/` directory, or `null` for a memory attached from
+  anywhere else (by the CLI). A path would show the storage root, which
+  no response does (§2.5). A deployment that moves the volume (#36)
+  moves every stored path with it — recorded here, not solved.
+- **A project is born with its write memory, by default.** #30 found
+  every server-created project refusing `Ctrl+Enter`, because nothing
+  could attach a write target; which memory, then, is the question this
+  card had to settle. `POST /api/projects` takes `writeTm`, attached
+  first as the write target and created empty if new, all inside the
+  creation. The form proposes a new memory named after the project (the
+  slug follows the title, the memory the slug, until either is edited)
+  and lists the account's memories to pick one instead; emptying it
+  creates the project without one, as the API does when it is left out.
+  A memory per project is the default rather than the rule because a
+  translator's real asset is one memory per client or domain, which
+  this lets them choose from the first project on.
+- **Priority is an order, not a number.** The screen moves a memory up
+  or down; the server takes the whole order (`reorderTmRefs`: every ref
+  once, renumbered 1…n) — a partial renumbering could leave two at one
+  priority, and §4.1's tie-break would then depend on row order.
+- **Every change to the list is in the project's log**
+  (`project.setting_changed`, key `tm_refs`, audit-spec §2.4): the whole
+  list before and after, in the same transaction as the change, its
+  actor the session's. A pre-translate already named the memories it
+  read; now so is every attach, move, retarget and detach between runs.
+- **Detaching never deletes.** The `.ctm` may serve other projects;
+  deleting a memory is not here (nor is deleting a document, nor a
+  memory's resumable import): each wants its own decision about what
+  depends on it.
+- **An import happens in the request.** The upload streams to a file
+  under the account's root with a name the server minted (the portal's
+  rule: an uploaded filename never becomes a path), is imported into a
+  new memory, and is deleted after. The cap is 2 GiB, against a
+  document's 100 MB. An import that fails leaves no memory, unlike the
+  CLI, which keeps an interrupted TMX import's units for `resume`:
+  resuming across requests, and an import that outlasts one, are
+  backlog #16a's (off-thread bulk operations). The memory records the
+  client's filename as its import's source, not the minted one
+  (`importTmxFile`'s `sourceName`).
+- **Documents go up one request each**, in the order chosen, a failure
+  naming its file without stopping the rest.
+- **Pre-translate is the whole project**, from the project screen, and
+  its counts are the answer; the grid shows the result when opened.
 
 ---
 

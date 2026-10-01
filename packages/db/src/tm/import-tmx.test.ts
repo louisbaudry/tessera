@@ -385,6 +385,12 @@ describe('importTmxFile (backlog #18c)', () => {
     expect(run!.finishedAt).not.toBeNull();
   });
 
+  it('records the name it is given for a file stored under another', () => {
+    const { db, path } = withFile(tmx(unit(1)));
+    importTmxFile(db, path, { sourceName: 'Client A.tmx' });
+    expect(listTmImports(db)[0]!.sourceName).toBe('Client A.tmx');
+  });
+
   it('decodes a multi-byte character split across chunk boundaries', () => {
     const text = 'caf\u00E9 \u65E5\u672C\u8A9E \u{1F600}';
     const { db, path } = withFile(tmx(unit(1, text)));

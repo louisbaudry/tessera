@@ -313,11 +313,18 @@ rather than re-decide:
 - **Export records at production.** `exportFile` returns the bytes and
   writes `project.exported` with their SHA-256; what the caller does
   with them is outside the file.
-- **Not yet audited**: the settings writes (`qa_rule_setting`,
-  `tm_ref`, `glossary_ref`, the untranslated allowlist) and QA
-  dismissals. `project.setting_changed` exists in the vocabulary, but
-  its `key` names are a design of their own; recorded as a follow-up
-  rather than guessed here.
+- **`tm_ref` writes** (backlog #32, the first settings write with a
+  server route) are one `project.setting_changed` each, key `tm_refs`,
+  `from` and `to` the whole list — `{id, path, priority, write_target,
+  enabled}` per row, in consultation order. A whole-list snapshot rather
+  than a key per row or per field: the list is one setting (its order
+  *is* the priority), each event starts where the previous one ended,
+  and "which memories did this project use on that day" is one row
+  lookup. The CLI's `add-tm --write-target` is one event, not two.
+- **Not yet audited**: the other settings writes (`qa_rule_setting`,
+  `glossary_ref`, the untranslated allowlist) and QA dismissals. Their
+  `key` names are a design of their own; `tm_refs` is the pattern to
+  weigh first, not a rule already made.
 
 ### 2.5 In `platform.sqlite` (backlog #57)
 
