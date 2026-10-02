@@ -8,9 +8,9 @@
  * nothing to migrate away from yet.
  *
  * What this module does *not* do: the project-token ↔ `TmToken` mapping
- * (#15c, done — `@cat-tool/core/tm/mapping.ts`), merge (#15d), and the
- * pair-retrieval query (#15e, done — `retrieve.ts`). Each is its own
- * backlog item, deliberately.
+ * (#15c, done — `@cat-tool/core/tm/mapping.ts`), merge (#15d, done —
+ * `merge.ts`), and the pair-retrieval query (#15e, done — `retrieve.ts`).
+ * Each is its own backlog item, deliberately.
  */
 
 import { NORMALIZER_VERSION } from '@cat-tool/core';

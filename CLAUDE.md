@@ -209,8 +209,10 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
   `(db, params, options: { schema? })`** — a third argument, not a field
   stuffed into `params` — matching `qualifySchema` above. `tm/retrieve.ts`'s
   `retrievePair` and `glossary/terms.ts`'s `findRendering` both follow
-  this; a new priority-ordered cross-file query (a future `.ctm` merge,
-  #15d) should too, rather than inventing its own shape.
+  this; a new priority-ordered cross-file query should too, rather than
+  inventing its own shape. (`mergeTm` is the exception that proves it: a
+  merge is a _write_ into one file from another, so it takes the source's
+  path and attaches it under its own alias, read-only by construction.)
 - **`core`'s internal layering is one-directional: `model/` → (`docx/`,
   `segment/`) → `project/`.** `model/` is the base layer — nothing may be
   imported into it from any other `core` module, Node or a package (a
@@ -548,6 +550,17 @@ constraint and dependency isolation:
   units and an incomplete `tm_import` row (`finished_at IS NULL`), which
   `resume` continues. Why an import may be incomplete when a merge may
   not is `tm-format-spec.md` §12.4; don't "restore" one transaction.
+- **A `.ctm` merge (`mergeTm`, backlog #15d) is one transaction and never
+  writes its source**; `tm-format-spec.md` §7's implementation note has
+  every rule. The two that cost a design pass: a variant's winner is the
+  greater by `rev`, then `updated_at`, then _content_ (so the outcome never
+  depends on which file is the destination), and a diverged tie at the
+  same `rev` is stored at `rev + 1` — retaining the loser at the shared
+  `rev` would put a `tuv_history` row at the slot `writeBack`'s next edit
+  retains into, and that insert would throw. Anything new that writes
+  `tuv_history` must respect the `(tuv_id, rev)` key the same way. A
+  `.ctm` has no `audit_event`, so a merge leaves its trace in the
+  retained revisions only.
 - **Schema and repository** — `db/tm/schema.ts` owns `.ctm` schema versioning
   and writes through the shared migration runner. Pair retrieval
   (`retrievePair`) lives in `db/tm/retrieve.ts`, not in `core`.
