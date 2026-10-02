@@ -587,6 +587,92 @@ translator on two machines, or an agency handing a memory to a freelancer
 and taking it back — exactly the transferable-licence workflow in the
 commercial wedge.
 
+**Implementation note (#15d, `db/tm/merge.ts`).** What building it settled
+that the rules above leave open:
+
+- **The shape is `mergeTm(db, sourcePath, { actor })`:** the destination
+  is the open connection, the source is attached under one alias and only
+  ever `SELECT`ed from, and the whole merge is one transaction — §12.4's
+  "what stays all-or-nothing", since a half-applied merge leaves variants
+  resolved against a memory that no longer exists. The source file is never
+  written (a test compares its digest). Two copies of one memory share a
+  `tm.uuid`, and merging them is the point, so a shared uuid is not a
+  refusal; the same _file_ (by real path) is a no-op.
+- **Refused up front, before anything is written:** a source that is not a
+  `.ctm` (`application_id`), is a newer format than this build, or was
+  hashed under a different `normalizer_version` (§2.1: every stored hash
+  would be silently wrong); and a destination with `read_only` set.
+- **The variant rule, made total.** §7 reads "same `rev` → identical, no
+  action" and then "on a tie, later `updated_at` wins", which only makes
+  sense if two variants at the same `rev` can differ — and they can: two
+  copies each edited once from the same ancestor are both at `rev` 2. So:
+  a variant wins by `rev`, then `updated_at`, then — so that the result
+  never depends on which file is the destination — by its content
+  (`tokens`, `quality`, `prev_hash`, `next_hash`, in that order). A loser
+  whose content equals the winner's is not retained: there is nothing in it
+  to keep. A loser that differs is retained in `tuv_history` at its own
+  `rev`, stamped with the merge's time and actor, as `writeBack` stamps a
+  superseded revision.
+- **A diverged tie takes a new revision.** When the two are at the same
+  `rev` and differ, the winner is stored at `rev + 1` and the loser sits
+  in history at the old one. Keeping the winner at the shared `rev` would
+  have left a history row at exactly the `rev` the winner's _next_ edit
+  retains, and `writeBack`'s insert would then fail on
+  `tuv_history`'s `(tuv_id, rev)` key. Found while designing the rule, not
+  by a failure; there is a test for the edit that follows a merge.
+- **History is the union of both, and the key has a limit.** Each side's
+  `tuv_history` rows are copied across, a row already there with the same
+  content is skipped, and `INSERT OR IGNORE` decides the rest. Two
+  _diverged_ lineages that both passed through the same `rev` (A:
+  1→2→3, B: 1→2′) want one `(tuv_id, rev)` slot for two different
+  revisions: the destination's stays, and the merge **says so**
+  (`historyConflicts` in its result) — the source file still holds the
+  other, because the merge never writes to it. Widening the key would be a
+  format change (§9); it is recorded here, not made.
+- **Tombstones never resurrect:** `deleted` is the OR of the two, and
+  `rev` and `updated_at` the larger. A unit in one file only is copied with
+  its variants, attributes and history, deleted or not.
+- **Unit attributes** (`tu_attr`) are the union of keys; where a key has
+  two values the unit with the higher `rev`, then later `updated_at`, then
+  greater value wins. There is no attribute tombstone, so a key removed on
+  one side comes back from the other: recorded, not solved.
+- **Counters and creation facts take the value that makes a merge
+  idempotent:** `usage_count` the larger (a sum would double on every
+  re-merge), `last_used_at` the later, `created_at` the earlier,
+  `created_by`/`origin_*` the lesser when both are set. A language present
+  in one memory only is copied across, which is the multilingual case §7
+  names; the destination's `tm.langs` is recomputed (`refreshLangs`).
+- **Different `uuid`, same hash: both kept.** The merge keys on `uuid` and
+  never on `hash`, so there is nothing that could collapse them; it is
+  tested rather than assumed.
+- **Derived data is not merged:** a vector (§2.8) is of one `plain`, so a
+  variant whose text the source's wins over loses the destination's
+  vectors in the same transaction (§2.8.3), and no vector is copied across;
+  the full-text index follows `tuv` through its triggers. `seg_profile`
+  rows for a language the destination lacks are copied; where both have
+  one and they differ, the destination's stays and the merge says so —
+  which rules a memory segments by is not something a merge can judge.
+- **Commutative in content, not in provenance.** Merging A into B and B
+  into A gives memories whose units, variants, attributes and history
+  (`tuv_history`'s `rev`, `tokens`, `quality`) are equal; what differs is
+  the stamp the retained rows carry (when, by whom the merge ran), and the
+  history conflicts above, which are reported. The test says exactly that.
+- **Cost, measured once, synthetic:** a source of 50,000 units (half new,
+  half overlapping with an edit) folds in in 0.8 s, and of 200,000 in 3.9 s
+  — about 20 µs per source unit, linear, on the development machine with
+  two-variant units and tiny text. Merging the same source again takes
+  0.25 s and 0.9 s and writes nothing. The cost is the one pass over the
+  source's rows; every lookup into the destination is a seek on `tu.uuid` or
+  `(tu_id, lang)`. A merge of a million-unit memory is therefore
+  about twenty seconds of one write transaction, which is why it is
+  all-or-nothing and, like `VACUUM`, a candidate for the off-thread work in
+  backlog #16a. It is not in `pnpm bench:tm`, which measures retrieval.
+- **No `audit_event`: a `.ctm` has no such table** (`audit-spec.md` §8,
+  item 3 — `.ctm` is frozen, and giving it a log is a format change with
+  its own spec). The trace a merge leaves is the retained revisions in
+  `tuv_history`, with the merging actor's label. A required `actor` is
+  taken anyway, so the call is already shaped for the log when it exists.
+
 ---
 
 ## 8. TMX interoperability

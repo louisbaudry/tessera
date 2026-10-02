@@ -536,11 +536,62 @@ remapped onto a *different* document whose bold run is bold+italic —
 the rendered output carries the receiving document's `<w:b/><w:i/>`
 run, not the origin's plain `<w:b/>`.
 
-**#15d · Merge two `.ctm` files · M** · [issue #3]
-`uuid` + `rev` resolution, tombstone propagation, history retention,
-same-hash-different-uuid kept as distinct units (format spec §7).
-*Done when:* merging a file with itself is a no-op, and merge is
-commutative on the test corpus.
+**#15d · ~~Merge two `.ctm` files~~ · DONE — `db/tm/merge.ts` (`mergeTm`)**
+`mergeTm(db, sourcePath, { actor })` folds a source memory into the open
+destination in one transaction: units by `uuid`, variants by `lang`,
+the loser kept in `tuv_history`, tombstones never resurrecting, a
+language in one file only copied across, same hash under different
+`uuid` kept as two units. Set-based SQL over two temporary maps of what
+lines up with what, never a row at a time through JS; the source is
+attached and only ever read. 34 tests in `db/tm/merge.test.ts`.
+*Done when:* merging a file with itself is a no-op (the same file by
+real path, and an identical copy, which changes no row), and merge is
+commutative on a corpus built to need it (shared, edited both sides,
+diverged at the same rev, tombstoned, attribute-conflicting, and
+language-disjoint units) — equal in units, variants, attributes and
+`tuv_history`'s content, up to the stamp of the merge itself. Every
+decision is in `tm-format-spec.md` §7's implementation note. Worth
+remembering:
+- **§7's variant rule contradicts itself, and the fix was the design.**
+  "Same `rev` → identical, no action" and then "on a tie, later
+  `updated_at` wins" only fit together if two variants at one `rev` can
+  differ, and they can: two copies each edited once from a shared
+  ancestor are both at `rev` 2. So the winner is the greater by `rev`,
+  then `updated_at`, then content — the last so the result never depends
+  on which file is the destination, which is what commutativity needs
+  and the spec's rule left to chance.
+- **A diverged tie takes a new revision, found by reading `writeBack`,
+  not by a failure.** Retaining the loser in history at the shared `rev`
+  would put a row at exactly the slot the winner's _next_ edit retains
+  into, and `writeBack`'s insert would then fail on `tuv_history`'s
+  `(tuv_id, rev)` key — a merge that works, followed by an ordinary
+  confirm that throws. The winner is stored at `rev + 1` instead; there is
+  a test for the edit after the merge.
+- **`tuv_history`'s key has a limit a merge can hit, and says so.** Two
+  diverged lineages that both passed through one `rev` want one slot for
+  two revisions. The destination's stays and `historyConflicts` counts
+  the other, which the source file still holds because the merge never
+  writes to it. Widening the key is a format change; recorded, not made.
+- **The tests were wrong twice in the direction that hides bugs.**
+  Both directions of the commutativity check merged the second side from
+  a file already merged into, so they converged trivially; a mutation
+  (removing the content tie-break) survived the suite until they were
+  rewritten to start from pristine copies. Mutating the subtle rules —
+  the tie bump, the tie-break, the tombstone OR, a counter — and
+  watching the suite fail is how the corpus was shown to be doing
+  anything. The first run also found a real bug (an ambiguous column in
+  the change check) and one the platform caused (`ATTACH` of a
+  non-database fails before the "not a .ctm" check runs).
+- **No `audit_event`, deliberately:** a `.ctm` has none (`audit-spec.md`
+  §8, item 3), so the trace is the retained revisions in `tuv_history`,
+  stamped with the merging actor's label. `actor` is a required
+  parameter anyway. Giving `.ctm` a log is a format change for Louis to
+  decide, not a rider on this card.
+- **Not built, and nothing asks for it yet:** a CLI command and a server
+  route (the CLI's rule is one repository call per command, so either is
+  a thin wrapper when a consumer exists), attribute tombstones (a key
+  removed on one side comes back from the other), and compaction of
+  tombstones (§7: explicit, never implicit).
 
 **#16 · ~~Repositories~~ · DONE — `@cat-tool/db/project/*`**
 Typed CRUD over projects, files, segments, TM refs, QA issues.
