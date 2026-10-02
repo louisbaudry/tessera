@@ -4,6 +4,8 @@
  * be absent or throw, and then the preference lasts as long as the page.
  */
 
+import { parseThemeChoice, type ThemeChoice } from './theme.js';
+
 const FULL_TAGS = 'cat-tool.fullTags';
 
 /** Whether chips show their formatting in words (v1-spec.md §7.2). */
@@ -41,5 +43,25 @@ export function saveQaPanel(open: boolean): void {
     else localStorage.removeItem(QA_PANEL);
   } catch {
     // Not persisted; the panel still opens for this page.
+  }
+}
+
+const THEME = 'cat-tool.theme';
+
+/** The colour theme choice (backlog #35); `system` when none is stored. */
+export function loadTheme(): ThemeChoice {
+  try {
+    return parseThemeChoice(localStorage.getItem(THEME));
+  } catch {
+    return 'system';
+  }
+}
+
+export function saveTheme(choice: ThemeChoice): void {
+  try {
+    if (choice === 'system') localStorage.removeItem(THEME);
+    else localStorage.setItem(THEME, choice);
+  } catch {
+    // Not persisted; the theme still applies for this page.
   }
 }

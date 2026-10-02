@@ -1,6 +1,7 @@
 /*
- * Colours are tokens so the visual pass (backlog #35) can add a dark
- * theme by redefining them, not by touching a rule.
+ * Colours are tokens, and the dark theme (backlog #35) is the second
+ * block below redefining them — no rule names a colour. `theme.ts` sets
+ * `data-theme` on the root from the viewer's choice and the OS.
  */
 :root {
   --bg: #fbfbfa;
@@ -10,6 +11,7 @@
   --border: #e5e7eb;
   --row-alt: #f7f7f5;
   --accent: #2f5fd0;
+  --on-accent: #ffffff;
   --chip-bg: #e8eefc;
   --chip-text: #2f4f9e;
   --status-draft: #b7791f;
@@ -20,6 +22,7 @@
   --qa-warning: #b7791f;
   --qa-info: #6b7280;
   --gutter-width: 9.5rem;
+  color-scheme: light;
 
   font-family:
     system-ui,
@@ -30,6 +33,27 @@
   line-height: 22px;
   color: var(--text);
   background: var(--bg);
+}
+
+:root[data-theme='dark'] {
+  --bg: #16181d;
+  --surface: #1e2128;
+  --text: #e4e6eb;
+  --muted: #9aa1ad;
+  --border: #323843;
+  --row-alt: #1a1d23;
+  --accent: #7ba0f5;
+  --on-accent: #101828;
+  --chip-bg: #2a3350;
+  --chip-text: #b6c9fb;
+  --status-draft: #e0a84a;
+  --status-translated: #7ba0f5;
+  --status-confirmed: #5cc08a;
+  --status-locked: #9aa1ad;
+  --qa-error: #f07676;
+  --qa-warning: #e0a84a;
+  --qa-info: #9aa1ad;
+  color-scheme: dark;
 }
 
 * {
@@ -64,7 +88,7 @@ button {
   border: 1px solid var(--accent);
   border-radius: 6px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
 }
 
@@ -117,6 +141,7 @@ button.link {
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
+  background: var(--surface);
 }
 
 /* --- shell -------------------------------------------------------- */
@@ -319,7 +344,7 @@ button.link {
   border-radius: 999px;
   font-size: 0.7rem;
   line-height: 1.25rem;
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .gutter .qa-error {
@@ -392,6 +417,8 @@ button.link {
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
 }
 
