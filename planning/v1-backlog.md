@@ -2680,9 +2680,40 @@ Split so the headless part does not wait on the editor:
     and the tests _passed_ that way — the bytes were right, the source
     was the fragile form the gotcha warns about. Caught by checking the
     file's bytes, not by any test; rewritten as literal escapes.
-- **#40 · Candidate extraction + flagging · M** · [issue #24] — buildable
-  now, deterministic; the aligner is a seam (`TermAligner`), `core` ships
-  only the static test implementation.
+- **#40 · ~~Candidate extraction + flagging~~ · DONE — `core/glossary/`
+  (`candidates.ts`, `align.ts`, `flag.ts`, `stopwords.ts`)**
+  `extractCandidates` (Stage 1), the `TermAligner` seam with
+  `StaticTermAligner` and `alignRequestFor` (Stage 2), `flagTerms` and
+  `toSessionFlag` (Stage 3, and the join to #41's `SessionFlag`), and
+  stopword lists for the seven v1 languages. 47 new tests in
+  `core/glossary/`, 8 in `core/project/glossary-candidates.test.ts`.
+  _Done when:_ a hand-built EN→ES draft with "invoice" rendered two ways
+  and "customer" one way flags exactly "invoice" and nothing else (run
+  through extraction, the static aligner and `flagTerms`); recurring
+  honorifics and place names (`Mons.`, `Excmo.`, `Sevilla`, `Santa Cruz`)
+  are found, and no stopword begins or ends a term. Decisions are in
+  `smart-glossary-spec.md` §4's implementation note. Worth remembering:
+  - **The "manuscript fixture" in the done-when could not be used for what
+    it named.** The DOCX corpus is synthetic text, so `footnotes-manuscript`
+    has no `Mons.` to find — its repeated "terms" are the synthesiser's
+    (`feto`, `tijamobupec`). The honorific and place-name cases are
+    sentences in the unit tests instead, and the fixture test proves only
+    what holds for any text at real scale (no stopword at an edge, at most
+    three words, ascending segments, the same every run). Which terms a
+    real manuscript has, and the right `minOccurrences`, are still open
+    (spec §10.1) and need the owner's own file.
+  - **Absorption by occurrence, not by candidate** — "invoice" ×5 with
+    "tax invoice" ×4 is dropped, not kept alongside it (spec note). A
+    four-word name fragments into two overlapping terms at the default
+    `maxWords` of 3; tested, and recorded rather than fixed.
+  - **Seven of eighteen first-draft tests failed, every one a wrong
+    expectation, not wrong code**: a longer term absorbing its parts,
+    `Total` displayed as first written, a stopword _inside_ a term being
+    legal. Writing them was how the absorption rule got decided; the
+    rule is in the spec because the tests would otherwise be its only
+    statement.
+  - **Wiring is left to #42/#43.** The glossary reaches `flagTerms` as a
+    function (`GlossaryLookup`), so nothing here opens a `.ctg`.
 - **#41 · ~~Session state machine~~ · DONE — `core/glossary/session.ts`, `db/glossary/session.ts`**
   `GlossarySession` is the panel's state, pure: each flag is `flagged`,
   `decided`, `proposed` or `skipped`, and changes state (or `reopen`s)
