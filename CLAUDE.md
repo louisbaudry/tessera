@@ -29,7 +29,7 @@ every session. They cover:
   Spanish); one question at a time, always with options and a
   recommendation; fact, inference and guess kept apart.
 - **Git and pull requests** — never merge without being asked (except
-  in autonomous mode, which this repo runs in); one task,
+  with `Continuous mode: true`, which this repo sets); one task,
   one branch, one PR (`Closes #NN`); branch from `main` and merge back
   promptly; one session at a time on one area; check open PRs and
   unmerged branches before starting; file something broken that isn't
@@ -45,8 +45,8 @@ every session. They cover:
 - **Public repositories** — no personal or client data, credentials or
   internal hostnames, in any form.
 
-**This repo runs in autonomous mode** (trial started 2026-10-01; see the
-shared rules' _Autonomous mode_ section). Take cards one after another:
+**Continuous mode: true** (trial started 2026-10-01; see the shared
+rules' _Continuous mode_ section). Take cards one after another:
 merge each PR yourself once the full gate passes, CI is green and nothing
 in it needs Louis, then take the next. Stop and ask Louis only in the
 cases the shared rules list. Any other question becomes an issue, not a
@@ -94,7 +94,7 @@ under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
    code lives, keep what it taught (a bug caught, a design choice made),
    and drop the issue link. Its **status** is the issue's job, never the
    file's; `v1-backlog.md`'s own header states the two heading forms.
-3. **Merge your own ready PR (autonomous mode, above); branch from
+3. **Merge your own ready PR (`Continuous mode: true`, above); branch from
    `main`** — both shared rules. The branch one was learned here: `main` quietly
    stopped being trunk once already — a PR reading "closed unmerged"
    while its code was live, and `main` a whole epic behind the real
