@@ -171,6 +171,25 @@ jobs:
       - name: Golden end-to-end
         run: pnpm test:golden
 
+  # 🐳 THE CONTAINER IMAGE — backlog #36.
+  #
+  # Builds the image from the Dockerfile and runs it against a throwaway
+  # volume: the SPA is served, login works, and the account survives the
+  # container being replaced. Nothing else runs the Dockerfile, so without
+  # this job it would rot until deploy day. Same positive condition as the
+  # gate and golden jobs, so a skipped run never reads as a green one.
+  image:
+    name: 🐳 container image
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and smoke-test the image
+        run: scripts/smoke-image.sh
+
   # Placeholder for backlog #3's second half: once @cat-tool/desktop exists,
   # build and smoke-run the *packaged* app on all three platforms and open a
   # .ctm file. better-sqlite3 is a native module and its Electron ABI

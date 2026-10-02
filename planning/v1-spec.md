@@ -1064,8 +1064,9 @@ they are not re-derived:
   (login, project/file picker, grid) are a hash (`#/p/<name>/f/<id>`)
   and a `useState`. Each earns its dependency when a screen needs it.
   In development Vite proxies `/api` to the server on `:3400`; serving
-  the built SPA from the server process is #36's, where the container
-  image is.
+  the built SPA from the server process is #36a's: with `CAT_WEB_DIR`
+  set the server serves `/` and `/assets/` from that directory and
+  nothing else, and the container image sets it.
 - **`@cat-tool/web` imports `core` for types only** — except
   `@cat-tool/core/model`, the token model and tag rules, since #29
   (§7.2). `core`'s index pulls in `node:crypto` (credentials), the DOCX

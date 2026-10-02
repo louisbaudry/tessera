@@ -2386,11 +2386,41 @@ verified: a by-eye contrast pass over the grid on a real project.
 
 ## Epic 7 — Ship to self
 
-**#36 · Deploy · M** · [issue #21]
-One container image (server + built SPA), one deployment target with a
-persistent volume for `platform.sqlite`, project `.catdb` files, and
-`.cattm` files. HTTPS in front of it. Superseded electron-builder plan
-(three-platform installers) — a web service ships once, to one place.
+**#36 · Deploy · M** — phased: `#36a` is built, `#36b` is open.
+
+**#36a · ~~Container image~~ · DONE — `Dockerfile`, `scripts/smoke-image.sh`,
+`ci.yml`'s `🐳 container image`, `server/src/app.ts`'s `webDir`**
+One image holds the server and the built SPA. The server serves the
+bundle itself when `CAT_WEB_DIR` is set (`@fastify/static`, a fixed
+root: no request names a path, §2.5); the SPA routes by hash, so `/`
+and `/assets/` are all there is to serve and an unknown path is a 404,
+never a fallback `index.html`. Everything the server writes is under
+`/data` (`platform.sqlite` and every account's storage root), the one
+volume. The runtime stage is `pnpm deploy --prod --no-optional --legacy`
+of the server: its production dependencies with `core` and `db` copied
+in as built, and the bench's `hnswlib-node` (a node-gyp build the server
+never loads) left out. `create-account` runs in the image the way it
+does anywhere (`node dist/create-account.js <email> <password>`).
+The smoke test builds the image, creates an account on a throwaway
+volume, checks `/` is the SPA and `/api/me` is behind the gate, logs in,
+then destroys the container and starts a new one on the same volume and
+logs in again — the volume is the whole point. It is its own CI job on
+the gate's condition, because nothing else runs the Dockerfile and it
+would rot until deploy day. What this does not settle: §4.2's note that
+a moved volume moves every stored `tm_ref.path` with it still stands,
+and the image does not terminate HTTPS — the host's proxy does.
+*Verified:* `pnpm deploy`'s layout run locally (server up, SPA
+served, login); the Docker build and the smoke script run only in CI,
+where the daemon is.
+
+**#36b · Deploy to a target · S** · [issue #21]
+Pick the one deployment target (a host with a persistent volume and
+HTTPS in front), run the image there, create the one account, and
+confirm the first real login. Outward-facing, and the target is
+Louis's choice, so it waits for him. Superseded the electron-builder
+plan (three-platform installers) — a web service ships once, to one
+place. Pairs with backlog `#3`'s remaining scope (one build target, a
+smoke test of the built image) — the smoke test is now `#36a`'s.
 
 **#37 · 🏁 Real job dogfood · L** · [issue #22]
 Translate and deliver one real paid multi-file client job end to end.

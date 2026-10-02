@@ -11,6 +11,12 @@ describe('loadConfig', () => {
     expect(isAbsolute(config.dbPath)).toBe(true);
     expect(config.dbPath.endsWith('platform.sqlite')).toBe(true);
     expect(isAbsolute(config.storageRoot)).toBe(true);
+    expect(config.webDir).toBeUndefined();
+  });
+
+  it('serves the SPA only when CAT_WEB_DIR is set and non-empty', () => {
+    expect(loadConfig({ CAT_WEB_DIR: '' }).webDir).toBeUndefined();
+    expect(loadConfig({ CAT_WEB_DIR: '/srv/web' }).webDir).toBe(resolve('/srv/web'));
   });
 
   it('reads every value from the environment', () => {
