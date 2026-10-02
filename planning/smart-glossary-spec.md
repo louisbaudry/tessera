@@ -316,6 +316,62 @@ Not flagged: one consistent, confident rendering that matches the
 glossary or has no entry. The aim is a panel with the five decisions
 worth making, not fifty.
 
+**Implementation note (#40).** What the build settled that §4's sketch
+left open:
+
+- **What a word is** (`candidates.ts`): letters and digits, with `-` and
+  `.` allowed _inside_ (`e-mail`, `U.S`, `3.5`) and never at the end, so
+  `Mons.` is the word `Mons` and its full stop is punctuation. Between two
+  words of one n-gram there may be only spaces or an apostrophe (an
+  elision: `l'accord` is `l` and `accord`); a comma, quote, bracket, dash or
+  full stop ends the run, so a term never spans a clause ("invoice, tax" is
+  not one). A number alone is never a term and ends the run.
+- **Absorption is by occurrence, not by candidate.** §4.1's rule ("tax
+  invoice" ×4 suppresses "invoice" ×4, not "invoice" ×7) is implemented as:
+  every sub-span of every _qualifying_ multi-word occurrence is covered, and
+  a shorter candidate stays only if its **uncovered** occurrences still
+  reach `minOccurrences`. That agrees with both of §4.1's examples and
+  also decides the case between them — "invoice" ×5 with "tax invoice" ×4
+  has one left over and is dropped, since it is no longer repeated on its
+  own and would otherwise be a second decision about one thing. A term
+  with a stopword _inside_ ("cruz de tenerife") is a term; one that begins
+  or ends with one is not.
+- **A four-word name is two terms at the default `maxWords` of 3.** "Santa
+  Cruz de Tenerife" gives "santa cruz" and "cruz de tenerife", overlapping,
+  and the panel offers both. `maxWords: 4` keeps it whole (and is tested).
+  The default stays at §4.1's 3 until a real manuscript says which costs
+  more: a four-word default makes every prepositional phrase a candidate.
+- **Occurrences count every occurrence; `ords` name each segment once.**
+  Locked segments are skipped, as are a text box's `mc:Fallback` copies —
+  the twin's duplicate would count every term in it twice, as it would a
+  word (backlog #34). Result order is most occurrences, then longer, then
+  by key, so a run reads the same as the last.
+- **Stopwords are data, and the lists are small on purpose**
+  (`stopwords.ts`): function words only, plus the bare stems an elision
+  leaves (`l`, `d`, `qu`, `s`). A language with no list throws
+  (`UnsupportedGlossaryLanguage`), as `rulesFor` does — for zh/ja/th an
+  n-gram of whitespace-separated words means nothing.
+- **`flagTerms` takes `null` for "Stage 2 did not run"** and flags each
+  repeated, undecided candidate `unaligned` with no renderings — §4.2's
+  "this term repeats 11 times, decide it once". A candidate whose glossary
+  entry already has a preferred rendering is not asked again. With
+  alignments, a candidate the aligner returned nothing for is not flagged:
+  there is nothing to choose between. Renderings that are the same
+  `termKey` are one (`Factura`/`factura` is not an inconsistency); their
+  segments are united and the aligner's best confidence kept.
+- **The glossary is a function, not a connection** (`GlossaryLookup`: a
+  source term's `termKey` to `{ termId, preferred }` or null), so `core`
+  stays headless and the wiring to `resolveRendering` is the caller's —
+  #42 and #43 — not this card's. `toSessionFlag` is the one place #40 and
+  #41 meet: renderings offered most-used first, the glossary's preferred
+  one appended last if the aligner did not find it, so the translator can
+  still go back to it.
+- **Not yet tuned: `minOccurrences` = 3** (§10.1). The committed corpus is
+  synthetic text (`fixtures/docx/README.md`), so what repeats in it is the
+  synthesiser's doing: `footnotes-manuscript` gives 1,678 candidates over
+  1,304 segments, which says nothing about a real manuscript. The number
+  needs a real one, on the owner's machine, with only counts coming back.
+
 ---
 
 ## 5. The session — `core/glossary/session.ts`
@@ -500,7 +556,9 @@ Project-format migration extending `QA_RULES`. Severity `warning`.
 ## 10. Open, deliberately deferred
 
 1. **`minOccurrences` default.** 3 is a guess; the manuscript corpus will
-   say. Tune in #40, record the number.
+   say. #40 shipped with 3 untuned: the only corpus in the repo is
+   synthetic, so it cannot say (§4 implementation note). Needs a real
+   manuscript's counts.
 2. **Stopword lists** — start from the segmenter's abbreviation-list
    discipline (EN and ES to a higher bar). Not a linguistics project.
 3. **When the base glossary is consulted for _flagging_** (as opposed to
