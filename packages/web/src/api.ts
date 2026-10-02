@@ -4,6 +4,8 @@
  */
 import type { Project, QaIssue, QaRule, Segment, Token } from '@cat-tool/core';
 
+import type { ImportJob } from './import-job.js';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -164,20 +166,27 @@ export const api = {
   },
   memories: (token: string, signal?: AbortSignal) =>
     call<MemorySummary[]>('/api/tms', token, { signal }),
-  /** An empty memory, or — with a `.tmx`/`.sdltm` file — one imported from it. */
-  createMemory: (token: string, name: string, file?: File) => {
-    let body: unknown = { name };
-    if (file) {
-      const form = new FormData();
-      form.append('name', name); // before the file: the server reads it first
-      form.append('file', file, file.name);
-      body = form;
-    }
-    return call<MemorySummary & { warnings: string[] }>('/api/tms', token, {
+  /** An empty memory. */
+  createMemory: (token: string, name: string) =>
+    call<MemorySummary & { warnings: string[] }>('/api/tms', token, {
       method: 'POST',
-      body,
-    });
+      body: { name },
+    }),
+  /**
+   * A memory imported from a `.tmx` or `.sdltm`: answers at once with the
+   * job doing it (backlog #16a), which `importJob` follows and `cancelImport` stops.
+   */
+  importMemory: (token: string, name: string, file: File) => {
+    const form = new FormData();
+    form.append('name', name); // before the file: the server reads it first
+    form.append('file', file, file.name);
+    return call<{ job: ImportJob }>('/api/tms', token, { method: 'POST', body: form });
   },
+  importJob: (token: string, id: string, signal?: AbortSignal) =>
+    call<ImportJob>(`/api/jobs/${id}`, token, { signal }),
+  /** Asks the server to stop it; the job is `running` until it has. */
+  cancelImport: (token: string, id: string) =>
+    call<ImportJob>(`/api/jobs/${id}`, token, { method: 'DELETE' }),
   projectMemories: (token: string, name: string, signal?: AbortSignal) =>
     call<{ refs: TmRefView[] }>(`${project(name)}/tms`, token, { signal }),
   attachMemory: (token: string, name: string, tm: string, writeTarget: boolean) =>

@@ -486,6 +486,15 @@ log, never translation data) and the storage volume, with `core` and
   visible no-change written as nothing, a stale version refused, QA
   rerun. The PUT route parses and calls it; a client never sends status
   or origin.
+- **Bulk work is a job, never a request** (backlog #16a, `tm-format-spec.md`
+  §1.1). A memory import is `startJob` on a worker thread, kept in
+  `server/src/jobs.ts` by an unguessable id the account alone can poll or
+  cancel; the memory is built in a staging file and renamed into place only
+  once whole. **Never open a memory on the request thread to describe a
+  memory a worker just had open:** `openTm` runs `integrity_check`, 7.9 s at
+  500,000 units, and the first version of this stalled every request for 8 s
+  when an import ended. The worker takes the summary while it has the
+  connection. A new bulk operation is an entry in `db/src/jobs/ops.ts`.
 - **A route's actor is `sessionActor(req)`, never built in the
   handler** (`audit-spec.md` §2.5). A write in the project goes to the
   project's log; one about the platform (login, a project's creation or

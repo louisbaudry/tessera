@@ -759,3 +759,23 @@ button.chip-button:hover {
   display: inline-flex;
   gap: 0.75rem;
 }
+
+/* An import running on the server (backlog #16a): a bar, a line, a way out. */
+.import-job {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.import-job progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.import-job p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.import-job button {
+  justify-self: start;
+}

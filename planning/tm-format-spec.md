@@ -109,6 +109,66 @@ above) and `node:sqlite` (synchronous and dependency-free, but still young
 — worth revisiting, as it would remove the native-module problem
 entirely).
 
+**Implementation note (#16a, `db/src/jobs/`).** §1.1's rule — bulk work
+never on the request thread — is built as `startJob(op, args, options)`, and
+what building it settled:
+
+- **One thread per job, and the job owns its connection.** A `better-sqlite3`
+  handle cannot cross threads, so an operation takes paths and JSON, never a
+  handle, and opens its own. The registry (`jobs/ops.ts`) is closed: a job
+  names an operation by a string, so nothing a caller sends is ever a
+  function. Today it holds TMX import, `.sdltm` import, merge (§7) and
+  `VACUUM`. Rehash-on-normalizer-bump and batch find-and-replace, which §1.1
+  also lists, do not exist yet; they register here when written, and the
+  runner does not change.
+- **Cancel is SQLite's atomicity, not the operation's cooperation.**
+  `cancel()` raises a flag in shared memory (a message would not be seen:
+  the worker spends its time in synchronous batches), checked at each
+  operation's safe points — between import batches, between merge phases —
+  so most cancels end cleanly where they are. If the operation has not
+  stopped by `graceMs` (3 s), the thread is terminated. That is as safe as
+  a power cut: a transaction that never committed never happened. The
+  consequences, which a test proves by killing a 60,000-unit merge in the
+  middle of its transaction, are that an import keeps whole batches and an
+  incomplete `tm_import` row (§2.9, §12.4), and merge, `.sdltm` import and
+  `VACUUM` are all-or-nothing. Terminating does not interrupt a statement
+  already running, so a cancelled `VACUUM` may still complete: for it,
+  cancel means "stop waiting".
+- **Progress rides `postMessage`,** which is queued to the parent and so
+  leaves a synchronous loop without the loop yielding. An import reports
+  after every committed batch, a merge as each of its ten phases starts; an
+  `.sdltm` import has no checkpoints and says only that it is importing.
+- **`VACUUM` takes a backup first** (§10: "always preceded by a backup"): a
+  byte copy of the checkpointed file beside the memory, named in the result.
+- **The summary is taken on the worker.** An import's result carries the new
+  memory's `describeTm`, because opening it afterwards on the caller's
+  thread runs `integrity_check` (§10), which took **7.9 s on a 500,000-unit
+  memory**. The first server run did exactly that when a job finished, and
+  one request in the middle of the import waited 8,055 ms; with the summary
+  from the worker the worst was 10.3 ms. Nothing at test scale shows it.
+- **The server's contract changed from "an import is a request" to "an
+  import is a job"** (`v1-spec.md` §2.5): 202 and a job, polled and
+  cancelled by id, one running import per account. The memory is built in a
+  staging file and renamed into place only once it is whole, so a memory that
+  exists is a whole one, and a failed or cancelled upload leaves nothing:
+  not a prefix, not a half-attached file. §12.4's resumable prefix is for a
+  memory a person keeps and resumes by hand, which is the CLI's; a browser
+  upload that is cancelled is gone, because there is no stored upload to
+  resume from and a prefix nobody can name would be worse than none.
+- **Measured once, on the development machine, synthetic:** a 109 MB TMX of
+  500,000 two-language units imports in 91 s through the server; over that
+  time 1,731 requests to `/api/me` had a median of 0.9 ms and a worst of
+  10.3 ms. A run cancelled after 110,000 units stopped 1.6 s later and left
+  no memory and no file. These are the card's bar (§11 has the importer's own
+  numbers).
+- **Not solved, and recorded:** opening a large memory costs seconds on
+  whatever thread does it (`openAndMigrate`'s `integrity_check`, the §10
+  policy), so `GET /api/tms`, which opens every memory, stalled the server
+  for 8.0 s with the 500,000-unit memory present. That is a durability
+  policy and not this change's to alter; it is issue #95. A server that
+  restarts mid-import leaves the upload and staging file in the account's
+  `tmp/` (nothing sweeps it; issue #96); the job table is in memory and starts empty.
+
 **Nothing in §2 onward depends on this choice, or on the desktop-vs-server
 question.** The format, schema, hashing contract, and token model are
 unchanged by moving the driver into a Node backend instead of an Electron

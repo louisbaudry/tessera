@@ -19,6 +19,7 @@ import type { AuditActor } from '@cat-tool/core';
 import { formatActor } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
+import { Cancelled } from '../cancelled.js';
 import { TmError } from './errors.js';
 import { refreshLangs } from './write.js';
 import { TM_APPLICATION_ID, TM_MIGRATIONS } from './schema.js';
@@ -32,7 +33,41 @@ export interface MergeTmOptions {
    * retains in `tuv_history`. A `.ctm` has no `audit_event` yet.
    */
   readonly actor: AuditActor;
+  /**
+   * Called as each phase of the merge begins (backlog #16a): a merge is
+   * one transaction and a few long statements, so this is as fine as its
+   * progress gets. It must not touch this connection.
+   */
+  readonly onPhase?: (phase: MergePhase) => void;
+  /**
+   * Asked between phases. When it returns true the merge throws
+   * {@link Cancelled} from inside its transaction, which rolls back: the
+   * destination is as it was. A statement already running is not
+   * interrupted; the job runner's terminate covers that, and is just as
+   * safe (a transaction that never committed never happened).
+   */
+  readonly shouldStop?: () => boolean;
 }
+
+/** Where a merge is: `step` of `steps`, named for a person to read. */
+export interface MergePhase {
+  readonly name: string;
+  readonly step: number;
+  readonly steps: number;
+}
+
+const PHASES = [
+  'matching units',
+  'copying new units',
+  'merging unit attributes',
+  'merging unit records',
+  'matching variants',
+  'retaining displaced revisions',
+  'copying new variants',
+  'copying history',
+  'applying winning variants',
+  'merging segmentation rules',
+] as const;
 
 export interface MergeTmResult {
   /** Units the source had and the destination did not, copied with everything under them. */
@@ -140,7 +175,7 @@ export function mergeTm(
   }
   try {
     assertMergeable(db, sourcePath, dest.normalizer_version);
-    return db.transaction(() => merge(db, options.actor))();
+    return db.transaction(() => merge(db, options))();
   } finally {
     db.exec(`DETACH DATABASE ${SRC}`);
   }
@@ -183,10 +218,19 @@ function assertMergeable(
   }
 }
 
-function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
+function merge(db: Database.Database, options: MergeTmOptions): MergeTmResult {
+  const actor = options.actor;
+  let step = 0;
+  /** Reports the phase about to start, and stops here if asked to. */
+  const phase = (): void => {
+    const name = PHASES[step]!;
+    if (options.shouldStop?.()) throw new Cancelled(`merge stopped before "${name}"`);
+    options.onPhase?.({ name, step: ++step, steps: PHASES.length });
+  };
   const now = new Date().toISOString();
   const by = actor.label ?? formatActor(actor.actor);
 
+  phase();
   // --- what lines up with what ---------------------------------------
   // `d_*` is the destination unit before the merge, `s_*` the source's.
   db.exec(`
@@ -198,6 +242,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
     CREATE INDEX temp.merge_unit_s ON merge_unit(s_id);
   `);
 
+  phase();
   // --- units the destination lacks: copied whole ----------------------
   const unitsAdded = db
     .prepare(
@@ -214,6 +259,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
      WHERE d_id IS NULL`,
   );
 
+  phase();
   // --- unit attributes -------------------------------------------------
   // Before the unit rows move, which the rule below compares against.
   db.exec(`
@@ -228,6 +274,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
       AND  (m.s_rev, m.s_updated, a.value) > (m.d_rev, m.d_updated, tu_attr.value);
   `);
 
+  phase();
   // --- unit rows: tombstones never resurrect --------------------------
   const unit = setAndChanged('tu', [
     ['rev', 'MAX(tu.rev, s.rev)'],
@@ -249,6 +296,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
      WHERE NOT is_new AND d_deleted = 0 AND s_deleted = 1`,
   );
 
+  phase();
   // --- variants ---------------------------------------------------------
   // The winner is the greater by (rev, updated_at, content): content last
   // so the result never depends on which file is the destination.
@@ -281,6 +329,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
       )
       .reduce((sum, o) => sum + o.n, 0);
 
+  phase();
   // What a displaced revision's history row would hold, and whether its
   // slot is already taken — by the same content (nothing to do) or by
   // other content (a conflict, reported).
@@ -304,6 +353,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
     )
     .run({ now, by }).changes;
 
+  phase();
   // Copy the variants the destination lacks, then give them their ids.
   db.exec(`
     INSERT INTO main.tuv (tu_id, lang, rev, tokens, plain, hash, prev_hash, next_hash, quality,
@@ -317,6 +367,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
     WHERE d_id IS NULL;
   `);
 
+  phase();
   // The source's own history rows, for every variant that lined up.
   historyConflicts += int(
     db,
@@ -342,6 +393,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
       WHERE  t.outcome = 'src' AND d.plain <> s.plain);
   `);
 
+  phase();
   // The winner's content. A diverged tie takes the next revision, so its
   // own next edit does not retain into the slot the loser now holds.
   db.exec(`
@@ -370,6 +422,7 @@ function merge(db: Database.Database, actor: AuditActor): MergeTmResult {
     WHERE  tuv.id = t.d_id AND t.outcome IN ('src', 'dst') AND (${counters.changed});
   `);
 
+  phase();
   // --- segmentation profiles --------------------------------------------
   db.exec(
     `INSERT OR IGNORE INTO main.seg_profile (lang, delta)

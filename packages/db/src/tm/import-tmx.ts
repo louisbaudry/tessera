@@ -40,6 +40,12 @@ import { refreshLangs } from './write.js';
 export interface ImportTmxResult {
   /** The `tm_import` row this run wrote (§2.9). */
   readonly importId: number;
+  /**
+   * Whether the whole file was written. `false` only when `shouldStop`
+   * ended the run: the memory then holds whole batches and its
+   * `tm_import` row is incomplete, which `resume` continues (§12.4).
+   */
+  readonly complete: boolean;
   /** Units written by this call — excludes any a resume skipped. */
   readonly tuCount: number;
   readonly tuvCount: number;
@@ -80,6 +86,26 @@ export interface ImportTmxFileOptions {
    * Defaults to `path`'s basename.
    */
   readonly sourceName?: string;
+  /**
+   * Called once at the start and after every committed batch, so a
+   * caller can show how far an import of a large file has got
+   * (backlog #16a). It must not touch this connection.
+   */
+  readonly onProgress?: (progress: ImportProgress) => void;
+  /**
+   * Asked before each chunk is read and after each batch commits — never
+   * mid-batch, so a stop leaves whole batches and nothing torn. When it
+   * returns true the import ends where it is, `complete: false`.
+   */
+  readonly shouldStop?: () => boolean;
+}
+
+/** How far an import has got; `bytesRead` over `bytesTotal` is the fraction. */
+export interface ImportProgress {
+  /** Units in the memory from this import so far, including any a resume skipped. */
+  readonly unitsDone: number;
+  readonly bytesRead: number;
+  readonly bytesTotal: number;
 }
 
 export const DEFAULT_IMPORT_BATCH_SIZE = 10_000;
@@ -143,7 +169,7 @@ export function importTmx(db: Database.Database, xml: string): ImportTmxResult {
     writer.writeBatch(id, units, true);
     return id;
   })();
-  return result(importId, writer, parser);
+  return result(importId, writer, parser, true);
 }
 
 /**
@@ -151,9 +177,10 @@ export function importTmx(db: Database.Database, xml: string): ImportTmxResult {
  * reading it in chunks and committing every `batchSize` units, so memory
  * stays bounded however large the file is (backlog #18c).
  *
- * Synchronous, like every repository call here: running it off the
- * request thread is the caller's job (§1.1, backlog #16a). Nothing else
- * may write through this connection while it runs.
+ * Synchronous, like every repository call here: a server runs it off the
+ * request thread through `startJob` (§1.1, backlog #16a), which is what
+ * `onProgress` and `shouldStop` are for. Nothing else may write through
+ * this connection while it runs.
  *
  * If it throws after a batch committed, the memory keeps those units and
  * its `tm_import` row stays incomplete (`finishedAt: null`); pass that
@@ -200,6 +227,16 @@ export function importTmxFile(
     const chunk = Buffer.allocUnsafe(chunkBytes);
     let pending: ParsedTmxTu[] = [];
     let seen = 0;
+    let bytesRead = 0;
+    let stopped = false;
+
+    const report = (): void =>
+      options.onProgress?.({
+        unitsDone: Math.max(seen - pending.length, skip),
+        bytesRead,
+        bytesTotal: sourceBytes,
+      });
+    report();
 
     const take = (units: ParsedTmxTu[]): void => {
       for (const unit of units) {
@@ -208,15 +245,28 @@ export function importTmxFile(
         if (pending.length >= batchSize) {
           db.transaction(() => writer.writeBatch(importId, pending, false))();
           pending = [];
+          report();
+          if (options.shouldStop?.()) {
+            stopped = true;
+            return;
+          }
         }
       }
     };
 
     for (;;) {
+      if (stopped || options.shouldStop?.()) {
+        stopped = true;
+        break;
+      }
       const n = readSync(fd, chunk, 0, chunkBytes, null);
       if (n === 0) break;
+      bytesRead += n;
       take(parser.push(decoder.decode(chunk.subarray(0, n), { stream: true })));
     }
+    // What was parsed but not yet committed is dropped on a stop, and the
+    // import row says exactly how many units are in: nothing torn.
+    if (stopped) return result(importId, writer, parser, false);
     take(parser.push(decoder.decode()));
     parser.end();
     if (seen < skip) {
@@ -226,7 +276,10 @@ export function importTmxFile(
       );
     }
     db.transaction(() => writer.writeBatch(importId, pending, true))();
-    return result(importId, writer, parser);
+    bytesRead = sourceBytes;
+    pending = [];
+    report();
+    return result(importId, writer, parser, true);
   } finally {
     closeSync(fd);
   }
@@ -249,10 +302,17 @@ function result(
   importId: number,
   writer: UnitWriter,
   parser: TmxStreamParser,
+  complete: boolean,
 ): ImportTmxResult {
   const warnings = [...parser.warnings(), ...writer.warnings()];
   if (writer.tuCount > 0) warnings.push(ICE_WARNING);
-  return { importId, tuCount: writer.tuCount, tuvCount: writer.tuvCount, warnings };
+  return {
+    importId,
+    complete,
+    tuCount: writer.tuCount,
+    tuvCount: writer.tuvCount,
+    warnings,
+  };
 }
 
 /**
