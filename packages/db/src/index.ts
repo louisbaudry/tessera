@@ -1,4 +1,6 @@
 export * from './migrate.js';
+export * from './cancelled.js';
+export * from './jobs/index.js';
 export * from './schema-alias.js';
 export * from './lang-match.js';
 export * from './audit/index.js';

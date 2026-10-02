@@ -661,12 +661,65 @@ rows: `insertFile`/`listSegments` round-trip a genuine 371-paragraph
 manuscript through JSON and back; `attachTms` attaches real `.ctm`
 files created via `createTm` and queries across the alias.
 
-**#16a · Off-thread bulk operations · M** · [issue #4]
-Route TMX import, `.ctm` merge, `VACUUM`, rehash, and batch
-find-and-replace through a `worker_thread` / Electron `utilityProcess`
-with progress reporting and cancellation (format spec §1.1).
+**#16a · ~~Off-thread bulk operations~~ · DONE — `db/src/jobs/`, `server/src/jobs.ts`, `web/src/Memories.tsx`**
+`startJob(op, args, { graceMs, onProgress })` runs one bulk operation on a
+worker thread and returns a handle: `done` (an outcome, or a `JobError`
+naming the class that failed it), `progress()`, `cancel()`. Operations are
+a closed table (`jobs/ops.ts`) of TMX import, `.sdltm` import, merge and
+`VACUUM`; each takes paths and JSON and opens its own connection. The
+server turns a memory upload into a job (`POST /api/tms` → 202,
+`GET`/`DELETE /api/jobs/:id`), builds the memory in a staging file and
+renames it into place only once whole, and the Memories screen follows the
+job, shows a bar, and can cancel. Decisions are in `tm-format-spec.md`
+§1.1's implementation note; the route table is `v1-spec.md` §2.5.
 *Done when:* a 500k-unit TMX import leaves the UI responsive and is
-cancellable without leaving a partial write.
+cancellable without leaving a partial write — measured through the real
+server, not only in tests: a 109 MB, 500,000-unit import took 91 s, with
+1,731 concurrent requests answered at a median of 0.9 ms and a worst of
+10.3 ms; one cancelled after 110,000 units left no memory and no file. A
+browser run (Playwright, the built SPA served by the server) showed the bar
+rise, the form lock, Cancel say "nothing was kept", and a second run finish
+and list the memory at 60,000 units. Worth remembering:
+- **The first real run found a stall no test could, and it was ours.** The
+  import was off-thread; the job's *end* was not: the server opened the new
+  memory to describe it, which runs `integrity_check` (§10) on the request
+  thread — 7.9 s at 500,000 units, and one `/api/me` in the middle waited
+  8,055 ms. The worker now describes the memory while it has it open (worst
+  latency 10.3 ms). The same cost is still paid by every `GET /api/tms`,
+  which opens every memory (8.0 s with that memory present): a durability
+  policy, not changed here, and now issue #95. The lesson is `CLAUDE.md`'s
+  scan lesson again, for time on a thread: nothing at test scale shows it.
+- **Cancel is SQLite's, not the operation's.** The cooperative flag (shared
+  memory, checked between batches and phases) ends most cancels cleanly; past
+  `graceMs` the thread is terminated, which is safe because an uncommitted
+  transaction never happened. A test kills a 60,000-unit merge in the middle
+  of its transaction and compares the destination to its snapshot. The cost,
+  recorded: terminate cannot interrupt a statement in flight, so a cancelled
+  `VACUUM` may still finish.
+- **A memory that exists is a whole one.** Importing straight into
+  `tms/<name>.ctm` would have shown a half-imported memory in the list and
+  let a project attach it. Staging plus a rename makes cancel and failure
+  "delete a file", and "no partial write" literally true. The price is the
+  decision that a cancelled upload keeps no resumable prefix (§12.4's resume
+  stays the CLI's), and a name checked again at rename, since someone can
+  claim it while the job runs (tested: theirs wins, the job fails).
+- **`VACUUM` takes a backup first** — §10 says compaction is always preceded
+  by one, and the first draft of the op did not. Caught by re-reading the
+  spec after writing the code.
+- **One test did not prove anything until it was fixed.** The event-loop
+  test's "control" (the same import run inline must block the timer) read
+  0 ms: the interval was cleared before a tick could record the gap, so
+  blocking was invisible. The assertion that says "the control must block,
+  or this test proves nothing" is what caught it. After that, mutating the
+  account scoping, the cleanup on cancel and the shutdown each fails the
+  server suite.
+- **A closed registry, because `Worker` takes JSON.** Rehash and batch
+  find-and-replace (also listed by the card) do not exist as functions, so
+  there is nothing to route; they register in `ops.ts` when written.
+- **Not built (issue #96 for the first two):** a list of running jobs, so a user who leaves the Memories
+  screen cannot find a running import again (it finishes, and the memory
+  appears); a sweep of `tmp/` after a crash; progress for `.sdltm` (one
+  transaction, no checkpoints); `countWords` off-thread (noted in `#62`).
 
 **#17 · ~~Normalisation + hashing~~ · DONE — `@cat-tool/core/tm/normalize.ts`**
 `normalizer_version = 1` exactly as frozen in format spec §4.

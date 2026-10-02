@@ -1,12 +1,22 @@
 /**
  * The account's memories (v1-spec.md §7.5): one `.ctm` each, shared by
  * every project that attaches it. Created empty, or imported whole from
- * a `.tmx` or Trados `.sdltm` the translator already has.
+ * a `.tmx` or Trados `.sdltm` the translator already has — an import
+ * that runs on the server as a job (backlog #16a), which this screen
+ * follows and can cancel, and which keeps nothing if it does not finish.
  */
 import { slugify } from '@cat-tool/core/model';
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
-import { api } from './api.js';
+import { api, ApiError } from './api.js';
+import {
+  describeJob,
+  isFinished,
+  percent,
+  POLL_MS,
+  type ImportJob,
+} from './import-job.js';
+import { useSession } from './session-context.js';
 import { useAction } from './use-action.js';
 import { useLoad } from './use-load.js';
 
@@ -48,27 +58,89 @@ export function Memories() {
 }
 
 function NewMemory({ onMade }: { onMade: () => void }) {
+  const { token, signOut } = useSession();
   const [name, setName] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [warnings, setWarnings] = useState<readonly string[]>([]);
   // A new file input after each memory made, so it shows none chosen.
   const [made, setMade] = useState(0);
+  const [job, setJob] = useState<ImportJob | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const action = useAction();
   // Null until edited: the name follows the file chosen.
   const slug = name ?? (file ? slugify(file.name.replace(/\.[^.]*$/, '')) : '');
+  const importing = job !== null && !isFinished(job);
+
+  // What to do with each answer the server gives about the job.
+  const learn = useCallback(
+    (next: ImportJob) => {
+      setJob(next);
+      if (next.state !== 'running') setCancelling(false);
+      if (next.state === 'done') {
+        setWarnings(next.result?.warnings ?? []);
+        setName(null);
+        setFile(null);
+        setMade((n) => n + 1);
+        onMade();
+      }
+    },
+    [onMade],
+  );
+
+  // Follow a running job until it ends. Leaving the screen stops asking,
+  // not the import: it carries on, and the memory is there when it is whole.
+  useEffect(() => {
+    if (!job || isFinished(job)) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      api.importJob(token, job.id, controller.signal).then(
+        (next) => {
+          if (!controller.signal.aborted) learn(next);
+        },
+        (err: unknown) => {
+          if (controller.signal.aborted) return;
+          if (err instanceof ApiError && err.status === 401) return signOut();
+          // The job is gone — the server restarted, or it was pruned.
+          learn({
+            ...job,
+            state: 'failed',
+            error: `Lost track of this import (${err instanceof Error ? err.message : err}). Check the list.`,
+          });
+        },
+      );
+    }, POLL_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [job, token, signOut, learn]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const memory = await action.run((token) =>
-      api.createMemory(token, slug, file ?? undefined),
-    );
-    if (!memory) return;
-    setWarnings(memory.warnings);
-    setName(null);
-    setFile(null);
-    setMade((n) => n + 1);
-    onMade();
+    setWarnings([]);
+    setJob(null);
+    if (!file) {
+      const memory = await action.run((t) => api.createMemory(t, slug));
+      if (!memory) return;
+      setName(null);
+      setMade((n) => n + 1);
+      onMade();
+      return;
+    }
+    const started = await action.run((t) => api.importMemory(t, slug, file));
+    if (started) learn(started.job);
   };
+
+  const cancel = async () => {
+    if (!job) return;
+    setCancelling(true);
+    const answer = await action.run((t) => api.cancelImport(t, job.id));
+    if (answer) learn(answer);
+    else setCancelling(false);
+  };
+
+  const busy = action.busy || importing;
+  const pct = job?.state === 'running' ? percent(job.progress?.fraction ?? null) : null;
 
   return (
     <form className="panel form" onSubmit={(e) => void submit(e)}>
@@ -80,6 +152,7 @@ function NewMemory({ onMade }: { onMade: () => void }) {
           accept=".tmx,.sdltm"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           key={made}
+          disabled={busy}
         />
       </label>
       <label>
@@ -90,12 +163,37 @@ function NewMemory({ onMade }: { onMade: () => void }) {
           pattern="[a-z0-9](?:[a-z0-9\-]{0,62}[a-z0-9])?"
           title="lowercase letters, digits and hyphens"
           required
+          disabled={busy}
         />
       </label>
       {action.error && (
         <p className="error" role="alert">
           {action.error}
         </p>
+      )}
+      {job && (
+        <div role="status" className="import-job">
+          {importing && (
+            <progress
+              max={100}
+              {...(pct === null ? {} : { value: pct })}
+              aria-label="Import progress"
+            />
+          )}
+          <p className={job.state === 'failed' ? 'error' : 'muted'}>
+            {cancelling && importing ? 'Cancelling\u2026' : describeJob(job)}
+          </p>
+          {importing && (
+            <button
+              type="button"
+              className="link"
+              disabled={cancelling}
+              onClick={() => void cancel()}
+            >
+              Cancel import
+            </button>
+          )}
+        </div>
       )}
       {warnings.length > 0 && (
         <ul className="warning">
@@ -105,14 +203,16 @@ function NewMemory({ onMade }: { onMade: () => void }) {
         </ul>
       )}
       <div>
-        <button type="submit" disabled={action.busy}>
-          {action.busy
-            ? file
-              ? 'Importing\u2026'
-              : 'Creating\u2026'
-            : file
-              ? 'Import'
-              : 'Create empty memory'}
+        <button type="submit" disabled={busy}>
+          {importing
+            ? 'Importing\u2026'
+            : action.busy
+              ? file
+                ? 'Starting\u2026'
+                : 'Creating\u2026'
+              : file
+                ? 'Import'
+                : 'Create empty memory'}
         </button>
       </div>
     </form>

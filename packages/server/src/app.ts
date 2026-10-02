@@ -12,7 +12,7 @@
  * discipline the CLI set (§2.4): logic the server would need that
  * `core`/`db` lack goes there, not here.
  */
-import { createWriteStream, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, extname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
@@ -22,9 +22,7 @@ import {
   generateSessionToken,
   parseTokens,
   rulesFor,
-  SdltmError,
   SegmentEditError,
-  TmxError,
   TokenShapeError,
   verifyPassword,
   type AuditActor,
@@ -48,10 +46,9 @@ import {
   getFileSummary,
   getProject,
   getSegment,
-  importSdltm,
-  importTmxFile,
   insertFile,
   isQaRule,
+  JobError,
   listFileQaIssues,
   listFileSummaries,
   listSegments,
@@ -73,9 +70,9 @@ import {
   SegmentRepoError,
   setWriteTarget,
   splitSegmentAt,
+  startJob,
   TargetConflictError,
   TargetStructureError,
-  TmError,
   TmRefError,
   type Account,
 } from '@cat-tool/db';
@@ -89,6 +86,7 @@ import Fastify, {
 } from 'fastify';
 
 import type { ServerConfig } from './config.js';
+import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
 import {
   InvalidNameError,
   listProjectNames,
@@ -190,7 +188,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // an unknown path under the root is a 404, never `index.html`.
   if (config.webDir) await app.register(fastifyStatic, { root: config.webDir });
 
-  app.addHook('onClose', () => {
+  // Bulk jobs (backlog #16a): imports run on worker threads, and are
+  // stopped, threads gone, before the process lets go of anything.
+  const jobs = new JobRegistry();
+  app.addHook('onClose', async () => {
+    await jobs.shutdown();
     platform.close();
   });
 
@@ -798,8 +800,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // A memory is created empty from JSON `{ name }`, or from an upload: a
   // multipart `name` field, then one `.tmx` or `.sdltm` file, imported
   // into a new memory by that name — the CLI's `add-tm`, minus attaching.
-  // The upload streams to a server-named file under the account's root
-  // and is deleted after; an import that fails leaves no memory behind.
+  //
+  // The upload streams to a server-named file under the account's root,
+  // and the import is a job on a worker thread (backlog #16a): this
+  // answers 202 with the job, and the client polls `/api/jobs/:id`, which
+  // can also cancel it. The memory is built in a staging file and renamed
+  // into place only once the import has completed, so a memory that
+  // exists is a whole one, and a failed or cancelled import leaves
+  // nothing — not a prefix, not a half-attached file.
   app.post<{ Body: { name?: unknown } }>('/api/tms', async (req, reply) => {
     const account = owner(req);
     const slugOf = (value: unknown): string | null => {
@@ -863,38 +871,118 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       part.file.resume();
       return reply;
     }
+    // One import at a time per account, and a ceiling on the whole server:
+    // each is a thread and a connection. Checked again once the upload has
+    // landed (below), which is what actually decides; this saves the wait.
+    const busy = (): { code: number; error: string } | null =>
+      jobs.runningFor(account.id) >= 1
+        ? { code: 409, error: 'an import is already running — wait for it, or cancel it' }
+        : jobs.running() >= MAX_RUNNING_JOBS
+          ? {
+              code: 503,
+              error: 'the server is busy with other imports — try again shortly',
+            }
+          : null;
+    const early = busy();
+    if (early) {
+      part.file.resume();
+      return reply.code(early.code).send({ error: early.error });
+    }
+
     const upload = uploadTempPath(config.storageRoot, account);
+    const staging = `${upload}.ctm`;
+    /** Everything this request has put on disk but the memory itself. */
+    const discard = (): void => {
+      for (const f of [upload, staging, `${staging}-wal`, `${staging}-shm`]) {
+        rmSync(f, { force: true });
+      }
+    };
     mkdirSync(dirname(upload), { recursive: true });
     try {
       await pipeline(part.file, createWriteStream(upload));
       if (part.file.truncated) {
+        discard();
         return reply.code(413).send({ error: 'the memory file is too large' });
       }
-      const tm = createTm(path, { name: slug, generator: TM_GENERATOR });
-      let warnings: readonly string[];
-      try {
-        warnings = (
-          ext === '.tmx'
-            ? importTmxFile(tm, upload, { sourceName: part.filename })
-            : importSdltm(tm, upload)
-        ).warnings;
-      } catch (err) {
-        tm.close();
-        rmSync(path, { force: true });
-        if (
-          err instanceof TmError ||
-          err instanceof TmxError ||
-          err instanceof SdltmError
-        ) {
-          return reply.code(422).send({ error: err.message });
-        }
-        throw err;
+      const late = busy();
+      if (late) {
+        discard();
+        return reply.code(late.code).send({ error: late.error });
       }
-      tm.close();
-      return reply.code(201).send({ ...memorySummary(slug, path), warnings });
-    } finally {
-      rmSync(upload, { force: true });
+      createTm(staging, { name: slug, generator: TM_GENERATOR }).close();
+    } catch (err) {
+      discard();
+      throw err;
     }
+
+    const handle =
+      ext === '.tmx'
+        ? startJob('tm.importTmx', {
+            tmPath: staging,
+            sourcePath: upload,
+            sourceName: part.filename,
+          })
+        : startJob('tm.importSdltm', { tmPath: staging, sourcePath: upload });
+    const filename = part.filename;
+    const job = jobs.start({
+      accountId: account.id,
+      tm: slug,
+      handle,
+      onSettled: (outcome) => {
+        if ('failure' in outcome) {
+          discard();
+          const failure = outcome.failure;
+          const known =
+            failure instanceof JobError &&
+            ['TmError', 'TmxError', 'SdltmError'].includes(failure.causeName);
+          if (!known) app.log.error({ err: failure }, 'memory import failed');
+          // A message may name the files the server keeps the upload in:
+          // the client sees its own file's name, never a path (§2.5).
+          return {
+            state: 'failed',
+            error: known
+              ? failure.message.replaceAll(upload, filename).replaceAll(staging, slug)
+              : 'the import failed',
+          };
+        }
+        if (outcome.status === 'cancelled') {
+          discard();
+          return { state: 'cancelled' };
+        }
+        if (existsSync(path)) {
+          // Made by someone else while this one ran.
+          discard();
+          return { state: 'failed', error: `a memory named "${slug}" already exists` };
+        }
+        renameSync(staging, path);
+        rmSync(upload, { force: true });
+        // The worker described the memory while it had it open: opening it
+        // here would run `integrity_check` on this thread (seconds, at scale).
+        const { warnings, summary } = outcome.value as {
+          warnings: readonly string[];
+          summary: ReturnType<typeof describeTm>;
+        };
+        return { state: 'done', result: { slug, ...summary, warnings } };
+      },
+    });
+    return reply.code(202).header('location', `/api/jobs/${job.id}`).send({ job });
+  });
+
+  // A bulk job, by the id the call that started it returned. The account's
+  // own only: another's is "no such job", as another's project is.
+  app.get<{ Params: { id: string } }>('/api/jobs/:id', async (req, reply) => {
+    const job = jobs.get(owner(req).id, req.params.id);
+    return job ?? reply.code(404).send({ error: 'no such job' });
+  });
+
+  // Asks a running job to stop. 202, because it stops when it reaches a
+  // safe point (a batch, a phase) or its thread is ended: the client
+  // polls until the state is no longer `running`. A finished job is
+  // returned as it is.
+  app.delete<{ Params: { id: string } }>('/api/jobs/:id', async (req, reply) => {
+    const job = jobs.cancel(owner(req).id, req.params.id);
+    if (!job) return reply.code(404).send({ error: 'no such job' });
+    return reply.code(job.state === 'running' ? 202 : 200).send(job);
   });
 
   /** A project's attached memories as the API shows them: slugs, never paths. */

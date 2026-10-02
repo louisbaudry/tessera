@@ -1108,6 +1108,49 @@ ${units
     payload?: object,
   ) => app.inject({ method, url, headers: auth(token), ...(payload ? { payload } : {}) });
 
+  type JobView = {
+    id: string;
+    kind: string;
+    tm: string;
+    state: 'running' | 'done' | 'failed' | 'cancelled';
+    progress: { stage: string; fraction: number | null; units: number | null } | null;
+    result: { slug: string; units: number; langs: string[]; warnings: string[] } | null;
+    error: string | null;
+  };
+
+  /** Polls a job until it is no longer running. The import is on a worker thread, so it takes a moment. */
+  async function settled(token: string, id: string): Promise<JobView> {
+    for (let i = 0; i < 1200; i++) {
+      const res = await call(token, 'GET', `/api/jobs/${id}`);
+      expect(res.statusCode, res.body).toBe(200);
+      const job = res.json() as JobView;
+      if (job.state !== 'running') return job;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`job ${id} did not finish`);
+  }
+
+  /** Uploads a memory and waits for its import to end: the job, as it finished. */
+  async function importAndWait(
+    token: string,
+    name: string,
+    body: string,
+    filename: string,
+  ) {
+    const res = await importMemory(token, name, body, filename);
+    expect(res.statusCode, res.body).toBe(202);
+    return settled(token, (res.json() as { job: JobView }).job.id);
+  }
+
+  /** `n` units, enough that an import takes a while on a worker. */
+  const bigTmx = (n: number) =>
+    tmx(
+      Array.from(
+        { length: n },
+        (_, i) => [`Sentence number ${i} of it`, `Satz Nummer ${i} davon`] as const,
+      ),
+    );
+
   type Ref = {
     id: number;
     tm: string | null;
@@ -1159,9 +1202,16 @@ ${units
       ]),
       'Legal 2024.tmx',
     );
-    expect(res.statusCode, res.body).toBe(201);
-    expect(res.json()).toMatchObject({ slug: 'legal', units: 2 });
-    expect([...(res.json() as { langs: string[] }).langs].sort()).toEqual(['de', 'en']);
+    expect(res.statusCode, res.body).toBe(202);
+    const started = (res.json() as { job: JobView }).job;
+    expect(res.headers.location).toBe(`/api/jobs/${started.id}`);
+    expect(started).toMatchObject({ kind: 'import', tm: 'legal' });
+
+    const job = await settled(token, started.id);
+    expect(job.state).toBe('done');
+    expect(job.result).toMatchObject({ slug: 'legal', units: 2 });
+    expect([...job.result!.langs].sort()).toEqual(['de', 'en']);
+    expect(existsSync(tmFile(alice, 'legal'))).toBe(true);
     const tmp = join(config.storageRoot, alice.storageRoot, 'tmp');
     expect(existsSync(tmp) ? readdirSync(tmp) : []).toEqual([]);
   });
@@ -1170,12 +1220,161 @@ ${units
     const token = await login('alice@example.com', 'alice-pw');
     const wrongKind = await importMemory(token, 'notes', 'plain text', 'notes.txt');
     expect(wrongKind.statusCode).toBe(415);
-    const broken = await importMemory(token, 'broken', '<tmx><body><tu>', 'broken.tmx');
-    expect(broken.statusCode, broken.body).toBe(422);
+    const broken = await importAndWait(token, 'broken', '<tmx><body><tu>', 'broken.tmx');
+    expect(broken.state).toBe('failed');
+    expect(broken.error).toEqual(expect.any(String));
+    expect(broken.error).not.toContain(dir); // a message never names where the server keeps files
     expect(existsSync(tmFile(alice, 'broken'))).toBe(false);
+    const tmp = join(config.storageRoot, alice.storageRoot, 'tmp');
+    expect(existsSync(tmp) ? readdirSync(tmp) : []).toEqual([]);
     const noName = await importMemory(token, '', tmx([['a', 'b']]), 'a.tmx');
     expect(noName.statusCode).toBe(400);
     expect((await call(token, 'GET', '/api/tms')).json()).toEqual([]);
+  });
+
+  describe('an import is a job on a worker thread (backlog #16a)', () => {
+    const tmpOf = (account: Account) =>
+      join(config.storageRoot, account.storageRoot, 'tmp');
+    const leftover = (account: Account) =>
+      existsSync(tmpOf(account)) ? readdirSync(tmpOf(account)) : [];
+
+    /** Starts an import big enough to still be running when the test next looks. */
+    async function startBig(token: string, name = 'big') {
+      const res = await importMemory(token, name, bigTmx(40_000), `${name}.tmx`);
+      expect(res.statusCode, res.body).toBe(202);
+      return (res.json() as { job: JobView }).job;
+    }
+
+    /** Waits until a job reports it has begun, so a cancel lands in the middle of it. */
+    async function untilStarted(token: string, id: string) {
+      for (let i = 0; i < 1000; i++) {
+        const job = (await call(token, 'GET', `/api/jobs/${id}`)).json() as JobView;
+        if (job.state !== 'running' || (job.progress?.units ?? 0) > 0) return job;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      throw new Error('the import never started');
+    }
+
+    it('keeps answering other requests while it runs, and reports how far it has got', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const started = await startBig(token);
+      const during = await untilStarted(token, started.id);
+      expect(during.state).toBe('running');
+      expect(during.progress).toMatchObject({ stage: 'importing' });
+
+      // The event loop is the server's: if the import ran on it, these would wait for it.
+      const t0 = performance.now();
+      for (let i = 0; i < 5; i++) {
+        expect((await call(token, 'GET', '/api/me')).statusCode).toBe(200);
+      }
+      // Five cheap requests: an import on this thread would hold them for seconds.
+      expect(performance.now() - t0).toBeLessThan(2000);
+      expect((await call(token, 'GET', `/api/jobs/${started.id}`)).json()).toMatchObject({
+        state: 'running',
+      });
+
+      const done = await settled(token, started.id);
+      expect(done.state).toBe('done');
+      expect(done.result).toMatchObject({ slug: 'big', units: 40_000 });
+      expect(done.progress?.fraction).toBe(1);
+    }, 120_000);
+
+    it('shows no memory until the import has finished, and one made meanwhile wins the name', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const started = await startBig(token);
+      await untilStarted(token, started.id);
+      expect((await call(token, 'GET', '/api/tms')).json()).toEqual([]);
+      expect(existsSync(tmFile(alice, 'big'))).toBe(false);
+
+      // Someone makes an empty memory of that name while the import runs: it is theirs.
+      expect((await call(token, 'POST', '/api/tms', { name: 'big' })).statusCode).toBe(
+        201,
+      );
+      const done = await settled(token, started.id);
+      expect(done.state).toBe('failed');
+      expect(done.error).toContain('already exists');
+      expect(leftover(alice)).toEqual([]);
+      const listed = (await call(token, 'GET', '/api/tms')).json() as Array<{
+        units: number;
+      }>;
+      expect(listed).toHaveLength(1);
+      expect(listed[0]!.units).toBe(0); // the empty one, untouched
+    }, 120_000);
+
+    it('cancels, and leaves no memory, no staging file and no upload', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const started = await startBig(token);
+      await untilStarted(token, started.id);
+      const res = await call(token, 'DELETE', `/api/jobs/${started.id}`);
+      expect(res.statusCode, res.body).toBe(202);
+      const job = await settled(token, started.id);
+      expect(job.state).toBe('cancelled');
+      expect(existsSync(tmFile(alice, 'big'))).toBe(false);
+      expect(leftover(alice)).toEqual([]);
+      expect((await call(token, 'GET', '/api/tms')).json()).toEqual([]);
+      // cancelling again is not an error, and the name is free for a retry
+      expect((await call(token, 'DELETE', `/api/jobs/${started.id}`)).statusCode).toBe(
+        200,
+      );
+      expect(
+        (await importAndWait(token, 'big', tmx([['a', 'b']]), 'big.tmx')).state,
+      ).toBe('done');
+    }, 120_000);
+
+    it('is the account’s own: another account sees no such job and cannot cancel it', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const bob = await login('bob@example.com', 'bob-pw');
+      const started = await startBig(token);
+      await untilStarted(token, started.id);
+      expect((await call(bob, 'GET', `/api/jobs/${started.id}`)).statusCode).toBe(404);
+      expect((await call(bob, 'DELETE', `/api/jobs/${started.id}`)).statusCode).toBe(404);
+      expect((await call(token, 'GET', `/api/jobs/${started.id}`)).json()).toMatchObject({
+        state: 'running',
+      });
+      expect((await call(token, 'GET', '/api/jobs/not-a-job')).statusCode).toBe(404);
+      expect((await settled(token, started.id)).state).toBe('done');
+    }, 120_000);
+
+    it('allows one import at a time per account', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const bob = await login('bob@example.com', 'bob-pw');
+      const started = await startBig(token);
+      const second = await importMemory(token, 'second', tmx([['a', 'b']]), 'second.tmx');
+      expect(second.statusCode).toBe(409);
+      // another account is not held up by it
+      expect(
+        (await importAndWait(bob, 'theirs', tmx([['a', 'b']]), 'theirs.tmx')).state,
+      ).toBe('done');
+      await call(token, 'DELETE', `/api/jobs/${started.id}`);
+      await settled(token, started.id);
+      expect(
+        (await importAndWait(token, 'second', tmx([['a', 'b']]), 'second.tmx')).state,
+      ).toBe('done');
+    }, 120_000);
+
+    it('never shows a server path in a job', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const started = await startBig(token);
+      const running = await call(token, 'GET', `/api/jobs/${started.id}`);
+      await call(token, 'DELETE', `/api/jobs/${started.id}`);
+      await settled(token, started.id);
+      const cancelled = await call(token, 'GET', `/api/jobs/${started.id}`);
+      for (const body of [running.body, cancelled.body]) {
+        expect(body).not.toContain(dir);
+        expect(body).not.toContain('.ctm');
+      }
+    }, 120_000);
+
+    it('is stopped, threads and all, when the server closes, leaving nothing behind', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const started = await startBig(token);
+      await untilStarted(token, started.id);
+      const t0 = performance.now();
+      await app.close();
+      expect(performance.now() - t0).toBeLessThan(10_000);
+      expect(leftover(alice)).toEqual([]);
+      expect(existsSync(tmFile(alice, 'big'))).toBe(false);
+    }, 120_000);
   });
 
   it('creates a project with its write-target memory, so confirming works from the start', async () => {
@@ -1345,14 +1544,14 @@ ${units
     const source = plainText(segment.sourceTokens);
     expect(
       (
-        await importMemory(
+        await importAndWait(
           token,
           'prior',
           tmx([[source, 'Vorher übersetzt']]),
           'prior.tmx',
         )
-      ).statusCode,
-    ).toBe(201);
+      ).state,
+    ).toBe('done');
     await call(token, 'POST', '/api/projects/job/tms', { tm: 'prior' });
 
     const run = await call(token, 'POST', '/api/projects/job/pretranslate');
