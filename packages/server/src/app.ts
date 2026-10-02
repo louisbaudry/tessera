@@ -80,6 +80,7 @@ import {
   type Account,
 } from '@cat-tool/db';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import Fastify, {
   type FastifyInstance,
   type FastifyReply,
@@ -180,6 +181,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const app = Fastify({ logger: options.logger ?? true });
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
   app.decorateRequest('account', null);
+
+  // The built SPA, when the deployment has one (backlog #36). A fixed
+  // root, so no request names a path (§2.5); the gate below only guards
+  // `/api/`, and the bundle holds no data. The SPA routes by hash, so
+  // `/` and its assets are all there is to serve and there is no
+  // history-fallback to get wrong. `wildcard: true` (the default) means
+  // an unknown path under the root is a 404, never `index.html`.
+  if (config.webDir) await app.register(fastifyStatic, { root: config.webDir });
 
   app.addHook('onClose', () => {
     platform.close();

@@ -110,6 +110,21 @@ or a server in the loop. That's what made the DOCX tag roundtrip provable
 before any editor existed, and what made a later pivot from a desktop
 shell to a web service cost nothing: `core` never knew which one called it.
 
+## Running it as a container
+
+One image holds the server and the built SPA; everything it writes is
+under the `/data` volume. HTTPS is the host's job, not the image's.
+
+```
+docker build -t tessera .
+docker run --rm -v tessera-data:/data tessera \
+  node dist/create-account.js you@example.com 'a-long-password'
+docker run -p 3400:3400 -v tessera-data:/data tessera
+```
+
+`scripts/smoke-image.sh` runs that against a throwaway volume, and CI
+runs it on every pull request.
+
 ## Development
 
 Requires Node 22+ and pnpm 10+.
