@@ -2361,8 +2361,26 @@ box; under "New", typing kept the open row, `Ctrl+Enter` confirmed it
 the filter; a QA-panel jump from a "No QA findings" filter cleared it
 and opened segment 1.
 
-**#35 · Dark mode and visual pass · M** · [issue #20]
+**#35 · ~~Dark mode and visual pass~~ · M**
 Calm palette, no layout shift when panels open.
+
+*Built (`packages/web/src/theme.ts`, `styles.css`, `App.tsx`'s
+`ThemeToggle`).* The colour tokens #28 declared were enough: the dark
+theme is one `:root[data-theme='dark']` block redefining them, and no
+rule names a colour. The page wears `light` or `dark` only; `theme.ts`
+resolves the viewer's choice (`system` by default, then `light`, `dark`,
+cycled by a topbar button, stored per browser in `prefs.ts`) against
+`prefers-color-scheme` and sets `data-theme` before the first render, so
+a dark viewer never sees a light flash. Resolving in script rather than
+a `@media` block keeps the dark palette defined once; the cost is that
+the page needs script to be dark, which it needs anyway. Hard-coded
+`#fff` on buttons and badges became `--on-accent` (dark text on the
+lighter dark accent), and inputs that had no background (login, filter
+search) took `--surface`, which light mode had hidden. *No layout shift*
+was already #33's design (the QA panel docks at a fixed height) and the
+theme changes no size. Verified in Chromium: OS dark, OS light, and a
+stored override each set the expected theme and computed colours. Not
+verified: a by-eye contrast pass over the grid on a real project.
 
 ---
 

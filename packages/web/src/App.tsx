@@ -9,9 +9,11 @@ import { Grid } from './Grid.js';
 import { Login } from './Login.js';
 import { Memories } from './Memories.js';
 import { ProjectFiles, Projects } from './Projects.js';
+import { loadTheme, saveTheme } from './prefs.js';
 import { formatRoute, parseRoute, type Route } from './route.js';
 import { SessionContext, type SessionValue } from './session-context.js';
 import { clearToken, loadToken, saveToken } from './session.js';
+import { applyTheme, followSystem, nextThemeChoice, type ThemeChoice } from './theme.js';
 
 function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
@@ -67,6 +69,7 @@ export function App() {
           </a>
           <Breadcrumbs route={route} />
           <a href={formatRoute({ screen: 'tms' })}>Memories</a>
+          <ThemeToggle />
           <button type="button" className="link" onClick={() => void logOut()}>
             Sign out
           </button>
@@ -111,5 +114,31 @@ function Breadcrumbs({ route }: { route: Route }) {
         <span>{route.project}</span>
       )}
     </nav>
+  );
+}
+
+const THEME_LABEL: Record<ThemeChoice, string> = {
+  system: 'Theme: system',
+  light: 'Theme: light',
+  dark: 'Theme: dark',
+};
+
+/** Cycles system → light → dark; the choice is a per-browser preference. */
+function ThemeToggle() {
+  const [choice, setChoice] = useState<ThemeChoice>(loadTheme);
+  useEffect(() => followSystem(() => choice), [choice]);
+  return (
+    <button
+      type="button"
+      className="link"
+      onClick={() => {
+        const next = nextThemeChoice(choice);
+        saveTheme(next);
+        applyTheme(next);
+        setChoice(next);
+      }}
+    >
+      {THEME_LABEL[choice]}
+    </button>
   );
 }
