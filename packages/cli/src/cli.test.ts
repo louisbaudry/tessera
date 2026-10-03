@@ -127,7 +127,8 @@ describe('cat-tool: a full job, headless', () => {
     expect(texts.length).toBe(
       translatableSegments(importDocx(readFileSync(FIXTURE))).length,
     );
-  });
+    // Eight CLI processes in a row: well under 5 s elsewhere, over it on a starved Windows runner (#82).
+  }, 60_000);
 
   it('qa exits 1 while a blocking issue remains', () => {
     const project = join(dir, 'project.catdb');
