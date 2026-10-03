@@ -2893,10 +2893,11 @@ Split so the headless part does not wait on the editor:
   nothing to check against until Epic 8 settles that flag and lands the
   client; build those first, then this is a thin implementation of the
   `TermAligner` seam.
-- **#43 · Glossary panel · M** · [issue #14] — after #28–#35. Phased
-  (design in `smart-glossary-spec.md` §5a; split because the server had
-  no glossary routes at all): **#43a** and **#43c** are done, and
-  **#43b**, the side panel, is the open phase, with both tabs' API ready.
+- **#43 · ~~Glossary panel~~ · DONE — `web/src/GlossaryPanel.tsx`,
+  `web/src/glossary-panel.ts`.** Phased (design in `smart-glossary-spec.md`
+  §5a; split because the server had no glossary routes at all): **#43a** the
+  API, **#43c** the mismatch list and **#43b** the side panel, each its own
+  PR.
   - **#43a · ~~Glossary API~~ · DONE — `server/src/glossary-session.ts`,
     the glossary routes in `server/src/app.ts`, `server/src/storage.ts`
     (`glossaryPath`/`glossarySlugOf`), `db/project/glossary-refs.ts`.**
@@ -2963,6 +2964,25 @@ Split so the headless part does not wait on the editor:
       the answer is an empty list and `glossary: null`.
     - Not built: recording an override from a mismatch row (a #43b
       action over the existing `propose` route is the likely shape).
+  - **#43b · ~~The panel~~ · DONE — `web/src/GlossaryPanel.tsx`,
+    `web/src/glossary-panel.ts`, the strip in `web/src/Grid.tsx`.** Two
+    tabs beside the grid: **Terms** (the session: find, choose/use, override,
+    deprecate, skip, reopen, Confirm/Discard) and **Mismatches** (#43c's list,
+    reloaded after the editor's last write, each row a jump). Logic is the
+    pure `glossary-panel.ts` (11 tests); driven once in a real browser against
+    a running server (setup, detection, decide, skip, reopen, confirm,
+    typing a target, the list refreshing, the jump). What it taught:
+    - **The panel was unusable as specified.** §5a.2 assumed a glossary
+      attached, and the SPA had no way to attach one, so a project's panel
+      would open to a Confirm that could only say no. It carries a one-field
+      setup (attach a named glossary, creating it if new).
+    - **"Record the override" is a design question, not a button.**
+      `preferredVariant` already flips on one `override` decision of an
+      existing variant, against §6's "enough recorded overrides". Not built;
+      its own card.
+    - **A normal 404 is a console error.** "No session yet" is a 404 by the
+      API's design, and the browser logs it on every open. Left, not worth a
+      second status code.
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
   a CHECK constraint: it widens both QA tables with `rebuildTable`

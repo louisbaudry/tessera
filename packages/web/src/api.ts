@@ -4,6 +4,7 @@
  */
 import type { Project, QaIssue, QaRule, Segment, Token } from '@cat-tool/core';
 
+import type { MismatchList, SessionView } from './glossary-panel.js';
 import type { ImportJob } from './import-job.js';
 
 export class ApiError extends Error {
@@ -129,7 +130,19 @@ export interface Restructured {
   issues: QaIssue[];
 }
 
+/** A glossary attached to a project: its slug, never its path. */
+export interface GlossaryRefView {
+  readonly id: number;
+  readonly glossary: string | null;
+  readonly priority: number;
+  readonly writeTarget: boolean;
+  readonly enabled: boolean;
+}
+
 const project = (name: string) => `/api/projects/${encodeURIComponent(name)}`;
+
+const glossaryUrl = (name: string, fileId: number) =>
+  `${project(name)}/files/${fileId}/glossary/session`;
 
 export const api = {
   login: (email: string, password: string) =>
@@ -312,6 +325,71 @@ export const api = {
     call<Restructured>(`${project(name)}/segments/${segmentId}/merge`, token, {
       method: 'POST',
       body,
+    }),
+  // --- glossaries (smart-glossary-spec.md §5a; backlog #43a-c) -------
+  glossaries: (token: string, signal?: AbortSignal) =>
+    call<{ slug: string }[]>('/api/glossaries', token, { signal }),
+  createGlossary: (token: string, name: string) =>
+    call<{ slug: string }>('/api/glossaries', token, { method: 'POST', body: { name } }),
+  projectGlossaries: (token: string, name: string, signal?: AbortSignal) =>
+    call<{ refs: GlossaryRefView[] }>(`${project(name)}/glossaries`, token, { signal }),
+  /** Attaches after the others; as the write target if asked. */
+  attachGlossary: (token: string, name: string, glossary: string, writeTarget: boolean) =>
+    call<{ refs: GlossaryRefView[] }>(`${project(name)}/glossaries`, token, {
+      method: 'POST',
+      body: { glossary, writeTarget },
+    }),
+  /** The file's held session, or null when none has been started. */
+  glossarySession: async (
+    token: string,
+    name: string,
+    fileId: number,
+    signal?: AbortSignal,
+  ): Promise<SessionView | null> => {
+    try {
+      return (
+        await call<{ session: SessionView }>(glossaryUrl(name, fileId), token, { signal })
+      ).session;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    }
+  },
+  /** Detection over the file; replaces a session already open for it. */
+  startGlossarySession: (token: string, name: string, fileId: number) =>
+    call<{ replaced: boolean; session: SessionView }>(glossaryUrl(name, fileId), token, {
+      method: 'POST',
+    }),
+  /** `choose`, `propose`, `skip` or `reopen`: each answers with the whole session. */
+  glossaryDecide: (
+    token: string,
+    name: string,
+    fileId: number,
+    action: 'choose' | 'propose' | 'skip' | 'reopen',
+    body: Record<string, string>,
+  ) =>
+    call<{ session: SessionView }>(`${glossaryUrl(name, fileId)}/${action}`, token, {
+      method: 'POST',
+      body,
+    }),
+  commitGlossarySession: (token: string, name: string, fileId: number) =>
+    call<{ written: number; session: SessionView }>(
+      `${glossaryUrl(name, fileId)}/commit`,
+      token,
+      { method: 'POST' },
+    ),
+  discardGlossarySession: (token: string, name: string, fileId: number) =>
+    call<{ session: SessionView }>(glossaryUrl(name, fileId), token, {
+      method: 'DELETE',
+    }),
+  glossaryMismatches: (
+    token: string,
+    name: string,
+    fileId: number,
+    signal?: AbortSignal,
+  ) =>
+    call<MismatchList>(`${project(name)}/files/${fileId}/glossary/mismatches`, token, {
+      signal,
     }),
   /** Resolves once every write sent so far, and any it set off, has settled. */
   settled: async (): Promise<void> => {

@@ -208,11 +208,21 @@ button.link {
   flex: 1;
   min-height: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
   overflow: hidden;
+}
+
+/* The grid proper. The glossary panel takes a fixed strip beside it, so
+   opening it changes the grid's width once, never under the cursor. */
+.grid-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .grid-meta {
@@ -778,4 +788,157 @@ button.chip-button:hover {
 
 .import-job button {
   justify-self: start;
+}
+
+/* --- the glossary panel (backlog #43b) ---------------------------- */
+
+.glossary-panel {
+  flex: 0 0 22rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.gp-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.gp-tabs button {
+  flex: 1;
+  padding: 0.4rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.gp-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.gp-pad {
+  padding: 0.6rem 0.75rem;
+}
+
+.gp-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.gp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gp-cards,
+.gp-mismatches {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.gp-card {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.gp-card-head,
+.gp-decided {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.gp-skipped {
+  opacity: 0.65;
+}
+
+.gp-offered {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.4rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gp-offered li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.gp-hint {
+  margin: 0.3rem 0;
+}
+
+.gp-free {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+}
+
+.gp-free input {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.gp-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.gp-footer-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.gp-mismatches li {
+  border-bottom: 1px solid var(--border);
+}
+
+.gp-jump {
+  display: grid;
+  grid-template-columns: 2.2rem 1fr;
+  gap: 0.1rem 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gp-jump .ord {
+  grid-row: span 2;
+  color: var(--muted);
+}
+
+.gp-kind {
+  color: var(--muted);
+  font-size: 0.78rem;
 }

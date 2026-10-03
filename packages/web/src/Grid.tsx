@@ -36,6 +36,7 @@ import {
 } from './gutter.js';
 import { nextUnconfirmed } from './advance.js';
 import { FilterBar } from './FilterBar.js';
+import { GlossaryPanel } from './GlossaryPanel.js';
 import { NO_FILTER, progress, visibleSegments, type SegmentFilter } from './filter.js';
 import {
   browserStorage,
@@ -46,7 +47,14 @@ import {
 } from './drafts.js';
 import { estimateRowHeight } from './layout.js';
 import { toPieces } from './pieces.js';
-import { loadFullTags, loadQaPanel, saveFullTags, saveQaPanel } from './prefs.js';
+import {
+  loadFullTags,
+  loadGlossaryPanel,
+  loadQaPanel,
+  saveFullTags,
+  saveGlossaryPanel,
+  saveQaPanel,
+} from './prefs.js';
 import { withIssue } from './qa-panel.js';
 import { QaPanel } from './QaPanel.js';
 import { createPageHide, createSaveQueue } from './save-queue.js';
@@ -100,6 +108,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const [fullTags, setFullTags] = useState(loadFullTags);
   const [note, setNote] = useState<string | null>(null);
   const [qaOpen, setQaOpen] = useState(loadQaPanel);
+  const [glossaryOpen, setGlossaryOpen] = useState(loadGlossaryPanel);
   const [dismissing, setDismissing] = useState<ReadonlySet<string>>(new Set());
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const positions = useMemo(() => new Map(segments.map((s, i) => [s.id, i])), [segments]);
@@ -539,144 +548,166 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
 
   return (
     <section className={fullTags ? 'grid full-tags' : 'grid'}>
-      <div className="grid-meta">
-        <strong>{file.file.relPath}</strong>
-        <span className="muted progress">
-          <span title="Confirmed segments, of those to translate (locked ones are not)">
-            {done.segments.confirmed.toLocaleString()} /{' '}
-            {done.segments.total.toLocaleString()} segments
-          </span>
-          {' · '}
-          {done.words ? (
-            <span title="Confirmed words, of the file's words (each text box once)">
-              {done.words.confirmed.toLocaleString()} /{' '}
-              {done.words.total.toLocaleString()} words
+      <div className="grid-main">
+        <div className="grid-meta">
+          <strong>{file.file.relPath}</strong>
+          <span className="muted progress">
+            <span title="Confirmed segments, of those to translate (locked ones are not)">
+              {done.segments.confirmed.toLocaleString()} /{' '}
+              {done.segments.total.toLocaleString()} segments
             </span>
-          ) : (
-            <span
-              title={`${detail.project.srcLang} does not space its words: no word count`}
+            {' · '}
+            {done.words ? (
+              <span title="Confirmed words, of the file's words (each text box once)">
+                {done.words.confirmed.toLocaleString()} /{' '}
+                {done.words.total.toLocaleString()} words
+              </span>
+            ) : (
+              <span
+                title={`${detail.project.srcLang} does not space its words: no word count`}
+              >
+                no word count
+              </span>
+            )}
+            {flagged > 0 && ` · ${flagged.toLocaleString()} with QA errors`}
+            {unsaved.size > 0 && (
+              <span className="error"> · {unsaved.size.toLocaleString()} not saved</span>
+            )}
+          </span>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={fullTags}
+              onChange={(e) => {
+                setFullTags(e.target.checked);
+                saveFullTags(e.target.checked);
+              }}
+            />{' '}
+            Show full tags
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={qaOpen}
+              onChange={(e) => {
+                setQaOpen(e.target.checked);
+                saveQaPanel(e.target.checked);
+              }}
+            />{' '}
+            QA panel
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={glossaryOpen}
+              onChange={(e) => {
+                setGlossaryOpen(e.target.checked);
+                saveGlossaryPanel(e.target.checked);
+              }}
+            />{' '}
+            Glossary
+          </label>
+          <span className="restructure">
+            <button
+              type="button"
+              className="link"
+              // Keep the caret where it is: a split reads it.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void restructure('merge')}
+              title="Merge the open segment with the next one of its paragraph (Ctrl+M)"
             >
-              no word count
+              Merge with next
+            </button>
+            <button
+              type="button"
+              className="link"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void restructure('split')}
+              title="Split at the caret you put in a source (Ctrl+Shift+M)"
+            >
+              Split at source caret
+            </button>
+          </span>
+          {note && (
+            <span className="error" role="status">
+              {note}
             </span>
           )}
-          {flagged > 0 && ` · ${flagged.toLocaleString()} with QA errors`}
-          {unsaved.size > 0 && (
-            <span className="error"> · {unsaved.size.toLocaleString()} not saved</span>
-          )}
-        </span>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={fullTags}
-            onChange={(e) => {
-              setFullTags(e.target.checked);
-              saveFullTags(e.target.checked);
-            }}
-          />{' '}
-          Show full tags
-        </label>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={qaOpen}
-            onChange={(e) => {
-              setQaOpen(e.target.checked);
-              saveQaPanel(e.target.checked);
-            }}
-          />{' '}
-          QA panel
-        </label>
-        <span className="restructure">
-          <button
-            type="button"
-            className="link"
-            // Keep the caret where it is: a split reads it.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => void restructure('merge')}
-            title="Merge the open segment with the next one of its paragraph (Ctrl+M)"
-          >
-            Merge with next
-          </button>
-          <button
-            type="button"
-            className="link"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => void restructure('split')}
-            title="Split at the caret you put in a source (Ctrl+Shift+M)"
-          >
-            Split at source caret
-          </button>
-        </span>
-        {note && (
-          <span className="error" role="status">
-            {note}
-          </span>
+        </div>
+        <FilterBar
+          ref={filterRef}
+          filter={filter}
+          segments={segments}
+          shown={shown.length}
+          onChange={setFilter}
+        />
+        <div className="row head" role="row">
+          <div className="gutter" role="columnheader">
+            #
+          </div>
+          <div className="cell" role="columnheader">
+            Source <span className="muted">{detail.project.srcLang}</span>
+          </div>
+          <div className="cell" role="columnheader">
+            Target <span className="muted">{detail.project.tgtLang}</span>
+          </div>
+        </div>
+        <div
+          className="grid-scroll"
+          ref={scrollRef}
+          role="table"
+          aria-rowcount={segments.length}
+        >
+          <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((item) => {
+              const segment = shown[item.index]!;
+              return (
+                <div
+                  key={item.key}
+                  className={item.index % 2 === 1 ? 'row-slot odd' : 'row-slot'}
+                  data-index={item.index}
+                  ref={virtualizer.measureElement}
+                  style={{ transform: `translateY(${item.start}px)` }}
+                >
+                  <SegmentRow
+                    segment={segment}
+                    project={project}
+                    position={positions.get(segment.id)! + 1}
+                    mark={marks.get(segment.id)}
+                    active={segment.id === activeId}
+                    clickAt={segment.id === activeId ? clickAt : undefined}
+                    unsaved={unsaved.get(segment.id)}
+                    srcLang={detail.project.srcLang}
+                    tgtLang={detail.project.tgtLang}
+                    onActivate={activate}
+                    onCommit={commit}
+                    onDraft={keepDraft}
+                    onLeave={leave}
+                    onConfirm={confirmAndAdvance}
+                    registerPageHide={pageHide.register}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {qaOpen && (
+          <QaPanel
+            issues={issues}
+            positions={positions}
+            pending={dismissing}
+            onJump={jumpTo}
+            onDismiss={(issue, dismissed) => void setDismissed(issue, dismissed)}
+          />
         )}
       </div>
-      <FilterBar
-        ref={filterRef}
-        filter={filter}
-        segments={segments}
-        shown={shown.length}
-        onChange={setFilter}
-      />
-      <div className="row head" role="row">
-        <div className="gutter" role="columnheader">
-          #
-        </div>
-        <div className="cell" role="columnheader">
-          Source <span className="muted">{detail.project.srcLang}</span>
-        </div>
-        <div className="cell" role="columnheader">
-          Target <span className="muted">{detail.project.tgtLang}</span>
-        </div>
-      </div>
-      <div
-        className="grid-scroll"
-        ref={scrollRef}
-        role="table"
-        aria-rowcount={segments.length}
-      >
-        <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map((item) => {
-            const segment = shown[item.index]!;
-            return (
-              <div
-                key={item.key}
-                className={item.index % 2 === 1 ? 'row-slot odd' : 'row-slot'}
-                data-index={item.index}
-                ref={virtualizer.measureElement}
-                style={{ transform: `translateY(${item.start}px)` }}
-              >
-                <SegmentRow
-                  segment={segment}
-                  project={project}
-                  position={positions.get(segment.id)! + 1}
-                  mark={marks.get(segment.id)}
-                  active={segment.id === activeId}
-                  clickAt={segment.id === activeId ? clickAt : undefined}
-                  unsaved={unsaved.get(segment.id)}
-                  srcLang={detail.project.srcLang}
-                  tgtLang={detail.project.tgtLang}
-                  onActivate={activate}
-                  onCommit={commit}
-                  onDraft={keepDraft}
-                  onLeave={leave}
-                  onConfirm={confirmAndAdvance}
-                  registerPageHide={pageHide.register}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {qaOpen && (
-        <QaPanel
-          issues={issues}
+      {glossaryOpen && (
+        <GlossaryPanel
+          project={project}
+          fileId={file.file.id}
+          segments={segments}
           positions={positions}
-          pending={dismissing}
           onJump={jumpTo}
-          onDismiss={(issue, dismissed) => void setDismissed(issue, dismissed)}
         />
       )}
     </section>
