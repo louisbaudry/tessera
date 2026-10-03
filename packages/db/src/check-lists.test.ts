@@ -23,7 +23,12 @@ import {
   VENDOR_AUDIT_ACTIONS,
 } from '@cat-tool/core';
 import { ORDER_STATUSES } from '@cat-tool/portal-core';
-import { CAPACITY_STATUSES, RATE_TIERS } from '@cat-tool/vendor-core';
+import {
+  ASSIGNMENT_CHANNELS,
+  ASSIGNMENT_STATUSES,
+  CAPACITY_STATUSES,
+  RATE_TIERS,
+} from '@cat-tool/vendor-core';
 import { describe, expect, it } from 'vitest';
 
 import { GLOSSARY_APPLICATION_ID, GLOSSARY_MIGRATIONS } from './glossary/schema.js';
@@ -82,6 +87,10 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'audit_event.action': VENDOR_AUDIT_ACTIONS,
       'rate_card_entry.tier': RATE_TIERS,
       'capacity.status': CAPACITY_STATUSES,
+      'assignment.channel': ASSIGNMENT_CHANNELS,
+      'assignment.status': ASSIGNMENT_STATUSES,
+      'assignment_event.from_status': ASSIGNMENT_STATUSES,
+      'assignment_event.to_status': ASSIGNMENT_STATUSES,
     },
   },
   tm: {

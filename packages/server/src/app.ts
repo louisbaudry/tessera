@@ -110,6 +110,7 @@ import {
   startGlossarySession,
   type HeldSession,
 } from './glossary-session.js';
+import { registerAssignmentRoutes } from './assignments.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
 import {
   glossaryPath,
@@ -1543,6 +1544,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return { session: sessionView(held) };
     },
   );
+
+  // --- assignments (vendor-spec.md §4, §6; backlog #48) ---------------
+  registerAssignmentRoutes(app, {
+    storageRoot: config.storageRoot,
+    platform,
+    owner,
+    sessionActor,
+  });
 
   return app;
 }

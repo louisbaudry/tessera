@@ -34,6 +34,7 @@ export class InvalidNameError extends Error {
 const PROJECT_EXT = '.catdb';
 const TM_EXT = '.ctm';
 const GLOSSARY_EXT = '.ctg';
+const VENDORS_FILE = 'vendors.ctv';
 
 /** The directory an account's projects live in, under the server's volume. */
 export function projectsDir(storageRoot: string, account: Account): string {
@@ -44,6 +45,15 @@ export function projectsDir(storageRoot: string, account: Account): string {
 export function projectPath(storageRoot: string, account: Account, name: string): string {
   if (!isSlug(name)) throw new InvalidNameError('project', name);
   return join(projectsDir(storageRoot, account), `${name}${PROJECT_EXT}`);
+}
+
+/**
+ * The owner's vendor roster (backlog #46): one `.ctv` per owner account,
+ * beside their other files. Built from the account's minted root and a
+ * constant, so nothing a request sends is in it.
+ */
+export function vendorsPath(storageRoot: string, account: Account): string {
+  return join(storageRoot, account.storageRoot, VENDORS_FILE);
 }
 
 /** Every slug with `ext` in `dir`, sorted; none before the directory exists. */

@@ -14,7 +14,12 @@
  */
 
 import type { VendorAuditAction } from '@cat-tool/core';
-import type { CapacityStatus, RateTier } from '@cat-tool/vendor-core';
+import type {
+  AssignmentChannel,
+  AssignmentStatus,
+  CapacityStatus,
+  RateTier,
+} from '@cat-tool/vendor-core';
 
 import { auditEventDdl } from '../audit/events.js';
 import { sqlList, type Migration } from '../migrate.js';
@@ -121,4 +126,86 @@ const v1: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1];
+/** `assignment.status` and the event's statuses since v2: `ASSIGNMENT_STATUSES` as of backlog #48. */
+const V2_ASSIGNMENT_STATUSES = [
+  'offered',
+  'pool_open',
+  'claimed',
+  'accepted',
+  'declined',
+  'in_progress',
+  'delivered',
+  'reviewed',
+] as const satisfies readonly AssignmentStatus[];
+
+/** `assignment.channel` since v2: `ASSIGNMENT_CHANNELS` as of backlog #48. */
+const V2_ASSIGNMENT_CHANNELS = [
+  'direct',
+  'pool',
+] as const satisfies readonly AssignmentChannel[];
+
+/**
+ * Assignments (vendor-spec.md §4, its #48 implementation note). One job
+ * for one project of this owner; the `vendor` is null only while the job
+ * is `pool_open`. `assignment_event` is the whole record of a transition,
+ * with a required actor and append-only by trigger from the first
+ * migration (audit-spec.md §8.2), `order_event`'s way.
+ */
+const v2: Migration = {
+  version: 2,
+  description: 'assignment, assignment_pool_member, assignment_event (backlog #48)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE assignment (
+        id            INTEGER PRIMARY KEY,
+        project_name  TEXT    NOT NULL,
+        channel       TEXT    NOT NULL CHECK (channel IN (${sqlList(V2_ASSIGNMENT_CHANNELS)})),
+        status        TEXT    NOT NULL CHECK (status IN (${sqlList(V2_ASSIGNMENT_STATUSES)})),
+        vendor_id     INTEGER REFERENCES vendor(id),
+        deadline      TEXT,
+        instructions  TEXT,
+        reopened_from INTEGER REFERENCES assignment(id),
+        created_at    TEXT    NOT NULL,
+        updated_at    TEXT    NOT NULL,
+        -- A pool job has no vendor until one claims it; every other status has one.
+        CHECK ((status = 'pool_open') = (vendor_id IS NULL))
+      );
+      CREATE INDEX assignment_vendor ON assignment(vendor_id, status);
+      CREATE INDEX assignment_project ON assignment(project_name);
+
+      -- The vendors eligible to claim a pool job. Kept after the claim:
+      -- the record of who could have.
+      CREATE TABLE assignment_pool_member (
+        assignment_id INTEGER NOT NULL REFERENCES assignment(id),
+        vendor_id     INTEGER NOT NULL REFERENCES vendor(id),
+        PRIMARY KEY (assignment_id, vendor_id)
+      ) WITHOUT ROWID;
+
+      CREATE TABLE assignment_event (
+        id            INTEGER PRIMARY KEY,
+        assignment_id INTEGER NOT NULL REFERENCES assignment(id),
+        from_status   TEXT CHECK (from_status IN (${sqlList(V2_ASSIGNMENT_STATUSES)})),
+        to_status     TEXT NOT NULL CHECK (to_status IN (${sqlList(V2_ASSIGNMENT_STATUSES)})),
+        actor         TEXT NOT NULL,
+        actor_label   TEXT,
+        note          TEXT,
+        at            TEXT NOT NULL
+      );
+      CREATE INDEX assignment_event_assignment ON assignment_event(assignment_id, id);
+
+      CREATE TRIGGER assignment_event_no_delete BEFORE DELETE ON assignment_event BEGIN
+        SELECT RAISE(ABORT, 'assignment_event is append-only');
+      END;
+      -- The one permitted UPDATE: erasing a person's display label, as
+      -- audit_event's trigger allows (audit-spec.md §5).
+      CREATE TRIGGER assignment_event_no_update BEFORE UPDATE ON assignment_event
+      WHEN NEW.id IS NOT OLD.id OR NEW.assignment_id IS NOT OLD.assignment_id
+        OR NEW.from_status IS NOT OLD.from_status OR NEW.to_status IS NOT OLD.to_status
+        OR NEW.actor IS NOT OLD.actor OR NEW.note IS NOT OLD.note OR NEW.at IS NOT OLD.at
+        OR NEW.actor_label IS NOT '[erased]'
+      BEGIN SELECT RAISE(ABORT, 'assignment_event is append-only'); END;
+    `);
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2];
