@@ -2883,7 +2883,14 @@ Split so the headless part does not wait on the editor:
     including the card's own scenario (three decided, one proposed, two
     skipped: four rows, the two re-flagged) and an all-or-nothing rollback.
 - **#42 · `ClaudeTermAligner` · M** · [issue #13] — with Epic 8,
-  opt-in gated per `ai-platform-vision.md` §5.
+  opt-in gated per `ai-platform-vision.md` §5. Not startable on its own
+  (checked 2026-10-03): the repo has no Anthropic/HTTP AI client (only
+  the `ai.requested` audit provenance in `core/audit/`) and no AI
+  opt-in flag at all, and §5 leaves its scope open ("per project or per
+  client"). The card's "never called for a client with AI off" has
+  nothing to check against until Epic 8 settles that flag and lands the
+  client; build those first, then this is a thin implementation of the
+  `TermAligner` seam.
 - **#43 · Glossary panel · M** · [issue #14] — after #28–#35.
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
