@@ -300,6 +300,14 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   same vendor, pair and tier, so a later row can never change what a past
   period paid. Money is `rate_micros`, an integer. `RATE_TIERS` is
   provisional until `#61` fixes the fuzzy bands.
+- **An assignment moves only through `moveAssignment`** (`db/vendor/assignments.ts`,
+  backlog #48), over `transitionAssignment`. It takes the write lock first
+  (`BEGIN IMMEDIATE`): that, not the conditional `UPDATE`, is what makes two
+  vendors claiming one pool job resolve to one claim and one 409, and a deferred
+  transaction would fail the loser with a raw `SQLITE_BUSY`. `assignment_event`
+  is the log (append-only, actor required). The vendor routes are on
+  `@cat-tool/server` (`server/src/assignments.ts`), addressed `?owner=`; a
+  stranger, a non-member and a missing assignment are one identical 404.
 - **`vendor-core` stays headless**, as `core` and `portal-core`: the only
   place a transition is enforced is `transitionAssignment`, never a route.
   Its closed sets (`ASSIGNMENT_STATUSES`, `RATE_TIERS`, `CAPACITY_STATUSES`)

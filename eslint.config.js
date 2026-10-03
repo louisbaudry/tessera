@@ -101,7 +101,12 @@ export default tseslint.config(
             },
             {
               name: '@cat-tool/vendor-core',
-              importNames: ['ASSIGNMENT_STATUSES', 'RATE_TIERS', 'CAPACITY_STATUSES'],
+              importNames: [
+                'ASSIGNMENT_STATUSES',
+                'ASSIGNMENT_CHANNELS',
+                'RATE_TIERS',
+                'CAPACITY_STATUSES',
+              ],
               message:
                 'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
               allowTypeImports: true,

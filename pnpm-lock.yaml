@@ -131,6 +131,9 @@ importers:
       '@cat-tool/db':
         specifier: workspace:*
         version: link:../db
+      '@cat-tool/vendor-core':
+        specifier: workspace:*
+        version: link:../vendor-core
       '@fastify/multipart':
         specifier: ^9.0.0
         version: 9.4.0

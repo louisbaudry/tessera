@@ -3127,10 +3127,53 @@ rest of that range:
     (`#51`) is a precondition beside `transitionAssignment`, never inside.
   - **`ASSIGNMENT_STATUSES` is on the migration lint's list** so `#48`'s
     `CHECK` is written as a literal, not imported (`#64`).
-- **#48 · Assignment repositories + offer/pool/claim/accept/decline
-  routes · M** · [issue #19] — concurrency-safe pool claim (spec §7);
-  where §3/§6's `vendor-server`-vs-routes-on-`@cat-tool/server` question
-  gets decided, once the route count here plus `#50`/`#51` is known.
+- **#48 · ~~Assignment repositories + offer/pool/claim/accept/decline
+  routes~~ · DONE — `db/src/vendor/assignments.ts` (`.ctv` schema v2),
+  `server/src/assignments.ts`.** `assignment`, `assignment_pool_member`
+  and an append-only `assignment_event` in the owner's `.ctv`;
+  `moveAssignment` is the one function a move goes through, over
+  `vendor-core`'s `transitionAssignment`; five routes on `@cat-tool/server`
+  (the owner's `POST /api/assignments`, a vendor's claim, accept and
+  decline, and `GET`). 21 tests in `db/vendor/assignments.test.ts`, 16 route
+  tests in `server/src/assignments.test.ts`. Design written first in
+  `vendor-spec.md` §4's #48 note, which also settles §3/§6's
+  `vendor-server` question. What it taught:
+  - **The claim is safe because the write lock is taken first, not because
+    of the conditional `UPDATE`.** `moveAssignment` runs `BEGIN IMMEDIATE`,
+    reads, checks, then writes `UPDATE … WHERE status = <read>`. In a deferred
+    transaction the loser of a race on a second connection would fail with a
+    raw `SQLITE_BUSY` that no route can tell from a real error; with the lock
+    taken first it waits, reads `claimed`, and is refused cleanly. The
+    conditional `UPDATE` is kept as the second wall. A test claims from two
+    connections to one file and from two requests at once; neither can reach
+    the second wall, so it stays untested by anything but reading it.
+  - **A lost claim is a 409, not a 404.** First draft checked "is this your
+    assignment" before the transition, so the pool member who lost was told the
+    job did not exist. A claim is the pool's, so any member may try it, and the
+    status decides; every other move is the assignment's own vendor's, so a
+    member who lost cannot accept what another claimed.
+  - **A decline of a claimed pool job reposts the job, in the same
+    transaction**: a new `pool_open` row, `reopened_from` the declined one, the
+    pool minus the decliner. `declined` stays terminal and each vendor's
+    answer keeps its own history, as `#47` required.
+  - **Accepting opens the editor, in a second file.** The route grants
+    `assigned_translator` (`#45`) after the move commits; the assignment is in
+    the `.ctv` and the grant in `platform.sqlite`, so there is no one
+    transaction. The grant is idempotent; a reconciliation that repairs a
+    failure between them is `#51`'s. A test accepts and then opens the owner's
+    project, and is refused `manage`.
+  - **A stranger, a non-member and a missing assignment are one 404.** A
+    vendor addresses the roster with `?owner=`, as `#45` addresses a project,
+    and the body of a refusal is the same whatever the reason (a test compares
+    them). A vendor's view of a job carries no address, no history and no other
+    vendor.
+  - **A mutation that did nothing:** the first mutation check (disable the
+    access check) was a `sed` that did not match the line Prettier had
+    reformatted, and "all 21 pass" was read as "the tests miss it". Check that
+    a mutation applied before trusting it; applied properly, three tests fail.
+  - **Not here:** the roster's own routes (add a vendor, set rates: `#51`),
+    the job feed and offer detail (`#50`), review's gate (`#51`); a roster entry
+    exists today only because something wrote it into the `.ctv`.
 - **#49 · Tiered rate/payable calculation · M** · [issue #28] —
   `db/vendor` reading `db/tm`'s `retrievePair` output, the cross-package
   dependency spec §1 decision 9 calls out explicitly. Words are counted by

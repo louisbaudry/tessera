@@ -163,15 +163,9 @@ epic in this repo (QA engine, smart glossary, portal):
 - ~~Exact `project_authorization.scope` values~~ — decided in backlog `#45`,
   see the implementation note after this list: `assigned_translator` is
   the only scope in v1, a reviewer/proofreader scope is Ring 1.
-- Whether `vendor-server` is its own deployable service or a route
-  module mounted into `@cat-tool/server`'s Fastify instance. Leaning
-  toward the latter (one running server, since vendors and owners share
-  the same editor process) but not decided — revisit once §7's fields
-  are drafted and the route count is known.
-- How rate calculation in `vendor-core` relates to `portal-core`'s
-  `pricing.ts` (client-facing quote) — margin is the gap between the
-  two, and that gap is presumably a real product feature (PM-visible
-  margin per job), not an accident of two separate calculators existing.
+- ~~Whether `vendor-server` is its own deployable service or a route module
+  mounted into `@cat-tool/server`~~ — decided in backlog `#48`: routes on
+  `@cat-tool/server`, see the §4 implementation note (#48) below.
 - ~~Whether `.ctv` is per-account or a single shop-wide file~~ — decided in
   backlog `#46`, see the implementation note after the §5 field list: one
   per **owner** account.
@@ -336,6 +330,65 @@ once, here, is what `vendor-core/src/assignment.ts` encodes:
   `rebuildTable`, since `ASSIGNMENT_STATUSES` is frozen into it like every
   closed set) and a row in the table.
 
+**Implementation note (#48), written before the code (2026-10-03).** What
+`#48` settled that §4 and §7 left open:
+
+- **An assignment is one job for one project, and lives in the owner's
+  `.ctv`.** `assignment` holds the project's slug (the owner is the file's),
+  the channel, the status, the vendor (null only while `pool_open`: a
+  `CHECK` says so), an optional deadline and the PM's instructions. Scope
+  is the whole project, not a file; per-file assignments are a later
+  question, and the estimates, preview and tier breakdown §7 wants on an
+  offer are `#50`'s read, not stored here.
+- **The pool is a set of eligible vendors, kept.** `assignment_pool_member`
+  records who may claim a `pool_open` job, and stays after the claim as the
+  record of who was eligible. Only a member can claim.
+- **`assignment_event` is the log**, as `order_event` is the portal's
+  (decision 7 there): `from_status`, `to_status`, a required actor
+  (`NOT NULL`, no default) and its label, a note and when, append-only by
+  trigger from the first migration (`audit-spec.md` §8.2). It is the whole
+  record of a transition; there is no second `audit_event` row for the same
+  fact.
+- **One function moves an assignment.** `moveAssignment` reads the row,
+  asks `vendor-core`'s `transitionAssignment` whether the edge exists and
+  whose it is, checks that the vendor acting is the one on the row (or, for
+  a claim, a pool member), then makes the move with `UPDATE … WHERE
+  status = <the status it read>` and checks one row changed. **That
+  conditional `UPDATE`, not the read, is what makes a claim safe**: two
+  vendors claiming one pool job at once resolve to exactly one claim and
+  one rejection (`AssignmentConflictError`, a route's 409), on one
+  connection or two, in one process or two. Everything the other routes do
+  (`accept`, `decline`, and the later `start`, `deliver`, `review`) is the
+  same function with a different edge.
+- **A declined claim reposts the job to the rest.** `#47` kept `declined`
+  terminal; the pool job's reopening is done here, in the same transaction
+  as the decline: a new `pool_open` assignment with the same project,
+  deadline and instructions, `reopened_from` pointing at the declined one,
+  and the same pool minus the decliner. Each vendor's answer stays in its
+  own row's history.
+- **Accepting gives access to the project, and it is not atomic.** On
+  `accept` the route grants the vendor `assigned_translator` on the owner's
+  project (`#45`), so the editor opens. The assignment is in the `.ctv` and
+  the grant in `platform.sqlite`, two files no one transaction spans: the
+  move is committed first and the grant, which is idempotent, follows. A
+  failure between them leaves an accepted assignment with no access, which
+  repeating the grant mends; a reconciliation that does it on its own is
+  `#51`'s. The grant is not revoked at delivery here either (`#51`).
+- **The routes are the owner's and the vendor's, and addressed the way
+  projects are.** The owner (PM) creates an assignment with `POST
+  /api/assignments`, on their own roster, naming the project, the channel
+  and the vendors by account id. A vendor acts with `POST
+  /api/assignments/:id/claim|accept|decline?owner=<account id>`: the
+  roster is the owner's, found by `?owner=` as a project is (`#45`), and a
+  vendor who is not on that roster, or on it but not eligible for that
+  assignment, gets the **same 404 as an assignment that does not exist**.
+  `GET /api/assignments/:id` answers the assignment as that party may
+  see it; the richer offer detail of §7 is `#50`.
+- **Not in `#48`:** the roster's own management routes (adding a vendor,
+  setting rates: `#51`), the job feed (`#50`), and review's gate (`#51`).
+  A roster entry exists today only because something wrote it into the
+  `.ctv`.
+
 ## 5. Vendor profile fields
 
 Grounded in §7's daily experience and decisions 8–9 above, not a guess:
@@ -432,13 +485,15 @@ Grounded in §7's daily experience and decisions 8–9 above, not a guess:
   and the reads and writes above. `#48` adds the assignment log to this
   file; `#50`/`#51` put it behind HTTP.
 
-## 6. `vendor-server` vs. routes on `@cat-tool/server` (placeholder)
+## 6. `vendor-server` vs. routes on `@cat-tool/server`
 
-See §3. Decide once the route surface for §7's "vendor's daily
-experience" is sketched — a small surface argues for folding into the
-existing server; a large one (dashboard, earnings, job feed,
-notifications) argues for a separate service the way `portal-server` is
-separate from `@cat-tool/server` today.
+Decided in backlog `#48`: **routes on `@cat-tool/server`.** The surface is
+small (five write routes in `#48`, two reads in `#50`, a few in `#51`),
+the vendor and the owner share the one process, the one session and the
+one editor, and a second deployable would have to re-implement login and
+`project_authorization`. `portal-server` is separate because its clients
+are not accounts; vendors are. Revisit if notifications or a dashboard make
+the surface large (§7 lists both as not designed).
 
 ## 7. The vendor's daily experience
 

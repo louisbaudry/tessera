@@ -56,3 +56,4 @@ export { VENDOR_APPLICATION_ID, VENDOR_MIGRATIONS } from './schema.js';
 export * from './vendors.js';
 export * from './rates.js';
 export * from './capacity.js';
+export * from './assignments.js';
