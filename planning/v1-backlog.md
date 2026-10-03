@@ -685,10 +685,39 @@ and list the memory at 60,000 units. Worth remembering:
   memory to describe it, which runs `integrity_check` (§10) on the request
   thread — 7.9 s at 500,000 units, and one `/api/me` in the middle waited
   8,055 ms. The worker now describes the memory while it has it open (worst
-  latency 10.3 ms). The same cost is still paid by every `GET /api/tms`,
-  which opens every memory (8.0 s with that memory present): a durability
-  policy, not changed here, and now issue #95. The lesson is `CLAUDE.md`'s
-  scan lesson again, for time on a thread: nothing at test scale shows it.
+  latency 10.3 ms). The same cost was still paid by every `GET /api/tms`,
+  which opened every memory (8.0 s with that memory present): a durability
+  policy, so filed as issue #95 and fixed after, below. The lesson is
+  `CLAUDE.md`'s scan lesson again, for time on a thread: nothing at test
+  scale shows it.
+- **Listing a memory is `peekTm`, not `openTm` (issue #95, after).**
+  `db/tm/peek.ts` describes a memory from a connection that migrates,
+  verifies and backs up nothing and refuses writes (`query_only`); the
+  server's list uses it, so §10's `integrity_check` on open is unchanged for
+  everything that writes or retrieves. `GET /api/tms` with the 500,000-unit
+  memory present went from 8,004 ms to 31–45 ms; directly, `openTm` +
+  `describeTm` 7,159 ms against `peekTm` 37 ms. What it taught:
+  - **The obvious handle was the wrong one.** `readonly: true` is what
+    "cannot write" suggests, and it leaves a `-wal` and a `-shm` file beside
+    every memory on every listing, because a read-only connection to a WAL
+    file cannot remove what it creates (found by listing the directory: the
+    main file was byte-identical, so a digest check alone would have passed).
+    An ordinary handle with
+    `query_only = ON` refuses writes at the SQL level and cleans up as
+    SQLite expects. Deleting the sidecars by hand was rejected: under a live
+    writer that corrupts the database.
+  - **The policy split is tested by damaging a file.** A test overwrites a
+    page of `tuv_lookup`: the list shows the memory, `openTm` refuses it.
+    The db test fails if `peekTm` starts verifying (and, with
+    `readonly: true`, the sidecar test fails); the server test fails if the
+    list goes back to `openTm`. Each was checked by making that change.
+  - **Severe damage never reaches `MigrationError`.** `integrity_check`
+    itself throws `SQLITE_CORRUPT` on a page it cannot read, so `openAndMigrate`'s
+    friendly message is only for soft errors. The test says "refused", not
+    which class, because the first draft said the class and was wrong.
+  - **A barrel cycle avoided on the way:** `peek.ts` needed `describeTm`,
+    which lived in `tm/index.ts`, which re-exports `peek.ts` (the cycle
+    `errors.ts` warns about); `describeTm` moved to `tm/describe.ts`.
 - **Cancel is SQLite's, not the operation's.** The cooperative flag (shared
   memory, checked between batches and phases) ends most cancels cleanly; past
   `graceMs` the thread is terminated, which is safe because an uncommitted

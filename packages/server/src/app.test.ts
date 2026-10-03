@@ -4,7 +4,16 @@
  * against a real fixture DOCX.
  */
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +40,7 @@ import {
   listEvents,
   openPlatformDb,
   openProjectDb,
+  openTm,
   verifyAudit,
   type Account,
 } from '@cat-tool/db';
@@ -1158,6 +1168,30 @@ ${units
     writeTarget: boolean;
     enabled: boolean;
   };
+
+  it('lists a memory without verifying it: opening runs integrity_check, which a list must not (backlog #95)', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    expect((await call(token, 'POST', '/api/tms', { name: 'damaged' })).statusCode).toBe(
+      201,
+    );
+    // Overwrite one page of an index, so `integrity_check` would fail on it while the
+    // tables the listing reads are untouched. At 500,000 units that check is 7.9 s.
+    const file = tmFile(alice, 'damaged');
+    const tm = openTm(file);
+    const { pageno } = tm
+      .prepare(`SELECT pageno FROM dbstat WHERE name = 'tuv_lookup' LIMIT 1`)
+      .get() as { pageno: number };
+    const pageSize = tm.pragma('page_size', { simple: true }) as number;
+    tm.close();
+    const fd = openSync(file, 'r+');
+    writeSync(fd, Buffer.alloc(pageSize, 0xff), 0, pageSize, (pageno - 1) * pageSize);
+    closeSync(fd);
+    expect(() => openTm(file)).toThrow(); // opening it is refused, as §10 says
+
+    const listed = await call(token, 'GET', '/api/tms');
+    expect(listed.statusCode, listed.body).toBe(200);
+    expect(listed.json()).toMatchObject([{ slug: 'damaged', units: 0 }]);
+  });
 
   it('creates an empty memory under the account root, lists it, and refuses a second by that name', async () => {
     const token = await login('alice@example.com', 'alice-pw');

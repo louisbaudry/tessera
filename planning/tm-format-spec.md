@@ -161,13 +161,14 @@ what building it settled:
   10.3 ms. A run cancelled after 110,000 units stopped 1.6 s later and left
   no memory and no file. These are the card's bar (§11 has the importer's own
   numbers).
-- **Not solved, and recorded:** opening a large memory costs seconds on
+- **Found here, fixed after (#95):** opening a large memory costs seconds on
   whatever thread does it (`openAndMigrate`'s `integrity_check`, the §10
-  policy), so `GET /api/tms`, which opens every memory, stalled the server
-  for 8.0 s with the 500,000-unit memory present. That is a durability
-  policy and not this change's to alter; it is issue #95. A server that
-  restarts mid-import leaves the upload and staging file in the account's
-  `tmp/` (nothing sweeps it; issue #96); the job table is in memory and starts empty.
+  policy), so `GET /api/tms`, which opened every memory, stalled the server
+  for 8.0 s with the 500,000-unit memory present. The policy was left alone;
+  the list stopped opening memories (`peekTm`, §10), and the same call takes
+  31–45 ms. A server that restarts mid-import leaves the upload and staging
+  file in the account's `tmp/` (nothing sweeps it; issue #96); the job table
+  is in memory and starts empty.
 
 **Nothing in §2 onward depends on this choice, or on the desktop-vs-server
 question.** The format, schema, hashing contract, and token model are
@@ -1183,7 +1184,16 @@ years of work and it is not reconstructible.
 - Automatic timestamped backup before every schema migration, every bulk
   import, and every batch find-and-replace. Retained until the user clears
   them.
-- `PRAGMA integrity_check` on open, surfaced rather than swallowed.
+- `PRAGMA integrity_check` on open, surfaced rather than swallowed. "Open"
+  is `openTm`: every path that writes to a memory, migrates it or retrieves
+  from it. A **list** of memories does not open them: it describes each
+  through `peekTm` (backlog #95), a connection that migrates, verifies and
+  backs up nothing and refuses writes, because what it returns is a name
+  and a count and not data anyone relies on. A damaged memory therefore
+  lists normally and is refused when it is opened for use; a test damages an
+  index and checks both halves. The check costs seconds at scale (7.9 s on a
+  500,000-unit memory, against 37 ms to describe it), which on a request
+  thread is the whole server.
 - Compaction (`VACUUM` + tombstone purge) is always explicit, never
   automatic, and always preceded by a backup.
 
