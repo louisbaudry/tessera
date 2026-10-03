@@ -21,8 +21,10 @@ import {
   attachmentDisposition,
   findMismatches,
   generateSessionToken,
+  isSlug,
   parseTokens,
   rulesFor,
+  scopeAllows,
   GlossarySessionError,
   SegmentEditError,
   TokenShapeError,
@@ -30,6 +32,7 @@ import {
   verifyPassword,
   type AuditActor,
   type Project,
+  type ProjectAction,
   type SegmenterRules,
 } from '@cat-tool/core';
 import {
@@ -47,6 +50,7 @@ import {
   editSegmentTarget,
   exportFile,
   getAccountByEmail,
+  getAccountById,
   getAccountBySessionToken,
   getFileSummary,
   getProject,
@@ -73,6 +77,8 @@ import {
   recordDownload,
   recordFailedLogin,
   recordProjectChange,
+  revokeAllProjectAuthorizations,
+  scopeOf,
   reinstateQaIssue,
   removeTmRef,
   reorderTmRefs,
@@ -273,17 +279,57 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   /**
    * Resolves a project name to an open database, or answers the request
    * with the right refusal. The name is validated before any path is
-   * built; a project the account does not have is a 404 whether or not
-   * another account has one by that name.
+   * built. A project is the session's own unless `?owner=<account id>`
+   * names another's, in which case it is reachable only through a grant
+   * (`project_authorization`, backlog #45): **no grant is a 404, the same
+   * as a project that does not exist**, and a grant whose scope does not
+   * allow `action` is a 403. Every caller names the `action` it needs
+   * (`read`, `edit` or `manage`, `core/auth/authorization.ts`), so a new
+   * route cannot be added without deciding it. An owner may do anything to
+   * their own.
+   *
+   * `owner` is the account the project lives under, which is what any
+   * path built for it afterwards must use: a grantee's own storage root
+   * holds none of it.
    */
-  function openOwnProject(
+  function openProject(
     req: FastifyRequest,
     reply: FastifyReply,
     name: string,
-  ): { db: ReturnType<typeof openProjectDb>; project: Project; path: string } | null {
+    action: ProjectAction,
+  ): {
+    db: ReturnType<typeof openProjectDb>;
+    project: Project;
+    path: string;
+    owner: Account;
+  } | null {
+    const me = owner(req);
+    const missing = () => {
+      void reply.code(404).send({ error: `no project named "${name}"` });
+      return null;
+    };
+    let projectOwner = me;
+    const asked = (req.query as { owner?: unknown } | undefined)?.owner;
+    if (asked !== undefined) {
+      const id =
+        typeof asked === 'string' && /^[1-9]\d{0,14}$/.test(asked) ? Number(asked) : 0;
+      if (id !== me.id) {
+        const found = id === 0 ? null : getAccountById(platform, id);
+        if (found === null || !isSlug(name)) return missing();
+        const scope = scopeOf(platform, me.id, { accountId: found.id, name });
+        if (scope === null) return missing();
+        if (!scopeAllows(scope, action)) {
+          void reply
+            .code(403)
+            .send({ error: 'your access to this project does not allow that' });
+          return null;
+        }
+        projectOwner = found;
+      }
+    }
     let path: string;
     try {
-      path = projectPath(config.storageRoot, owner(req), name);
+      path = projectPath(config.storageRoot, projectOwner, name);
     } catch (err) {
       if (err instanceof InvalidNameError) {
         void reply.code(400).send({ error: err.message });
@@ -291,10 +337,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }
       throw err;
     }
-    if (!existsSync(path)) {
-      void reply.code(404).send({ error: `no project named "${name}"` });
-      return null;
-    }
+    if (!existsSync(path)) return missing();
     const db = openProjectDb(path);
     const project = getProject(db);
     if (!project) {
@@ -302,7 +345,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       void reply.code(500).send({ error: `project "${name}" has no identity row` });
       return null;
     }
-    return { db, project, path };
+    return { db, project, path, owner: projectOwner };
   }
 
   app.get('/api/projects', async (req) => {
@@ -384,7 +427,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // Deleting a project deletes its file, and with it the project's own
   // log; `platform.sqlite` keeps that it happened (spec §5).
   app.delete<{ Params: { name: string } }>('/api/projects/:name', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'manage');
     if (!opened) return reply;
     const { db, path } = opened;
     db.close();
@@ -398,13 +441,19 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       () => {
         for (const suffix of ['', '-wal', '-shm'])
           rmSync(`${path}${suffix}`, { force: true });
+        // A grant must not outlive its project: the next project of this
+        // name would belong, in its grantee's eyes, to them (#45).
+        revokeAllProjectAuthorizations(platform, {
+          actor: sessionActor(req),
+          project: { accountId: owner(req).id, name: req.params.name },
+        });
       },
     );
     return reply.code(204).send();
   });
 
   app.get<{ Params: { name: string } }>('/api/projects/:name', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'read');
     if (!opened) return reply;
     const { db, project } = opened;
     try {
@@ -424,7 +473,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/files',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db, project } = opened;
       try {
@@ -475,7 +524,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.get<{ Params: { name: string; fileId: string } }>(
     '/api/projects/:name/files/:fileId/segments',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'read');
       if (!opened) return reply;
       const { db } = opened;
       try {
@@ -496,7 +545,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.get<{ Params: { name: string; fileId: string } }>(
     '/api/projects/:name/files/:fileId/qa-issues',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'read');
       if (!opened) return reply;
       const { db } = opened;
       try {
@@ -518,7 +567,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.get<{ Params: { name: string; fileId: string } }>(
     '/api/projects/:name/files/:fileId/export',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db } = opened;
       const actor = sessionActor(req);
@@ -568,7 +617,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       origin?: unknown;
     };
   }>('/api/projects/:name/segments/:segmentId', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'edit');
     if (!opened) return reply;
     const { db } = opened;
     try {
@@ -635,7 +684,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     Params: { name: string; segmentId: string };
     Body: { baseUpdatedAt?: unknown };
   }>('/api/projects/:name/segments/:segmentId/confirm', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'edit');
     if (!opened) return reply;
     const { db } = opened;
     try {
@@ -677,7 +726,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     Params: { name: string; segmentId: string; rule: string };
     Body: { dismissed?: unknown };
   }>('/api/projects/:name/segments/:segmentId/qa-issues/:rule', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'edit');
     if (!opened) return reply;
     const { db } = opened;
     try {
@@ -719,7 +768,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     Params: { name: string; segmentId: string };
     Body: { offset?: unknown; baseUpdatedAt?: unknown };
   }>('/api/projects/:name/segments/:segmentId/split', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'edit');
     if (!opened) return reply;
     const { db } = opened;
     try {
@@ -765,7 +814,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     Params: { name: string; segmentId: string };
     Body: { baseUpdatedAt?: unknown; nextBaseUpdatedAt?: unknown };
   }>('/api/projects/:name/segments/:segmentId/merge', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'edit');
     if (!opened) return reply;
     const { db } = opened;
     try {
@@ -1041,7 +1090,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   }
 
   app.get<{ Params: { name: string } }>('/api/projects/:name/tms', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'manage');
     if (!opened) return reply;
     try {
       return { refs: tmRefsView(req, opened.db) };
@@ -1055,7 +1104,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { name: string }; Body: { tm?: unknown; writeTarget?: unknown } }>(
     '/api/projects/:name/tms',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db } = opened;
       try {
@@ -1101,7 +1150,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.put<{ Params: { name: string }; Body: { order?: unknown } }>(
     '/api/projects/:name/tms',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db } = opened;
       try {
@@ -1127,7 +1176,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { name: string; refId: string } }>(
     '/api/projects/:name/tms/:refId/write-target',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db } = opened;
       try {
@@ -1145,7 +1194,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.delete<{ Params: { name: string; refId: string } }>(
     '/api/projects/:name/tms/:refId',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db } = opened;
       try {
@@ -1165,7 +1214,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/pretranslate',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       try {
         return pretranslate(opened.db, { actor: sessionActor(req) });
@@ -1220,7 +1269,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.get<{ Params: { name: string } }>(
     '/api/projects/:name/glossaries',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       try {
         return { refs: glossaryRefsView(req, opened.db) };
@@ -1236,7 +1285,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     Params: { name: string };
     Body: { glossary?: unknown; writeTarget?: unknown };
   }>('/api/projects/:name/glossaries', async (req, reply) => {
-    const opened = openOwnProject(req, reply, req.params.name);
+    const opened = openProject(req, reply, req.params.name, 'manage');
     if (!opened) return reply;
     const { db } = opened;
     try {
@@ -1279,7 +1328,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { name: string; refId: string } }>(
     '/api/projects/:name/glossaries/:refId/write-target',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db } = opened;
       try {
@@ -1317,7 +1366,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.get<{ Params: { name: string; fileId: string } }>(
     '/api/projects/:name/files/:fileId/glossary/mismatches',
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db, project } = opened;
       let target: ReturnType<typeof openGlossary> | null = null;
@@ -1351,7 +1400,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { name: string; fileId: string } }>(
     SESSION_URL,
     async (req, reply) => {
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db, project } = opened;
       let target: ReturnType<typeof openGlossary> | null = null;
@@ -1450,7 +1499,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       const held = heldFor(req, req.params.name, req.params.fileId);
       if (!held)
         return reply.code(404).send({ error: 'no glossary session for this file' });
-      const opened = openOwnProject(req, reply, req.params.name);
+      const opened = openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const { db } = opened;
       try {

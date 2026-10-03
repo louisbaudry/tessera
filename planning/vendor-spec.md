@@ -160,9 +160,9 @@ epic in this repo (QA engine, smart glossary, portal):
 
 ## 3. Open questions (not yet decided)
 
-- Exact `project_authorization.scope` values beyond `owner` and
-  `assigned_translator` — does a reviewer/proofreader role exist in v1,
-  or is that Ring 1?
+- ~~Exact `project_authorization.scope` values~~ — decided in backlog `#45`,
+  see the implementation note after this list: `assigned_translator` is
+  the only scope in v1, a reviewer/proofreader scope is Ring 1.
 - Whether `vendor-server` is its own deployable service or a route
   module mounted into `@cat-tool/server`'s Fastify instance. Leaning
   toward the latter (one running server, since vendors and owners share
@@ -177,6 +177,76 @@ epic in this repo (QA engine, smart glossary, portal):
   are portable because a translation memory or glossary is a real
   hand-off artifact; it's not obvious a vendor roster is the same kind
   of thing. Needs a decision before the schema is written.
+
+**Implementation note (#45), written before the code (2026-10-03).**
+What `#45` settled that decision 2 left open:
+
+- **A project is named by its owner and its slug, and there is no project
+  table.** `ProjectRef` (`db/platform/audit.ts`) is already the platform's
+  name for one: the owner's account id and the slug, the two coordinates
+  its path is built from. `project_authorization` is therefore
+  `(account_id, owner_id, project_name, scope)`, not `(account_id,
+  project_id, scope)`: a registry of projects would be a second record of a
+  fact the filesystem and the audit log already agree on.
+- **`owner` is not a scope and has no row.** An owner's access is that the
+  project is in their own storage root; a row saying so would be a second
+  source of truth that could disagree with the path. The table holds only
+  what an owner has granted to someone else. A grantee is never the owner
+  (`CHECK (account_id <> owner_id)`).
+- **`assigned_translator` is the only scope in v1.** A reviewer or
+  proofreader scope is Ring 1, and when it exists it is a migration that
+  widens the `CHECK` with `rebuildTable` (nothing references this table).
+  What a scope permits is `core/auth/authorization.ts`, three actions:
+  `read` (the project, its files, segments and QA findings), `edit` (save,
+  confirm, split, merge, dismiss a finding) and `manage` (everything
+  else: settings, memories, glossaries, files, export, pre-translate,
+  delete). `assigned_translator` may `read` and `edit`; the owner may do
+  all three. Export is the owner's: a file leaving the system is audited
+  against the person who sends it, and a translator delivers through the
+  assignment (§4), not by downloading.
+- **`role` classifies; it never permits.** `account.role` is `owner` (the
+  default: owner or PM) or `vendor`, and gates nothing: decision 2 says
+  `project_authorization` is what gates, independent of role, and an owner
+  can be a vendor on someone else's project. The role is for the vendor
+  features that list or offer work (`#46` onward), which need to know who
+  is a vendor without reading every grant. The core constants are
+  `ACCOUNT_ROLES` and `PROJECT_SCOPES`, each a frozen literal in the
+  migration (backlog `#64`).
+- **Where the helpers live.** §2 puts "authorization-scope helpers" in
+  `vendor-core`, which does not exist until `#47`. They are in
+  `core/auth/` instead, next to the credentials: what an account may do to
+  a project is about accounts, not vendor business, and the server needs it
+  now. If `vendor-core` wants them, moving a pure module is cheap.
+- **A project is addressed by `?owner=<account id>`** on the project
+  routes, defaulting to the session's own account. A vendor may be on two
+  owners' projects with the same slug, so the slug alone cannot name one.
+  The route resolves the project from the owner named, then asks the table;
+  **no row is a 404, never a 403** (another account's project is "no such
+  project", whether or not it exists), and a row whose scope does not allow
+  the action is a 403, since the project is theirs to know about. Every
+  call site of the opener names the action it needs, so adding a route
+  without deciding is a type error.
+- **Only the editor routes are reachable by a grantee.** Project detail,
+  file segments and QA findings (`read`); saving a target, confirming,
+  splitting, merging and dismissing a finding (`edit`). The glossary panel,
+  memories, pre-translate and export stay `manage`, owner-only, until a
+  card says otherwise.
+- **A grantee's edits land in the owner's project, under the grantee's
+  actor.** `account:<id>` with their email as label, in the project's own
+  log (audit-spec §2.5), so the log says who wrote each target. A confirmed
+  segment writes to the project's write-target memory as the owner has set
+  it: whether a vendor's unreviewed work should reach a memory is the
+  review gate's question (`#51`), not this card's.
+- **Grants are audited, and deleting a project revokes them.**
+  `authorization.granted` / `.revoked` (already in the platform vocabulary)
+  are written in the transaction of the row, subject the project, detail
+  `{ grantee, scope }` (an account id is installation-local, not personal,
+  audit-spec §2.5). A grant outliving its project would hand a deleted
+  project's name, and so its next owner's work, to whoever held it:
+  deleting a project revokes every grant on it in the same transaction.
+- **No route grants yet.** Granting and revoking are `db` functions; the
+  PM-facing route that calls them is `#51`. Until then the table is
+  written only by tests, and the enforcement is what this card proves.
 
 ## 4. Assignment lifecycle
 
