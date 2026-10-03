@@ -573,6 +573,41 @@ left open:
   footer's counts, which buttons a flag offers), tested in node; the
   component renders and nothing more (the SPA rule in `CLAUDE.md`).
 
+**Implementation note (#43b).** What the build settled that §5a.2's sketch
+left open, and what it left out:
+
+- **The strip is `.grid`'s second child.** The grid's columns now live in
+  `.grid-main` (a column) beside the panel (`flex: 0 0 22rem`), so opening it
+  narrows the grid once and moves nothing under the cursor. It is a toolbar
+  toggle remembered per browser (`prefs.ts`), like the QA panel.
+- **Detection is asked for, not run on open.** The panel loads the held
+  session (`GET`, 404 meaning none) and offers **Find repeated terms**: a
+  detection pass is a request with a cost, and a language with no stopword
+  list answers 422 with its own reason, which a button can show.
+- **A project with no glossary can set one up in the panel.** §5a.2 assumed
+  one attached; nothing in the SPA attached glossaries, so the panel would
+  have been unusable. One field: a name that exists is attached, one that does
+  not is created first, and either becomes the write target (the datalist
+  offers the account's own). Confirm stays disabled and says why until then.
+- **Deprecate is a × on each rendering on offer**, on an entry that exists,
+  not a button of its own: "deprecate" needs a rendering to name, and the
+  chips are the renderings. **Override** takes the typed text; **Use** is
+  `choose`.
+- **The mismatch list reloads a moment after the editor's last write.** Its
+  input is stored targets, and every write moves a segment's `updatedAt`
+  (`nextVersion`), so `latestVersion` over the file's segments is the
+  trigger (500 ms debounce); a commit reloads it too. Rows are the
+  segment's position, kind, term and one sentence; clicking one is the
+  grid's own `jumpTo`.
+- **Recording an override from a mismatch row is not built.** §6 says it
+  writes `kind = 'override'` and that "enough recorded overrides" flips the
+  preference, but `preferredVariant` names the latest non-deprecation
+  decision's rendering as preferred, so a single override of an existing
+  variant already flips it, and one of a rendering with no variant does
+  nothing. Which of those is meant, and what the "enough" threshold is,
+  is a design question this card should not settle by writing a button.
+  Tracked as its own card.
+
 ---
 
 ## 6. Applying an entry (decision 5 — soft)

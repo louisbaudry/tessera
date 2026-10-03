@@ -46,6 +46,26 @@ export function saveQaPanel(open: boolean): void {
   }
 }
 
+const GLOSSARY_PANEL = 'cat-tool.glossaryPanel';
+
+/** Whether the grid's glossary panel is open (backlog #43b). */
+export function loadGlossaryPanel(): boolean {
+  try {
+    return localStorage.getItem(GLOSSARY_PANEL) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveGlossaryPanel(open: boolean): void {
+  try {
+    if (open) localStorage.setItem(GLOSSARY_PANEL, '1');
+    else localStorage.removeItem(GLOSSARY_PANEL);
+  } catch {
+    // Not persisted; the panel still opens for this page.
+  }
+}
+
 const THEME = 'cat-tool.theme';
 
 /** The colour theme choice (backlog #35); `system` when none is stored. */
