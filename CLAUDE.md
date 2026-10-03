@@ -7,6 +7,8 @@ from the code alone. (`AGENTS.md` is a one-paragraph pointer to this
 file, for tools that specifically look for that name — not a second
 copy. Add new agent-facing guidance here, never there.)
 
+Continuous mode: true
+
 **Read first, in this order:** `planning/v1-backlog.md` (what's been
 built and what it taught) and the repo's open GitHub issues (what's
 next — one per open backlog entry, labelled by epic and size), then the
@@ -45,7 +47,7 @@ every session. They cover:
 - **Public repositories** — no personal or client data, credentials or
   internal hostnames, in any form.
 
-**Continuous mode: true** (trial started 2026-10-01; see the shared
+Continuous mode (trial started 2026-10-01; see the shared
 rules' _Continuous mode_ section). Take cards one after another:
 merge each PR yourself once the full gate passes, CI is green and nothing
 in it needs Louis, then take the next. Stop and ask Louis only in the
