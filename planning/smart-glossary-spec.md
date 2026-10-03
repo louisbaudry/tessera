@@ -540,7 +540,10 @@ next run.
 **#42 · `ClaudeTermAligner` · M — with Epic 8, not before.** Server-side,
 opt-in gated (§4.2). _Done when:_ on a hand-inconsistent EN→ES fixture it
 returns the two renderings with the right `ords`, and is never called for
-a client with AI off.
+a client with AI off. _Prerequisites (2026-10-03):_ an AI client in the
+server package and the per-client/per-project AI opt-in flag
+(`ai-platform-vision.md` §5) — neither exists yet, and the flag's scope
+is undecided; they belong to Epic 8, ahead of this card.
 
 **#43 · Glossary panel · M — after #28–#35.** The side panel, §5's
 transitions as buttons, free-text entry (decision 3), mismatch highlight
