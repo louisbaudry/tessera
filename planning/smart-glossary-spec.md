@@ -450,6 +450,104 @@ left open:
 
 ---
 
+## 5a. The panel and its API (backlog #43a, #43b)
+
+Written 2026-10-03, before the code. §9 said the panel's interaction
+design belonged to "Epic 8's editor spec", which does not exist; nothing
+in it needs the AI, so it is settled here instead.
+
+**What the server has today: no glossary at all.** `@cat-tool/server` has
+routes for projects and memories (`/api/tms`, `/api/projects/:name/tms`,
+backlog #32) and none for glossaries: no `storage.ts` path for a `.ctg`,
+no create or attach route, nothing that runs detection. A panel needs
+all of it, so #43 is two cards, in this order, each its own PR:
+
+- **#43a — glossary API (server).** Everything §4–§5 built, behind
+  HTTP, with no UI.
+- **#43b — the panel (web).** The side panel over #43a.
+
+### 5a.1 The API (#43a)
+
+Each route is a repository call with HTTP around it (the CLI rule,
+`v1-spec.md` §2.4); nothing here decides anything `core` or `db` do not.
+
+- **Storage mirrors memories.** `glossariesDir`/`glossaryPath` in
+  `server/src/storage.ts`, built from the account's `storage_root` and a
+  slug validated by `isSlug`; no function takes a path from a request, and
+  a response names a glossary by slug, never by path.
+- **Glossaries:** `GET`/`POST /api/glossaries` (a glossary is created with
+  its source and target language, as `createGlossary` needs). Per project,
+  `GET`/`POST /api/projects/:name/glossaries` attaches one after every one
+  already there (`addGlossaryRef`, with the next priority), optionally as
+  the write target. The panel needs a write target to commit into; a
+  project with none gets a 409 on commit that says so, not a silent
+  default.
+- **The session lives in server memory, keyed by account, project and
+  file** — §5 says the server keeps it between requests so that the panel
+  need not. It is deliberately _not_ persisted: a session is a proposal,
+  and a server restart loses undecided work the way closing the tab of an
+  unsaved form would. Persisting it is a schema change to answer only if
+  that ever costs a translator real work.
+- **Detection:** `POST /api/projects/:name/files/:fileId/glossary/session`
+  runs `extractCandidates` over the file's segments, `flagTerms` with
+  `alignments = null` (Stage 2 is not run, §4.2: no AI client or opt-in
+  exists yet, backlog #42), maps each flag with `toSessionFlag`, with the
+  glossary lookup wired to `resolveRendering` — the wiring §4.3 left to
+  "#42 and #43" — and returns the session as `toJSON` plus, per flag, the
+  segment ords it occurs in. Starting one while another is open for the
+  same file replaces it, and says so in the response.
+- **Transitions:** `POST …/session/choose` (a rendering offered, or free
+  text: decision 3), `…/skip`, `…/propose` (`override` | `deprecate`, only
+  with an existing entry), `…/reopen` — each the `GlossarySession` method
+  of the same name, each returning the session. A client names a flag by
+  its `key`, never by index, so a reorder cannot move a decision.
+- **Commit and discard:** `POST …/session/commit` is
+  `commitGlossarySession` with `sessionActor(req)` and the project's name
+  as `sourceProject`; `DELETE …/session` is `discard`. A commit that
+  throws leaves the session open (§5, #41's note).
+- **Mismatches (§6):** `GET /api/projects/:name/files/:fileId/glossary/
+  mismatches` lists the segments whose target lacks the preferred
+  rendering of a glossary term in their source, or holds a `forbidden`
+  one. A pure `core` function over tokens and a `GlossaryLookup`, so it
+  is provable with no database in the loop. Never a QA finding (§6).
+- **Audit:** the `.ctg`'s own append-only `term_decision` log is the
+  record of a commit. A platform-log entry for it needs a new action in
+  `platform.sqlite`'s frozen CHECK (a migration, `rebuildTable`) and is
+  left for when something reads it, not added speculatively.
+
+### 5a.2 The panel (#43b)
+
+- **A side panel, fixed width, opened from the toolbar.** The QA panel
+  docks under the grid at a fixed height so that opening it moves no
+  column (`v1-spec.md` §7); this one is the same rule on the other axis —
+  it takes a fixed strip beside the grid, never the grid's own width
+  changing under the cursor mid-edit.
+- **One list, in `flagTerms`'s order.** Each flag is a card: the term, how
+  many times and in how many segments it occurs (each a jump to its first
+  segment), and one button per rendering offered, most-used first, the
+  glossary's preferred one last (`toSessionFlag`). Beside them a free-text
+  field (decision 3: a translator may always type their own) and **Skip**.
+  A flag with an existing entry also offers **Override** and
+  **Deprecate**, which are `propose_edit`. A decided card shows what was
+  picked and a **Reopen**.
+- **Nothing is written until the footer's Confirm.** The footer counts what
+  Confirm would write ("4 decisions, 2 skipped — skipped terms are asked
+  again next time") and has **Discard**. Confirm is disabled with nothing
+  decided, and with no write target explains why instead of failing.
+- **With Stage 2 off, every flag reads "repeated, undecided"** with no
+  renderings to pick, only the free-text field: §4.2's "this term repeats
+  11 times, decide it once", which is still the useful part.
+- **Mismatches are a second tab, not a layer on the first.** Each row is a
+  segment, the term, the preferred rendering and a jump; the translator
+  fixes the segment, leaves it, or **records the override**
+  (`kind = 'override'`). A mismatch never turns a segment's status or the
+  QA panel red (§6).
+- **Pure logic is a `.ts` module** (`glossary-panel.ts`: card state, the
+  footer's counts, which buttons a flag offers), tested in node; the
+  component renders and nothing more (the SPA rule in `CLAUDE.md`).
+
+---
+
 ## 6. Applying an entry (decision 5 — soft)
 
 When Epic 8 drafts a segment, the current preferred rendering for every
@@ -547,7 +645,9 @@ is undecided; they belong to Epic 8, ahead of this card.
 
 **#43 · Glossary panel · M — after #28–#35.** The side panel, §5's
 transitions as buttons, free-text entry (decision 3), mismatch highlight
-(§6). Its own interaction design belongs in Epic 8's editor spec.
+(§6). Designed in §5a, not in Epic 8's editor spec: nothing in it needs
+the AI. Split in two because the server had no glossary routes at all —
+**#43a** the API (§5a.1), then **#43b** the panel (§5a.2).
 
 **#44 · `term.glossary_mismatch` QA rule · S — with Epic 8 semantic QA.**
 Project-format migration extending `QA_RULES`. Severity `warning`.
