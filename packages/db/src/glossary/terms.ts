@@ -14,7 +14,13 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 
 import { termKey } from '@cat-tool/core';
-import type { DecisionKind, Term, TermDecision, TermVariant } from '@cat-tool/core';
+import type {
+  DecisionKind,
+  GlossaryTermEntry,
+  Term,
+  TermDecision,
+  TermVariant,
+} from '@cat-tool/core';
 
 import { ensurePrimarySubtagFn, matchingLangs } from '../lang-match.js';
 import { qualifySchema } from '../schema-alias.js';
@@ -415,6 +421,65 @@ export function findRendering(
     seen.add(src.term_id);
     const target = preferredVariant(db, src.term_id, params.tgtLang, options);
     if (target) out.push({ termId: src.term_id, source: fromVariantRow(src), target });
+  }
+  return out;
+}
+
+export interface ListTermEntriesParams {
+  readonly srcLang: string;
+  readonly tgtLang: string;
+}
+
+/**
+ * Every non-tombstoned term that has a source-language form and a
+ * target-language rendering, as the mismatch matcher reads it
+ * (smart-glossary-spec.md §6.1): the source forms, the derived preferred
+ * target rendering, the other acceptable ones and the forbidden ones. A
+ * term with only forbidden target renderings is listed (forbidding is a
+ * rule on its own, with `preferred = null`). Languages match by primary
+ * subtag, as `findRendering`; ordered by term id so a list reads the same
+ * every run. Takes `schema` like the other reads, for an `ATTACH`ed `.ctg`.
+ */
+export function listTermEntries(
+  db: Database.Database,
+  params: ListTermEntriesParams,
+  options: ReadOptions = {},
+): GlossaryTermEntry[] {
+  ensurePrimarySubtagFn(db);
+  const s = qualify(options.schema);
+  const read = (param: '@srcLang' | '@tgtLang', lang: string): VariantRow[] =>
+    db
+      .prepare(
+        `SELECT v.* FROM ${s}term_variant v
+         JOIN ${s}term t ON t.id = v.term_id AND t.deleted = 0
+         WHERE v.lang IN ${matchingLangs(`${s}term_variant`, param)}
+         ORDER BY v.term_id, v.id`,
+      )
+      .all({ [param.slice(1)]: lang }) as VariantRow[];
+
+  const form = (r: VariantRow) => ({ text: r.text, plain: r.plain });
+  const sources = new Map<number, VariantRow[]>();
+  for (const r of read('@srcLang', params.srcLang)) {
+    if (r.forbidden) continue;
+    sources.set(r.term_id, [...(sources.get(r.term_id) ?? []), r]);
+  }
+  const targets = new Map<number, VariantRow[]>();
+  for (const r of read('@tgtLang', params.tgtLang)) {
+    targets.set(r.term_id, [...(targets.get(r.term_id) ?? []), r]);
+  }
+
+  const out: GlossaryTermEntry[] = [];
+  for (const [termId, src] of [...sources].sort((a, b) => a[0] - b[0])) {
+    const tgt = targets.get(termId);
+    if (!tgt) continue;
+    const preferred = preferredVariant(db, termId, params.tgtLang, options);
+    out.push({
+      termId,
+      source: src.map(form),
+      preferred: preferred ? { text: preferred.text, plain: preferred.plain } : null,
+      alternatives: tgt.filter((r) => !r.forbidden && r.id !== preferred?.id).map(form),
+      forbidden: tgt.filter((r) => r.forbidden).map(form),
+    });
   }
   return out;
 }

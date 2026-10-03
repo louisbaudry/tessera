@@ -2895,9 +2895,8 @@ Split so the headless part does not wait on the editor:
   `TermAligner` seam.
 - **#43 · Glossary panel · M** · [issue #14] — after #28–#35. Phased
   (design in `smart-glossary-spec.md` §5a; split because the server had
-  no glossary routes at all): **#43a** is done, **#43b** the side panel
-  is the open phase, and **#43c** [issue #103] the §6 mismatch list is
-  its own card, which the panel's second tab waits for.
+  no glossary routes at all): **#43a** and **#43c** are done, and
+  **#43b**, the side panel, is the open phase, with both tabs' API ready.
   - **#43a · ~~Glossary API~~ · DONE — `server/src/glossary-session.ts`,
     the glossary routes in `server/src/app.ts`, `server/src/storage.ts`
     (`glossaryPath`/`glossarySlugOf`), `db/project/glossary-refs.ts`.**
@@ -2934,6 +2933,36 @@ Split so the headless part does not wait on the editor:
       preferred or forbidden rendering has its own design (inflection,
       word boundaries, a new `db` listing of a glossary's entries) and
       would have made this card unreviewable.
+  - **#43c · ~~Glossary mismatches~~ · DONE —
+    `core/glossary/mismatch.ts` + `inflection.ts`,
+    `listTermEntries` in `db/glossary/terms.ts`, `GET
+    …/glossary/mismatches` in `server/src/app.ts`.** A segment whose
+    target lacks the glossary's preferred rendering, or uses a forbidden
+    one, as `{ord, segmentId, termId, term, kind, preferred, found}`
+    (`smart-glossary-spec.md` §6.1 has the design, written first). Never
+    a QA finding. What it taught:
+    - **A forbidden word can be inside an acceptable one.** Forbidden
+      `account` and preferred `customer account` would flag every correct
+      segment, so a forbidden occurrence inside an acceptable rendering's
+      span does not count.
+    - **A synonym that is not the preferred rendering is still a
+      mismatch, and says which one was used (`found`).** Silent, it
+      would never surface the overrides the preference flips on (§6).
+    - **Endings are a closed list, and the miss is on the safe side.**
+      `Rechnungen` matches `Rechnung`; `Häuser` does not match `Haus`, so
+      an irregular form is a false mismatch the translator leaves, never
+      a false pass. No compounds, no stemmer.
+    - **First version: 1.1 s for 10,000 segments × 500 entries, on the
+      request thread.** Five million word-bounded searches, one per pair.
+      Indexing entries by first word (a source word looked up as written
+      and with each ending removed) narrows each segment to a handful:
+      148 ms, same rows. Measured on synthetic text with a high hit rate;
+      nothing at test scale shows it.
+    - **Write target only**, as detection: a row carries a `termId`,
+      and recording an override writes into one file. With none attached
+      the answer is an empty list and `glossary: null`.
+    - Not built: recording an override from a mismatch row (a #43b
+      action over the existing `propose` route is the likely shape).
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
   a CHECK constraint: it widens both QA tables with `rebuildTable`

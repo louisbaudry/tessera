@@ -19,6 +19,7 @@ import { pipeline } from 'node:stream/promises';
 import {
   assembleFile,
   attachmentDisposition,
+  findMismatches,
   generateSessionToken,
   parseTokens,
   rulesFor,
@@ -55,6 +56,7 @@ import {
   JobError,
   listFileQaIssues,
   listGlossaryRefs,
+  listTermEntries,
   listFileSummaries,
   listSegments,
   listTmRefs,
@@ -1307,6 +1309,41 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const ref = listGlossaryRefs(db).find((r) => r.isWriteTarget && r.enabled);
     return ref && existsSync(ref.path) ? ref.path : null;
   }
+
+  // Segments whose target lacks the write-target glossary's preferred
+  // rendering, or uses a forbidden one (§6, §6.1; backlog #43c). Computed
+  // on request from the stored targets, never stored. With no write target
+  // there is nothing to compare against: an empty list and `glossary: null`.
+  app.get<{ Params: { name: string; fileId: string } }>(
+    '/api/projects/:name/files/:fileId/glossary/mismatches',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db, project } = opened;
+      let target: ReturnType<typeof openGlossary> | null = null;
+      try {
+        const fileId = Number(req.params.fileId);
+        if (!Number.isInteger(fileId) || !getFileSummary(db, fileId)) {
+          return reply.code(404).send({ error: `no file #${req.params.fileId}` });
+        }
+        const targetPath = glossaryWriteTargetPath(db);
+        if (targetPath === null) return { glossary: null, mismatches: [] };
+        target = openGlossary(targetPath);
+        const langs = { srcLang: project.srcLang, tgtLang: project.tgtLang };
+        return {
+          glossary: glossarySlugOf(config.storageRoot, owner(req), targetPath),
+          mismatches: findMismatches(
+            listTermEntries(target, langs),
+            listSegments(db, fileId),
+            langs,
+          ),
+        };
+      } finally {
+        target?.close();
+        db.close();
+      }
+    },
+  );
 
   const heldFor = (req: FastifyRequest, name: string, fileId: string) =>
     glossarySessions.get(sessionKey(owner(req).id, name, Number(fileId)));

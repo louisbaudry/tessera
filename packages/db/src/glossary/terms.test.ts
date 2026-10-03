@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type Database from 'better-sqlite3';
+import SqliteDatabase, { type Database } from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { capturePlans, scansOf } from '../query-plan.fixture.js';
@@ -13,6 +13,7 @@ import {
   findRendering,
   insertTerm,
   listDecisions,
+  listTermEntries,
   listVariants,
   preferredVariant,
   recordDecision,
@@ -22,7 +23,7 @@ import {
 } from './index.js';
 
 let dir: string;
-const open = (): Database.Database => {
+const open = (): Database => {
   dir = mkdtempSync(join(tmpdir(), 'cat-glossary-terms-'));
   return createGlossary(join(dir, 'g.ctg'), { name: 'g', generator: 'test' });
 };
@@ -222,7 +223,7 @@ describe('preferredVariant', () => {
 });
 
 describe('findRendering', () => {
-  const seed = (db: Database.Database) => {
+  const seed = (db: Database) => {
     const term = insertTerm(db);
     addVariant(db, { termId: term.id, lang: 'en', text: 'invoice' });
     addVariant(db, { termId: term.id, lang: 'es', text: 'factura' });
@@ -308,5 +309,113 @@ describe('findRendering', () => {
       ),
     ).toThrow(SchemaAliasError);
     db.close();
+  });
+});
+
+describe('listTermEntries', () => {
+  it('lists source forms, the derived preferred rendering, alternatives and forbidden ones', () => {
+    const db = open();
+    const term = insertTerm(db);
+    addVariant(db, { termId: term.id, lang: 'en', text: 'invoice' });
+    addVariant(db, { termId: term.id, lang: 'en', text: 'bill' });
+    addVariant(db, { termId: term.id, lang: 'es', text: 'factura' });
+    addVariant(db, { termId: term.id, lang: 'es', text: 'recibo' });
+    addVariant(db, { termId: term.id, lang: 'es', text: 'boleta', forbidden: true });
+    recordDecision(db, {
+      termId: term.id,
+      lang: 'es',
+      chosen: 'recibo',
+      rejected: ['factura'],
+      kind: 'accepted_suggestion',
+    });
+
+    const entries = listTermEntries(db, { srcLang: 'en-GB', tgtLang: 'es-419' });
+    expect(entries).toEqual([
+      {
+        termId: term.id,
+        source: [
+          { text: 'invoice', plain: 'invoice' },
+          { text: 'bill', plain: 'bill' },
+        ],
+        preferred: { text: 'recibo', plain: 'recibo' },
+        alternatives: [{ text: 'factura', plain: 'factura' }],
+        forbidden: [{ text: 'boleta', plain: 'boleta' }],
+      },
+    ]);
+    db.close();
+  });
+
+  it('keeps a term with only forbidden renderings, preferred null', () => {
+    const db = open();
+    const term = insertTerm(db);
+    addVariant(db, { termId: term.id, lang: 'en', text: 'invoice' });
+    addVariant(db, { termId: term.id, lang: 'es', text: 'boleta', forbidden: true });
+    const [entry] = listTermEntries(db, { srcLang: 'en', tgtLang: 'es' });
+    expect(entry).toMatchObject({ preferred: null, alternatives: [] });
+    expect(entry!.forbidden).toHaveLength(1);
+    db.close();
+  });
+
+  it('omits tombstoned terms, terms missing a side, and forbidden source forms', () => {
+    const db = open();
+    const gone = insertTerm(db);
+    addVariant(db, { termId: gone.id, lang: 'en', text: 'invoice' });
+    addVariant(db, { termId: gone.id, lang: 'es', text: 'factura' });
+    tombstoneTerm(db, gone.id);
+    const noTarget = insertTerm(db);
+    addVariant(db, { termId: noTarget.id, lang: 'en', text: 'receipt' });
+    const onlyForbiddenSource = insertTerm(db);
+    addVariant(db, {
+      termId: onlyForbiddenSource.id,
+      lang: 'en',
+      text: 'bill',
+      forbidden: true,
+    });
+    addVariant(db, { termId: onlyForbiddenSource.id, lang: 'es', text: 'cuenta' });
+    expect(listTermEntries(db, { srcLang: 'en', tgtLang: 'es' })).toEqual([]);
+    db.close();
+  });
+
+  it('reads in either direction over one glossary', () => {
+    const db = open();
+    const term = insertTerm(db);
+    addVariant(db, { termId: term.id, lang: 'en', text: 'invoice' });
+    addVariant(db, { termId: term.id, lang: 'es', text: 'factura' });
+    const back = listTermEntries(db, { srcLang: 'es', tgtLang: 'en' });
+    expect(back[0]!.source[0]!.text).toBe('factura');
+    expect(back[0]!.preferred!.text).toBe('invoice');
+    db.close();
+  });
+
+  it('reads each language through the (lang, plain) index, never a table scan', () => {
+    const db = open();
+    const term = insertTerm(db);
+    addVariant(db, { termId: term.id, lang: 'en', text: 'invoice' });
+    addVariant(db, { termId: term.id, lang: 'es', text: 'factura' });
+    const plans = capturePlans(db, () =>
+      listTermEntries(db, { srcLang: 'en-GB', tgtLang: 'es' }),
+    );
+    expect(
+      plans
+        .flat()
+        .some((d) => /SEARCH v USING (COVERING )?INDEX term_variant_lookup/.test(d)),
+    ).toBe(true);
+    expect(scansOf(plans, ['term_variant', 'v'])).toEqual([]);
+    db.close();
+  });
+
+  it('runs against an ATTACHed glossary through a schema alias', () => {
+    const db = open();
+    const term = insertTerm(db);
+    addVariant(db, { termId: term.id, lang: 'en', text: 'invoice' });
+    addVariant(db, { termId: term.id, lang: 'es', text: 'factura' });
+    const path = join(dir, 'g.ctg');
+    db.close();
+    const host = new SqliteDatabase(':memory:');
+    host.exec(`ATTACH DATABASE '${path.replaceAll("'", "''")}' AS g1`);
+    expect(
+      listTermEntries(host, { srcLang: 'en', tgtLang: 'es' }, { schema: 'g1' }),
+    ).toHaveLength(1);
+    host.close();
   });
 });

@@ -595,6 +595,59 @@ for that segment. It is never a QA `error`. The translator can:
 "always call it Y", and a glossary that can only express the positive
 half cannot record that instruction.
 
+### 6.1 The mismatch list (#43c) — design
+
+Written 2026-10-03, before the code. Three pieces, each in the layer it
+belongs to (§2.3): a `db` listing, a pure `core` matcher, one route.
+
+- **The listing (`db`).** `listTermEntries(db, { srcLang, tgtLang }, { schema? })`
+  returns, per non-tombstoned term that has a source-language variant and a
+  target-language one: the source forms (non-forbidden variants), the
+  _preferred_ target rendering (`preferredVariant`, so derived from the
+  decision log, never stored), the other acceptable target renderings and
+  the `forbidden` ones. Languages match by primary subtag like every other
+  read here. A term with no preferred rendering (only forbidden ones) is
+  still listed: forbidding is a rule on its own.
+- **The matcher (`core/glossary/mismatch.ts`).** Entries and segments in,
+  mismatches out; no DB. A segment is looked at only if it has a target
+  with text (an untranslated segment is not a mismatch, it is untranslated:
+  `qa` says so). Per segment and term, at most one row, as in QA (one finding
+  per rule per segment): `forbidden` if a forbidden rendering occurs,
+  otherwise `missing_preferred` if the preferred rendering does not. Both
+  carry `found`: the forbidden text, or another acceptable rendering the
+  translator used instead (what "record the override" would name), or null.
+  An acceptable synonym that is not the preferred one is still a mismatch,
+  as §6 says: if it were silent, overrides would never surface and the
+  preference could never flip.
+- **What "occurs" means: a word, with its endings.** Both sides are compared
+  under `termKey` (case-folded, normalised), and an occurrence must begin
+  and end at a word boundary (a letter or digit on neither side), so
+  `account` is not in `accounting`. The last word may carry an ending from
+  a closed per-language list (`core/glossary/inflection.ts`, data like
+  `core/qa/locale.ts`): German `-e -en -er -es -em -n -s`, Spanish `-s -es`,
+  French `-s -x -e -es`, English `-s -es`; any other language matches the
+  exact word only. A forbidden occurrence that lies inside an occurrence
+  of an acceptable rendering does not count (forbidden `account`,
+  preferred `customer account`).
+- **What it does not do, on purpose.** No stemming or lemmatising: an
+  irregular form (`Haus` / `Häuser`, `œil` / `yeux`) is a missed match, so
+  a false _mismatch_ — never a false pass — and the translator leaves it.
+  No German compounds (`Bankkonto` does not contain `Konto`). A false
+  mismatch costs a glance; the §6 rule that it is never an error is what
+  makes that the right side to err on.
+- **The route.** `GET /api/projects/:name/files/:fileId/glossary/mismatches`
+  answers `{ glossary, mismatches }`, `glossary` the write-target glossary's
+  slug or null with no write target (an empty list, not an error: there is
+  nothing to compare against). Only the write target is consulted, for the
+  reason §5a.1 gives: a row carries a `termId`, and recording an override
+  writes into one file. Each row: `ord`, `segmentId`, `termId`, `term` (the
+  source form that matched), `kind`, `preferred`, `found`. It is computed on
+  request from the stored targets, never stored, so it cannot go stale.
+- **Cost.** Entries are indexed by the first word of their source forms, so
+  a segment is searched against the handful that could match rather than
+  all of them. Measured (synthetic, 10,000 segments × 500 entries, a high
+  hit rate): 1,115 ms with a search per pair, 148 ms indexed.
+
 **QA integration is deferred.** `QA_RULES` is a closed set baked into the
 project schema's CHECK constraint (`db/project/schema.ts`), so a
 `term.glossary_mismatch` rule is a project-format migration, not a
