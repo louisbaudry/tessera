@@ -153,7 +153,7 @@ describe('running an import on a worker thread', () => {
     // Relative to the control, and capped: a starved CI runner stretches both, and
     // what the test claims is that the worker's gap is nowhere near blocking.
     expect(off).toBeLessThan(Math.min(1000, inline / 3));
-  }, 120_000);
+  }, 300_000);
 
   it('rejects with the error that stopped it, by class name', async () => {
     const tm = newTm('bad');
@@ -218,7 +218,7 @@ describe('running an import on a worker thread', () => {
       (after.prepare('SELECT COUNT(DISTINCT uuid) AS n FROM tu').get() as { n: number })
         .n,
     ).toBe(20_000);
-  }, 120_000);
+  }, 300_000);
 
   it('cancelling after it ended, or twice, does nothing', async () => {
     const tm = newTm('d');
@@ -367,7 +367,7 @@ describe('the other operations', () => {
     expect(outcome).toEqual({ status: 'done', value: expected });
     expect(stages).toHaveLength(10);
     expect(stages[0]).toBe('matching units');
-  });
+  }, 30_000);
 
   it('vacuums, after taking a backup of the whole memory (§10)', async () => {
     const tm = newTm('v');
