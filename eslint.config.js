@@ -86,6 +86,7 @@ export default tseslint.config(
                 'PROJECT_AUDIT_ACTIONS',
                 'PLATFORM_AUDIT_ACTIONS',
                 'PORTAL_AUDIT_ACTIONS',
+                'VENDOR_AUDIT_ACTIONS',
               ],
               message:
                 'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
@@ -100,7 +101,7 @@ export default tseslint.config(
             },
             {
               name: '@cat-tool/vendor-core',
-              importNames: ['ASSIGNMENT_STATUSES'],
+              importNames: ['ASSIGNMENT_STATUSES', 'RATE_TIERS', 'CAPACITY_STATUSES'],
               message:
                 'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
               allowTypeImports: true,

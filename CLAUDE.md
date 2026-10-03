@@ -285,6 +285,26 @@ format for glossaries, through the same shared migration runner —
   or moving its write target is logged in the project
   (`glossary_refs`), as memories are.
 
+## The vendor roster (`.ctv`) and Language Provider tools
+
+Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
+(the assignment state machine, the rate-tier and capacity vocabularies),
+`db/vendor` the `.ctv` through the shared migration runner. Keep true:
+
+- **A `.ctv` is the owner's roster, one per owner account** (backlog #46):
+  never per vendor, never shop-wide. A vendor is a roster entry keyed by
+  its platform account id; the email stays in the account.
+- **A rate is a row, never an edit** (`rate_card_entry` is append-only by
+  trigger). The rate in force at a date is `vendorRateAt`, and a new
+  entry may not be dated before today or before the newest one for the
+  same vendor, pair and tier, so a later row can never change what a past
+  period paid. Money is `rate_micros`, an integer. `RATE_TIERS` is
+  provisional until `#61` fixes the fuzzy bands.
+- **`vendor-core` stays headless**, as `core` and `portal-core`: the only
+  place a transition is enforced is `transitionAssignment`, never a route.
+  Its closed sets (`ASSIGNMENT_STATUSES`, `RATE_TIERS`, `CAPACITY_STATUSES`)
+  are frozen literals in a migration, never imported into a `schema.ts`.
+
 ## Semantic matching is research-tracked
 
 `planning/semantic-matching-spec.md` (embeddings in TM retrieval, and a

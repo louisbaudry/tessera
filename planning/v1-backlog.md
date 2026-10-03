@@ -3071,9 +3071,41 @@ rest of that range:
     memories, pre-translate and export stay owner-only. Confirming as a
     grantee writes into the owner's write-target memory; whether unreviewed
     work should is the review gate's question (`#51`).
-- **#46 · `.ctv` format + `db/vendor` profile repositories · M** ·
-  [issue #18] — mirrors `#39`; versioned rate history so a later rate
-  change can't retroactively alter a past delivered job's payable.
+- **#46 · ~~`.ctv` format + `db/vendor` profile repositories~~ · DONE —
+  `db/src/vendor/` (`schema.ts`, `index.ts`, `vendors.ts`, `rates.ts`,
+  `capacity.ts`), `vendor-core/src/profile.ts`.** A new SQLite file
+  through the shared migration runner (`createVendorFile`/`openVendorFile`,
+  application id "CATV"), and repositories for the roster (languages,
+  specialties), the versioned rate card and capacity; 23 tests in
+  `db/vendor/vendor.test.ts`. Design written first in `vendor-spec.md`
+  §5's #46 note, which also settles §3's open question. What it taught:
+  - **One `.ctv` per owner account.** Per vendor would put one owner's rates
+    where the vendor and another owner can read them; shop-wide would put
+    every owner in one file, against storage being scoped by account from
+    the first row. A consequence recorded, not solved: a vendor on two
+    owners' rosters has two capacity statuses.
+  - **The card's "done when" is the rate card's whole design.** A rate is an
+    append-only row (a trigger, from the first migration), the rate in force
+    is the latest entry effective on or before a date, and a new entry is
+    refused if dated before today or before the newest entry for the same
+    vendor, pair and tier: otherwise a "newer" row could rewrite what a past
+    period paid, and a test proves the old date still answers the old rate.
+    Delivery locking the payable (`#49`) is the second wall, not the only one.
+  - **Money is an integer of micros per word.** A float would be wrong in the
+    last place on tens of thousands of words, and a payable is a number the
+    vendor checks.
+  - **The tier list is provisional and says so.** Decision 9 names "fuzzy
+    bands" without naming them and they are `#61`'s; the conventional ones
+    stand in (`RATE_TIERS`), with a migration to change them.
+  - **Email is not copied into the file**, and an audit detail names which
+    parts of a profile changed, never what to: a name is personal and the
+    detail is hashed (`vendor.profile_changed`).
+  - **A name collision, not a design problem:** `setRate` already exists in
+    the portal's rates, so every vendor function carries the prefix
+    (`setVendorRate`, `vendorRateAt`) rather than depend on explicit
+    re-exports to tell them apart.
+  - **Not here:** no routes (`#50`/`#51`) and no assignment log (`#48`
+    adds it to this file).
 - **#47 · ~~`vendor-core`: assignment lifecycle state machine~~ · DONE —
   `packages/vendor-core/src/assignment.ts`.** The new headless package
   (pure TS, no dependency but `@types/node`, like `portal-core`) and

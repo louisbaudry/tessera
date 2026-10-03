@@ -20,8 +20,10 @@ import {
   QA_RULES,
   QA_SEVERITIES,
   SEGMENT_STATUSES,
+  VENDOR_AUDIT_ACTIONS,
 } from '@cat-tool/core';
 import { ORDER_STATUSES } from '@cat-tool/portal-core';
+import { CAPACITY_STATUSES, RATE_TIERS } from '@cat-tool/vendor-core';
 import { describe, expect, it } from 'vitest';
 
 import { GLOSSARY_APPLICATION_ID, GLOSSARY_MIGRATIONS } from './glossary/schema.js';
@@ -30,6 +32,7 @@ import { PLATFORM_APPLICATION_ID, PLATFORM_MIGRATIONS } from './platform/schema.
 import { PORTAL_APPLICATION_ID, PORTAL_MIGRATIONS } from './portal/schema.js';
 import { PROJECT_APPLICATION_ID, PROJECT_MIGRATIONS } from './project/schema.js';
 import { TM_APPLICATION_ID, TM_MIGRATIONS } from './tm/schema.js';
+import { VENDOR_APPLICATION_ID, VENDOR_MIGRATIONS } from './vendor/schema.js';
 
 interface Case {
   readonly applicationId: number;
@@ -70,6 +73,15 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'audit_event.action': PLATFORM_AUDIT_ACTIONS,
       'account.role': ACCOUNT_ROLES,
       'project_authorization.scope': PROJECT_SCOPES,
+    },
+  },
+  vendor: {
+    applicationId: VENDOR_APPLICATION_ID,
+    migrations: VENDOR_MIGRATIONS,
+    lists: {
+      'audit_event.action': VENDOR_AUDIT_ACTIONS,
+      'rate_card_entry.tier': RATE_TIERS,
+      'capacity.status': CAPACITY_STATUSES,
     },
   },
   tm: {
