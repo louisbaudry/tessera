@@ -22,16 +22,21 @@ import {
   generateSessionToken,
   parseTokens,
   rulesFor,
+  GlossarySessionError,
   SegmentEditError,
   TokenShapeError,
+  UnsupportedGlossaryLanguage,
   verifyPassword,
   type AuditActor,
   type Project,
   type SegmenterRules,
 } from '@cat-tool/core';
 import {
+  addGlossaryRef,
   addTmRef,
+  commitGlossarySession,
   createAccountSession,
+  createGlossary,
   createProject,
   createTm,
   deleteAccountSession,
@@ -49,11 +54,14 @@ import {
   isQaRule,
   JobError,
   listFileQaIssues,
+  listGlossaryRefs,
   listFileSummaries,
   listSegments,
   listTmRefs,
   mergeSegmentWithNext,
+  nextGlossaryPriority,
   nextTmPriority,
+  openGlossary,
   openPlatformDb,
   openProjectDb,
   peekTm,
@@ -67,11 +75,13 @@ import {
   removeTmRef,
   reorderTmRefs,
   SegmentRepoError,
+  setGlossaryWriteTarget,
   setWriteTarget,
   splitSegmentAt,
   startJob,
   TargetConflictError,
   TargetStructureError,
+  TermError,
   TmRefError,
   type Account,
   type TmSummary,
@@ -86,9 +96,18 @@ import Fastify, {
 } from 'fastify';
 
 import type { ServerConfig } from './config.js';
+import {
+  sessionKey,
+  sessionView,
+  startGlossarySession,
+  type HeldSession,
+} from './glossary-session.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
 import {
+  glossaryPath,
+  glossarySlugOf,
   InvalidNameError,
+  listGlossarySlugs,
   listProjectNames,
   listTmSlugs,
   projectPath,
@@ -138,6 +157,9 @@ const MAX_TM_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
 /** Written into a memory the server creates (tm-format-spec.md §2.1). */
 const TM_GENERATOR = 'cat-tool/server';
+
+/** Written into a glossary the server creates (smart-glossary-spec.md §3.1). */
+const GLOSSARY_GENERATOR = 'cat-tool/server';
 
 function bearerToken(req: FastifyRequest): string | null {
   const header = req.headers.authorization;
@@ -1140,6 +1162,291 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       } finally {
         opened.db.close();
       }
+    },
+  );
+
+  // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
+
+  app.get('/api/glossaries', async (req) =>
+    listGlossarySlugs(config.storageRoot, owner(req)).map((slug) => ({ slug })),
+  );
+
+  // A glossary is created empty from JSON `{ name }`, the name its slug.
+  // It carries no language pair: its variants do (§3.3).
+  app.post<{ Body: { name?: unknown } }>('/api/glossaries', async (req, reply) => {
+    const account = owner(req);
+    const slug = req.body?.name;
+    if (typeof slug !== 'string' || slug === '') {
+      return reply.code(400).send({ error: 'a glossary name is required' });
+    }
+    let path: string;
+    try {
+      path = glossaryPath(config.storageRoot, account, slug);
+    } catch (err) {
+      if (err instanceof InvalidNameError) {
+        return reply.code(400).send({ error: err.message });
+      }
+      throw err;
+    }
+    if (existsSync(path)) {
+      return reply.code(409).send({ error: `a glossary named "${slug}" already exists` });
+    }
+    mkdirSync(dirname(path), { recursive: true });
+    createGlossary(path, { name: slug, generator: GLOSSARY_GENERATOR }).close();
+    return reply.code(201).send({ slug });
+  });
+
+  /** A project's attached glossaries as the API shows them: slugs, never paths. */
+  function glossaryRefsView(req: FastifyRequest, db: ReturnType<typeof openProjectDb>) {
+    return listGlossaryRefs(db).map((ref) => ({
+      id: ref.id,
+      glossary: glossarySlugOf(config.storageRoot, owner(req), ref.path),
+      priority: ref.priority,
+      writeTarget: ref.isWriteTarget,
+      enabled: ref.enabled,
+    }));
+  }
+
+  app.get<{ Params: { name: string } }>(
+    '/api/projects/:name/glossaries',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      try {
+        return { refs: glossaryRefsView(req, opened.db) };
+      } finally {
+        opened.db.close();
+      }
+    },
+  );
+
+  // Attaches one of the account's glossaries after every one already
+  // there, optionally as the write target (`addGlossaryRef`).
+  app.post<{
+    Params: { name: string };
+    Body: { glossary?: unknown; writeTarget?: unknown };
+  }>('/api/projects/:name/glossaries', async (req, reply) => {
+    const opened = openOwnProject(req, reply, req.params.name);
+    if (!opened) return reply;
+    const { db } = opened;
+    try {
+      const { glossary, writeTarget } = req.body ?? {};
+      if (typeof glossary !== 'string') {
+        return reply.code(400).send({ error: 'glossary must be a glossary name' });
+      }
+      if (writeTarget !== undefined && typeof writeTarget !== 'boolean') {
+        return reply.code(400).send({ error: 'writeTarget must be a boolean' });
+      }
+      let path: string;
+      try {
+        path = glossaryPath(config.storageRoot, owner(req), glossary);
+      } catch (err) {
+        if (err instanceof InvalidNameError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+      if (!existsSync(path)) {
+        return reply.code(404).send({ error: `no glossary named "${glossary}"` });
+      }
+      if (listGlossaryRefs(db).some((r) => r.path === path)) {
+        return reply
+          .code(409)
+          .send({ error: `glossary "${glossary}" is already attached to this project` });
+      }
+      addGlossaryRef(db, {
+        path,
+        priority: nextGlossaryPriority(db),
+        isWriteTarget: writeTarget ?? false,
+        actor: sessionActor(req),
+      });
+      return reply.code(201).send({ refs: glossaryRefsView(req, db) });
+    } finally {
+      db.close();
+    }
+  });
+
+  app.post<{ Params: { name: string; refId: string } }>(
+    '/api/projects/:name/glossaries/:refId/write-target',
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      try {
+        const id = Number(req.params.refId);
+        if (!Number.isInteger(id) || !listGlossaryRefs(db).some((r) => r.id === id)) {
+          return reply
+            .code(404)
+            .send({ error: `no attached glossary #${req.params.refId}` });
+        }
+        setGlossaryWriteTarget(db, id, { actor: sessionActor(req) });
+        return { refs: glossaryRefsView(req, db) };
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  // --- the glossary session over one file (§5, §5a.1) ------------------
+  //
+  // Held in this process only, keyed by account, project and file: a
+  // restart loses undecided work, deliberately (§5a.1).
+  const glossarySessions = new Map<string, HeldSession>();
+  const SESSION_URL = '/api/projects/:name/files/:fileId/glossary/session';
+
+  /** The path of the glossary a commit writes into, if there is one on disk. */
+  function glossaryWriteTargetPath(db: ReturnType<typeof openProjectDb>): string | null {
+    const ref = listGlossaryRefs(db).find((r) => r.isWriteTarget && r.enabled);
+    return ref && existsSync(ref.path) ? ref.path : null;
+  }
+
+  const heldFor = (req: FastifyRequest, name: string, fileId: string) =>
+    glossarySessions.get(sessionKey(owner(req).id, name, Number(fileId)));
+
+  app.post<{ Params: { name: string; fileId: string } }>(
+    SESSION_URL,
+    async (req, reply) => {
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db, project } = opened;
+      let target: ReturnType<typeof openGlossary> | null = null;
+      try {
+        const fileId = Number(req.params.fileId);
+        if (!Number.isInteger(fileId) || !getFileSummary(db, fileId)) {
+          return reply.code(404).send({ error: `no file #${req.params.fileId}` });
+        }
+        const targetPath = glossaryWriteTargetPath(db);
+        target = targetPath === null ? null : openGlossary(targetPath);
+        let held: HeldSession;
+        try {
+          held = startGlossarySession(
+            fileId,
+            listSegments(db, fileId),
+            { srcLang: project.srcLang, tgtLang: project.tgtLang },
+            target,
+          );
+        } catch (err) {
+          if (err instanceof UnsupportedGlossaryLanguage) {
+            return reply.code(422).send({ error: err.message });
+          }
+          throw err;
+        }
+        const key = sessionKey(owner(req).id, req.params.name, fileId);
+        const replaced = glossarySessions.has(key);
+        glossarySessions.set(key, held);
+        return reply.code(201).send({ replaced, session: sessionView(held) });
+      } finally {
+        target?.close();
+        db.close();
+      }
+    },
+  );
+
+  app.get<{ Params: { name: string; fileId: string } }>(
+    SESSION_URL,
+    async (req, reply) => {
+      const held = heldFor(req, req.params.name, req.params.fileId);
+      if (!held)
+        return reply.code(404).send({ error: 'no glossary session for this file' });
+      return { session: sessionView(held) };
+    },
+  );
+
+  // Each transition is the `GlossarySession` method of the same name; a
+  // client names a flag by its key, never by position (§5a.1).
+  function transition(
+    action: string,
+    apply: (held: HeldSession, body: Record<string, unknown>) => void,
+  ): void {
+    app.post<{
+      Params: { name: string; fileId: string };
+      Body: Record<string, unknown> | undefined;
+    }>(`${SESSION_URL}/${action}`, async (req, reply) => {
+      const held = heldFor(req, req.params.name, req.params.fileId);
+      if (!held)
+        return reply.code(404).send({ error: 'no glossary session for this file' });
+      try {
+        apply(held, req.body ?? {});
+      } catch (err) {
+        if (err instanceof GlossarySessionError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+      return { session: sessionView(held) };
+    });
+  }
+
+  const text = (body: Record<string, unknown>, field: string): string => {
+    const value = body[field];
+    if (typeof value !== 'string') {
+      throw new GlossarySessionError(`${field} must be a string`);
+    }
+    return value;
+  };
+
+  transition('choose', (h, b) => h.session.choose(text(b, 'key'), text(b, 'rendering')));
+  transition('propose', (h, b) => {
+    const edit = text(b, 'edit');
+    if (edit !== 'override' && edit !== 'deprecate') {
+      throw new GlossarySessionError('edit must be "override" or "deprecate"');
+    }
+    h.session.proposeEdit(text(b, 'key'), edit, text(b, 'rendering'));
+  });
+  transition('skip', (h, b) => h.session.skip(text(b, 'key')));
+  transition('reopen', (h, b) => h.session.reopen(text(b, 'key')));
+
+  // The one write: every decided or proposed flag into the project's
+  // write-target glossary, in one transaction. A project without one
+  // refuses, and the session stays open with every decision in it.
+  app.post<{ Params: { name: string; fileId: string } }>(
+    `${SESSION_URL}/commit`,
+    async (req, reply) => {
+      const held = heldFor(req, req.params.name, req.params.fileId);
+      if (!held)
+        return reply.code(404).send({ error: 'no glossary session for this file' });
+      const opened = openOwnProject(req, reply, req.params.name);
+      if (!opened) return reply;
+      const { db } = opened;
+      try {
+        const targetPath = glossaryWriteTargetPath(db);
+        if (targetPath === null) {
+          return reply.code(409).send({
+            error: 'this project has no glossary write target: attach one to commit into',
+          });
+        }
+        const target = openGlossary(targetPath);
+        let written: number;
+        try {
+          written = commitGlossarySession(target, held.session, {
+            actor: sessionActor(req),
+            sourceProject: req.params.name,
+          });
+        } catch (err) {
+          if (err instanceof GlossarySessionError || err instanceof TermError) {
+            return reply.code(409).send({ error: err.message });
+          }
+          throw err;
+        } finally {
+          target.close();
+        }
+        glossarySessions.delete(sessionKey(owner(req).id, req.params.name, held.fileId));
+        return { written, session: sessionView(held) };
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  app.delete<{ Params: { name: string; fileId: string } }>(
+    SESSION_URL,
+    async (req, reply) => {
+      const held = heldFor(req, req.params.name, req.params.fileId);
+      if (!held)
+        return reply.code(404).send({ error: 'no glossary session for this file' });
+      held.session.discard();
+      glossarySessions.delete(sessionKey(owner(req).id, req.params.name, held.fileId));
+      return { session: sessionView(held) };
     },
   );
 

@@ -2891,11 +2891,47 @@ Split so the headless part does not wait on the editor:
   nothing to check against until Epic 8 settles that flag and lands the
   client; build those first, then this is a thin implementation of the
   `TermAligner` seam.
-- **#43 · Glossary panel · M** · [issue #14] — after #28–#35. Designed
-  in `smart-glossary-spec.md` §5a and split because the server had no
-  glossary routes: **#43a** [issue #101] glossary API (storage, create/attach, the
-  session in server memory, detect/transitions/commit, mismatches), then
-  **#43b** the side panel.
+- **#43 · Glossary panel · M** · [issue #14] — after #28–#35. Phased
+  (design in `smart-glossary-spec.md` §5a; split because the server had
+  no glossary routes at all): **#43a** is done, **#43b** the side panel
+  is the open phase, and **#43c** [issue #103] the §6 mismatch list is
+  its own card, which the panel's second tab waits for.
+  - **#43a · ~~Glossary API~~ · DONE — `server/src/glossary-session.ts`,
+    the glossary routes in `server/src/app.ts`, `server/src/storage.ts`
+    (`glossaryPath`/`glossarySlugOf`), `db/project/glossary-refs.ts`.**
+    A `.ctg` per slug under the account's `glossaries/`, created by name
+    and attached to a project after the others (optionally as write
+    target); a session per account, project and file held in server
+    memory; detect, choose/skip/propose/reopen, commit and discard, each
+    the `GlossarySession` method of the same name; 12 tests in
+    `server/src/glossary.test.ts`. What it taught:
+    - **`glossary_ref` writes were unaudited, and the first route to call
+      them made that a hole.** `addGlossaryRef`/`setGlossaryWriteTarget`
+      took no actor and logged nothing, because nothing called them from
+      a request; `tm-refs.ts` had done it right in #32. They now require
+      an actor and log one `project.setting_changed` (key
+      `glossary_refs`) in the same transaction, the list before and after.
+    - **A `termId` is a row in one file, so detection consults only the
+      write target.** Resolving through every attached glossary
+      (`resolveRendering`) would hand a session a `termId` from the base
+      glossary, and a commit into the client's would write onto whichever
+      term has that number there. A term that exists only further down the
+      priority list is a flag with no entry, and committing it writes a
+      client rendering over the base one — which is what attaching a
+      client glossary over a base one means.
+    - **My own spec was wrong about creation.** §5a.1 said a glossary is
+      created with its language pair "as `createGlossary` needs"; it
+      needs a name and a generator, and `langs` is `'[]'` in the identity
+      row. Languages live on the variants, so the route takes a name only.
+    - **Stage 2 is not run** (`aligned: false`, `alignments = null`): no
+      AI client or opt-in exists (#42), so every flag is "repeated,
+      undecided". A language with segmentation rules but no
+      stopword list (ko, vi) returns 422 with the list's own message, not
+      an empty panel.
+    - **Mismatches moved out** to #43c: matching a target against a
+      preferred or forbidden rendering has its own design (inflection,
+      word boundaries, a new `db` listing of a glossary's entries) and
+      would have made this card unreviewable.
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
   a CHECK constraint: it widens both QA tables with `rebuildTable`

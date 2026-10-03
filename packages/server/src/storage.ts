@@ -17,7 +17,7 @@ import type { Account } from '@cat-tool/db';
 
 /** A project or memory slug outside the alphabet. */
 export class InvalidNameError extends Error {
-  constructor(what: 'project' | 'memory', name: string) {
+  constructor(what: 'project' | 'memory' | 'glossary', name: string) {
     super(
       `invalid ${what} name "${name}": use 1–64 lowercase letters, digits and hyphens, ` +
         'starting and ending with a letter or digit',
@@ -33,6 +33,7 @@ export class InvalidNameError extends Error {
 
 const PROJECT_EXT = '.catdb';
 const TM_EXT = '.ctm';
+const GLOSSARY_EXT = '.ctg';
 
 /** The directory an account's projects live in, under the server's volume. */
 export function projectsDir(storageRoot: string, account: Account): string {
@@ -93,6 +94,49 @@ export function tmSlugOf(
   if (dirname(path) !== tmsDir(storageRoot, account) || !path.endsWith(TM_EXT))
     return null;
   const slug = path.slice(dirname(path).length + 1, -TM_EXT.length);
+  return isSlug(slug) ? slug : null;
+}
+
+/**
+ * The directory an account's glossaries live in: the account's, like its
+ * memories, because one glossary serves every project it is attached to
+ * (smart-glossary-spec.md §2.1, §5a.1).
+ */
+export function glossariesDir(storageRoot: string, account: Account): string {
+  return join(storageRoot, account.storageRoot, 'glossaries');
+}
+
+/** The `.ctg` path for a glossary slug, after validating it. */
+export function glossaryPath(
+  storageRoot: string,
+  account: Account,
+  slug: string,
+): string {
+  if (!isSlug(slug)) throw new InvalidNameError('glossary', slug);
+  return join(glossariesDir(storageRoot, account), `${slug}${GLOSSARY_EXT}`);
+}
+
+/** Every glossary slug under an account's root, sorted. */
+export function listGlossarySlugs(storageRoot: string, account: Account): string[] {
+  return listSlugs(glossariesDir(storageRoot, account), GLOSSARY_EXT);
+}
+
+/**
+ * The glossary slug a stored `glossary_ref.path` names, or null when it
+ * is not one of this account's glossaries (a path the CLI attached). The
+ * API speaks slugs, never paths: a path would show the storage root.
+ */
+export function glossarySlugOf(
+  storageRoot: string,
+  account: Account,
+  path: string,
+): string | null {
+  if (
+    dirname(path) !== glossariesDir(storageRoot, account) ||
+    !path.endsWith(GLOSSARY_EXT)
+  )
+    return null;
+  const slug = path.slice(dirname(path).length + 1, -GLOSSARY_EXT.length);
   return isSlug(slug) ? slug : null;
 }
 

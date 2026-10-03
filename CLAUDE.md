@@ -275,6 +275,13 @@ format for glossaries, through the same shared migration runner —
   `core/glossary/key.ts`), which segment hashing deliberately is not
   (`tm-format-spec.md` §4) — the two are different facts, kept as two
   functions.
+- **A glossary session is held in server memory, and detection consults
+  only the project's write-target `.ctg`** (backlog #43a,
+  `smart-glossary-spec.md` §5a.1). A `termId` is a row in one file;
+  `resolveRendering`'s walk over every attached glossary is for drafting
+  and would hand a flag another file's term number. Attaching a glossary
+  or moving its write target is logged in the project
+  (`glossary_refs`), as memories are.
 
 ## Semantic matching is research-tracked
 
@@ -469,7 +476,8 @@ log, never translation data) and the storage volume, with `core` and
   project slug it validates; that alphabet is the whole defence against
   traversal, and there is nothing to sanitise because nothing arrives.
   A new route that reads or writes a file goes through `projectPath`
-  (or `tmPath` for a memory, backlog #32), never `join` on something
+  (or `tmPath` for a memory, backlog #32, `glossaryPath` for a glossary,
+  #43a), never `join` on something
   the client sent. The slug alphabet is `isSlug` (`core/model/slug.ts`),
   shared with the SPA's forms; and a response names a memory by slug,
   never by its path.
