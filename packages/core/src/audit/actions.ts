@@ -9,6 +9,7 @@
  * write path nobody reviewed.
  */
 
+import type { ProjectScope } from '../auth/authorization.js';
 import type { QaRule } from '../model/qa.js';
 import type { Origin, SegmentStatus } from '../model/segment.js';
 import type { Token } from '../model/token.js';
@@ -146,8 +147,18 @@ export interface AuditDetail {
   'auth.login_failed': { readonly reason: 'unknown_email' | 'wrong_password' };
   'auth.logout': null;
   'account.created': null;
-  'authorization.granted': null;
-  'authorization.revoked': null;
+  /**
+   * Subject: the project. The grantee is an account id, installation-local
+   * and not personal (audit-spec.md §2.5); `#45`.
+   */
+  'authorization.granted': {
+    readonly grantee: number;
+    readonly scope: ProjectScope;
+  };
+  'authorization.revoked': {
+    readonly grantee: number;
+    readonly scope: ProjectScope;
+  };
   'project.created': null;
   'project.deleted': null;
   /** The file's id and name where it lives, and the digest of the bytes sent. */

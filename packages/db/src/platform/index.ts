@@ -14,3 +14,4 @@ export function openPlatformDb(path: string): Database.Database {
 export { PLATFORM_APPLICATION_ID, PLATFORM_MIGRATIONS } from './schema.js';
 export * from './accounts.js';
 export * from './audit.js';
+export * from './authorization.js';

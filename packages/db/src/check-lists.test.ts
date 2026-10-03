@@ -11,10 +11,12 @@
  */
 
 import {
+  ACCOUNT_ROLES,
   DECISION_KINDS,
   PLATFORM_AUDIT_ACTIONS,
   PORTAL_AUDIT_ACTIONS,
   PROJECT_AUDIT_ACTIONS,
+  PROJECT_SCOPES,
   QA_RULES,
   QA_SEVERITIES,
   SEGMENT_STATUSES,
@@ -64,7 +66,11 @@ const DATABASES: Readonly<Record<string, Case>> = {
   platform: {
     applicationId: PLATFORM_APPLICATION_ID,
     migrations: PLATFORM_MIGRATIONS,
-    lists: { 'audit_event.action': PLATFORM_AUDIT_ACTIONS },
+    lists: {
+      'audit_event.action': PLATFORM_AUDIT_ACTIONS,
+      'account.role': ACCOUNT_ROLES,
+      'project_authorization.scope': PROJECT_SCOPES,
+    },
   },
   tm: {
     applicationId: TM_APPLICATION_ID,

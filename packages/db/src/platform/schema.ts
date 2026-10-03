@@ -88,4 +88,39 @@ const v3: Migration = {
   },
 };
 
-export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3];
+/**
+ * `account.role` and `project_authorization` (backlog #45,
+ * vendor-spec.md §1 decision 2, §3 implementation note). Both closed sets
+ * are frozen literals, never the live constants (`db/migrate.ts`, backlog
+ * #64): `ACCOUNT_ROLES` and `PROJECT_SCOPES`, tied to the newest snapshot
+ * by `db/check-lists.test.ts`.
+ *
+ * The role classifies and permits nothing, so every existing account is an
+ * `owner` and no data moves. A project is named by its owner and slug (the
+ * `ProjectRef` of `audit.ts`), not a row in a registry; a grantee is never
+ * the owner, whose access is the path itself.
+ */
+const v4: Migration = {
+  version: 4,
+  description: 'account.role and project_authorization (backlog #45)',
+  up: (db) => {
+    db.exec(`
+      ALTER TABLE account ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'
+        CHECK (role IN ('owner', 'vendor'));
+      CREATE TABLE project_authorization (
+        id           INTEGER PRIMARY KEY,
+        account_id   INTEGER NOT NULL REFERENCES account(id),
+        owner_id     INTEGER NOT NULL REFERENCES account(id),
+        project_name TEXT NOT NULL,
+        scope        TEXT NOT NULL CHECK (scope IN ('assigned_translator')),
+        granted_at   TEXT NOT NULL,
+        UNIQUE (account_id, owner_id, project_name),
+        CHECK (account_id <> owner_id)
+      );
+      CREATE INDEX project_authorization_project
+        ON project_authorization(owner_id, project_name);
+    `);
+  },
+};
+
+export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4];

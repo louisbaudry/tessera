@@ -392,9 +392,12 @@ invent an author. What the second file to carry the log settled:
   logging carries method, URL and status, never a body. A test pins
   that: it writes a target through the route with a logger attached
   and asserts the target's text is absent from every line.
-- **`authorization.granted` / `.revoked`** stay in the vocabulary
-  unwritten until `#45` (`project_authorization`) exists. Whichever of
-  the two lands second writes them.
+- **`authorization.granted` / `.revoked`** are written by `#45`
+  (`project_authorization`, `vendor-spec.md` §3): subject the project
+  (`<owner id>/<name>`, as `project.created`), detail `{ grantee, scope }`,
+  in the transaction of the grant. A re-grant of the same scope writes
+  nothing; deleting a project writes one `.revoked` per grant it removes.
+  The grantee is an account id, installation-local and not personal.
 
 ### 2.6 In `portal.sqlite` (backlog #58)
 

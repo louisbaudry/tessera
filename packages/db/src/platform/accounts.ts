@@ -16,7 +16,12 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { hashSessionToken, SESSION_TTL_MS, type AuditActor } from '@cat-tool/core';
+import {
+  hashSessionToken,
+  SESSION_TTL_MS,
+  type AccountRole,
+  type AuditActor,
+} from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
 import { appendAuditEvent } from '../audit/events.js';
@@ -27,6 +32,8 @@ export interface Account {
   readonly passwordHash: string;
   /** Relative to the server's storage volume, e.g. `u/3f9a2c…` (§4.1a). */
   readonly storageRoot: string;
+  /** Classifies the account; permits nothing (`project_authorization` does). */
+  readonly role: AccountRole;
   readonly createdAt: string;
 }
 
@@ -35,6 +42,7 @@ interface AccountRow {
   email: string;
   password_hash: string;
   storage_root: string;
+  role: AccountRole;
   created_at: string;
 }
 
@@ -43,6 +51,7 @@ const fromRow = (row: AccountRow): Account => ({
   email: row.email,
   passwordHash: row.password_hash,
   storageRoot: row.storage_root,
+  role: row.role,
   createdAt: row.created_at,
 });
 
@@ -50,6 +59,8 @@ export interface CreateAccountOptions {
   readonly email: string;
   /** From `hashPassword` — never a raw password. */
   readonly passwordHash: string;
+  /** `owner` unless it is a vendor's account (vendor-spec.md §3, backlog #45). */
+  readonly role?: AccountRole;
   /** Who created it — required (audit-spec.md decision 3). */
   readonly actor: AuditActor;
 }
@@ -65,16 +76,18 @@ export function createAccount(
 ): Account {
   const createdAt = new Date().toISOString();
   const storageRoot = newStorageRoot();
+  const role = options.role ?? 'owner';
   return db.transaction((): Account => {
     const info = db
       .prepare(
-        `INSERT INTO account (email, password_hash, storage_root, created_at)
-         VALUES (@email, @password_hash, @storage_root, @created_at)`,
+        `INSERT INTO account (email, password_hash, storage_root, role, created_at)
+         VALUES (@email, @password_hash, @storage_root, @role, @created_at)`,
       )
       .run({
         email: options.email,
         password_hash: options.passwordHash,
         storage_root: storageRoot,
+        role,
         created_at: createdAt,
       });
     const id = info.lastInsertRowid as number;
@@ -91,9 +104,16 @@ export function createAccount(
       email: options.email,
       passwordHash: options.passwordHash,
       storageRoot,
+      role,
       createdAt,
     };
   })();
+}
+
+export function getAccountById(db: Database.Database, id: number): Account | null {
+  const row = db.prepare('SELECT * FROM account WHERE id = ?').get(id) as
+    AccountRow | undefined;
+  return row ? fromRow(row) : null;
 }
 
 export function getAccountByEmail(db: Database.Database, email: string): Account | null {

@@ -3035,10 +3035,42 @@ the headless part doesn't wait on Epic 6's editor UI — none of backlog
 target editor (#29) have since; the screens below still wait on the
 rest of that range:
 
-- **#45 · Account role + `project_authorization` model · M** ·
-  [issue #17] — foundational, everything else depends on it; also where
-  spec §3's `scope` vocabulary question (beyond `owner`/
-  `assigned_translator`) gets settled.
+- **#45 · ~~Account role + `project_authorization` model~~ · DONE —
+  `core/auth/authorization.ts`, `db/platform/authorization.ts` (platform
+  schema v4), `openProject` in `server/src/app.ts`.** `account.role`
+  (`owner`/`vendor`, classifies, permits nothing) and
+  `project_authorization`; a grantee reaches a project's editor routes
+  with `?owner=<account id>`, and nothing else. Design written first in
+  `vendor-spec.md` §3's implementation note; 10 route tests in
+  `server/src/authorization.test.ts`, 12 in `db/platform/authorization.test.ts`.
+  What it taught:
+  - **There is no project table to point at.** The card said
+    `(account_id, project_id, scope)`; a project is already named by its
+    owner and slug (`ProjectRef`, the audit log's own subject), so the table
+    holds those two, and a registry would have been a second record of
+    something the path already says.
+  - **The owner gets no row.** Access by being the owner is that the
+    project is in your storage root; a row saying so could disagree with the
+    path. The table holds only what was granted to someone else.
+  - **A project's name is not unique across owners**, so a slug alone cannot
+    name one for a grantee. `?owner=<id>` does, defaulting to the session's
+    own account, and a route that builds a path afterwards must use the
+    project's owner (`opened.owner`), never the session's: the grantee's own
+    storage root holds none of it. Only routes declared `read` or `edit` can
+    be reached by a grantee, so that mistake cannot be made in the routes
+    that build memory or glossary paths from the session's account.
+  - **No grant is a 404, never a 403,** the same body as a project that does
+    not exist, for every route (a test pins it); a scope that does not allow
+    the action is the 403. Every call site of the opener names its action, so
+    a route added without deciding does not compile.
+  - **A grant outliving its project is a grant on the next project of that
+    name.** Deleting a project revokes every grant on it in the same
+    transaction (a test deletes and recreates one).
+  - **Not done, on purpose:** no route grants or lists grants yet (`#51`),
+    nothing lists a grantee's projects (`#52`), and the glossary panel,
+    memories, pre-translate and export stay owner-only. Confirming as a
+    grantee writes into the owner's write-target memory; whether unreviewed
+    work should is the review gate's question (`#51`).
 - **#46 · `.ctv` format + `db/vendor` profile repositories · M** ·
   [issue #18] — mirrors `#39`; versioned rate history so a later rate
   change can't retroactively alter a past delivered job's payable.
@@ -3161,8 +3193,8 @@ Sized issues:
     `core/model/token.ts`) against the segment's format table. A `fmt`
     pointing nowhere is refused; which tags a target uses is QA's to
     flag, not a refusal.
-  - `authorization.*` stays unwritten until `#45` exists, and whichever
-    lands second adds it.
+  - `authorization.*` stayed unwritten until `#45` (written there, detail
+    `{ grantee, scope }`).
 - ~~**#58 · Portal: actor on `order_event`, append-only triggers, portal
   `audit_event` · S**~~ — **DONE** — portal schema v3
   (`db/portal/schema.ts`) rebuilds `order_event` with a `NOT NULL`

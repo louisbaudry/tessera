@@ -509,6 +509,16 @@ log, never translation data) and the storage volume, with `core` and
   an ordinary handle under `query_only`, never `readonly: true`, which leaves
   `-wal`/`-shm` files beside every memory. A new bulk operation is an entry in
   `db/src/jobs/ops.ts`.
+- **A project route opens its project with `openProject(req, reply, name,
+action)`, and names the action** (`read`, `edit` or `manage`,
+  `core/auth/authorization.ts`; backlog #45). A project is the session's own
+  unless `?owner=<account id>` names another's, which only a grant
+  (`project_authorization`) opens: no grant is a 404 identical to a missing
+  project, a scope that lacks the action a 403. **A path built afterwards
+  uses `opened.owner`, never the session's account**: a grantee's storage
+  root holds none of the owner's files. Only `read`/`edit` routes may be
+  reached by a grantee; a route that builds a memory or glossary path from
+  the session stays `manage`.
 - **A route's actor is `sessionActor(req)`, never built in the
   handler** (`audit-spec.md` §2.5). A write in the project goes to the
   project's log; one about the platform (login, a project's creation or
