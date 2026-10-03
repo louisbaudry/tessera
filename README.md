@@ -31,12 +31,12 @@ packages/
     docx/      DOCX filter: package I/O, skeleton, tokenize, render
     segment/   sentence segmentation, custom profiles, SRX, Trados lists, manual split/merge
     tm/        Token<->TmToken mapping; TMX import/export and native .sdltm parsing, normalisation, context; exact matcher + pre-translate
-    glossary/  termKey — the one definition of "the same term" across core and db
+    glossary/  termKey — the one definition of "the same term" across core and db; term candidate detection, the aligner seam, and flagging known terms in a source (smart-glossary-spec.md §4)
     project/   assembleFile — DOCX import -> persistable file + segments; exportProjectFile — the inverse, segments folded back into DOCX
     qa/        QA rule engine — all thirteen v1-spec.md §6.4 rules, locale tables, numeral matching
-  db/          @cat-tool/db     versioned SQLite migration runner; project, platform, portal, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export and .sdltm import
+  db/          @cat-tool/db     versioned SQLite migration runner; project, platform, portal, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export, .sdltm import, memory merge; worker-thread jobs for bulk operations
   cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export, history, audit-verify (v1-spec.md §2.4)
-  server/      @cat-tool/server Fastify API — login, accounts, projects, file import (v1-spec.md §2.5)
+  server/      @cat-tool/server Fastify API — login, accounts, projects, file import, memory imports as cancellable jobs, and the built SPA (v1-spec.md §2.5)
   web/         @cat-tool/web    React SPA — login, project/file picker, the virtualised segment grid (v1-spec.md §7.1) and its tag-aware target editor (§7.2); `pnpm --filter @cat-tool/web dev` against a running server
   portal-core/ @cat-tool/portal-core   pure TS — pricing, order lifecycle, notification/production-adapter interfaces for the client-facing translation portal (planning/portal-v0-spec.md)
   portal-server/ @cat-tool/portal-server Fastify API + minimal static UI for the translation portal (client intake/approval, admin order management, SMTP email notifications)
@@ -71,12 +71,16 @@ current revision only, with an optional language filter),
 `options.schema`, an `ATTACH`ed TM's alias), and `writeBack(db, params,
 options?)` (upserts a source + target `tuv` pair together, keyed on the
 source's `(lang, hash)`, never lowering an existing quality — backlog
-#20) — which exist. `refreshLangs` lives with `writeBack` and every
+#20), `mergeTm` (folds one `.ctm` into another in a single transaction,
+never writing its source — backlog #15d), and `peekTm` (describes a
+memory without opening it: no migration, no `integrity_check`, no
+backup — what a listing uses; backlog #95) — which exist. `refreshLangs` lives with `writeBack` and every
 importer calls it; spec §6's quality table is `schema.ts`'s `QUALITY`,
 read by write-back, import, and export alike; import-only decisions
 live in `db/tm/import-common.ts`.
 `core/glossary/` is `termKey`, the case-folded matching rule glossary
-lookups share across `core` and `db`; `db/glossary/` is the `.ctg`
+lookups share across `core` and `db`, plus candidate detection, the
+`TermAligner` seam and `flagTerms`; `db/glossary/` is the `.ctg`
 format below.)
 
 `db/project/` mirrors this split: `assembleFile` (`core/project/`) turns
@@ -103,6 +107,11 @@ attaches `.ctg` files the same way it attaches `.ctm` files —
 `db/project/glossary-refs.ts`, sharing the `ATTACH`/`DETACH` mechanism
 in `attached-refs.ts` with `tm-refs.ts` — so a client glossary layered
 over a base glossary is priority resolution, not a new concept.
+
+`db/jobs/` runs bulk work off the request thread: `startJob` puts an
+operation from a closed registry (`ops.ts`) on a worker thread with
+progress and a cooperative stop, which the server exposes as a job to
+poll or cancel (backlog #16a).
 
 `core` stays headless and dependency-light — no Electron, no DOM, no HTTP.
 Every filter, segmenter, matcher and QA rule must be testable without a UI
