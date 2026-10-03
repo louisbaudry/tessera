@@ -299,6 +299,45 @@ doesn't require the PM to manually re-post it), or whether that's a
 deliberate PM decision every time. Revisit once real usage shows which
 is more common.
 
+**Implementation note (#47), written before the code (2026-10-03).** The
+diagram above leaves four edges to be read off its prose; reading them
+once, here, is what `vendor-core/src/assignment.ts` encodes:
+
+- **One state machine per assignment, and an assignment is one job with at
+  most one vendor.** A direct offer is born `offered` (one named vendor); a
+  pool post is born `pool_open` (no vendor yet). `initialStatus(channel)` is
+  the only way in; nothing transitions *into* `offered` or `pool_open`.
+- **The legal edges:** `offered → accepted | declined`; `pool_open →
+  claimed`; `claimed → accepted | declined`; `accepted → in_progress →
+  delivered → reviewed`. `declined` and `reviewed` are terminal. That is
+  the whole table; `offered → delivered`, or any move back, throws.
+- **A declined claim does not reopen the assignment.** §4's "leaves it open
+  for the rest" is about the *job*, not the row: claiming takes the row out
+  of the others' feeds (decision 6), so the row has a vendor and is no
+  longer pool-open. The rest get a **new `pool_open` assignment** that
+  excludes the decliner, which is the repository's act at creation
+  (`#48`), not a transition. Keeping this out of the machine is what keeps
+  `declined` terminal and the history of each vendor's answer intact.
+- **Each edge names who makes it.** `vendor` for every move up to and
+  including `delivered`, `pm` for `delivered → reviewed`. The function
+  takes the party (`pm` | `vendor`) and a vendor cannot review, nor a PM
+  accept on a vendor's behalf: that is a different error from an illegal
+  edge, because a route answers one with 403 and the other with 409. It
+  is only the *kind* of party: that the vendor is the one named on an offer,
+  or the PM is the project's, is the repository's check (`#48`), as the
+  portal's `assertCanApprove` leaves "is it this client's order" to its
+  route.
+- **`reviewed` is reachable and ungated.** What it requires (a QA gate via
+  `isBlocking`, a PM read, both) is `#51`'s decision; this card ships the
+  state and the edge, as the issue asked, with the gate to be added as a
+  precondition beside `transitionAssignment`, never inside it.
+- **Not in the machine, because §4 does not decide them:** a PM
+  withdrawing an offer or pool post (no `cancelled` state), a missed
+  deadline, and a failed direct offer becoming `pool_open`. Each, when
+  decided, is a new status (a migration that widens the `CHECK` with
+  `rebuildTable`, since `ASSIGNMENT_STATUSES` is frozen into it like every
+  closed set) and a row in the table.
+
 ## 5. Vendor profile fields
 
 Grounded in §7's daily experience and decisions 8–9 above, not a guess:

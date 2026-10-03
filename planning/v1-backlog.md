@@ -3074,8 +3074,27 @@ rest of that range:
 - **#46 · `.ctv` format + `db/vendor` profile repositories · M** ·
   [issue #18] — mirrors `#39`; versioned rate history so a later rate
   change can't retroactively alter a past delivered job's payable.
-- **#47 · `vendor-core`: assignment lifecycle state machine · S** ·
-  [issue #27] — pure TS, no DB, same discipline as `core`/`portal-core`.
+- **#47 · ~~`vendor-core`: assignment lifecycle state machine~~ · DONE —
+  `packages/vendor-core/src/assignment.ts`.** The new headless package
+  (pure TS, no dependency but `@types/node`, like `portal-core`) and
+  `transitionAssignment(from, to, by)`, the one place a move is enforced;
+  15 tests, both happy paths and an exhaustive 8 × 8 × party sweep against
+  an independently written edge list. Design in `vendor-spec.md` §4's #47
+  note, written first. What it taught:
+  - **§4's diagram does not say who moves, or what a declined claim does;
+    its prose does.** Every edge up to `delivered` is the vendor's,
+    `delivered → reviewed` the PM's, and the machine takes the party:
+    a wrong party is its own error (a route's 403), apart from an illegal
+    edge (409), the pairing `portal-core` leaves to its routes.
+  - **"A declined claim leaves the pool job open for the rest" is the
+    repository's act, not a transition.** Claiming takes the row out of the
+    others' feeds, so the rest get a new `pool_open` assignment at
+    creation; modelling it as `claimed → pool_open` would make `declined`
+    non-terminal and lose the vendor's answer. Left for `#48`.
+  - **`reviewed` is reachable and ungated**, as the card asked; the gate
+    (`#51`) is a precondition beside `transitionAssignment`, never inside.
+  - **`ASSIGNMENT_STATUSES` is on the migration lint's list** so `#48`'s
+    `CHECK` is written as a literal, not imported (`#64`).
 - **#48 · Assignment repositories + offer/pool/claim/accept/decline
   routes · M** · [issue #19] — concurrency-safe pool claim (spec §7);
   where §3/§6's `vendor-server`-vs-routes-on-`@cat-tool/server` question

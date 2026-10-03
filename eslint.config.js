@@ -98,6 +98,13 @@ export default tseslint.config(
                 'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
               allowTypeImports: true,
             },
+            {
+              name: '@cat-tool/vendor-core',
+              importNames: ['ASSIGNMENT_STATUSES'],
+              message:
+                'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
+              allowTypeImports: true,
+            },
           ],
         },
       ],
