@@ -1,7 +1,7 @@
 /**
  * The glossary API through Fastify's `inject` (smart-glossary-spec.md
  * §5a.1, backlog #43a): storage, attaching, and a session from detection
- * to commit, against a real fixture DOCX with real repeated terms.
+ * to commit, against a small real fixture DOCX whose text repeats terms.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -27,7 +27,7 @@ import type { SessionView } from './glossary-session.js';
 
 const FIXTURE = join(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../fixtures/docx/footnotes-manuscript.docx',
+  '../../../fixtures/docx/prose-short.docx',
 );
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
@@ -76,7 +76,7 @@ async function login(email: string, password: string): Promise<string> {
 
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
-/** A project with the manuscript fixture uploaded; returns the file id. */
+/** A project with the prose fixture uploaded; returns the file id. */
 async function projectWithFile(
   token: string,
   name = 'ms',
@@ -91,7 +91,7 @@ async function projectWithFile(
   });
   expect(made.statusCode, made.body).toBe(201);
   const form = new FormData();
-  form.append('file', new Blob([readFileSync(FIXTURE)]), 'footnotes-manuscript.docx');
+  form.append('file', new Blob([readFileSync(FIXTURE)]), 'prose-short.docx');
   const up = await app.inject({
     method: 'POST',
     url: `/api/projects/${name}/files`,
