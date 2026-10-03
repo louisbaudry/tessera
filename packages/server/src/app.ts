@@ -34,7 +34,6 @@ import {
   createAccountSession,
   createProject,
   createTm,
-  describeTm,
   deleteAccountSession,
   confirmEditedSegment,
   dismissQaIssue,
@@ -57,7 +56,7 @@ import {
   nextTmPriority,
   openPlatformDb,
   openProjectDb,
-  openTm,
+  peekTm,
   pretranslate,
   ProjectExportError,
   QaIssueError,
@@ -75,6 +74,7 @@ import {
   TargetStructureError,
   TmRefError,
   type Account,
+  type TmSummary,
 } from '@cat-tool/db';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
@@ -782,12 +782,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   /** One memory as the API shows it: its slug, never its path. */
   function memorySummary(slug: string, path: string) {
-    const tm = openTm(path);
-    try {
-      return { slug, ...describeTm(tm) };
-    } finally {
-      tm.close();
-    }
+    // `peekTm`, not `openTm`: a list needs a name and a count, and an open
+    // runs `integrity_check` (§10), 7.9 s at 500,000 units — on this thread,
+    // for every memory, on every call (backlog #95).
+    return { slug, ...peekTm(path) };
   }
 
   app.get('/api/tms', async (req) => {
@@ -960,7 +958,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         // here would run `integrity_check` on this thread (seconds, at scale).
         const { warnings, summary } = outcome.value as {
           warnings: readonly string[];
-          summary: ReturnType<typeof describeTm>;
+          summary: TmSummary;
         };
         return { state: 'done', result: { slug, ...summary, warnings } };
       },

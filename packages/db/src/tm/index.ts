@@ -62,37 +62,6 @@ export function createTm(path: string, options: CreateTmOptions): Database.Datab
   return db;
 }
 
-/** What a memory is, for a list of memories (backlog #32). */
-export interface TmSummary {
-  readonly uuid: string;
-  /** Shown to the user; not an identity — `uuid` is. */
-  readonly name: string;
-  /** Every language a live variant is in (`tm.langs`, tm-format-spec.md §2.1). */
-  readonly langs: readonly string[];
-  /** Live units; tombstones (§9) are not counted. */
-  readonly units: number;
-  readonly createdAt: string;
-}
-
-/** A `.ctm`'s identity row and size. */
-export function describeTm(db: Database.Database): TmSummary {
-  const row = db
-    .prepare('SELECT uuid, name, langs, created_at FROM tm WHERE id = 1')
-    .get() as
-    { uuid: string; name: string; langs: string; created_at: string } | undefined;
-  if (!row) throw new TmError('memory has no identity row');
-  const { n } = db.prepare('SELECT COUNT(*) AS n FROM tu WHERE deleted = 0').get() as {
-    n: number;
-  };
-  return {
-    uuid: row.uuid,
-    name: row.name,
-    langs: JSON.parse(row.langs) as string[],
-    units: n,
-    createdAt: row.created_at,
-  };
-}
-
 export {
   NORMALIZER_VERSION,
   TM_APPLICATION_ID,
@@ -100,6 +69,7 @@ export {
   TOKENIZER_VERSION,
 } from './schema.js';
 export * from './errors.js';
+export * from './describe.js';
 export * from './retrieve.js';
 export * from './import-common.js';
 export * from './import-tmx.js';
@@ -107,4 +77,5 @@ export * from './import-sdltm.js';
 export * from './export-tmx.js';
 export * from './write.js';
 export * from './merge.js';
+export * from './peek.js';
 export * from './vectors.js';
