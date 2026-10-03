@@ -460,11 +460,13 @@ in it needs the AI, so it is settled here instead.
 routes for projects and memories (`/api/tms`, `/api/projects/:name/tms`,
 backlog #32) and none for glossaries: no `storage.ts` path for a `.ctg`,
 no create or attach route, nothing that runs detection. A panel needs
-all of it, so #43 is two cards, in this order, each its own PR:
+all of it, so #43 is three cards, in this order, each its own PR:
 
 - **#43a — glossary API (server).** Everything §4–§5 built, behind
   HTTP, with no UI.
 - **#43b — the panel (web).** The side panel over #43a.
+- **#43c — mismatches (§6).** Added when #43a was built: the panel's
+  second tab waits for it.
 
 ### 5a.1 The API (#43a)
 
@@ -476,7 +478,9 @@ Each route is a repository call with HTTP around it (the CLI rule,
   slug validated by `isSlug`; no function takes a path from a request, and
   a response names a glossary by slug, never by path.
 - **Glossaries:** `GET`/`POST /api/glossaries` (a glossary is created with
-  its source and target language, as `createGlossary` needs). Per project,
+  nothing but its name: `createGlossary` takes a name and a generator, and
+  the identity row's `langs` stays empty, since languages live on the
+  variants (§3.3)). Per project,
   `GET`/`POST /api/projects/:name/glossaries` attaches one after every one
   already there (`addGlossaryRef`, with the next priority), optionally as
   the write target. The panel needs a write target to commit into; a
@@ -505,15 +509,38 @@ Each route is a repository call with HTTP around it (the CLI rule,
   `commitGlossarySession` with `sessionActor(req)` and the project's name
   as `sourceProject`; `DELETE …/session` is `discard`. A commit that
   throws leaves the session open (§5, #41's note).
-- **Mismatches (§6):** `GET /api/projects/:name/files/:fileId/glossary/
-  mismatches` lists the segments whose target lacks the preferred
-  rendering of a glossary term in their source, or holds a `forbidden`
-  one. A pure `core` function over tokens and a `GlossaryLookup`, so it
-  is provable with no database in the loop. Never a QA finding (§6).
+- **Mismatches (§6) are not in #43a.** Matching a target against a
+  glossary's preferred or `forbidden` renderings needs its own design —
+  a `db` listing of a glossary's entries for a language pair, a pure
+  `core` matcher over tokens (word boundaries, inflection), then
+  `GET …/glossary/mismatches` — so it is **#43c**, written into §6 before
+  its code. Never a QA finding (§6).
 - **Audit:** the `.ctg`'s own append-only `term_decision` log is the
   record of a commit. A platform-log entry for it needs a new action in
   `platform.sqlite`'s frozen CHECK (a migration, `rebuildTable`) and is
-  left for when something reads it, not added speculatively.
+  left for when something reads it, not added speculatively. Attaching a
+  glossary and moving its write target are changes to the project, so they
+  are logged there (`project.setting_changed`, key `glossary_refs`) — which
+  `glossary-refs.ts` did not do until this card.
+
+**Implementation note (#43a).** What the build settled that §5a.1's sketch
+left open:
+
+- **Detection consults the write target only.** `resolveRendering` walks
+  every attached glossary in priority order, which is right for drafting
+  (§6) and wrong here: a flag's `termId` names a row in one file, and a
+  commit writes into the write target. A term that exists only in a
+  glossary further down the list is a flag with no entry, and committing
+  it writes a rendering into the write target — a client glossary
+  overriding a base one, which is what attaching it over the other means
+  (§2.1). With no write target no entry is known, and a commit is a 409.
+- **A commit refused leaves the session open** with every decision in it,
+  whether for want of a write target or because the write threw
+  (`TermError`, a `GlossarySessionError`): both 409.
+- **A source language with no stopword list is 422** with
+  `UnsupportedGlossaryLanguage`'s own message (ko and vi have segmentation
+  rules and no stopwords): the panel says why, instead of showing none.
+- **Mismatches moved to #43c**, as above.
 
 ### 5a.2 The panel (#43b)
 
@@ -646,8 +673,9 @@ is undecided; they belong to Epic 8, ahead of this card.
 **#43 · Glossary panel · M — after #28–#35.** The side panel, §5's
 transitions as buttons, free-text entry (decision 3), mismatch highlight
 (§6). Designed in §5a, not in Epic 8's editor spec: nothing in it needs
-the AI. Split in two because the server had no glossary routes at all —
-**#43a** the API (§5a.1), then **#43b** the panel (§5a.2).
+the AI. Split because the server had no glossary routes at all — **#43a** the
+API (§5a.1), **#43b** the panel (§5a.2), and **#43c** the §6 mismatch
+list, which the panel's second tab waits for.
 
 **#44 · `term.glossary_mismatch` QA rule · S — with Epic 8 semantic QA.**
 Project-format migration extending `QA_RULES`. Severity `warning`.
