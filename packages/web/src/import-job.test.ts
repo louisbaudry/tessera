@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeJob, isFinished, percent, type ImportJob } from './import-job.js';
+import {
+  describeJob,
+  findRunning,
+  isFinished,
+  percent,
+  type ImportJob,
+} from './import-job.js';
 
 const job = (over: Partial<ImportJob> = {}): ImportJob => ({
   id: 'j',
@@ -62,5 +68,15 @@ describe('isFinished', () => {
     for (const state of ['done', 'failed', 'cancelled'] as const) {
       expect(isFinished(job({ state }))).toBe(true);
     }
+  });
+});
+
+describe('findRunning', () => {
+  it('is the running import, not a finished one', () => {
+    const done = job({ id: 'a', state: 'done' });
+    const running = job({ id: 'b' });
+    expect(findRunning([done, running])).toBe(running);
+    expect(findRunning([done, job({ id: 'c', state: 'failed' })])).toBeNull();
+    expect(findRunning([])).toBeNull();
   });
 });

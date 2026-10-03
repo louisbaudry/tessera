@@ -92,6 +92,7 @@ import {
   listProjectNames,
   listTmSlugs,
   projectPath,
+  sweepUploadTemp,
   tmPath,
   tmSlugOf,
   uploadTempPath,
@@ -191,6 +192,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // Bulk jobs (backlog #16a): imports run on worker threads, and are
   // stopped, threads gone, before the process lets go of anything.
   const jobs = new JobRegistry();
+  // The job table is in memory, so at boot nothing is running and every
+  // account's `tmp/` is what a crash left behind (uploads, staging memories).
+  sweepUploadTemp(config.storageRoot);
   app.addHook('onClose', async () => {
     await jobs.shutdown();
     platform.close();
@@ -965,6 +969,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     });
     return reply.code(202).header('location', `/api/jobs/${job.id}`).send({ job });
   });
+
+  // The account's own jobs, running first: how a screen that was left
+  // (or a tab that was reloaded) finds an import still going.
+  app.get('/api/jobs', async (req) => ({ jobs: jobs.list(owner(req).id) }));
 
   // A bulk job, by the id the call that started it returned. The account's
   // own only: another's is "no such job", as another's project is.

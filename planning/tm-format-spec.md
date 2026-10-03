@@ -167,8 +167,12 @@ what building it settled:
   for 8.0 s with the 500,000-unit memory present. The policy was left alone;
   the list stopped opening memories (`peekTm`, §10), and the same call takes
   31–45 ms. A server that restarts mid-import leaves the upload and staging
-  file in the account's `tmp/` (nothing sweeps it; issue #96); the job table
-  is in memory and starts empty.
+  file in the account's `tmp/`; the job table is in memory and starts empty,
+  so nothing running can own a file there, and `buildApp` removes every
+  account's `tmp/` at boot (`sweepUploadTemp`, `server/src/storage.ts`; #96).
+  A user who left the Memories screen finds the import again through
+  `GET /api/jobs` (the account's own jobs, running first), which the screen
+  asks once on opening.
 
 **Nothing in §2 onward depends on this choice, or on the desktop-vs-server
 question.** The format, schema, hashing contract, and token model are

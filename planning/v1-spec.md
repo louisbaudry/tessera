@@ -295,6 +295,7 @@ browser never touches SQLite.
 | `GET /api/tms` | the account's memories: `{slug, uuid, name, langs, units, createdAt}` (`peekTm`: described without opening, so no integrity check — a damaged memory lists and is refused when used; backlog #95) — backlog #32, §7.5 |
 | `POST /api/tms` `{name}` | a new, empty memory `<root>/tms/<name>.ctm`: 201 with its summary; 409 if it exists |
 | `POST /api/tms` multipart `name` + one `.tmx`/`.sdltm` | **202 with a job** (backlog #16a): the import runs on a worker thread into a staging file, renamed to `<root>/tms/<name>.ctm` only once it is whole. 409 if the name exists or this account already has an import running (503 if the server is full), 415 another format, 413 too large |
+| `GET /api/jobs` | `{jobs: [...]}`: the account's own jobs as below, running first then newest first |
 | `GET /api/jobs/:id` | the account's own job: `{id, kind, tm, state: running\|done\|failed\|cancelled, progress: {stage, fraction, units}\|null, result, error}`; `result` is the new memory's summary and the importer's warnings once `done`, `error` a message with no server path in it; 404 for any other account's id |
 | `DELETE /api/jobs/:id` | asks a running job to stop (202; it stops at a safe point or its thread is ended); a failed or cancelled import leaves no memory, no staging file and no upload; 200 and the job as it is if it has already ended |
 | `GET /api/projects/:name/tms` | the attached memories in consultation order: `{id, tm, priority, writeTarget, enabled}`, `tm` a slug or `null`, never a path |

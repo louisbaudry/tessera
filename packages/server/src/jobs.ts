@@ -121,6 +121,17 @@ export class JobRegistry {
     return entry && entry.accountId === accountId ? this.view(entry) : undefined;
   }
 
+  /** The account's own jobs, running first, then the most recently started. */
+  list(accountId: number): JobView[] {
+    const own = [...this.entries.values()].filter((e) => e.accountId === accountId);
+    // Map order is start order, so reversing puts the newest first and the
+    // stable sort keeps that within each group.
+    return own
+      .reverse()
+      .sort((a, b) => Number(b.state === 'running') - Number(a.state === 'running'))
+      .map((e) => this.view(e));
+  }
+
   /** Asks the account's job to stop; returns its view, or undefined if it is not theirs. */
   cancel(accountId: number, id: string): JobView | undefined {
     const entry = this.entries.get(id);

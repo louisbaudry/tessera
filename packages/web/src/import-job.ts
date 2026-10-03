@@ -58,3 +58,13 @@ export function describeJob(job: ImportJob): string {
       return job.error ?? 'The import failed.';
   }
 }
+
+/**
+ * The import to pick up again when the screen opens: `GET /api/jobs`
+ * lists running ones first, and an account has at most one running
+ * import, so the first running job is it. A finished job is not one to
+ * resume — its memory is in the list already.
+ */
+export function findRunning(jobs: readonly ImportJob[]): ImportJob | null {
+  return jobs.find((j) => j.state === 'running') ?? null;
+}

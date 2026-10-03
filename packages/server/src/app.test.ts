@@ -7,11 +7,13 @@
 import {
   closeSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
   writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1385,6 +1387,57 @@ ${units
         (await importAndWait(token, 'second', tmx([['a', 'b']]), 'second.tmx')).state,
       ).toBe('done');
     }, 120_000);
+
+    it('lists the account’s own jobs, running first', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const bobToken = await login('bob@example.com', 'bob-pw');
+      const none = await call(token, 'GET', '/api/jobs');
+      expect(none.json()).toEqual({ jobs: [] });
+
+      const finished = await importAndWait(
+        token,
+        'small',
+        tmx([['a', 'b']]),
+        'small.tmx',
+      );
+      expect(finished.state).toBe('done');
+      const started = await startBig(token);
+      await untilStarted(token, started.id);
+
+      const listed = (await call(token, 'GET', '/api/jobs')).json() as {
+        jobs: JobView[];
+      };
+      expect(listed.jobs.map((j) => [j.tm, j.state])).toEqual([
+        ['big', 'running'],
+        ['small', 'done'],
+      ]);
+      expect((await call(bobToken, 'GET', '/api/jobs')).json()).toEqual({ jobs: [] });
+      expect((await app.inject({ method: 'GET', url: '/api/jobs' })).statusCode).toBe(
+        401,
+      );
+      await call(token, 'DELETE', `/api/jobs/${started.id}`);
+      await settled(token, started.id);
+    }, 120_000);
+
+    it('sweeps what a crashed server left in tmp/ when it boots again', async () => {
+      const stale = [tmpOf(alice), tmpOf(bob)];
+      for (const t of stale) {
+        mkdirSync(t, { recursive: true });
+        writeFileSync(join(t, 'abc123'), 'upload');
+        writeFileSync(join(t, 'abc123.ctm'), 'staging');
+        writeFileSync(join(t, 'abc123.ctm-wal'), 'wal');
+      }
+      // a memory is not temp: it must survive
+      const keep = join(config.storageRoot, alice.storageRoot, 'tms', 'kept.ctm');
+      mkdirSync(dirname(keep), { recursive: true });
+      writeFileSync(keep, 'memory');
+
+      await app.close();
+      app = await buildApp({ config, logger: false });
+
+      for (const t of stale) expect(existsSync(t)).toBe(false);
+      expect(existsSync(keep)).toBe(true);
+    });
 
     it('never shows a server path in a job', async () => {
       const token = await login('alice@example.com', 'alice-pw');
