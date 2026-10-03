@@ -9,9 +9,17 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { hashPassword, type AuditActor } from '@cat-tool/core';
 import {
+  hashPassword,
+  plainText,
+  type AuditActor,
+  type GlossaryMismatch,
+  type Segment,
+} from '@cat-tool/core';
+import {
+  addVariant,
   createAccount,
+  insertTerm,
   listEvents,
   openGlossary,
   openPlatformDb,
@@ -532,5 +540,117 @@ describe('a glossary session over one file', () => {
     const res = await startSession(token, 'ko', fileId);
     expect(res.statusCode, res.body).toBe(422);
     expect(res.body).toContain('stopword');
+  });
+});
+
+describe('glossary mismatches over one file (backlog #43c)', () => {
+  const mismatchesUrl = (fileId: number) =>
+    `/api/projects/ms/files/${fileId}/glossary/mismatches`;
+
+  const segmentsOf = async (token: string, fileId: number): Promise<Segment[]> =>
+    (
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/projects/ms/files/${fileId}/segments`,
+          headers: auth(token),
+        })
+      ).json() as { segments: Segment[] }
+    ).segments;
+
+  const setTarget = async (token: string, segment: Segment, text: string) => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/projects/ms/segments/${segment.id}`,
+      headers: auth(token),
+      payload: {
+        targetTokens: [{ t: 'text', v: text }],
+        baseUpdatedAt: segment.updatedAt,
+      },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+  };
+
+  /** A glossary where the fixture's repeated word "Palisuf" is "Gemeinde", never "Kirche". */
+  function seedGlossary(): number {
+    const g = openGlossary(
+      join(config.storageRoot, alice.storageRoot, 'glossaries', 'acme.ctg'),
+    );
+    const term = insertTerm(g);
+    addVariant(g, { termId: term.id, lang: 'en', text: 'Palisuf' });
+    addVariant(g, { termId: term.id, lang: 'de', text: 'Gemeinde' });
+    addVariant(g, { termId: term.id, lang: 'de', text: 'Kirche', forbidden: true });
+    g.close();
+    return term.id;
+  }
+
+  it('lists the segments that miss the preferred rendering or use a forbidden one, and no others', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const fileId = await projectWithFile(token);
+    await createGlossaryNamed(token, 'acme');
+    const termId = seedGlossary();
+    await attach(token, 'ms', 'acme', true);
+
+    const withTerm = (await segmentsOf(token, fileId)).filter((s) =>
+      /palisuf/i.test(plainText(s.sourceTokens)),
+    );
+    expect(withTerm.length).toBeGreaterThanOrEqual(3);
+    const [ok, forbidden, missing, untranslated] = withTerm as [
+      Segment,
+      Segment,
+      Segment,
+      Segment,
+    ];
+    await setTarget(token, ok, 'Unsere Gemeinde.');
+    await setTarget(token, forbidden, 'Unsere Kirche.');
+    await setTarget(token, missing, 'Unser Haus.');
+
+    const res = await app.inject({
+      method: 'GET',
+      url: mismatchesUrl(fileId),
+      headers: auth(token),
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json() as { glossary: string; mismatches: GlossaryMismatch[] };
+    expect(body.glossary).toBe('acme');
+    expect(
+      body.mismatches.map((m) => [m.segmentId, m.termId, m.kind, m.preferred, m.found]),
+    ).toEqual([
+      [forbidden.id, termId, 'forbidden', 'Gemeinde', 'Kirche'],
+      [missing.id, termId, 'missing_preferred', 'Gemeinde', null],
+    ]);
+    expect(untranslated.targetTokens).toBeNull();
+    expect(res.body).not.toContain(alice.storageRoot);
+  });
+
+  it('answers an empty list with no glossary when the project has no write target', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    const fileId = await projectWithFile(token);
+    await createGlossaryNamed(token, 'acme');
+    seedGlossary();
+    await attach(token, 'ms', 'acme', false);
+    const res = await app.inject({
+      method: 'GET',
+      url: mismatchesUrl(fileId),
+      headers: auth(token),
+    });
+    expect(res.json()).toEqual({ glossary: null, mismatches: [] });
+  });
+
+  it('is the account’s own: 404 for an unknown file, another account’s project, or no login', async () => {
+    const a = await login('alice@example.com', 'alice-pw');
+    const b = await login('bob@example.com', 'bob-pw');
+    const fileId = await projectWithFile(a);
+    expect(
+      (await app.inject({ method: 'GET', url: mismatchesUrl(999), headers: auth(a) }))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: mismatchesUrl(fileId), headers: auth(b) }))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: mismatchesUrl(fileId) })).statusCode,
+    ).toBe(401);
   });
 });
