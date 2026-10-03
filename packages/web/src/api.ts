@@ -182,6 +182,9 @@ export const api = {
     form.append('file', file, file.name);
     return call<{ job: ImportJob }>('/api/tms', token, { method: 'POST', body: form });
   },
+  /** The account's jobs, running first: how an import still going is found again. */
+  jobs: (token: string, signal?: AbortSignal) =>
+    call<{ jobs: ImportJob[] }>('/api/jobs', token, { signal }),
   importJob: (token: string, id: string, signal?: AbortSignal) =>
     call<ImportJob>(`/api/jobs/${id}`, token, { signal }),
   /** Asks the server to stop it; the job is `running` until it has. */

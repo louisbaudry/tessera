@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from './api.js';
 import {
   describeJob,
+  findRunning,
   isFinished,
   percent,
   POLL_MS,
@@ -86,6 +87,23 @@ function NewMemory({ onMade }: { onMade: () => void }) {
     },
     [onMade],
   );
+
+  // An import left running (another screen, a reloaded tab) is found again:
+  // its progress and Cancel come back instead of an empty form.
+  useEffect(() => {
+    const controller = new AbortController();
+    api.jobs(token, controller.signal).then(
+      ({ jobs }) => {
+        const running = findRunning(jobs);
+        if (running && !controller.signal.aborted) setJob((now) => now ?? running);
+      },
+      (err: unknown) => {
+        if (!controller.signal.aborted && err instanceof ApiError && err.status === 401)
+          signOut();
+      },
+    );
+    return () => controller.abort();
+  }, [token, signOut]);
 
   // Follow a running job until it ends. Leaving the screen stops asking,
   // not the import: it carries on, and the memory is there when it is whole.

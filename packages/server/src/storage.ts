@@ -9,7 +9,7 @@
  * code: there is no function that takes a path from the outside.
  */
 import { randomBytes } from 'node:crypto';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { isSlug } from '@cat-tool/core';
@@ -103,4 +103,22 @@ export function tmSlugOf(
  */
 export function uploadTempPath(storageRoot: string, account: Account): string {
   return join(storageRoot, account.storageRoot, 'tmp', randomBytes(12).toString('hex'));
+}
+
+/**
+ * Removes every account's `tmp/`: the uploads and staging memories of
+ * imports a crash or `kill -9` never let settle. Only safe at boot, when
+ * the job table (in memory) is empty, so nothing running can own a file
+ * there. Nothing partial was ever visible as a memory (it is renamed into
+ * place only when whole), so this reclaims disk and nothing else.
+ */
+export function sweepUploadTemp(storageRoot: string): void {
+  // Accounts live at `<root>/u/<id>` (`newStorageRoot`, db/platform/accounts.ts).
+  const accounts = join(storageRoot, 'u');
+  if (!existsSync(accounts)) return;
+  for (const entry of readdirSync(accounts, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      rmSync(join(accounts, entry.name, 'tmp'), { recursive: true, force: true });
+    }
+  }
 }

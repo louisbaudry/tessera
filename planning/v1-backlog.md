@@ -745,10 +745,12 @@ and list the memory at 60,000 units. Worth remembering:
 - **A closed registry, because `Worker` takes JSON.** Rehash and batch
   find-and-replace (also listed by the card) do not exist as functions, so
   there is nothing to route; they register in `ops.ts` when written.
-- **Not built (issue #96 for the first two):** a list of running jobs, so a user who leaves the Memories
-  screen cannot find a running import again (it finishes, and the memory
-  appears); a sweep of `tmp/` after a crash; progress for `.sdltm` (one
-  transaction, no checkpoints); `countWords` off-thread (noted in `#62`).
+- **Added after (#96):** `GET /api/jobs` so a user who leaves the Memories
+  screen finds a running import again, and a sweep of every account's
+  `tmp/` when the server boots (safe because the job table is in memory:
+  nothing running survives a restart).
+- **Not built:** progress for `.sdltm` (one transaction, no checkpoints);
+  `countWords` off-thread (noted in `#62`).
 
 **#17 · ~~Normalisation + hashing~~ · DONE — `@cat-tool/core/tm/normalize.ts`**
 `normalizer_version = 1` exactly as frozen in format spec §4.
