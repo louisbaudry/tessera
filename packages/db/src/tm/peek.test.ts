@@ -61,7 +61,10 @@ function damageIndex(p: string, index: string): void {
   closeSync(fd);
 }
 
-describe('peekTm', () => {
+// Every test builds a memory with openTm/createTm, SQLite-heavy: a fixed 5 s starved
+// out twice on the 2-fork Windows runner (#82), so the suite gets the slack the
+// other heavy suites have.
+describe('peekTm', { timeout: 60_000 }, () => {
   it('describes a memory exactly as opening it does', () => {
     const p = memory('a', 50, 7);
     const opened = openTm(p);
