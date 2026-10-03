@@ -2891,7 +2891,11 @@ Split so the headless part does not wait on the editor:
   nothing to check against until Epic 8 settles that flag and lands the
   client; build those first, then this is a thin implementation of the
   `TermAligner` seam.
-- **#43 · Glossary panel · M** · [issue #14] — after #28–#35.
+- **#43 · Glossary panel · M** · [issue #14] — after #28–#35. Designed
+  in `smart-glossary-spec.md` §5a and split because the server had no
+  glossary routes: **#43a** [issue #101] glossary API (storage, create/attach, the
+  session in server memory, detect/transitions/commit, mismatches), then
+  **#43b** the side panel.
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
   a CHECK constraint: it widens both QA tables with `rebuildTable`
