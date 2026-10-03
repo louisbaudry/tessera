@@ -61,6 +61,9 @@ importers:
       '@cat-tool/portal-core':
         specifier: workspace:*
         version: link:../portal-core
+      '@cat-tool/vendor-core':
+        specifier: workspace:*
+        version: link:../vendor-core
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0

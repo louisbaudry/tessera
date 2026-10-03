@@ -172,11 +172,9 @@ epic in this repo (QA engine, smart glossary, portal):
   `pricing.ts` (client-facing quote) — margin is the gap between the
   two, and that gap is presumably a real product feature (PM-visible
   margin per job), not an accident of two separate calculators existing.
-- Whether `.ctv` is per-account (a vendor's own portable file, mirroring
-  `.ctm`/`.ctg` portability) or a single shop-wide file. `.ctm`/`.ctg`
-  are portable because a translation memory or glossary is a real
-  hand-off artifact; it's not obvious a vendor roster is the same kind
-  of thing. Needs a decision before the schema is written.
+- ~~Whether `.ctv` is per-account or a single shop-wide file~~ — decided in
+  backlog `#46`, see the implementation note after the §5 field list: one
+  per **owner** account.
 
 **Implementation note (#45), written before the code (2026-10-03).**
 What `#45` settled that decision 2 left open:
@@ -362,6 +360,77 @@ Grounded in §7's daily experience and decisions 8–9 above, not a guess:
   written by whatever QA/review process closes out an assignment (§4's
   `reviewed` state). Not designed yet — depends on §4's open question
   about what "reviewed" actually checks.
+
+**Implementation note (#46), written before the code (2026-10-03).** What
+`#46` settled that §3 and §5 left open:
+
+- **One `.ctv` per owner account, never per vendor and never shop-wide.**
+  It is the *owner's* roster: the vendors this owner engages and what this
+  owner pays them. Per vendor would put one owner's rates in a file the
+  vendor can see and another owner can't; shop-wide would put every
+  owner's in one file, against the rule that storage is scoped by account
+  from the first row (`v1-spec.md` §4.1a) which is what lets opening
+  registration later be additive. It lives beside the owner's other files
+  (`<storage root>/<account root>/vendors.ctv`) and is the owner's to
+  carry, as `.ctm` and `.ctg` are, which is the portability decision 3 and
+  decision 4 want. One consequence, recorded not solved: a vendor working
+  for two owners has two roster entries, so two capacity statuses. v1 has
+  one owner; flipping it everywhere is a later problem.
+- **A vendor is a roster entry keyed by its platform account.** `vendor`
+  holds the `account_id` (installation-local, like an audit actor id) and a
+  display name. **Email is not copied**: §5 asked this be resolved, and a
+  second copy of an address is one the account can disagree with. The
+  roster shows the display name, falling back to the account's email, which
+  the server reads from `platform.sqlite`.
+- **Languages are pairs of primary subtags; so are rates.** `en-GB` and
+  `en-US` into `de` are one pair and one rate: agencies price by language,
+  not region, and a region-keyed rate card would need a row per region for
+  the same price. Writes normalise with `primarySubtag`; there is no
+  region-insensitive SQL to get wrong (`CLAUDE.md`'s indexed-column gotcha),
+  because every one of these tables is one vendor's rows.
+- **A rate is a row, never an edit.** `rate_card_entry` is append-only by
+  trigger, from its first migration: `(vendor, pair, tier)` with a rate
+  and an `effective_from` date. The rate in force at a date is the latest
+  entry effective on or before it (`vendorRateAt`). **A new entry may not be
+  dated before today, nor before the newest entry already there for the
+  same vendor, pair and tier**: otherwise a "newer" row could rewrite what
+  a past period paid, which is the one thing §5 says a rate history must
+  not do. A job's payable is also locked at delivery (decision 10, `#49`),
+  so this is the second wall, not the only one. A mistaken entry is
+  corrected by a later one, never by deleting.
+- **Money is an integer: `rate_micros`, millionths of a currency unit per
+  word**, with the currency beside it. A float would be wrong in the last
+  place on a total of tens of thousands of words, and a payable is a
+  number a vendor checks against their own.
+- **The tier vocabulary is provisional.** Decision 9 says "no-match / fuzzy
+  bands / 100% / ICE" and does not name the bands; fuzzy matching and its
+  bands are `#61`'s. Until then the tiers are the conventional ones:
+  `no_match`, `fuzzy_50_74`, `fuzzy_75_84`, `fuzzy_85_94`, `fuzzy_95_99`,
+  `exact` (100% and repetitions) and `ice` (101%). `RATE_TIERS` in
+  `vendor-core` is the one definition; when `#61` fixes the real bands it
+  is a migration that rebuilds `rate_card_entry` (nothing references it)
+  and a mapping for the rows already there. Said here so nobody mistakes
+  these for the settled bands.
+- **Capacity is one row per vendor, current only** (decision 8: no history
+  until a need shows up): `available`, `busy` or `away`, a free-text note,
+  when, and who set it (an account id: the vendor's own, or an owner's on
+  their behalf). It is not audited: a toggle flipped many times a day is
+  not a change that matters, and a log of it is the capacity history
+  decision 8 declines to build.
+- **Rates and the roster are audited; the `.ctv` has its own
+  `audit_event`**, the shared table (`audit-spec.md` §2), in the same
+  transaction as the row it describes, actor required: `vendor.added`,
+  `vendor.profile_changed` (detail: which of name, languages, specialties,
+  never their text, since a name is personal and the detail is hashed) and
+  `vendor.rate_set` (the pair, tier, rate, currency and date: a price, not
+  a person). A rate is what an owner pays someone; "who set it and when"
+  is a question that will be asked.
+- **Specialties are free-form tags**, lower-cased and trimmed, as §5 says
+  for v1.
+- **No server routes in this card.** It is the file and its repositories:
+  `createVendorFile`/`openVendorFile` through the shared migration runner,
+  and the reads and writes above. `#48` adds the assignment log to this
+  file; `#50`/`#51` put it behind HTTP.
 
 ## 6. `vendor-server` vs. routes on `@cat-tool/server` (placeholder)
 

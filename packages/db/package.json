@@ -21,6 +21,7 @@
   "dependencies": {
     "@cat-tool/core": "workspace:*",
     "@cat-tool/portal-core": "workspace:*",
+    "@cat-tool/vendor-core": "workspace:*",
     "better-sqlite3": "^11.10.0"
   },
   "devDependencies": {

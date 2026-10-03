@@ -237,6 +237,11 @@ their `*_by` columns have always been free text; writers pass the
 (`vendor-spec.md`'s `project_authorization`), `project.created`,
 `project.deleted`, `file.downloaded`.
 
+`vendors.ctv` (backlog #46, `vendor-spec.md` §5): `vendor.added`,
+`vendor.profile_changed` and `vendor.rate_set`, with the shared table and
+a required actor like the others. A detail never carries a name or an
+address: it is hashed, so erasure could not reach it.
+
 `portal.sqlite`: `auth.login` / `auth.login_failed` for admins,
 `file.downloaded` (by client or admin), `file.delivered`, and since
 schema v4 `order.priced` and `order.price_baseline` (backlog `#63`).

@@ -52,10 +52,22 @@ export const PORTAL_AUDIT_ACTIONS = [
   'order.price_baseline',
 ] as const;
 
+/**
+ * `vendors.ctv` (backlog #46, vendor-spec.md §5 note): the roster and what
+ * the owner pays. A capacity toggle is not here on purpose (decision 8).
+ */
+export const VENDOR_AUDIT_ACTIONS = [
+  'vendor.added',
+  'vendor.profile_changed',
+  'vendor.rate_set',
+] as const;
+
 export type ProjectAuditAction = (typeof PROJECT_AUDIT_ACTIONS)[number];
 export type PlatformAuditAction = (typeof PLATFORM_AUDIT_ACTIONS)[number];
 export type PortalAuditAction = (typeof PORTAL_AUDIT_ACTIONS)[number];
-export type AuditAction = ProjectAuditAction | PlatformAuditAction | PortalAuditAction;
+export type VendorAuditAction = (typeof VENDOR_AUDIT_ACTIONS)[number];
+export type AuditAction =
+  ProjectAuditAction | PlatformAuditAction | PortalAuditAction | VendorAuditAction;
 
 export type JsonValue =
   | null
@@ -179,6 +191,22 @@ export interface AuditDetail {
   'order.priced': OrderPrice;
   /** The price as it stood when portal v4 began recording (spec §6). */
   'order.price_baseline': OrderPrice;
+  // vendors.ctv (backlog #46). A name or an address is never in a detail:
+  // it is hashed, so erasure could not reach it.
+  'vendor.added': null;
+  /** Which parts of the profile changed, never what they changed to. */
+  'vendor.profile_changed': {
+    readonly changed: readonly ('display_name' | 'languages' | 'specialties')[];
+  };
+  /** A price, not a person: the entry as written to the rate card. */
+  'vendor.rate_set': {
+    readonly src_lang: string;
+    readonly tgt_lang: string;
+    readonly tier: string;
+    readonly rate_micros: number;
+    readonly currency: string;
+    readonly effective_from: string;
+  };
 }
 
 /** An order's price and the word count it was computed from (spec §2.6). */
