@@ -719,7 +719,13 @@ pattern.
   runner starving, not a test** (#82). Four vitest forks of SQLite-heavy
   suites on the 4-vCPU Windows runner slowed millisecond tests to
   seconds; `ci.yml` now caps Windows at two (`VITEST_MAX_FORKS`). If it
-  comes back, look at that cap before at any test it names.
+  comes back, look at that cap before at any test it names. The cap does
+  not make the job fast, only less starved: `db/jobs/run.test.ts`'s
+  worker tests still take 40–120 s on Windows against about a second
+  elsewhere, so a test there with a tight timeout is a flake waiting
+  (#105: the 120 s cancel test passed at 117.6 s on one run and timed
+  out on the next). Give a slow worker test a limit several times its
+  Windows time, never a skip.
 - **A matrix job's real check name is the expanded one.**
   `name: 🚦 roundtrip gate` with a two-OS matrix produces
   `🚦 roundtrip gate (ubuntu-latest)` and `(windows-latest)`; the bare
