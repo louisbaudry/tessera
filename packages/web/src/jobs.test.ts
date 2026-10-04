@@ -5,6 +5,7 @@ import {
   availableVerbs,
   FEED_GROUPS,
   formatDeadline,
+  forecast,
   formatMicros,
   isWorkable,
   STATUS_LABEL,
@@ -90,5 +91,42 @@ describe('money and deadline', () => {
       'active',
       'delivered',
     ]);
+  });
+});
+
+describe('forecast', () => {
+  const rate = (
+    tier: RateEntry['tier'],
+    rateMicros: number,
+    currency = 'EUR',
+  ): RateEntry => ({
+    src: 'en',
+    tgt: 'de',
+    tier,
+    rateMicros,
+    currency,
+  });
+
+  it('prices the offer’s words at the offer’s rates', () => {
+    const f = forecast({ no_match: 100, exact: 50 }, [
+      rate('no_match', 80_000),
+      rate('exact', 20_000),
+    ]);
+    expect(f).toEqual({ currency: 'EUR', totalMicros: 9_000_000, unpricedWords: 0 });
+  });
+
+  it('leaves out words with no rate and says how many, never pricing them at zero', () => {
+    const f = forecast({ no_match: 100, exact: 50 }, [rate('no_match', 80_000)]);
+    expect(f).toEqual({ currency: 'EUR', totalMicros: 8_000_000, unpricedWords: 50 });
+  });
+
+  it('is null when nothing is priced or the card spans two currencies', () => {
+    expect(forecast({ no_match: 10 }, [])).toBeNull();
+    expect(
+      forecast({ no_match: 10, exact: 10 }, [
+        rate('no_match', 80_000),
+        rate('exact', 20_000, 'USD'),
+      ]),
+    ).toBeNull();
   });
 });

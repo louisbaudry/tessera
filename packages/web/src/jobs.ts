@@ -6,6 +6,7 @@
  * asked of `transitionAssignment`, never re-encoded here.
  */
 import {
+  computePayable,
   RATE_TIERS,
   transitionAssignment,
   type AssignmentStatus,
@@ -150,4 +151,38 @@ export function formatDeadline(
     timeStyle: 'short',
     ...(timeZone ? { timeZone } : {}),
   });
+}
+
+/** What a job pays if it is delivered as scoped: the offer's words at the offer's rates. */
+export interface Forecast {
+  readonly currency: string;
+  readonly totalMicros: number;
+  /** Words with no rate on the card: left out of the total. */
+  readonly unpricedWords: number;
+}
+
+/**
+ * The amount the delivery will lock, read before it does (vendor-spec decision
+ * 10, `#53`). It comes from the frozen analysis and the card as it stood at
+ * the offer, never from the segments being confirmed: an edit clears a
+ * segment's `origin`, so the tier of work done cannot be read back, and a
+ * figure that rose with each confirmation would be a guess. Null when nothing
+ * is priced, or the card prices the job in two currencies (a sum in none).
+ */
+export function forecast(
+  words: Readonly<Partial<Record<RateTier, number>>>,
+  rateCard: readonly RateEntry[],
+): Forecast | null {
+  const rows = tierRows(words, rateCard);
+  const currencies = new Set(rows.flatMap((r) => (r.rate ? [r.rate.currency] : [])));
+  const [currency] = [...currencies];
+  if (currencies.size !== 1 || currency === undefined) return null;
+  const rates: Partial<Record<RateTier, number>> = {};
+  for (const r of rows) if (r.rate) rates[r.tier] = r.rate.rateMicros;
+  const p = computePayable(words, rates as Parameters<typeof computePayable>[1]);
+  return {
+    currency,
+    totalMicros: p.totalMicros,
+    unpricedWords: p.unpriced.reduce((n, tier) => n + (words[tier] ?? 0), 0),
+  };
 }
