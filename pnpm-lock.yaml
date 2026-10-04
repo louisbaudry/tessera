@@ -187,6 +187,9 @@ importers:
       '@cat-tool/core':
         specifier: workspace:*
         version: link:../core
+      '@cat-tool/vendor-core':
+        specifier: workspace:*
+        version: link:../vendor-core
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1

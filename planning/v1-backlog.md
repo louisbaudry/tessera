@@ -3330,8 +3330,19 @@ rest of that range:
     so an owner added to their own roster reported "already there". The index's
     insert is `ON CONFLICT DO NOTHING`, which covers only the duplicate key; a
     test caught it.
-- **#52 · Job feed + offer detail screens · M** · [issue #31] — after
-  `#28`–`#35`, the same gating the glossary panel (`#43`) got.
+- **#52 · ~~Job feed + offer detail screens~~ · DONE — `web/src/{VendorFeed,Job,jobs,project-key}.ts(x)`, route `#/jobs/<owner>/<id>`.**
+  A vendor's home is the feed (`/api/vendor/feed`), grouped by `FEED_GROUPS`; a job
+  opens to instructions, size, the tier table against the vendor's own rates, a
+  source preview and the answers the lifecycle allows (`availableVerbs`, a pure
+  module). No total before delivery (decision 10); after it, the locked amount.
+  - **A project is a string key in the SPA** (`name` or `name@owner`), unpacked only
+    in `api.ts`, so a grantee's project opens through every existing screen.
+    Owner-only parts (add files, memories, glossary toggle) are hidden for another
+    account's project; the server's 403/404 stays the real gate.
+  - **Declining takes a second click**; it is the one answer that cannot be undone.
+  - Verified in Chromium against a seeded server: feed, offer, decline-cancel,
+    accept, project, editor, start, deliver, locked 332 words × €0.08 = €26.56.
+    Not measured: a feed or preview at scale.
 - **#53 · Running payable total in the editor · M** · [issue #32] —
   after `#28`–`#35` and `#49`.
 - **#54 · Capacity status toggle UI · S** · [issue #33] — after
@@ -3668,7 +3679,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #28]: https://github.com/louisbaudry/tessera/issues/28
 [issue #29]: https://github.com/louisbaudry/tessera/issues/29
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
-[issue #31]: https://github.com/louisbaudry/tessera/issues/31
 [issue #32]: https://github.com/louisbaudry/tessera/issues/32
 [issue #33]: https://github.com/louisbaudry/tessera/issues/33
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50

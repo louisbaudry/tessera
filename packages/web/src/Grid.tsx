@@ -37,6 +37,7 @@ import {
 import { nextUnconfirmed } from './advance.js';
 import { FilterBar } from './FilterBar.js';
 import { GlossaryPanel } from './GlossaryPanel.js';
+import { parseProjectKey } from './project-key.js';
 import { NO_FILTER, progress, visibleSegments, type SegmentFilter } from './filter.js';
 import {
   browserStorage,
@@ -109,6 +110,8 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const [note, setNote] = useState<string | null>(null);
   const [qaOpen, setQaOpen] = useState(loadQaPanel);
   const [glossaryOpen, setGlossaryOpen] = useState(loadGlossaryPanel);
+  // The glossary is the owner's to manage (backlog #45): another account's project has none.
+  const foreign = parseProjectKey(project).owner !== null;
   const [dismissing, setDismissing] = useState<ReadonlySet<string>>(new Set());
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const positions = useMemo(() => new Map(segments.map((s, i) => [s.id, i])), [segments]);
@@ -596,17 +599,19 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
             />{' '}
             QA panel
           </label>
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={glossaryOpen}
-              onChange={(e) => {
-                setGlossaryOpen(e.target.checked);
-                saveGlossaryPanel(e.target.checked);
-              }}
-            />{' '}
-            Glossary
-          </label>
+          {!foreign && (
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={glossaryOpen}
+                onChange={(e) => {
+                  setGlossaryOpen(e.target.checked);
+                  saveGlossaryPanel(e.target.checked);
+                }}
+              />{' '}
+              Glossary
+            </label>
+          )}
           <span className="restructure">
             <button
               type="button"
@@ -701,7 +706,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           />
         )}
       </div>
-      {glossaryOpen && (
+      {glossaryOpen && !foreign && (
         <GlossaryPanel
           project={project}
           fileId={file.file.id}

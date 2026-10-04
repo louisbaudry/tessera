@@ -2,10 +2,24 @@
  * The server's JSON surface (v1-spec.md §2.5), typed from `core`'s
  * models. The SPA never sees anything but `/api/`.
  */
-import type { Project, QaIssue, QaRule, Segment, Token } from '@cat-tool/core';
+import type {
+  AccountRole,
+  Project,
+  QaIssue,
+  QaRule,
+  Segment,
+  Token,
+} from '@cat-tool/core';
+import type {
+  AssignmentChannel,
+  AssignmentStatus,
+  RateTier,
+} from '@cat-tool/vendor-core';
 
 import type { MismatchList, SessionView } from './glossary-panel.js';
 import type { ImportJob } from './import-job.js';
+import type { RateEntry } from './jobs.js';
+import { parseProjectKey } from './project-key.js';
 
 export class ApiError extends Error {
   constructor(
@@ -20,7 +34,67 @@ export class ApiError extends Error {
 export interface Account {
   readonly id: number;
   readonly email: string;
+  /** What the account is: an owner has projects, a vendor has jobs (backlog #52a). */
+  readonly role: AccountRole;
   readonly createdAt: string;
+}
+
+/** A job as the vendor sees it: no address, no history, no other vendor (`server/src/assignments.ts`). */
+export interface VendorJob {
+  readonly id: number;
+  readonly project: string;
+  readonly channel: AssignmentChannel;
+  readonly status: AssignmentStatus;
+  readonly deadline: string | null;
+  readonly instructions: string | null;
+  readonly reopenedFrom: number | null;
+  readonly offeredAt: string;
+}
+
+/** One entry of the cross-owner feed: the job and whose it is (an account id). */
+export interface FeedJob extends VendorJob {
+  readonly owner: number;
+}
+
+export interface VendorFeed {
+  readonly needsResponse: readonly FeedJob[];
+  readonly claimable: readonly FeedJob[];
+  readonly active: readonly FeedJob[];
+  readonly delivered: readonly FeedJob[];
+}
+
+/** What locked at delivery (vendor-spec decision 10): the amount, and the lines it is made of. */
+export interface LockedPayable {
+  readonly lockedAt: string;
+  readonly currency: string | null;
+  readonly words: number;
+  readonly totalMicros: number;
+  /** False when a tier had words and no rate: the total leaves them out. */
+  readonly complete: boolean;
+  readonly lines: ReadonlyArray<{
+    readonly tier: RateTier;
+    readonly words: number;
+    readonly rateMicros: number | null;
+    readonly amountMicros: number;
+  }>;
+}
+
+/** Opening an offer (vendor-spec §7): everything needed before answering, and no total. */
+export interface OfferDetail {
+  readonly assignment: VendorJob;
+  readonly offer: {
+    readonly analysis: {
+      readonly at: string;
+      readonly words: Readonly<Partial<Record<RateTier, number>>>;
+      readonly totalWords: number;
+    } | null;
+    readonly source: {
+      readonly segments: number;
+      readonly preview: readonly string[];
+    } | null;
+    readonly payable: LockedPayable | null;
+    readonly rateCard: readonly RateEntry[];
+  };
 }
 
 export interface ProjectSummary {
@@ -139,10 +213,18 @@ export interface GlossaryRefView {
   readonly enabled: boolean;
 }
 
-const project = (name: string) => `/api/projects/${encodeURIComponent(name)}`;
+/**
+ * `/api/projects/<name><suffix>`, with `?owner=` when the key names another
+ * account's project (`project-key.ts`; backlog #45, #52). The query goes last,
+ * after the suffix, which is why a path is built here and never by the caller.
+ */
+function projectUrl(key: string, suffix = ''): string {
+  const { name, owner } = parseProjectKey(key);
+  return `/api/projects/${encodeURIComponent(name)}${suffix}${owner === null ? '' : `?owner=${owner}`}`;
+}
 
 const glossaryUrl = (name: string, fileId: number) =>
-  `${project(name)}/files/${fileId}/glossary/session`;
+  projectUrl(name, `/files/${fileId}/glossary/session`);
 
 export const api = {
   login: (email: string, password: string) =>
@@ -151,12 +233,31 @@ export const api = {
       body: { email, password },
     }),
   logout: (token: string) => call<{ ok: true }>('/api/logout', token, { method: 'POST' }),
+  /** The signed-in vendor's feed across every owner who engages them (backlog #52a). */
+  vendorFeed: (token: string, signal?: AbortSignal) =>
+    call<VendorFeed>('/api/vendor/feed', token, { signal }),
+  offer: (token: string, owner: number, id: number, signal?: AbortSignal) =>
+    call<OfferDetail>(`/api/assignments/${id}/offer?owner=${owner}`, token, { signal }),
+  /** A vendor's answer to a job: claim, accept, decline, start or deliver (vendor-spec §4). */
+  answerJob: (
+    token: string,
+    owner: number,
+    id: number,
+    verb: 'claim' | 'accept' | 'decline' | 'start' | 'deliver',
+  ) =>
+    call<{ assignment: VendorJob }>(
+      `/api/assignments/${id}/${verb}?owner=${owner}`,
+      token,
+      {
+        method: 'POST',
+      },
+    ),
   me: (token: string, signal?: AbortSignal) =>
     call<Account>('/api/me', token, { signal }),
   projects: (token: string, signal?: AbortSignal) =>
     call<ProjectSummary[]>('/api/projects', token, { signal }),
   project: (token: string, name: string, signal?: AbortSignal) =>
-    call<ProjectDetail>(project(name), token, { signal }),
+    call<ProjectDetail>(projectUrl(name), token, { signal }),
   /** A new project; `writeTm` is the memory it confirms into, created if new. */
   createProject: (
     token: string,
@@ -172,10 +273,14 @@ export const api = {
   addFile: (token: string, name: string, file: File) => {
     const form = new FormData();
     form.append('file', file, file.name);
-    return call<{ file: FileSummary; locked: number }>(`${project(name)}/files`, token, {
-      method: 'POST',
-      body: form,
-    });
+    return call<{ file: FileSummary; locked: number }>(
+      projectUrl(name, `/files`),
+      token,
+      {
+        method: 'POST',
+        body: form,
+      },
+    );
   },
   memories: (token: string, signal?: AbortSignal) =>
     call<MemorySummary[]>('/api/tms', token, { signal }),
@@ -204,32 +309,34 @@ export const api = {
   cancelImport: (token: string, id: string) =>
     call<ImportJob>(`/api/jobs/${id}`, token, { method: 'DELETE' }),
   projectMemories: (token: string, name: string, signal?: AbortSignal) =>
-    call<{ refs: TmRefView[] }>(`${project(name)}/tms`, token, { signal }),
+    call<{ refs: TmRefView[] }>(projectUrl(name, `/tms`), token, { signal }),
   attachMemory: (token: string, name: string, tm: string, writeTarget: boolean) =>
-    call<{ refs: TmRefView[] }>(`${project(name)}/tms`, token, {
+    call<{ refs: TmRefView[] }>(projectUrl(name, `/tms`), token, {
       method: 'POST',
       body: { tm, writeTarget },
     }),
   /** The whole consultation order, first consulted first. */
   orderMemories: (token: string, name: string, order: readonly number[]) =>
-    call<{ refs: TmRefView[] }>(`${project(name)}/tms`, token, {
+    call<{ refs: TmRefView[] }>(projectUrl(name, `/tms`), token, {
       method: 'PUT',
       body: { order },
     }),
   setWriteMemory: (token: string, name: string, refId: number) =>
-    call<{ refs: TmRefView[] }>(`${project(name)}/tms/${refId}/write-target`, token, {
+    call<{ refs: TmRefView[] }>(projectUrl(name, `/tms/${refId}/write-target`), token, {
       method: 'POST',
     }),
   detachMemory: (token: string, name: string, refId: number) =>
-    call<{ refs: TmRefView[] }>(`${project(name)}/tms/${refId}`, token, {
+    call<{ refs: TmRefView[] }>(projectUrl(name, `/tms/${refId}`), token, {
       method: 'DELETE',
     }),
   pretranslate: (token: string, name: string) =>
-    call<PretranslateSummary>(`${project(name)}/pretranslate`, token, { method: 'POST' }),
+    call<PretranslateSummary>(projectUrl(name, `/pretranslate`), token, {
+      method: 'POST',
+    }),
   segments: (token: string, name: string, fileId: number, signal?: AbortSignal) =>
-    call<FileSegments>(`${project(name)}/files/${fileId}/segments`, token, { signal }),
+    call<FileSegments>(projectUrl(name, `/files/${fileId}/segments`), token, { signal }),
   qaIssues: (token: string, name: string, fileId: number, signal?: AbortSignal) =>
-    call<{ issues: QaIssue[] }>(`${project(name)}/files/${fileId}/qa-issues`, token, {
+    call<{ issues: QaIssue[] }>(projectUrl(name, `/files/${fileId}/qa-issues`), token, {
       signal,
     }),
   /**
@@ -244,7 +351,7 @@ export const api = {
     dismissed: boolean,
   ) =>
     call<{ issue: QaIssue }>(
-      `${project(name)}/segments/${segmentId}/qa-issues/${rule}`,
+      projectUrl(name, `/segments/${segmentId}/qa-issues/${rule}`),
       token,
       {
         method: 'PUT',
@@ -268,7 +375,7 @@ export const api = {
       changed: boolean;
       rerun: number[];
       issues: QaIssue[];
-    }>(`${project(name)}/segments/${segmentId}`, token, {
+    }>(projectUrl(name, `/segments/${segmentId}`), token, {
       method: 'PUT',
       body,
       keepalive: options.keepalive,
@@ -293,7 +400,7 @@ export const api = {
       changed: boolean;
       rerun: number[];
       issues: QaIssue[];
-    }>(`${project(name)}/segments/${segmentId}/confirm`, token, {
+    }>(projectUrl(name, `/segments/${segmentId}/confirm`), token, {
       method: 'POST',
       body,
     });
@@ -311,7 +418,7 @@ export const api = {
     segmentId: number,
     body: { offset: number; baseUpdatedAt: string | undefined },
   ) =>
-    call<Restructured>(`${project(name)}/segments/${segmentId}/split`, token, {
+    call<Restructured>(projectUrl(name, `/segments/${segmentId}/split`), token, {
       method: 'POST',
       body,
     }),
@@ -322,7 +429,7 @@ export const api = {
     segmentId: number,
     body: { baseUpdatedAt: string | undefined; nextBaseUpdatedAt: string | undefined },
   ) =>
-    call<Restructured>(`${project(name)}/segments/${segmentId}/merge`, token, {
+    call<Restructured>(projectUrl(name, `/segments/${segmentId}/merge`), token, {
       method: 'POST',
       body,
     }),
@@ -332,10 +439,10 @@ export const api = {
   createGlossary: (token: string, name: string) =>
     call<{ slug: string }>('/api/glossaries', token, { method: 'POST', body: { name } }),
   projectGlossaries: (token: string, name: string, signal?: AbortSignal) =>
-    call<{ refs: GlossaryRefView[] }>(`${project(name)}/glossaries`, token, { signal }),
+    call<{ refs: GlossaryRefView[] }>(projectUrl(name, `/glossaries`), token, { signal }),
   /** Attaches after the others; as the write target if asked. */
   attachGlossary: (token: string, name: string, glossary: string, writeTarget: boolean) =>
-    call<{ refs: GlossaryRefView[] }>(`${project(name)}/glossaries`, token, {
+    call<{ refs: GlossaryRefView[] }>(projectUrl(name, `/glossaries`), token, {
       method: 'POST',
       body: { glossary, writeTarget },
     }),
@@ -388,7 +495,7 @@ export const api = {
     fileId: number,
     signal?: AbortSignal,
   ) =>
-    call<MismatchList>(`${project(name)}/files/${fileId}/glossary/mismatches`, token, {
+    call<MismatchList>(projectUrl(name, `/files/${fileId}/glossary/mismatches`), token, {
       signal,
     }),
   /** Resolves once every write sent so far, and any it set off, has settled. */
