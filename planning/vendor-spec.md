@@ -693,3 +693,31 @@ vendor's last two moves and what "the payable locks at delivery" (decision
   project with blocking QA (the review gate, `#51`, already refuses to close
   over one) and whether it requires every segment translated. Each, if wanted,
   is a precondition beside `transitionAssignment`, never inside it.
+
+**Implementation note (#121), written before the code (2026-10-04).** The
+accept and the review each change two files with no transaction between them
+(the assignment in the owner's `.ctv`, the grant in `platform.sqlite`), done
+as "commit the move, then the idempotent grant or revoke". Repeating an
+accept mends a failed grant; **nothing mends a failed revoke**, because
+`reviewed` is terminal. The repair is a reconciliation, not a retry.
+
+- **What should exist is derived from the roster.** A vendor's account has
+  an `assigned_translator` grant on the owner's project exactly while some
+  assignment of theirs on it is `accepted`, `in_progress` or `delivered`; an
+  assignment that is `reviewed` or `declined` gives none, and two assignments
+  on one project keep the grant while either is active.
+- **It governs only the pairs the roster knows.** A grant is reconciled only if
+  the roster has at least one assignment for that (account, project); a grant
+  the roster has never heard of is not this function's to remove, so a grant
+  made for another reason is safe from it.
+- **It reports what it did, and names an actor.** The result is the grants it
+  added and the ones it removed; each goes through the ordinary
+  `grantProjectAuthorization`/`revokeProjectAuthorization`, so each is its own
+  `authorization.*` event in the platform's log under the owner's actor. A
+  grant it cannot make (an account that no longer exists) is reported as
+  skipped, not thrown: one bad row must not stop the rest being mended.
+- **It is on demand, the owner's:** `POST /api/assignments/reconcile`. It
+  is idempotent, so a run that finds nothing wrong writes nothing. Running it
+  on a schedule, or after a failed grant, is for whoever wants it (`#52`'s
+  screens can offer it); the routes do not call it themselves, since a repair
+  that ran inside the failing step would fail with it.

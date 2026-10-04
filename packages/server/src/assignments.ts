@@ -49,6 +49,7 @@ import {
   openVendorFile,
   postToPool,
   ReviewBlockedError,
+  reconcileAssignmentGrants,
   reviewAssignment,
   startAssignment,
   revokeProjectAuthorization,
@@ -412,6 +413,24 @@ export function registerAssignmentRoutes(
       }
     },
   );
+
+  // Makes the translators' project grants match the roster (backlog #121): the accept
+  // and the review each change two files with no transaction between them, so a failure
+  // between the move and the grant or revoke is mended here, not by repeating a step
+  // that is terminal. The owner's, idempotent, and a run that finds nothing writes nothing.
+  app.post('/api/assignments/reconcile', async (req) => {
+    const me = deps.owner(req);
+    const roster = openRoster(me);
+    if (!roster) return { granted: [], revoked: [], skipped: [] };
+    try {
+      return reconcileAssignmentGrants(roster, platform, {
+        ownerId: me.id,
+        actor: deps.sessionActor(req),
+      });
+    } finally {
+      roster.close();
+    }
+  });
 
   // The owner's sign-off (backlog #51, vendor-spec §4): `delivered → reviewed`,
   // refused while the project has a blocking QA issue, and ending the vendor's

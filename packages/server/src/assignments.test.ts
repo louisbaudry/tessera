@@ -20,9 +20,11 @@ import {
   createVendorFile,
   dismissQaIssue,
   listEvents,
+  grantProjectAuthorization,
   listSegments,
   openPlatformDb,
   openProjectDb,
+  revokeProjectAuthorization,
   openVendorFile,
   setVendorRate,
   type Account,
@@ -966,5 +968,86 @@ describe('a vendor starts and delivers, and the payable locks', () => {
     expect(res.json()).toMatchObject({ assignment: { status: 'delivered' } });
     const seen = (await offerOf(b, 1)).json() as { offer: { payable: unknown } };
     expect(seen.offer.payable).toBeNull();
+  });
+});
+
+describe('reconciling grants with the roster', () => {
+  const reconcile = (token: string) =>
+    app.inject({ method: 'POST', url: '/api/assignments/reconcile', headers: as(token) });
+
+  /** Edits the grant table directly, as a failed step between the two files would have left it. */
+  function withPlatform<T>(fn: (platform: ReturnType<typeof openPlatformDb>) => T): T {
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      return fn(platform);
+    } finally {
+      platform.close();
+    }
+  }
+  const project = () => ({ accountId: alice.id, name: 'job' });
+
+  it('gives a vendor back the access a failed grant left out, once', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    const b = await login('bob');
+    await act(b, 1, 'accept');
+    withPlatform((p) =>
+      revokeProjectAuthorization(p, {
+        accountId: bob.id,
+        project: project(),
+        actor: SETUP,
+      }),
+    );
+    expect((await openedBy(b)).statusCode).toBe(404);
+
+    const res = await reconcile(a);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toEqual({
+      granted: [{ accountId: bob.id, project: 'job' }],
+      revoked: [],
+      skipped: [],
+    });
+    expect((await openedBy(b)).statusCode).toBe(200);
+    expect((await reconcile(a)).json()).toEqual({
+      granted: [],
+      revoked: [],
+      skipped: [],
+    });
+  });
+
+  it('ends the access a failed revoke left on a reviewed job, which repeating the review cannot', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    await deliveredByBob();
+    expect((await review(a, 1)).statusCode).toBe(200);
+    withPlatform((p) =>
+      grantProjectAuthorization(p, {
+        accountId: bob.id,
+        project: project(),
+        scope: 'assigned_translator',
+        actor: SETUP,
+      }),
+    );
+    const b = await login('bob');
+    expect((await openedBy(b)).statusCode).toBe(200); // the failed revoke
+    expect((await review(a, 1)).statusCode).toBe(409); // reviewed is terminal
+
+    expect((await reconcile(a)).json()).toMatchObject({
+      revoked: [{ accountId: bob.id, project: 'job' }],
+    });
+    expect((await openedBy(b)).statusCode).toBe(404);
+  });
+
+  it('is the owner’s own: a vendor reconciles their own empty roster, and a login is needed', async () => {
+    const b = await login('bob');
+    expect((await reconcile(b)).json()).toEqual({
+      granted: [],
+      revoked: [],
+      skipped: [],
+    });
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/assignments/reconcile' }))
+        .statusCode,
+    ).toBe(401);
   });
 });

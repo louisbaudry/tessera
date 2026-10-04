@@ -3287,6 +3287,26 @@ rest of that range:
   - **Not decided, and left to the PM**: whether `deliver` refuses blocking QA
     or untranslated segments (the review gate already refuses to close over a
     blocking issue).
+- **#51c · ~~Reconcile project grants with assignment status~~ · DONE — `db/src/vendor/reconcile.ts`, `server/src/assignments.ts`.**
+  `reconcileAssignmentGrants` and the owner's `POST /api/assignments/reconcile`.
+  Filed by `#51`: the accept and the review each change two files (the
+  assignment in the `.ctv`, the grant in `platform.sqlite`) with no
+  transaction between them, and a failed revoke after a review could not be
+  mended by repeating the review, because `reviewed` is terminal.
+  - **The roster is the truth**: a vendor holds the grant exactly while one of
+    their assignments on the project is `accepted`, `in_progress` or
+    `delivered`; two assignments on one project keep it while either is active.
+  - **It governs only the (account, project) pairs the roster has an
+    assignment for**: a grant made for another reason, and another owner's
+    projects, are never touched (a test fails if the guard is removed).
+  - **One bad row does not stop the rest**: a grant it cannot make (an account
+    that no longer exists) is reported as `skipped`, and the others are mended.
+  - **Every repair is an ordinary `authorization.granted`/`.revoked` event**
+    under the actor that ran it, and a run that finds nothing wrong writes
+    nothing.
+  - **On demand, and the routes do not call it themselves**: a repair that ran
+    inside the failing step would fail with it. Offering it from the screens
+    (`#52`), or running it on a schedule, is for whoever wants it.
 - **#52 · Job feed + offer detail screens · M** · [issue #31] — after
   `#28`–`#35`, the same gating the glossary panel (`#43`) got.
 - **#53 · Running payable total in the editor · M** · [issue #32] —
