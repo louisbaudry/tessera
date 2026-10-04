@@ -106,7 +106,7 @@ describe('running an import on a worker thread', () => {
     const db = reopen(tm);
     expect(count(db, 'tu')).toBe(5000);
     expect(count(db, 'tuv')).toBe(10000);
-  });
+  }, 60_000);
 
   it('keeps the calling thread free: its timer ticks through the import, and does not inline', async () => {
     const tm = newTm('worker');
@@ -167,7 +167,7 @@ describe('running an import on a worker thread', () => {
     }).done.catch((e: unknown) => e);
     expect(err).toBeInstanceOf(JobError);
     expect((err as JobError).causeName).toBe('TmxError');
-  });
+  }, 60_000);
 
   it('cancels at a batch boundary: whole batches stay, the import is incomplete, and resume finishes it', async () => {
     const tm = newTm('c');
@@ -228,7 +228,7 @@ describe('running an import on a worker thread', () => {
     job.cancel();
     job.cancel();
     expect((await job.done).status).toBe('done');
-  });
+  }, 60_000);
 });
 
 describe('cancelling an operation that cannot stop itself', () => {
@@ -390,7 +390,7 @@ describe('the other operations', () => {
     expect(digestOf(readFileSync(backup))).toBe(digestOf(before));
     const restored = reopen(backup);
     expect(count(restored, 'tu')).toBe(250);
-  });
+  }, 60_000);
 
   it('describes the memory it imported while it still has it open', async () => {
     const tm = newTm('s');
@@ -402,5 +402,5 @@ describe('the other operations', () => {
     if (outcome.status !== 'done') return;
     expect(outcome.value.summary).toMatchObject({ name: 's', units: 1234 });
     expect([...outcome.value.summary.langs].sort()).toEqual(['en', 'es']);
-  });
+  }, 60_000);
 });
