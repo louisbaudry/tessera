@@ -6,6 +6,7 @@
  * is where a finding becomes a persisted, dismissible `qa_issue` row.
  */
 
+import type { MismatchFinder, SegmentMismatch } from '../glossary/mismatch.js';
 import { DEFAULT_SEVERITY, type QaRule, type QaSeverity } from '../model/qa.js';
 import type { SegmentStatus } from '../model/segment.js';
 import { extraTags, missingTags, validateTagStructure } from '../model/tags.js';
@@ -75,6 +76,12 @@ export interface QaCheckContext {
    * colon.
    */
   readonly formats?: readonly FormatEntry[];
+  /**
+   * The project's write-target glossary, as a matcher built once per pass
+   * (backlog #44; `mismatchFinder`). Needed by `term.glossary_mismatch`,
+   * which reports nothing without it: no glossary, nothing to compare to.
+   */
+  readonly glossary?: MismatchFinder;
 }
 
 export type QaCheck = (context: QaCheckContext) => readonly QaFinding[];
@@ -579,6 +586,36 @@ const checkPunctSpacing: QaCheck = ({ target, tgtLang, formats }) => {
   ];
 };
 
+const quote = (text: string): string => `\u201C${text}\u201D`;
+
+const describeMismatch = (m: SegmentMismatch): string => {
+  if (m.kind === 'forbidden') {
+    return `${quote(m.term)}: forbidden rendering ${quote(m.found ?? '')} used`;
+  }
+  const used = m.found === null ? '' : ` (${quote(m.found)} used)`;
+  return `${quote(m.term)}: expected ${quote(m.preferred ?? '')}${used}`;
+};
+
+/**
+ * Fires when the target lacks a glossary term's preferred rendering, or
+ * uses one the glossary forbids (smart-glossary-spec.md §6; backlog #44).
+ * One finding for the segment naming every term, as the tag rules do.
+ * A `warning`: the translator may have good reason, and recording the
+ * exception is the panel's job (backlog #110), not a dismissal's.
+ */
+const checkGlossaryMismatch: QaCheck = ({ glossary, source, target }) => {
+  if (!glossary) return [];
+  const mismatches = glossary(source, target);
+  if (mismatches.length === 0) return [];
+  return [
+    {
+      rule: 'term.glossary_mismatch',
+      severity: DEFAULT_SEVERITY['term.glossary_mismatch'],
+      message: mismatches.map(describeMismatch).join('; '),
+    },
+  ];
+};
+
 /**
  * Every rule this build knows how to check, keyed by `QaRule` so a
  * project's enabled set (backlog #22's per-project switches) can select
@@ -601,6 +638,7 @@ export const QA_CHECKS: Readonly<Partial<Record<QaRule, QaCheck>>> = {
   'punct.brackets': checkPunctBrackets,
   'punct.inverted': checkPunctInverted,
   'punct.spacing': checkPunctSpacing,
+  'term.glossary_mismatch': checkGlossaryMismatch,
 };
 
 /**

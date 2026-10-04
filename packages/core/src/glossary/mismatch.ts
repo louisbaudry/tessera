@@ -7,7 +7,7 @@
  */
 
 import type { Segment } from '../model/segment.js';
-import { plainText } from '../model/token.js';
+import { plainText, type AnyToken } from '../model/token.js';
 import { inflectionEndings } from './inflection.js';
 import { termKey } from './key.js';
 
@@ -132,28 +132,38 @@ function candidateFinder(
 const inside = (inner: Span, outer: Span): boolean =>
   outer[0] <= inner[0] && inner[1] <= outer[1];
 
+/** A mismatch before it is placed in a file: what one source/target pair says. */
+export type SegmentMismatch = Omit<GlossaryMismatch, 'ord' | 'segmentId'>;
+
+/** The mismatches in one source/target pair (a {@link mismatchFinder}). */
+export type MismatchFinder = (
+  source: readonly AnyToken[],
+  target: readonly AnyToken[] | null,
+) => SegmentMismatch[];
+
 /**
- * The mismatches in `segments` against `entries`. A segment is looked at
- * only if it has a target with text; per segment and term there is at
- * most one row — `forbidden` if a forbidden rendering occurs outside any
- * acceptable one, else `missing_preferred` if the preferred is absent.
- * Rows come in segment order, then entry order.
+ * A finder over `entries`, built once and applied to as many segments as
+ * a pass has (the first-word index is the cost worth sharing, see
+ * {@link candidateFinder}). A pair with no target, or a target with no
+ * text, has none: it is untranslated, which `qa` says. Per term at most
+ * one row — `forbidden` if a forbidden rendering occurs outside any
+ * acceptable one, else `missing_preferred` if the preferred is absent —
+ * in entry order.
  */
-export function findMismatches(
+export function mismatchFinder(
   entries: readonly GlossaryTermEntry[],
-  segments: readonly Segment[],
   langs: MismatchLangs,
-): GlossaryMismatch[] {
+): MismatchFinder {
   const srcEndings = inflectionEndings(langs.srcLang);
   const tgtEndings = inflectionEndings(langs.tgtLang);
-  const out: GlossaryMismatch[] = [];
   const candidatesIn = candidateFinder(entries, srcEndings);
 
-  for (const segment of segments) {
-    if (segment.targetTokens === null) continue;
-    const target = termKey(plainText(segment.targetTokens));
-    if (target === '') continue;
-    const source = termKey(plainText(segment.sourceTokens));
+  return (sourceTokens, targetTokens) => {
+    if (targetTokens === null) return [];
+    const target = termKey(plainText(targetTokens));
+    if (target === '') return [];
+    const source = termKey(plainText(sourceTokens));
+    const out: SegmentMismatch[] = [];
 
     for (const entry of candidatesIn(source)) {
       const matched = entry.source.find(
@@ -169,8 +179,6 @@ export function findMismatches(
       );
 
       const base = {
-        ord: segment.ord,
-        segmentId: segment.id,
         termId: entry.termId,
         term: matched.text,
         preferred: entry.preferred?.text ?? null,
@@ -193,6 +201,25 @@ export function findMismatches(
       );
       out.push({ ...base, kind: 'missing_preferred', found: used?.text ?? null });
     }
-  }
-  return out;
+    return out;
+  };
+}
+
+/**
+ * The mismatches in `segments` against `entries`, in segment order, then
+ * entry order (see {@link mismatchFinder} for what counts).
+ */
+export function findMismatches(
+  entries: readonly GlossaryTermEntry[],
+  segments: readonly Segment[],
+  langs: MismatchLangs,
+): GlossaryMismatch[] {
+  const find = mismatchFinder(entries, langs);
+  return segments.flatMap((segment) =>
+    find(segment.sourceTokens, segment.targetTokens).map((m) => ({
+      ord: segment.ord,
+      segmentId: segment.id,
+      ...m,
+    })),
+  );
 }

@@ -58,7 +58,9 @@ const record = (
     decidedBy: 'Ana',
   });
 
-describe('recordSegmentException', () => {
+// SQLite-heavy: a fixed 5 s starved out on the 2-fork Windows runner (#82), so the suite
+// gets the slack the other heavy suites have.
+describe('recordSegmentException', { timeout: 60_000 }, () => {
   it('never moves the preference, however often it is recorded', () => {
     const { db, termId } = setup();
     for (let i = 0; i < 10; i++) record(db, termId, i);
@@ -104,7 +106,9 @@ describe('recordSegmentException', () => {
   });
 });
 
-describe('listExceptionProposals', () => {
+// SQLite-heavy: a fixed 5 s starved out on the 2-fork Windows runner (#82), so the suite
+// gets the slack the other heavy suites have.
+describe('listExceptionProposals', { timeout: 60_000 }, () => {
   it(`proposes an alternative once it is recorded for ${EXCEPTION_PROPOSAL_MIN} distinct segments`, () => {
     const { db, termId } = setup();
     record(db, termId, 1);
@@ -152,7 +156,9 @@ describe('listExceptionProposals', () => {
   });
 });
 
-describe('acceptExceptionProposal', () => {
+// SQLite-heavy: a fixed 5 s starved out on the 2-fork Windows runner (#82), so the suite
+// gets the slack the other heavy suites have.
+describe('acceptExceptionProposal', { timeout: 60_000 }, () => {
   it('writes an override that makes the alternative preferred, and the proposal ends', () => {
     const { db, termId } = setup();
     for (let i = 1; i <= 3; i++) record(db, termId, i);
