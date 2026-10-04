@@ -8,6 +8,7 @@ import { slugify } from '@cat-tool/core/model';
 import { useCallback, useState, type FormEvent } from 'react';
 
 import { api, ApiError } from './api.js';
+import { parseProjectKey } from './project-key.js';
 import { ProjectMemories } from './ProjectMemories.js';
 import { formatRoute } from './route.js';
 import { useSession } from './session-context.js';
@@ -160,6 +161,8 @@ function NewProject({ taken }: { taken: readonly string[] }) {
 
 export function ProjectFiles({ name }: { name: string }) {
   const [version, setVersion] = useState(0);
+  // Another account's project (a vendor's job): the files to work on, nothing to manage.
+  const foreign = parseProjectKey(name).owner !== null;
   const detail = useLoad(
     // `version` reloads the list after an upload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,9 +195,9 @@ export function ProjectFiles({ name }: { name: string }) {
             ))}
           </ul>
         )}
-        <AddFiles project={name} onAdded={() => setVersion((v) => v + 1)} />
+        {!foreign && <AddFiles project={name} onAdded={() => setVersion((v) => v + 1)} />}
       </section>
-      <ProjectMemories key={name} project={name} />
+      {!foreign && <ProjectMemories key={name} project={name} />}
     </div>
   );
 }

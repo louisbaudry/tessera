@@ -536,6 +536,12 @@ can read the total off those directly; the system doesn't collapse it
 into one figure at this stage. Revisit if usage shows people want the
 arithmetic done for them.
 
+**As built (backlog #52).** The feed is the vendor's home screen and the job
+opens at `#/jobs/<owner>/<id>`. The offer shows the tier table and the vendor's
+own rates side by side with no total; once delivered, the same screen shows
+what locked. Declining asks twice. "Open the project" reaches the owner's
+project through the ordinary editor, with owner-only controls hidden.
+
 **Accepting.** Moves the assignment to `accepted` (§4). For a pool job,
 this also removes it from other eligible vendors' feeds — needs a
 concurrency-safe claim (two vendors accepting the same pool job at

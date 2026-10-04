@@ -3,12 +3,15 @@
  * `#/` lists projects, `#/p/<name>` one project's files and memories,
  * `#/p/<name>/f/<id>` a file's grid, and `#/tms` the account's memories
  * (§7.5). Anything else is the project list — a stale or hand-typed
- * link lands somewhere, never on a blank page.
+ * link lands somewhere, never on a blank page. A vendor's job (backlog
+ * #52) is `#/jobs/<owner account>/<assignment>`: the owner is part of the
+ * address because a job lives on that owner's roster.
  */
 
 export type Route =
   | { readonly screen: 'projects' }
   | { readonly screen: 'tms' }
+  | { readonly screen: 'job'; readonly owner: number; readonly id: number }
   | { readonly screen: 'project'; readonly project: string }
   | { readonly screen: 'grid'; readonly project: string; readonly fileId: number };
 
@@ -17,6 +20,13 @@ const HOME: Route = { screen: 'projects' };
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts.length === 1 && parts[0] === 'tms') return { screen: 'tms' };
+  if (parts.length === 3 && parts[0] === 'jobs') {
+    const [, owner, id] = parts;
+    if (/^[1-9]\d{0,14}$/.test(owner!) && /^[1-9]\d{0,14}$/.test(id!)) {
+      return { screen: 'job', owner: Number(owner), id: Number(id) };
+    }
+    return HOME;
+  }
   if (parts[0] !== 'p' || parts[1] === undefined) return HOME;
   let project: string;
   try {
@@ -37,6 +47,8 @@ export function formatRoute(route: Route): string {
       return '#/';
     case 'tms':
       return '#/tms';
+    case 'job':
+      return `#/jobs/${route.owner}/${route.id}`;
     case 'project':
       return `#/p/${encodeURIComponent(route.project)}`;
     case 'grid':

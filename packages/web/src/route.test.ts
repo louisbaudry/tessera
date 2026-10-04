@@ -9,6 +9,10 @@ describe('parseRoute / formatRoute', () => {
       { screen: 'tms' },
       { screen: 'project', project: 'job-2026' },
       { screen: 'grid', project: 'job-2026', fileId: 12 },
+      { screen: 'job', owner: 7, id: 3 },
+      // another account's project is a key (project-key.ts), through the same routes
+      { screen: 'project', project: 'job@7' },
+      { screen: 'grid', project: 'job@7', fileId: 2 },
     ];
     for (const route of routes) expect(parseRoute(formatRoute(route))).toEqual(route);
   });
@@ -26,6 +30,12 @@ describe('parseRoute / formatRoute', () => {
       '#/p/job/f/1.5',
       '#/p/job/f/2/extra',
       '#/p/%E0%A4%A',
+      '#/jobs',
+      '#/jobs/7',
+      '#/jobs/7/x',
+      '#/jobs/0/3',
+      '#/jobs/7/03',
+      '#/jobs/7/3/extra',
     ]) {
       expect(parseRoute(hash), hash).toEqual({ screen: 'projects' });
     }
