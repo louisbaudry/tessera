@@ -6,10 +6,12 @@
  * asked of `transitionAssignment`, never re-encoded here.
  */
 import {
+  CAPACITY_STATUSES,
   computePayable,
   RATE_TIERS,
   transitionAssignment,
   type AssignmentStatus,
+  type CapacityStatus,
   type RateTier,
 } from '@cat-tool/vendor-core';
 
@@ -186,3 +188,16 @@ export function forecast(
     unpricedWords: p.unpriced.reduce((n, tier) => n + (words[tier] ?? 0), 0),
   };
 }
+
+/** The vendor's own words for their capacity (decision 8), in the order they are offered. */
+export const CAPACITY_LABEL: Record<CapacityStatus, string> = {
+  available: 'Available',
+  busy: 'Busy',
+  away: 'Away',
+};
+
+export const CAPACITY_OPTIONS: readonly CapacityStatus[] = CAPACITY_STATUSES;
+
+/** Whether a note typed in the box is a change to what is saved: blanks do not count. */
+export const noteChanged = (typed: string, saved: string | null): boolean =>
+  typed.trim() !== (saved ?? '');

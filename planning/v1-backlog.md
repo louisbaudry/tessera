@@ -3359,8 +3359,18 @@ rest of that range:
     computation.
   - Verified in Chromium: forecast while working, final amount after delivery, nothing
     in the owner's own editor.
-- **#54 · Capacity status toggle UI · S** · [issue #33] — after
-  `#28`–`#35`.
+- **#54 · ~~Capacity status toggle UI~~ · DONE — `web/src/Capacity.tsx`, routes `GET`/`PUT /api/vendor/capacity` in `server/src/assignments.ts`.**
+  The `db/vendor/capacity.ts` repository (#46) had no route, so this card was a route
+  and a control. Available / busy / away and a note sit above the feed, one row per
+  roster that lists the vendor (a vendor on two rosters has two statuses, as the schema
+  says; the label shows only when there is more than one). A status saves when chosen,
+  the note when the box is left; a vendor who has never set one sees "Not set", never
+  "available", and the note stays disabled until a status exists.
+  - **The vendor's view omits `set_by`** (an owner's account id stays the owner's), and
+    the PUT returns the same shape as the GET row. It first returned no `owner`, so the
+    next save went to `?owner=undefined`: found only by driving the browser, because the
+    route test asserted the status and not the shape the client reuses.
+  - Not audited, per the schema's own reasoning; a mistyped owner is the identical 404.
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
@@ -3693,7 +3703,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #28]: https://github.com/louisbaudry/tessera/issues/28
 [issue #29]: https://github.com/louisbaudry/tessera/issues/29
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
-[issue #33]: https://github.com/louisbaudry/tessera/issues/33
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51
 [issue #52]: https://github.com/louisbaudry/tessera/issues/52

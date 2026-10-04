@@ -13,6 +13,7 @@ import type {
 import type {
   AssignmentChannel,
   AssignmentStatus,
+  CapacityStatus,
   RateTier,
 } from '@cat-tool/vendor-core';
 
@@ -77,6 +78,14 @@ export interface LockedPayable {
     readonly rateMicros: number | null;
     readonly amountMicros: number;
   }>;
+}
+
+/** A vendor's capacity on one owner's roster (decision 8): null until they set one. */
+export interface RosterCapacity {
+  readonly owner: number;
+  readonly status: CapacityStatus | null;
+  readonly note: string | null;
+  readonly setAt: string | null;
 }
 
 /** Opening an offer (vendor-spec §7): everything needed before answering, and no total. */
@@ -238,6 +247,18 @@ export const api = {
     call<VendorFeed>('/api/vendor/feed', token, { signal }),
   offer: (token: string, owner: number, id: number, signal?: AbortSignal) =>
     call<OfferDetail>(`/api/assignments/${id}/offer?owner=${owner}`, token, { signal }),
+  /** The vendor's capacity on every roster that lists them (backlog #54). */
+  vendorCapacity: (token: string, signal?: AbortSignal) =>
+    call<{ rosters: RosterCapacity[] }>('/api/vendor/capacity', token, { signal }),
+  setCapacity: (
+    token: string,
+    owner: number,
+    body: { status: CapacityStatus; note: string | null },
+  ) =>
+    call<RosterCapacity>(`/api/vendor/capacity?owner=${owner}`, token, {
+      method: 'PUT',
+      body,
+    }),
   /** The vendor's job on a project they were granted, if any (backlog #53). */
   vendorJob: (token: string, owner: number, project: string, signal?: AbortSignal) =>
     call<{ id: number; status: string }>(

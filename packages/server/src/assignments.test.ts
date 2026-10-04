@@ -666,6 +666,71 @@ describe('the job a vendor is working on a project', () => {
   });
 });
 
+const capacityOf = (token: string) =>
+  app.inject({ method: 'GET', url: '/api/vendor/capacity', headers: as(token) });
+
+const setCapacityAs = (token: string, body: unknown, owner: number | string = alice.id) =>
+  app.inject({
+    method: 'PUT',
+    url: `/api/vendor/capacity?owner=${owner}`,
+    headers: as(token),
+    payload: body as object,
+  });
+
+/** alice's roster was written by hand above, so the index a vendor finds it through is too. */
+function indexBobOnAlice(): void {
+  const platform = openPlatformDb(config.dbPath);
+  try {
+    addRosterMembership(platform, { ownerId: alice.id, accountId: bob.id });
+  } finally {
+    platform.close();
+  }
+}
+
+describe('a vendor’s capacity (#54)', () => {
+  it('reads null until set, then the current status and note, and replaces them', async () => {
+    await aliceWithProject();
+    indexBobOnAlice();
+    const b = await login('bob');
+    expect((await capacityOf(b)).json()).toEqual({
+      rosters: [{ owner: alice.id, status: null, note: null, setAt: null }],
+    });
+    const set = await setCapacityAs(b, { status: 'busy', note: ' Back Monday ' });
+    expect(set.statusCode, set.body).toBe(200);
+    expect(set.json()).toMatchObject({
+      owner: alice.id,
+      status: 'busy',
+      note: 'Back Monday',
+    });
+    await setCapacityAs(b, { status: 'available' });
+    const after = (await capacityOf(b)).json() as {
+      rosters: Array<{ status: string; note: string | null }>;
+    };
+    expect(after.rosters).toMatchObject([{ status: 'available', note: null }]);
+    // who set it is not shown, and nothing of the owner's account leaks
+    expect(JSON.stringify(after)).not.toMatch(/setBy|alice@example\.com/);
+  });
+
+  it('refuses a bad status or note as a 400, and a stranger, the owner or a bad address as a 404', async () => {
+    await aliceWithProject();
+    const b = await login('bob');
+    expect((await setCapacityAs(b, { status: 'asleep' })).statusCode).toBe(400);
+    expect((await setCapacityAs(b, {})).statusCode).toBe(400);
+    expect((await setCapacityAs(b, { status: 'busy', note: 5 })).statusCode).toBe(400);
+    expect(
+      (await setCapacityAs(b, { status: 'busy', note: 'x'.repeat(501) })).statusCode,
+    ).toBe(400);
+    expect(
+      (await setCapacityAs(await login('dave'), { status: 'busy' })).statusCode,
+    ).toBe(404);
+    expect(
+      (await setCapacityAs(await login('alice'), { status: 'busy' })).statusCode,
+    ).toBe(404);
+    expect((await setCapacityAs(b, { status: 'busy' }, 'abc')).statusCode).toBe(404);
+    expect((await capacityOf(await login('dave'))).json()).toEqual({ rosters: [] });
+  });
+});
+
 /** Takes assignment #1 the rest of the way to `delivered`, as bob, through the routes. */
 async function deliveredByBob(): Promise<void> {
   const b = await login('bob');
