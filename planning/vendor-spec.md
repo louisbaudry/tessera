@@ -721,3 +721,34 @@ accept mends a failed grant; **nothing mends a failed revoke**, because
   on a schedule, or after a failed grant, is for whoever wants it (`#52`'s
   screens can offer it); the routes do not call it themselves, since a repair
   that ran inside the failing step would fail with it.
+
+**Implementation note (#52a), written before the code (2026-10-04).** `#52`'s
+screens turned out to need a backend `#50` did not give them: a vendor's feed
+is read per owner (`?owner=`), but a vendor has no way to learn *which*
+owners' rosters they are on, and §7 wants one feed across all of them. The
+roster is each owner's own file, so the answer cannot be a query.
+
+- **A membership index in `platform.sqlite`** (v5, `roster_membership`:
+  `(owner_id, account_id)`), written when an owner adds a vendor. It is a
+  **derived index of the rosters, not a second truth**: the roster decides who
+  is a vendor, and a membership that has no roster entry behind it shows its
+  vendor nothing (the feed finds no vendor on that roster). So it is written
+  *before* the roster entry: a failure between the two leaves a harmless
+  index row, never a vendor on a roster the index does not know. It records
+  no audit event of its own, the roster's `vendor.added` being the act.
+- **It is rebuildable.** `reconcileMemberships` derives it from the roster
+  (every vendor on it gets a row) and the owner's `POST
+  /api/assignments/reconcile` runs it with the grants, which also backfills
+  rosters written before the index existed.
+- **One feed across owners: `GET /api/vendor/feed`**, the signed-in account's
+  own. For each owner whose roster lists them it reads `vendorFeed` and merges
+  the four groups, each assignment carrying its `owner` (an account id) and
+  `offeredAt`, newest first. An owner with no roster file, or whose roster no
+  longer lists the account, is skipped, never an error. It takes no `?owner`:
+  a vendor cannot be asked to name the owners who engage them.
+- **`/api/me` says what the account is** (`role`), so the SPA can send a vendor
+  to the feed and an owner to their projects without guessing.
+- **A vendor account can be created**: `create-account` takes `--vendor`.
+  There was no way to make one outside a test. How a vendor *gets* an account
+  (a signup, an owner's invitation) is a product question this does not answer
+  and is its own issue.

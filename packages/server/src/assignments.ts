@@ -23,6 +23,7 @@ import {
   AssignmentAccessError,
   AssignmentConflictError,
   acceptAssignment,
+  addRosterMembership,
   addVendor,
   analyseTierWords,
   claimAssignment,
@@ -42,6 +43,7 @@ import {
   listAssignmentEvents,
   listAssignments,
   listPoolMembers,
+  listRosterOwners,
   listVendors,
   previewSource,
   type openPlatformDb,
@@ -50,6 +52,7 @@ import {
   postToPool,
   ReviewBlockedError,
   reconcileAssignmentGrants,
+  reconcileMemberships,
   reviewAssignment,
   startAssignment,
   revokeProjectAuthorization,
@@ -185,6 +188,7 @@ export function registerAssignmentRoutes(
       deadline: a.deadline,
       instructions: a.instructions,
       reopenedFrom: a.reopenedFrom,
+      offeredAt: a.createdAt,
     };
   }
 
@@ -314,6 +318,44 @@ export function registerAssignmentRoutes(
     }
   });
 
+  // One feed across every owner whose roster lists the signed-in account (#52a): the
+  // vendor cannot be asked to name the owners who engage them. Each assignment carries
+  // its owner and when it was offered, newest first. An owner with no roster file, or
+  // whose roster no longer lists the account, is skipped, never an error.
+  app.get('/api/vendor/feed', async (req) => {
+    const me = deps.owner(req);
+    const groups = {
+      needsResponse: [],
+      claimable: [],
+      active: [],
+      delivered: [],
+    } as Record<
+      'needsResponse' | 'claimable' | 'active' | 'delivered',
+      Array<ReturnType<typeof vendorView> & { owner: number }>
+    >;
+    for (const ownerId of listRosterOwners(platform, me.id)) {
+      const ownerAccount = getAccountById(platform, ownerId);
+      if (!ownerAccount) continue;
+      const roster = openRoster(ownerAccount);
+      if (!roster) continue;
+      try {
+        const vendor = getVendorByAccount(roster, me.id);
+        if (!vendor) continue;
+        const feed = vendorFeed(roster, vendor.id);
+        for (const key of Object.keys(groups) as Array<keyof typeof groups>) {
+          for (const a of feed[key])
+            groups[key].push({ ...vendorView(a), owner: ownerId });
+        }
+      } finally {
+        roster.close();
+      }
+    }
+    for (const list of Object.values(groups)) {
+      list.sort((a, b) => b.offeredAt.localeCompare(a.offeredAt) || b.id - a.id);
+    }
+    return groups;
+  });
+
   // A vendor's job feed, on the roster `?owner=` names. The owner's own id is
   // not a vendor's feed (the owner's list is #51), and a roster the caller is
   // not on is the same 404.
@@ -421,12 +463,14 @@ export function registerAssignmentRoutes(
   app.post('/api/assignments/reconcile', async (req) => {
     const me = deps.owner(req);
     const roster = openRoster(me);
-    if (!roster) return { granted: [], revoked: [], skipped: [] };
+    if (!roster) return { granted: [], revoked: [], skipped: [], memberships: [] };
     try {
-      return reconcileAssignmentGrants(roster, platform, {
+      const grants = reconcileAssignmentGrants(roster, platform, {
         ownerId: me.id,
         actor: deps.sessionActor(req),
       });
+      // The membership index too (#52a): backfills rosters written before it existed.
+      return { ...grants, memberships: reconcileMemberships(roster, platform, me.id) };
     } finally {
       roster.close();
     }
@@ -569,6 +613,9 @@ export function registerAssignmentRoutes(
         .code(400)
         .send({ error: `account #${account} is not a vendor account` });
     }
+    // The index first, the roster second: a failure between them leaves a harmless row
+    // that shows its account nothing, never a vendor the index does not know.
+    addRosterMembership(platform, { ownerId: me.id, accountId: target.id });
     const roster = openOrCreateRoster(me);
     try {
       const vendor = addVendor(roster, {
