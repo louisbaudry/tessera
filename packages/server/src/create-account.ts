@@ -4,7 +4,7 @@
  * registration flow yet, and this is still a personal tool reached
  * over the internet. Run once per deployment:
  *
- *   pnpm --filter @cat-tool/server run create-account -- <email> <password>
+ *   pnpm --filter @cat-tool/server run create-account -- <email> <password> [--vendor]
  *
  * Running it again with another email is how a second account would
  * be added: §4.1a scoped storage by account from the first row so that
@@ -27,9 +27,13 @@ import { loadConfig } from './config.js';
 // account whose email was `--`.
 const args = process.argv.slice(2);
 if (args[0] === '--') args.shift();
-const [email, password] = args;
+// `--vendor` makes a vendor account (backlog #52a): one an owner can put on their
+// roster, with no projects of its own to start from. Taken out before the
+// positionals, wherever it sits.
+const vendor = args.includes('--vendor');
+const [email, password] = args.filter((a) => a !== '--vendor');
 if (!email || !password || !email.includes('@')) {
-  console.error('usage: create-account <email> <password>');
+  console.error('usage: create-account <email> <password> [--vendor]');
   process.exit(1);
 }
 
@@ -43,9 +47,10 @@ try {
     email,
     passwordHash: hashPassword(password),
     actor,
+    ...(vendor ? { role: 'vendor' as const } : {}),
   });
   console.log(
-    `Created account #${account.id} <${account.email}>, storage root ${account.storageRoot}`,
+    `Created ${account.role} account #${account.id} <${account.email}>, storage root ${account.storageRoot}`,
   );
 } finally {
   db.close();

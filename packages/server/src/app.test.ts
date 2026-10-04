@@ -172,6 +172,7 @@ describe('the login gate', () => {
     expect(body.account).toEqual({
       id: alice.id,
       email: 'alice@example.com',
+      role: 'owner',
       createdAt: alice.createdAt,
     });
     expect(JSON.stringify(body)).not.toContain(alice.storageRoot);

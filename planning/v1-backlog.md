@@ -3307,6 +3307,29 @@ rest of that range:
   - **On demand, and the routes do not call it themselves**: a repair that ran
     inside the failing step would fail with it. Offering it from the screens
     (`#52`), or running it on a schedule, is for whoever wants it.
+- **#52a · ~~A vendor's index: roster membership, one feed across owners, the role~~ · DONE — `db/src/platform/membership.ts` (platform schema v5), `server/src/assignments.ts`, `server/src/create-account.ts`.**
+  Found reading `#52`: a vendor's feed is per owner (`?owner=`), but nothing told
+  a vendor which owners' rosters they are on, the account script could not make a
+  vendor, and `/api/me` did not say what an account is.
+  - **`roster_membership` is a derived index, not a second truth**: the roster
+    decides who is a vendor, and a row the roster does not back shows its account
+    nothing. It is written *before* the roster entry, so a failure between the
+    two leaves a harmless row, never a vendor the index does not know. No audit
+    event of its own: the roster's `vendor.added` is the act.
+  - **It is rebuildable**: `reconcileMemberships` indexes every vendor on a
+    roster, and the owner's `POST /api/assignments/reconcile` runs it with the
+    grants, which backfills rosters written before the index existed. It never
+    removes a row.
+  - **`GET /api/vendor/feed`** merges every owner's four groups for the signed-in
+    account, each assignment carrying its `owner` and `offeredAt`, newest first;
+    an owner with no roster, or whose roster no longer lists the account, is
+    skipped, not an error. It takes no `?owner`.
+  - **`/api/me` carries `role`**, and `create-account --vendor` makes a vendor
+    account. How a vendor *gets* an account is a product question (issue filed).
+  - **`INSERT OR IGNORE` hid an invalid row**: it swallows a CHECK violation too,
+    so an owner added to their own roster reported "already there". The index's
+    insert is `ON CONFLICT DO NOTHING`, which covers only the duplicate key; a
+    test caught it.
 - **#52 · Job feed + offer detail screens · M** · [issue #31] — after
   `#28`–`#35`, the same gating the glossary panel (`#43`) got.
 - **#53 · Running payable total in the editor · M** · [issue #32] —

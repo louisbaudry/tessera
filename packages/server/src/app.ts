@@ -201,7 +201,12 @@ const DOCX_TYPE =
 
 /** What a client sees of an account: never the password hash or the storage root. */
 function publicAccount(account: Account) {
-  return { id: account.id, email: account.email, createdAt: account.createdAt };
+  return {
+    id: account.id,
+    email: account.email,
+    role: account.role,
+    createdAt: account.createdAt,
+  };
 }
 
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {

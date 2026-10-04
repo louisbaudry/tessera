@@ -317,6 +317,11 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   immutable by trigger, from the frozen analysis and the rates of the
   offer's date. A tier with no rate is a null rate, never zero; a job with
   nothing to price is delivered with no payable, not refused.
+- **A vendor finds their owners through `roster_membership`, a derived
+  index** (backlog #52a, platform schema v5): the roster decides who is a
+  vendor, so a row nothing backs shows its account nothing, and the index
+  is written before the roster entry. Use `ON CONFLICT DO NOTHING` for it,
+  never `INSERT OR IGNORE`, which also swallows a CHECK violation.
 - **A grant is mended against the roster, never by repeating a step**
   (backlog #51c, `reconcileAssignmentGrants`): accept and review each
   change two files, and a failed revoke after a review cannot be retried

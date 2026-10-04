@@ -123,4 +123,27 @@ const v4: Migration = {
   },
 };
 
-export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4];
+/**
+ * `roster_membership` (backlog #52a, vendor-spec.md's #52a note): which owners'
+ * rosters an account is on. A derived index of the owners' `.ctv` files, so a
+ * vendor can find the owners to read their feed from; the roster, not this
+ * table, decides who is a vendor, and it is rebuildable from the rosters.
+ */
+const v5: Migration = {
+  version: 5,
+  description: 'roster_membership: which owners’ rosters an account is on (backlog #52a)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE roster_membership (
+        owner_id   INTEGER NOT NULL REFERENCES account(id),
+        account_id INTEGER NOT NULL REFERENCES account(id),
+        added_at   TEXT    NOT NULL,
+        PRIMARY KEY (owner_id, account_id),
+        CHECK (account_id <> owner_id)
+      ) WITHOUT ROWID;
+      CREATE INDEX roster_membership_account ON roster_membership(account_id);
+    `);
+  },
+};
+
+export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];

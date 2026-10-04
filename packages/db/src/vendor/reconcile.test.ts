@@ -15,6 +15,7 @@ import {
   revokeProjectAuthorization,
   scopeOf,
 } from '../platform/authorization.js';
+import { listRosterOwners } from '../platform/membership.js';
 import { openPlatformDb } from '../platform/index.js';
 import {
   acceptAssignment,
@@ -25,6 +26,7 @@ import {
   moveAssignment,
   postToPool,
   reconcileAssignmentGrants,
+  reconcileMemberships,
 } from './index.js';
 
 const NOW = new Date('2026-03-01T10:00:00Z');
@@ -226,5 +228,23 @@ describe('reconcileAssignmentGrants', () => {
     });
     expect(run().granted).toHaveLength(1);
     expect(holds(ana)).toBe(true);
+  });
+});
+
+describe('reconcileMemberships', () => {
+  it('indexes every vendor on the roster, once, and a second run adds nothing', () => {
+    expect(reconcileMemberships(roster, platform, owner.id).sort()).toEqual(
+      [ana.id, ben.id].sort(),
+    );
+    expect(listRosterOwners(platform, ana.id)).toEqual([owner.id]);
+    expect(listRosterOwners(platform, ben.id)).toEqual([owner.id]);
+    expect(reconcileMemberships(roster, platform, owner.id)).toEqual([]);
+  });
+
+  it('skips a vendor whose account no longer exists, and indexes the rest', () => {
+    addVendor(roster, { accountId: 999_999, actor: TEST_ACTOR });
+    expect(reconcileMemberships(roster, platform, owner.id).sort()).toEqual(
+      [ana.id, ben.id].sort(),
+    );
   });
 });

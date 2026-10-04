@@ -10,6 +10,7 @@ import type { AuditActor } from '@cat-tool/core';
 import type { AssignmentStatus } from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
+import { addRosterMembership } from '../platform/membership.js';
 import {
   AuthorizationError,
   grantProjectAuthorization,
@@ -17,7 +18,7 @@ import {
   revokeProjectAuthorization,
 } from '../platform/authorization.js';
 import { listAssignments } from './assignments.js';
-import { getVendor } from './vendors.js';
+import { getVendor, listVendors } from './vendors.js';
 
 /** While an assignment is in one of these, its vendor works in the owner's project. */
 const ACTIVE: readonly AssignmentStatus[] = ['accepted', 'in_progress', 'delivered'];
@@ -104,4 +105,30 @@ export function reconcileAssignmentGrants(
     result.revoked.push(ref);
   }
   return result;
+}
+
+/**
+ * Makes the membership index match an owner's roster: a row for every vendor on
+ * it (`roster_membership`, backlog #52a). Backfills rosters written before the
+ * index existed, and mends one a failed step left short. Never removes a row:
+ * a membership the roster does not back shows its account nothing, so a spare
+ * row is harmless and a missing one hides a vendor's whole feed. Returns the
+ * account ids it added.
+ */
+export function reconcileMemberships(
+  roster: Database.Database,
+  platform: Database.Database,
+  ownerId: number,
+): number[] {
+  const added: number[] = [];
+  for (const vendor of listVendors(roster)) {
+    try {
+      if (addRosterMembership(platform, { ownerId, accountId: vendor.accountId })) {
+        added.push(vendor.accountId);
+      }
+    } catch {
+      // An account that no longer exists (a foreign key): nothing to index.
+    }
+  }
+  return added;
 }

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { hashPassword, type AuditActor } from '@cat-tool/core';
 import {
+  addRosterMembership,
   addVendor,
   addQaIssue,
   analyseTierWords,
@@ -20,6 +21,7 @@ import {
   createVendorFile,
   dismissQaIssue,
   listEvents,
+  listRosterOwners,
   grantProjectAuthorization,
   listSegments,
   openPlatformDb,
@@ -468,6 +470,7 @@ describe('what each side sees', () => {
         deadline: '2026-03-10T17:00:00.000Z',
         instructions: 'Formal register.',
         reopenedFrom: null,
+        offeredAt: expect.any(String),
       },
     });
     expect(res.body).not.toContain('alice@example.com');
@@ -1002,16 +1005,19 @@ describe('reconciling grants with the roster', () => {
 
     const res = await reconcile(a);
     expect(res.statusCode, res.body).toBe(200);
+    // The roster was written without the index, so the first run backfills it too.
     expect(res.json()).toEqual({
       granted: [{ accountId: bob.id, project: 'job' }],
       revoked: [],
       skipped: [],
+      memberships: [bob.id, carol.id],
     });
     expect((await openedBy(b)).statusCode).toBe(200);
     expect((await reconcile(a)).json()).toEqual({
       granted: [],
       revoked: [],
       skipped: [],
+      memberships: [], // nothing left to backfill: a clean run writes nothing
     });
   });
 
@@ -1044,10 +1050,166 @@ describe('reconciling grants with the roster', () => {
       granted: [],
       revoked: [],
       skipped: [],
+      memberships: [],
     });
     expect(
       (await app.inject({ method: 'POST', url: '/api/assignments/reconcile' }))
         .statusCode,
+    ).toBe(401);
+  });
+});
+
+describe('a vendor’s feed across owners (#52a)', () => {
+  const myFeed = (token: string) =>
+    app.inject({ method: 'GET', url: '/api/vendor/feed', headers: as(token) });
+  interface Item {
+    id: number;
+    owner: number;
+    project: string;
+    offeredAt: string;
+  }
+  interface Feed {
+    needsResponse: Item[];
+    claimable: Item[];
+    active: Item[];
+    delivered: Item[];
+  }
+
+  function newOwner(name: string): Account {
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      return createAccount(platform, {
+        email: `${name}@example.com`,
+        passwordHash: hashPassword(`${name}-pw`),
+        actor: SETUP,
+      });
+    } finally {
+      platform.close();
+    }
+  }
+
+  /** erin: a second owner, with a project, who adds bob through the route and offers it to him. */
+  async function erinOffersBob(): Promise<{ erin: Account; token: string }> {
+    const erin = newOwner('erin');
+    const token = await login('erin');
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/projects',
+          headers: as(token),
+          payload: { name: 'erins', srcLang: 'en', tgtLang: 'de' },
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/vendors',
+          headers: as(token),
+          payload: { account: bob.id },
+        })
+      ).statusCode,
+    ).toBe(201);
+    const res = await post(token, {
+      project: 'erins',
+      channel: 'direct',
+      vendors: [bob.id],
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return { erin, token };
+  }
+
+  it('says what the account is, so the app can tell a vendor from an owner', async () => {
+    const asVendor = await app.inject({
+      method: 'GET',
+      url: '/api/me',
+      headers: as(await login('bob')),
+    });
+    expect(asVendor.json()).toMatchObject({ id: bob.id, role: 'vendor' });
+    const asOwner = await app.inject({
+      method: 'GET',
+      url: '/api/me',
+      headers: as(await login('alice')),
+    });
+    expect(asOwner.json()).toMatchObject({ role: 'owner' });
+  });
+
+  it('indexes a vendor when an owner adds them, and finds the owners to read from', async () => {
+    const { erin } = await erinOffersBob();
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      expect(listRosterOwners(platform, bob.id)).toEqual([erin.id]);
+    } finally {
+      platform.close();
+    }
+  });
+
+  it('merges every owner’s feed, each assignment carrying its owner, newest first', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody()); // alice → bob, written before the index could know about it
+    const { erin, token: erinToken } = await erinOffersBob();
+    const b = await login('bob');
+
+    // alice's roster was written without the index: bob sees only erin's job until she reconciles
+    const before = (await myFeed(b)).json() as Feed;
+    expect(before.needsResponse.map((x) => x.owner)).toEqual([erin.id]);
+    expect(before.needsResponse[0]).toMatchObject({ project: 'erins' });
+
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/assignments/reconcile',
+          headers: as(a),
+        })
+      ).statusCode,
+    ).toBe(200);
+    const after = (await myFeed(b)).json() as Feed;
+    expect(after.needsResponse.map((x) => x.owner).sort()).toEqual(
+      [alice.id, erin.id].sort(),
+    );
+    const times = after.needsResponse.map((x) => x.offeredAt);
+    expect(times).toEqual([...times].sort().reverse()); // newest first
+    expect(Object.keys(after).sort()).toEqual([
+      'active',
+      'claimable',
+      'delivered',
+      'needsResponse',
+    ]);
+
+    // answering one of them moves it between groups, whichever owner it is
+    const mine = after.needsResponse.find((x) => x.owner === erin.id)!;
+    expect((await act(b, mine.id, 'accept', erin.id)).statusCode).toBe(200);
+    const moved = (await myFeed(b)).json() as Feed;
+    expect(moved.active.map((x) => x.owner)).toEqual([erin.id]);
+    expect(moved.needsResponse.map((x) => x.owner)).toEqual([alice.id]);
+    void erinToken;
+  });
+
+  it('is an empty feed, not an error, for an account on no roster, and skips an index row nothing backs', async () => {
+    expect((await myFeed(await login('carol'))).json()).toEqual({
+      needsResponse: [],
+      claimable: [],
+      active: [],
+      delivered: [],
+    });
+    // an index row for an owner with no roster file, and one whose roster does not list the account
+    const dave2 = newOwner('dave2');
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      addRosterMembership(platform, { ownerId: dave2.id, accountId: carol.id });
+      addRosterMembership(platform, { ownerId: alice.id, accountId: dave.id });
+    } finally {
+      platform.close();
+    }
+    expect((await myFeed(await login('carol'))).statusCode).toBe(200);
+    expect((await myFeed(await login('dave'))).json()).toMatchObject({
+      needsResponse: [],
+    });
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/vendor/feed' })).statusCode,
     ).toBe(401);
   });
 });
