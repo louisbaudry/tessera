@@ -317,6 +317,12 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   immutable by trigger, from the frozen analysis and the rates of the
   offer's date. A tier with no rate is a null rate, never zero; a job with
   nothing to price is delivered with no payable, not refused.
+- **A grant is mended against the roster, never by repeating a step**
+  (backlog #51c, `reconcileAssignmentGrants`): accept and review each
+  change two files, and a failed revoke after a review cannot be retried
+  (`reviewed` is terminal). Reconcile governs only the (account, project)
+  pairs the roster has an assignment for, so a grant made for another
+  reason is safe from it.
 - **`reviewed` is gated by `isBlocking` and has no override** (backlog
   #51, `reviewAssignment`): a PM who must close over a blocking QA issue
   dismisses it, which is logged. The review also revokes the vendor's

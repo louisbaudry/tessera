@@ -181,6 +181,18 @@ export function listAuthorizationsFor(
   ).map(fromRow);
 }
 
+/** Everything granted on any of one owner's projects, oldest first. */
+export function listAuthorizationsByOwner(
+  db: Database.Database,
+  ownerId: number,
+): ProjectAuthorization[] {
+  return (
+    db
+      .prepare('SELECT * FROM project_authorization WHERE owner_id = ? ORDER BY id')
+      .all(ownerId) as Row[]
+  ).map(fromRow);
+}
+
 /** Everything granted on one project, oldest first. */
 export function listAuthorizationsOn(
   db: Database.Database,
