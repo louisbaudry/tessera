@@ -7,11 +7,23 @@
 import { useCallback } from 'react';
 
 import { api, type FeedJob } from './api.js';
+import { Capacity } from './Capacity.js';
 import { FEED_GROUPS, formatDeadline, STATUS_LABEL } from './jobs.js';
 import { formatRoute } from './route.js';
 import { useLoad } from './use-load.js';
 
 export function VendorFeed() {
+  return (
+    <>
+      <div className="page jobs">
+        <Capacity />
+      </div>
+      <FeedBody />
+    </>
+  );
+}
+
+function FeedBody() {
   const feed = useLoad(useCallback((token, signal) => api.vendorFeed(token, signal), []));
   if (feed.state === 'loading') return <p className="muted">Loading your jobs{'…'}</p>;
   if (feed.state === 'error') return <p className="error">{feed.message}</p>;

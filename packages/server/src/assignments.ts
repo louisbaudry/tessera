@@ -35,6 +35,7 @@ import {
   getAssignment,
   getAssignmentAnalysis,
   getAssignmentPayable,
+  getCapacity,
   getProfile,
   getVendor,
   getProject,
@@ -57,6 +58,7 @@ import {
   reviewAssignment,
   startAssignment,
   revokeProjectAuthorization,
+  setCapacity,
   setVendorRate,
   vendorRateHistory,
   vendorFeed,
@@ -64,9 +66,11 @@ import {
   VendorError,
   type Account,
   type Assignment,
+  type Capacity,
 } from '@cat-tool/db';
 import {
   AssignmentPartyError,
+  isCapacityStatus,
   InvalidAssignmentTransitionError,
   type RateTier,
 } from '@cat-tool/vendor-core';
@@ -121,6 +125,19 @@ function readPair(path: string): { src: string; tgt: string } | null {
   } finally {
     project.close();
   }
+}
+
+interface CapacityView {
+  readonly status: string | null;
+  readonly note: string | null;
+  readonly setAt: string | null;
+}
+
+/** A capacity as a vendor sees it: who set it is not part of it (an owner's account id stays theirs). */
+function capacityView(c: Capacity | null): CapacityView {
+  return c
+    ? { status: c.status, note: c.note, setAt: c.setAt }
+    : { status: null, note: null, setAt: null };
 }
 
 /** The words of a project by match tier, read once and closed. */
@@ -356,6 +373,61 @@ export function registerAssignmentRoutes(
     }
     return groups;
   });
+
+  // A vendor's capacity on every roster that lists them (backlog #54, decision 8): one row
+  // per roster, current only, null where they have never set one. The rows are the owners'
+  // files, so a vendor on two rosters has two statuses and each is set on its own.
+  app.get('/api/vendor/capacity', async (req) => {
+    const me = deps.owner(req);
+    const rosters: Array<{ owner: number } & CapacityView> = [];
+    for (const ownerId of listRosterOwners(platform, me.id)) {
+      const ownerAccount = getAccountById(platform, ownerId);
+      if (!ownerAccount) continue;
+      const roster = openRoster(ownerAccount);
+      if (!roster) continue;
+      try {
+        const vendor = getVendorByAccount(roster, me.id);
+        if (!vendor) continue;
+        rosters.push({ owner: ownerId, ...capacityView(getCapacity(roster, vendor.id)) });
+      } finally {
+        roster.close();
+      }
+    }
+    return { rosters };
+  });
+
+  app.put<{ Body: { status?: unknown; note?: unknown } | undefined }>(
+    '/api/vendor/capacity',
+    async (req, reply) => {
+      const me = deps.owner(req);
+      const ownerAccount = ownerParam(req);
+      if (!ownerAccount || ownerAccount.id === me.id) return noSuch(reply);
+      const { status, note } = req.body ?? {};
+      if (!isCapacityStatus(status)) {
+        return reply.code(400).send({ error: 'status must be available, busy or away' });
+      }
+      if (note !== undefined && note !== null && typeof note !== 'string') {
+        return reply.code(400).send({ error: 'note must be text' });
+      }
+      const roster = openRoster(ownerAccount);
+      if (!roster) return noSuch(reply);
+      try {
+        const vendor = getVendorByAccount(roster, me.id);
+        if (!vendor) return noSuch(reply);
+        const saved = setCapacity(roster, {
+          vendorId: vendor.id,
+          status,
+          note: note ?? null,
+          setBy: me.id,
+        });
+        return { owner: ownerAccount.id, ...capacityView(saved) };
+      } catch (err) {
+        return mapError(err, reply);
+      } finally {
+        roster.close();
+      }
+    },
+  );
 
   // The job a vendor is working on a project, if any (backlog #53): the editor asks it to
   // show their payable. The newest assignment of the vendor's own on that project that is

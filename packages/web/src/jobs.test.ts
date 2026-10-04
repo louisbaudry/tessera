@@ -1,8 +1,11 @@
-import { ASSIGNMENT_STATUSES } from '@cat-tool/vendor-core';
+import { ASSIGNMENT_STATUSES, CAPACITY_STATUSES } from '@cat-tool/vendor-core';
 import { describe, expect, it } from 'vitest';
 
 import {
   availableVerbs,
+  CAPACITY_LABEL,
+  CAPACITY_OPTIONS,
+  noteChanged,
   FEED_GROUPS,
   formatDeadline,
   forecast,
@@ -128,5 +131,20 @@ describe('forecast', () => {
         rate('exact', 20_000, 'USD'),
       ]),
     ).toBeNull();
+  });
+});
+
+describe('capacity', () => {
+  it('has a label for every status, offered in the vendor-core order', () => {
+    expect([...CAPACITY_OPTIONS]).toEqual([...CAPACITY_STATUSES]);
+    for (const status of CAPACITY_STATUSES) expect(CAPACITY_LABEL[status]).toBeTruthy();
+  });
+
+  it('counts a note as changed only when its trimmed text differs from the saved one', () => {
+    expect(noteChanged('  Back Monday ', 'Back Monday')).toBe(false);
+    expect(noteChanged('', null)).toBe(false);
+    expect(noteChanged('   ', null)).toBe(false);
+    expect(noteChanged('x', null)).toBe(true);
+    expect(noteChanged('', 'Back Monday')).toBe(true);
   });
 });
