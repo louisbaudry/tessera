@@ -3029,9 +3029,12 @@ Split so the headless part does not wait on the editor:
     matcher is cached per file against a fingerprint of the glossary's rows
     (8 tests in `glossary-qa.test.ts`, including a variant added after the
     first build).
-  - **Windows CI starved two #110 suites twice** (`db/glossary/exceptions.test.ts`, then
-    `server/glossary.test.ts`, 5 s timeouts, different tests each run; not this card's code).
-    Both got a 60 s limit, the #82 convention, rather than a skip.
+  - **Windows CI starved a different suite on each of three runs** (`db/glossary/exceptions`,
+    `server/glossary`, `server/authorization`: 5 s timeouts, none of it this card's code; main had
+    gone red the same way on #127–#129). The two #110 suites got a 60 s limit first, the #82
+    convention; the third run showed per-suite limits chase the starvation, so
+    `VITEST_TEST_TIMEOUT=60000` is now set on the Windows job only, read by `vitest.config.ts`.
+    Nothing skipped; Linux and macOS keep 5 s.
   - Silent, never an error, with no write target, a missing or unreadable
     file, or no language pair. Not built: re-running the rule over a
     project when its glossary changes (a QA run does it on demand).

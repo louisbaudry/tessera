@@ -798,7 +798,10 @@ pattern.
   elsewhere, so a test there with a tight timeout is a flake waiting
   (#105: the 120 s cancel test passed at 117.6 s on one run and timed
   out on the next). Give a slow worker test a limit several times its
-  Windows time, never a skip.
+  Windows time, never a skip. `ci.yml` also sets `VITEST_TEST_TIMEOUT=60000` on Windows only
+  (read by `vitest.config.ts`), because the starved test changes from run to
+  run (#131 hit three different suites in three runs) and per-suite limits
+  chase it; Linux and macOS keep the strict 5 s.
 - **A matrix job's real check name is the expanded one.**
   `name: 🚦 roundtrip gate` with a two-OS matrix produces
   `🚦 roundtrip gate (ubuntu-latest)` and `(windows-latest)`; the bare

@@ -84,6 +84,9 @@ jobs:
         run: pnpm test
         env:
           VITEST_MAX_FORKS: ${{ runner.os == 'Windows' && '2' || '' }}
+          # A fixed 5 s per test starves out on that runner whichever suite
+          # happens to run beside a worker-thread test (vitest.config.ts).
+          VITEST_TEST_TIMEOUT: ${{ runner.os == 'Windows' && '60000' || '' }}
 
   # 🚦 THE ROUNDTRIP GATE — backlog #8.
   #
