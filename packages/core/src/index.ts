@@ -27,6 +27,7 @@ export * from './tm/normalize.js';
 export * from './tm/pretranslate.js';
 export * from './tm/tmx.js';
 export * from './tm/sdltm.js';
+export * from './glossary/exceptions.js';
 export * from './glossary/key.js';
 export * from './glossary/session.js';
 export * from './glossary/stopwords.js';

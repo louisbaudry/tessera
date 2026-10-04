@@ -2962,8 +2962,8 @@ Split so the headless part does not wait on the editor:
     - **Write target only**, as detection: a row carries a `termId`,
       and recording an override writes into one file. With none attached
       the answer is an empty list and `glossary: null`.
-    - Not built: recording an override from a mismatch row (a #43b
-      action over the existing `propose` route is the likely shape).
+    - Not built here: recording an override from a mismatch row (done in `#110`,
+      below, and not over the `propose` route: see its entry).
   - **#43b · ~~The panel~~ · DONE — `web/src/GlossaryPanel.tsx`,
     `web/src/glossary-panel.ts`, the strip in `web/src/Grid.tsx`.** Two
     tabs beside the grid: **Terms** (the session: find, choose/use, override,
@@ -2983,6 +2983,33 @@ Split so the headless part does not wait on the editor:
     - **A normal 404 is a console error.** "No session yet" is a 404 by the
       API's design, and the browser logs it on every open. Left, not worth a
       second status code.
+  - **#110 · ~~Record an override from a mismatch row~~ · DONE — `core/glossary/exceptions.ts`,
+    `db/glossary/exceptions.ts` and `.ctg` schema v2, routes under `…/glossary/` in
+    `server/src/app.ts`, `web/src/GlossaryProposals.tsx`.** The question #43b left (does one
+    override flip the entry, or "enough"?) turned out to hide a collision: the Terms tab's
+    `propose_edit override` already writes `kind = 'override'` and *relies* on it flipping the
+    preference at once (that is how settling an existing entry works), so one word meant two
+    things. Decided with Louis: a new kind, **`segment_exception`**, for "I used this
+    acceptable alternative here". It is evidence and never moves the preference
+    (`preferredVariant` skips it); `override` stays the ruling.
+    - **A proposal is a count over the log, never stored**: the same alternative recorded for
+      `EXCEPTION_PROPOSAL_MIN` (3, provisional) distinct segments since the last ruling for
+      that term and language. Accepting writes an `override`, which also starts the count again.
+    - **Only an existing, non-forbidden alternative can be recorded.** That settles the issue's
+      other worry (an override naming a rendering with no variant changes nothing): the row's
+      `found` is by construction one the entry already holds, and the server recomputes the
+      mismatch rather than trusting a client's rendering.
+    - **`source_segment` keeps its contract** (the segment's `ord`, §3.4), not a segment id, even
+      though `ord` is per file: two files' segments can share a key, so a proposal under-counts,
+      the safe direction. A column that meant two things would be the `prev_hash` mistake.
+    - **A migration with a trigger-bearing table**: v2 widens the CHECK with `rebuildTable`, with
+      the index and both append-only triggers in the DDL; a test upgrades a v1 file and checks
+      the rows, ids and triggers survive.
+    - **Authorize before validating**: the first version read the body before `openProject`, so a
+      grantee got a 400 where every owner-only route gives a 403. The authorization probe
+      (`authorization.test.ts`) caught it, which is what it is for.
+    - Driven in Chromium: three records, the proposal, accepting it, the mismatch rows gone
+      (the alternative is now preferred). The one console 404 is #43b's "no session yet".
 - **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
   Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
   a CHECK constraint: it widens both QA tables with `rebuildTable`

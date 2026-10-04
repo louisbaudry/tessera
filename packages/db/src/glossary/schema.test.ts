@@ -2,12 +2,15 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { openAndMigrate } from '../migrate.js';
 import {
   addVariant,
   createGlossary,
   GLOSSARY_APPLICATION_ID,
+  GLOSSARY_MIGRATIONS,
   GlossaryError,
   insertTerm,
   openGlossary,
@@ -148,6 +151,49 @@ describe('term_decision is append-only', () => {
         kind: 'guess' as never,
       }),
     ).toThrow(/CHECK/);
+    db.close();
+  });
+});
+
+describe('v2: a segment_exception kind (backlog #110)', () => {
+  it('widens the CHECK on a v1 file, keeping every row, id and the append-only triggers', () => {
+    const path = dbPath();
+    openAndMigrate(path, {
+      applicationId: GLOSSARY_APPLICATION_ID,
+      migrations: GLOSSARY_MIGRATIONS.slice(0, 1),
+    }).close();
+    const v1 = new Database(path);
+    v1.exec(`
+      INSERT INTO term (id, uuid, created_at, updated_at) VALUES (1, 'u1', '2026-01-01', '2026-01-01');
+      INSERT INTO term_decision (id, term_id, lang, chosen, rejected, kind, decided_at)
+        VALUES (4, 1, 'de', 'rechnung', '[]', 'custom', '2026-01-02');
+    `);
+    // the old file refuses the new kind
+    expect(() =>
+      v1
+        .prepare(
+          `INSERT INTO term_decision (term_id, lang, chosen, rejected, kind, decided_at)
+           VALUES (1, 'de', 'x', '[]', 'segment_exception', '2026-01-03')`,
+        )
+        .run(),
+    ).toThrow(/CHECK/);
+    v1.close();
+
+    const db = openGlossary(path);
+    expect(db.prepare('SELECT id, kind, chosen FROM term_decision').all()).toEqual([
+      { id: 4, kind: 'custom', chosen: 'rechnung' },
+    ]);
+    db.prepare(
+      `INSERT INTO term_decision (term_id, lang, chosen, rejected, kind, decided_at)
+       VALUES (1, 'de', 'x', '[]', 'segment_exception', '2026-01-03')`,
+    ).run();
+    expect(() => db.prepare("UPDATE term_decision SET chosen = 'y'").run()).toThrow(
+      /append-only/,
+    );
+    expect(() => db.prepare('DELETE FROM term_decision').run()).toThrow(/append-only/);
+    expect(
+      db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'term_decision_term'").get(),
+    ).toBeTruthy();
     db.close();
   });
 });

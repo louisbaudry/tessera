@@ -1050,3 +1050,31 @@ button.chip-button:hover {
   font-weight: 600;
   outline: 2px solid currentColor;
 }
+
+/* Recording a mismatch as an exception, and the proposals it can lead to (backlog #110). */
+.gp-record,
+.gp-recorded {
+  display: block;
+  padding: 0 0.75rem 0.45rem 3.45rem;
+  font-size: 0.82rem;
+}
+.gp-proposals {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.gp-proposals h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+.gp-proposals ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gp-proposals li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}

@@ -190,7 +190,7 @@ CREATE TABLE term_decision (
   lang           TEXT    NOT NULL,
   chosen         TEXT    NOT NULL,       -- plain of the chosen term_variant
   rejected       TEXT    NOT NULL,       -- JSON string[] of the alternatives offered and not taken
-  kind           TEXT    NOT NULL CHECK (kind IN ('accepted_suggestion','custom','override','deprecation')),
+  kind           TEXT    NOT NULL CHECK (kind IN ('accepted_suggestion','custom','override','segment_exception','deprecation')),  -- v2 adds segment_exception
   source_project TEXT,                   -- project name/uuid the decision was made in
   source_segment INTEGER,                -- segment ord where the term was first seen
   decided_by     TEXT,
@@ -210,9 +210,12 @@ where_. Six months later the question "why is it `logiciel` and not
 
 - `accepted_suggestion` — picked one of the aligner's renderings;
 - `custom` — typed a rendering not offered;
-- `override` — a segment-level override of the current preferred
-  rendering that the translator chose to _record_ (not every override is
-  recorded — see §6);
+- `override` — a ruling: the entry's preferred rendering is deliberately
+  changed to this one (the Terms tab's override, or accepting a proposal,
+  §6). It moves the preference at once;
+- `segment_exception` — the translator used an acceptable alternative in one
+  segment and chose to _record_ it (not every exception is recorded — see §6).
+  Evidence, never a ruling: it does not move the preference;
 - `deprecation` — marked the rendering forbidden (`term_variant.forbidden = 1`).
 
 ### 3.5 `term_variant_history` — merge parity
@@ -599,14 +602,18 @@ left open, and what it left out:
   trigger (500 ms debounce); a commit reloads it too. Rows are the
   segment's position, kind, term and one sentence; clicking one is the
   grid's own `jumpTo`.
-- **Recording an override from a mismatch row is not built.** §6 says it
-  writes `kind = 'override'` and that "enough recorded overrides" flips the
-  preference, but `preferredVariant` names the latest non-deprecation
-  decision's rendering as preferred, so a single override of an existing
-  variant already flips it, and one of a rendering with no variant does
-  nothing. Which of those is meant, and what the "enough" threshold is,
-  is a design question this card should not settle by writing a button.
-  Tracked as its own card.
+- **Recording an exception from a mismatch row (#110).** Built as `segment_exception`,
+  not as `override`: the Terms tab's `propose_edit override` already relied on
+  an `override` flipping the preference at once, so the same kind could not also
+  mean "one segment's exception". `preferredVariant` skips `segment_exception`,
+  and a proposal is a count over the log, never stored: the same alternative for
+  `EXCEPTION_PROPOSAL_MIN` distinct segments (by `source_project` and the
+  segment's `ord`, which is per file, so a proposal can under-count across
+  files but never over-count) since the latest non-exception decision for that
+  term and language. `source_segment` keeps its contract (an `ord`). Routes
+  `POST …/files/:id/glossary/exceptions` (a row named by segment and term,
+  recomputed server-side), `GET …/glossary/proposals` and
+  `POST …/glossary/proposals/accept`, all owner-only.
 
 ---
 
@@ -622,9 +629,14 @@ for that segment. It is never a QA `error`. The translator can:
 - fix the segment;
 - leave it (an unrecorded per-segment override — the common case, "this
   sentence is the exception");
-- **record** the override (`term_decision.kind = 'override'`), which is
-  how a preferred rendering eventually changes: enough recorded overrides
-  and the panel proposes flipping the preference.
+- **record** it as an exception (`term_decision.kind = 'segment_exception'`),
+  which is how a preferred rendering eventually changes: once the same
+  alternative is recorded for **three distinct segments** (a provisional
+  constant, `EXCEPTION_PROPOSAL_MIN`, a first guess with no data behind it) since
+  the preference last changed, the Terms tab proposes making it preferred, and
+  a person's accepting writes the `override` that does. Only an existing,
+  non-forbidden alternative can be recorded; a forbidden rendering is not an
+  exception, it is the thing the client said never to write.
 
 `forbidden` exists because clients say "never call it X" more often than
 "always call it Y", and a glossary that can only express the positive

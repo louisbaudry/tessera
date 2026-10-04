@@ -17,7 +17,11 @@ import type {
   RateTier,
 } from '@cat-tool/vendor-core';
 
-import type { MismatchList, SessionView } from './glossary-panel.js';
+import type {
+  ExceptionProposalView,
+  MismatchList,
+  SessionView,
+} from './glossary-panel.js';
 import type { ImportJob } from './import-job.js';
 import type { RateEntry } from './jobs.js';
 import { parseProjectKey } from './project-key.js';
@@ -525,6 +529,33 @@ export const api = {
   ) =>
     call<MismatchList>(projectUrl(name, `/files/${fileId}/glossary/mismatches`), token, {
       signal,
+    }),
+  /** Records a mismatch row as a segment exception (backlog #110): evidence, never a ruling. */
+  recordException: (
+    token: string,
+    name: string,
+    fileId: number,
+    segmentId: number,
+    termId: number,
+  ) =>
+    call<{ ok: true }>(projectUrl(name, `/files/${fileId}/glossary/exceptions`), token, {
+      method: 'POST',
+      body: { segmentId, termId },
+    }),
+  glossaryProposals: (token: string, name: string, signal?: AbortSignal) =>
+    call<{ glossary: string | null; proposals: ExceptionProposalView[] }>(
+      projectUrl(name, '/glossary/proposals'),
+      token,
+      { signal },
+    ),
+  acceptProposal: (
+    token: string,
+    name: string,
+    p: { termId: number; lang: string; chosen: string },
+  ) =>
+    call<{ ok: true }>(projectUrl(name, '/glossary/proposals/accept'), token, {
+      method: 'POST',
+      body: p,
     }),
   /** Resolves once every write sent so far, and any it set off, has settled. */
   settled: async (): Promise<void> => {
