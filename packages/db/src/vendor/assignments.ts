@@ -505,6 +505,13 @@ export const acceptAssignment = (db: Database.Database, o: VendorMove) =>
 export const declineAssignment = (db: Database.Database, o: VendorMove) =>
   moveAssignment(db, { ...o, to: 'declined', by: 'vendor' });
 
+/** Every assignment on the roster, newest first: the owner's list (backlog #51). */
+export function listAssignments(db: Database.Database): Assignment[] {
+  return (db.prepare('SELECT * FROM assignment ORDER BY id DESC').all() as Row[]).map(
+    fromRow,
+  );
+}
+
 /** Every assignment of a vendor's own, newest first: what their job feed (#50) reads. */
 export function listAssignmentsFor(
   db: Database.Database,

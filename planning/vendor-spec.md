@@ -615,3 +615,39 @@ claim already exist (`#48`).
   since deleted gives an offer with no preview, not an error.
 - **The rate card is the vendor's own** (a pool job: the requesting
   vendor's), never the roster's.
+
+**Implementation note (#51), written before the code (2026-10-04).** The
+owner's side of the lifecycle, and the decision `#47` left to it.
+
+- **The `reviewed` gate is both, and it has no override.** §4 asked
+  "QA gate, PM read, or both". Both: only the owner's route moves
+  `delivered → reviewed` (the machine already makes `reviewed` the PM's
+  edge, so a vendor cannot reach it), **and** the move is refused while the
+  project has an issue `isBlocking` calls blocking (`core/model/qa.ts`: an
+  undismissed error): one definition of must-not-ship, as the CLI's `qa`
+  uses. The refusal is a 409 that says how many. There is **no override**:
+  a PM who must close over a blocking issue dismisses it, which is a
+  decision logged with its actor (`qa.dismissed`), where an override flag
+  would be a second, unlogged way to the same end. The gate is
+  `reviewAssignment`'s precondition, beside `transitionAssignment`, never
+  inside it (`#47`). Asked of an assignment not yet `delivered` it is the
+  machine's 409, not the gate's.
+- **Reviewing ends the vendor's access.** `reviewed` is terminal, so the
+  `assigned_translator` grant (`#45`, given at accept) is revoked after the
+  move commits: two files again, so not one transaction, and
+  `revokeProjectAuthorization` is idempotent. A failure between them leaves
+  a reviewed job whose translator can still open the editor; the
+  reconciliation that mends it (this and `#48`'s accept-then-grant) is not
+  built, and is an issue.
+- **The owner lists their own assignments**: `GET /api/assignments` with no
+  `?owner` (a vendor's feed names the owner it is on), newest first, in the
+  owner's view.
+- **The roster's own routes** are the owner's, on their `.ctv`:
+  `GET`/`POST /api/vendors` (adding an account that exists and has the
+  `vendor` role; the list carries the account id and the display name, never
+  an email) and `GET`/`PUT /api/vendors/:accountId/rates` (a rate is a row:
+  the `PUT` adds one, with `#46`'s rules). A rate's refusals are 400s.
+- **Not here:** a vendor's `start` and `deliver` routes (nothing in `#50` or
+  `#51` asks for them; they belong with the running payable and the delivery
+  lock, `#53`), withdrawing an offer, and a missed deadline or declined offer
+  becoming a pool post (§4's open question).

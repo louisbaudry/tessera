@@ -312,6 +312,10 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   `assignment_analysis`, immutable by trigger. A segment's tier can't be
   read later, because an edit clears its `origin`, so `analyseTierWords` is
   only for the moment of an offer, never a job in progress.
+- **`reviewed` is gated by `isBlocking` and has no override** (backlog
+  #51, `reviewAssignment`): a PM who must close over a blocking QA issue
+  dismisses it, which is logged. The review also revokes the vendor's
+  project grant, in a second file after the move commits.
 - **`vendor-core` stays headless**, as `core` and `portal-core`: the only
   place a transition is enforced is `transitionAssignment`, never a route.
   Its closed sets (`ASSIGNMENT_STATUSES`, `RATE_TIERS`, `CAPACITY_STATUSES`)
