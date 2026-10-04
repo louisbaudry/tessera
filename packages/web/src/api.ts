@@ -238,6 +238,13 @@ export const api = {
     call<VendorFeed>('/api/vendor/feed', token, { signal }),
   offer: (token: string, owner: number, id: number, signal?: AbortSignal) =>
     call<OfferDetail>(`/api/assignments/${id}/offer?owner=${owner}`, token, { signal }),
+  /** The vendor's job on a project they were granted, if any (backlog #53). */
+  vendorJob: (token: string, owner: number, project: string, signal?: AbortSignal) =>
+    call<{ id: number; status: string }>(
+      `/api/vendor/job?owner=${owner}&project=${encodeURIComponent(project)}`,
+      token,
+      { signal },
+    ),
   /** A vendor's answer to a job: claim, accept, decline, start or deliver (vendor-spec §4). */
   answerJob: (
     token: string,

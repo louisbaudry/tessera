@@ -42,6 +42,7 @@ import {
   grantProjectAuthorization,
   listAssignmentEvents,
   listAssignments,
+  listAssignmentsFor,
   listPoolMembers,
   listRosterOwners,
   listVendors,
@@ -355,6 +356,37 @@ export function registerAssignmentRoutes(
     }
     return groups;
   });
+
+  // The job a vendor is working on a project, if any (backlog #53): the editor asks it to
+  // show their payable. The newest assignment of the vendor's own on that project that is
+  // past the answer (accepted, in progress or delivered); the same identical 404 as the
+  // offer when there is none, the roster does not list them, or the project is not named.
+  app.get<{ Querystring: { owner?: string; project?: string } }>(
+    '/api/vendor/job',
+    async (req, reply) => {
+      const me = deps.owner(req);
+      const ownerAccount = ownerParam(req);
+      const project = req.query.project;
+      if (!ownerAccount || ownerAccount.id === me.id || !isSlug(project ?? ''))
+        return noSuch(reply);
+      const roster = openRoster(ownerAccount);
+      if (!roster) return noSuch(reply);
+      try {
+        const vendor = getVendorByAccount(roster, me.id);
+        if (!vendor) return noSuch(reply);
+        const job = listAssignmentsFor(roster, vendor.id).find(
+          (a) =>
+            a.projectName === project &&
+            (a.status === 'accepted' ||
+              a.status === 'in_progress' ||
+              a.status === 'delivered'),
+        );
+        return job ? { id: job.id, status: job.status } : noSuch(reply);
+      } finally {
+        roster.close();
+      }
+    },
+  );
 
   // A vendor's job feed, on the roster `?owner=` names. The owner's own id is
   // not a vendor's feed (the owner's list is #51), and a roster the caller is

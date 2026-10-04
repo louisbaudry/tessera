@@ -3343,8 +3343,22 @@ rest of that range:
   - Verified in Chromium against a seeded server: feed, offer, decline-cancel,
     accept, project, editor, start, deliver, locked 332 words × €0.08 = €26.56.
     Not measured: a feed or preview at scale.
-- **#53 · Running payable total in the editor · M** · [issue #32] —
-  after `#28`–`#35` and `#49`.
+- **#53 · ~~Running payable total in the editor~~ · DONE — `web/src/JobPayable.tsx`, `forecast` in `web/src/jobs.ts`, route `GET /api/vendor/job` in `server/src/assignments.ts`.**
+  Decision 10 asked for a total that moves "as segments are confirmed". It cannot
+  be built honestly: an edit clears a segment's `origin`, so the tier of work done
+  is gone (the reason `#49b` froze the analysis at all), and a figure rising with
+  each confirmation would be an estimate shown as a sum. The editor instead shows
+  the amount the delivery will lock, "On delivery €X", from the frozen words and the
+  rates of the offer's date, beside the existing confirmed/total progress; after
+  delivery it reads "Final amount" from what locked. Words with no rate are named,
+  never priced at zero; a card in two currencies shows nothing.
+  - **The editor finds its job through `GET /api/vendor/job?owner=&project=`**, the
+    vendor's newest accepted, in-progress or delivered assignment on that project;
+    anyone else gets the offer route's identical 404. The pricing stays on the client
+    from the offer's own data (`forecast` over `computePayable`), not a second server
+    computation.
+  - Verified in Chromium: forecast while working, final amount after delivery, nothing
+    in the owner's own editor.
 - **#54 · Capacity status toggle UI · S** · [issue #33] — after
   `#28`–`#35`.
 
@@ -3679,7 +3693,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #28]: https://github.com/louisbaudry/tessera/issues/28
 [issue #29]: https://github.com/louisbaudry/tessera/issues/29
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
-[issue #32]: https://github.com/louisbaudry/tessera/issues/32
 [issue #33]: https://github.com/louisbaudry/tessera/issues/33
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51

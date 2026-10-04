@@ -542,6 +542,12 @@ own rates side by side with no total; once delivered, the same screen shows
 what locked. Declining asks twice. "Open the project" reaches the owner's
 project through the ordinary editor, with owner-only controls hidden.
 
+**As built (backlog #53): a forecast, not a running sum.** Decision 10's
+"running total as segments are confirmed" needs each confirmed segment's tier,
+and an edit clears it (§7, `#49`). So the editor shows what delivery will lock
+(frozen words × the rates at the offer), labelled as such, and reads the locked
+figure after delivery. Revisit only if per-segment tiers are ever frozen too.
+
 **Accepting.** Moves the assignment to `accepted` (§4). For a pool job,
 this also removes it from other eligible vendors' feeds — needs a
 concurrency-safe claim (two vendors accepting the same pool job at

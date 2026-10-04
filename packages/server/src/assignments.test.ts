@@ -633,6 +633,39 @@ describe('opening an offer', () => {
   });
 });
 
+const jobOf = (token: string, project = 'job', owner: number | string = alice.id) =>
+  app.inject({
+    method: 'GET',
+    url: `/api/vendor/job?owner=${owner}&project=${project}`,
+    headers: as(token),
+  });
+
+describe('the job a vendor is working on a project', () => {
+  it('names it once the offer is accepted, and not before', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    const b = await login('bob');
+    expect((await jobOf(b)).statusCode).toBe(404); // still only offered
+    await act(b, 1, 'accept');
+    expect((await jobOf(b)).json()).toEqual({ id: 1, status: 'accepted' });
+    await act(b, 1, 'start');
+    expect((await jobOf(b)).json()).toEqual({ id: 1, status: 'in_progress' });
+  });
+
+  it('is the same 404 for a stranger, the owner, another vendor, another project and a bad name', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    const b = await login('bob');
+    await act(b, 1, 'accept');
+    expect((await jobOf(await login('dave'))).statusCode).toBe(404); // not on the roster
+    expect((await jobOf(await login('carol'))).statusCode).toBe(404); // on it, not her job
+    expect((await jobOf(a)).statusCode).toBe(404); // the owner is no vendor
+    expect((await jobOf(b, 'other')).statusCode).toBe(404);
+    expect((await jobOf(b, '..%2Fx')).statusCode).toBe(404);
+    expect((await jobOf(b, 'job', 'abc')).statusCode).toBe(404);
+  });
+});
+
 /** Takes assignment #1 the rest of the way to `delivered`, as bob, through the routes. */
 async function deliveredByBob(): Promise<void> {
   const b = await login('bob');

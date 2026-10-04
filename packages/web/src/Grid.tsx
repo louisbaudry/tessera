@@ -37,6 +37,7 @@ import {
 import { nextUnconfirmed } from './advance.js';
 import { FilterBar } from './FilterBar.js';
 import { GlossaryPanel } from './GlossaryPanel.js';
+import { JobPayable } from './JobPayable.js';
 import { parseProjectKey } from './project-key.js';
 import { NO_FILTER, progress, visibleSegments, type SegmentFilter } from './filter.js';
 import {
@@ -111,7 +112,8 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const [qaOpen, setQaOpen] = useState(loadQaPanel);
   const [glossaryOpen, setGlossaryOpen] = useState(loadGlossaryPanel);
   // The glossary is the owner's to manage (backlog #45): another account's project has none.
-  const foreign = parseProjectKey(project).owner !== null;
+  const { name: projectName, owner: projectOwner } = parseProjectKey(project);
+  const foreign = projectOwner !== null;
   const [dismissing, setDismissing] = useState<ReadonlySet<string>>(new Set());
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const positions = useMemo(() => new Map(segments.map((s, i) => [s.id, i])), [segments]);
@@ -571,6 +573,9 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
               >
                 no word count
               </span>
+            )}
+            {projectOwner !== null && (
+              <JobPayable owner={projectOwner} project={projectName} />
             )}
             {flagged > 0 && ` · ${flagged.toLocaleString()} with QA errors`}
             {unsaved.size > 0 && (
