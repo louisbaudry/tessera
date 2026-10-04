@@ -3211,8 +3211,28 @@ rest of that range:
     (`listAllSegments`), unmeasured at scale: time it on a 10k-segment
     project, and make it a job if it is slow. An offer with no `analysis` (a direct repository call)
     simply has none; the route always supplies it.
-- **#50 · Vendor-facing API: job feed, offer detail, accept/decline/
-  claim · S** · [issue #29] — JSON only; the UI for it is `#52`.
+- **#50 · ~~Vendor-facing API: job feed, offer detail~~ · DONE — `db/src/vendor/feed.ts`, `db/src/project/segments.ts` (`previewSource`), `server/src/assignments.ts`.**
+  `GET /api/assignments?owner=` (a vendor's four groups: needs response,
+  claimable, active, recently delivered) and `GET /api/assignments/:id/offer?owner=`
+  (the frozen tier words, a capped source preview, the vendor's own rate card
+  for the project's pair at the offer's date). Accept, decline and claim were
+  `#48`'s. JSON only; the screens are `#52`.
+  - **No total, on purpose** (decision 10): the tier words and the rate card
+    are both there and the sum is the vendor's to read; a test asserts the body
+    carries no total or price.
+  - **The preview is the one read of the owner's project before an accept**:
+    five translatable segments of at most 300 characters, plus the segment
+    count, reached only through the assignment and never a grant. A deleted
+    project gives `source: null`, not an error.
+  - **Segment count is live, word count is frozen**: the words come from
+    `#49b`'s analysis, the count from the project, because a count does not
+    drift the way a tier does.
+  - **The rate card is the requesting vendor's own**, filtered to the project's
+    pair; a pool job shows each member their own card. If the project is gone the
+    pair is unknown and the vendor's whole card is shown.
+  - **Not here:** the owner's list of assignments (`#51`); a vendor's view of
+    a job in progress, and a vendor-side `start`/`deliver` route, which nothing
+    asks for until the editor's payable (`#53`).
 - **#51 · PM-facing API: assign vendor, review/close assignment · S** ·
   [issue #30] — where spec §4's `reviewed` gate (QA `isBlocking`, PM
   read, or both) gets decided for real.

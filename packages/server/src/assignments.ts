@@ -18,7 +18,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { isSlug, type AuditActor } from '@cat-tool/core';
+import { isSlug, plainText, type AuditActor } from '@cat-tool/core';
 import {
   AssignmentAccessError,
   AssignmentConflictError,
@@ -32,14 +32,18 @@ import {
   getAssignment,
   getAssignmentAnalysis,
   getVendor,
+  getProject,
   getVendorByAccount,
   grantProjectAuthorization,
   listAssignmentEvents,
   listPoolMembers,
+  previewSource,
   type openPlatformDb,
   openProjectDb,
   openVendorFile,
   postToPool,
+  vendorFeed,
+  vendorRateCardAt,
   VendorError,
   type Account,
   type Assignment,
@@ -64,6 +68,30 @@ export interface AssignmentRouteDeps {
 }
 
 const GENERATOR = 'cat-tool/server';
+
+/** What a vendor sees of the source before answering: a few segments, capped (vendor-spec §7, #50). */
+const PREVIEW_SEGMENTS = 5;
+const PREVIEW_CHARS = 300;
+
+/** The project's pair and a capped source preview, or null if the project is gone. */
+function readPreview(path: string) {
+  if (!existsSync(path)) return null;
+  const project = openProjectDb(path);
+  try {
+    const meta = getProject(project);
+    const { segments, sample } = previewSource(project, PREVIEW_SEGMENTS);
+    return {
+      pair: meta ? { src: meta.srcLang, tgt: meta.tgtLang } : null,
+      segments,
+      sample: sample.map((seg) => {
+        const text = plainText(seg.sourceTokens);
+        return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text;
+      }),
+    };
+  } finally {
+    project.close();
+  }
+}
 
 /** The words of a project by match tier, read once and closed. */
 function analyseProject(path: string) {
@@ -255,6 +283,94 @@ export function registerAssignmentRoutes(
       roster.close();
     }
   });
+
+  // A vendor's job feed, on the roster `?owner=` names. The owner's own id is
+  // not a vendor's feed (the owner's list is #51), and a roster the caller is
+  // not on is the same 404.
+  app.get('/api/assignments', async (req, reply) => {
+    const me = deps.owner(req);
+    const ownerAccount = ownerParam(req);
+    if (!ownerAccount || ownerAccount.id === me.id) return noSuch(reply);
+    const roster = openRoster(ownerAccount);
+    if (!roster) return noSuch(reply);
+    try {
+      const vendor = getVendorByAccount(roster, me.id);
+      if (!vendor) return noSuch(reply);
+      const feed = vendorFeed(roster, vendor.id);
+      return {
+        needsResponse: feed.needsResponse.map(vendorView),
+        claimable: feed.claimable.map(vendorView),
+        active: feed.active.map(vendorView),
+        delivered: feed.delivered.map(vendorView),
+      };
+    } finally {
+      roster.close();
+    }
+  });
+
+  // Opening an offer (vendor-spec §7, #50): what a vendor needs before
+  // answering. Deliberately no total (decision 10): the tier words and the
+  // vendor's own rate card are both here, and the sum is theirs to read.
+  app.get<{ Params: { id: string } }>(
+    '/api/assignments/:id/offer',
+    async (req, reply) => {
+      const me = deps.owner(req);
+      const ownerAccount = ownerParam(req);
+      const id = /^[1-9]\d{0,14}$/.test(req.params.id) ? Number(req.params.id) : 0;
+      if (!ownerAccount || id === 0 || ownerAccount.id === me.id) return noSuch(reply);
+      const roster = openRoster(ownerAccount);
+      if (!roster) return noSuch(reply);
+      try {
+        const vendor = getVendorByAccount(roster, me.id);
+        const assignment = getAssignment(roster, id);
+        const mine =
+          vendor !== null &&
+          assignment !== null &&
+          (assignment.vendorId === vendor.id ||
+            listPoolMembers(roster, assignment.id).includes(vendor.id));
+        if (!vendor || !assignment || !mine) return noSuch(reply);
+
+        const preview = readPreview(
+          projectPath(storageRoot, ownerAccount, assignment.projectName),
+        );
+        const analysis = getAssignmentAnalysis(roster, assignment.id);
+        const card = vendorRateCardAt(roster, vendor.id, assignment.createdAt)
+          .filter(
+            (r) =>
+              !preview?.pair ||
+              (r.pair.src === preview.pair.src && r.pair.tgt === preview.pair.tgt),
+          )
+          .map((r) => ({
+            src: r.pair.src,
+            tgt: r.pair.tgt,
+            tier: r.tier,
+            rateMicros: r.rateMicros,
+            currency: r.currency,
+          }));
+        return {
+          assignment: vendorView(assignment),
+          offer: {
+            analysis: analysis
+              ? {
+                  at: analysis.at,
+                  words: analysis.words,
+                  totalWords: Object.values(analysis.words).reduce(
+                    (n, w) => n + (w ?? 0),
+                    0,
+                  ),
+                }
+              : null,
+            source: preview
+              ? { segments: preview.segments, preview: preview.sample }
+              : null,
+            rateCard: card,
+          },
+        };
+      } finally {
+        roster.close();
+      }
+    },
+  );
 
   /** A vendor's answer: claim, accept or decline, on the roster `?owner=` names. */
   function vendorMove(

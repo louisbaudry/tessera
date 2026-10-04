@@ -20,6 +20,8 @@ import {
   listEvents,
   openPlatformDb,
   openProjectDb,
+  openVendorFile,
+  setVendorRate,
   type Account,
 } from '@cat-tool/db';
 import type { FastifyInstance } from 'fastify';
@@ -476,5 +478,149 @@ describe('what each side sees', () => {
     expect(
       (await app.inject({ method: 'GET', url: '/api/assignments/1' })).statusCode,
     ).toBe(401);
+  });
+});
+
+/** Bob's rates on alice's roster, effective today so the offer's date finds them. */
+function giveBobRates(): void {
+  const roster = openVendorFile(
+    join(config.storageRoot, alice.storageRoot, 'vendors.ctv'),
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    for (const [pair, tier, rateMicros] of [
+      [{ src: 'en', tgt: 'de' }, 'no_match', 80_000],
+      [{ src: 'en', tgt: 'de' }, 'exact', 8_000],
+      [{ src: 'fr', tgt: 'en' }, 'no_match', 99_000],
+    ] as const) {
+      setVendorRate(roster, {
+        vendorId: 1,
+        pair,
+        tier,
+        rateMicros,
+        currency: 'EUR',
+        effectiveFrom: today,
+        actor: SETUP,
+      });
+    }
+  } finally {
+    roster.close();
+  }
+}
+
+interface FeedBody {
+  needsResponse: Array<{ id: number }>;
+  claimable: Array<{ id: number }>;
+  active: Array<{ id: number }>;
+  delivered: Array<{ id: number }>;
+}
+
+const feedOf = (token: string, owner: number | string = alice.id) =>
+  app.inject({
+    method: 'GET',
+    url: `/api/assignments?owner=${owner}`,
+    headers: as(token),
+  });
+
+const offerOf = (token: string, id: number, owner: number | string = alice.id) =>
+  app.inject({
+    method: 'GET',
+    url: `/api/assignments/${id}/offer?owner=${owner}`,
+    headers: as(token),
+  });
+
+describe('a vendor’s job feed', () => {
+  it('groups what needs an answer, what can be claimed and what is under way', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody()); // #1 direct to bob
+    await post(a, offerBody({ channel: 'pool', vendors: [bob.id, carol.id] })); // #2
+
+    const b = await login('bob');
+    const first = (await feedOf(b)).json() as FeedBody;
+    expect(first.needsResponse.map((x) => x.id)).toEqual([1]);
+    expect(first.claimable.map((x) => x.id)).toEqual([2]);
+    expect(first.active).toEqual([]);
+
+    await act(b, 1, 'accept');
+    const next = (await feedOf(b)).json() as FeedBody;
+    expect(next.needsResponse).toEqual([]);
+    expect(next.active.map((x) => x.id)).toEqual([1]);
+
+    // carol is in the pool only: she sees the pool job and nothing of bob's
+    const c = await login('carol');
+    const hers = (await feedOf(c)).json() as FeedBody;
+    expect(hers.claimable.map((x) => x.id)).toEqual([2]);
+    expect(hers.needsResponse).toEqual([]);
+    expect(hers.active).toEqual([]);
+  });
+
+  it('is a 404 for the owner’s own id, a stranger, a bad address, and a login-less caller', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    expect((await feedOf(a)).statusCode).toBe(404); // the owner's list is #51
+    const d = await login('dave');
+    expect((await feedOf(d)).statusCode).toBe(404); // not on alice's roster
+    const b = await login('bob');
+    expect((await feedOf(b, 'abc')).statusCode).toBe(404);
+    expect((await feedOf(b, 99999)).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: `/api/assignments?owner=${alice.id}` }))
+        .statusCode,
+    ).toBe(401);
+  });
+});
+
+describe('opening an offer', () => {
+  it('gives the frozen tier words, a capped source preview and the vendor’s own rates for the pair, and no total', async () => {
+    giveBobRates();
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    const b = await login('bob');
+    const res = await offerOf(b, 1);
+    expect(res.statusCode, res.body).toBe(200);
+    const { assignment, offer } = res.json() as {
+      assignment: { instructions: string; deadline: string };
+      offer: {
+        analysis: { words: Record<string, number>; totalWords: number; at: string };
+        source: { segments: number; preview: string[] };
+        rateCard: Array<{ src: string; tgt: string; tier: string; rateMicros: number }>;
+      };
+    };
+    expect(assignment).toMatchObject({ instructions: 'Formal register.' });
+    expect(offer.analysis.totalWords).toBe(
+      Object.values(offer.analysis.words).reduce((n, w) => n + w, 0),
+    );
+    expect(offer.analysis.totalWords).toBeGreaterThan(0);
+    expect(offer.source.segments).toBeGreaterThan(0);
+    expect(offer.source.preview.length).toBeLessThanOrEqual(5);
+    expect(offer.source.preview.every((t) => t.length <= 301)).toBe(true);
+    // the pair's two rates only: the fr→en entry is not this job's
+    expect(
+      offer.rateCard.map((r) => `${r.src}-${r.tgt}:${r.tier}:${r.rateMicros}`),
+    ).toEqual(['en-de:no_match:80000', 'en-de:exact:8000']);
+    // decision 10: the sum is the vendor's to read, never ours to state
+    expect(res.body).not.toMatch(/total(Micros|Pay|able|Amount)|\"price\"/i);
+    // and nothing of anyone else's
+    expect(res.body).not.toContain('alice@example.com');
+    expect(res.body).not.toContain(alice.storageRoot);
+  });
+
+  it('serves a pool member, as the same card, and nobody who was not offered it', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody({ channel: 'pool', vendors: [bob.id] }));
+    expect((await offerOf(await login('bob'), 1)).statusCode).toBe(200);
+    expect((await offerOf(await login('carol'), 1)).statusCode).toBe(404); // on the roster, not in the pool
+    expect((await offerOf(await login('dave'), 1)).statusCode).toBe(404); // a stranger
+    expect((await offerOf(a, 1)).statusCode).toBe(404); // the owner's id is no vendor's
+    expect((await offerOf(await login('bob'), 77)).statusCode).toBe(404);
+  });
+
+  it('says there is no preview, not an error, when the project has since been deleted', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    rmSync(projectPath(config.storageRoot, alice, 'job'), { force: true });
+    const res = await offerOf(await login('bob'), 1);
+    expect(res.statusCode, res.body).toBe(200);
+    expect((res.json() as { offer: { source: unknown } }).offer.source).toBeNull();
   });
 });

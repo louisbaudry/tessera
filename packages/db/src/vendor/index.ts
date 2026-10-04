@@ -58,3 +58,4 @@ export * from './rates.js';
 export * from './capacity.js';
 export * from './assignments.js';
 export * from './payable.js';
+export * from './feed.js';

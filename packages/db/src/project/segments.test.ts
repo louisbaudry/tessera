@@ -13,6 +13,7 @@ import {
   getSegment,
   listAllSegments,
   listSegments,
+  previewSource,
   setSegmentTarget,
   SegmentRepoError,
 } from './segments.js';
@@ -85,6 +86,37 @@ describe('getSegment / listSegments / listAllSegments', () => {
       listSegments(db, a.id).length + listSegments(db, b.id).length,
     );
     expect(all.every((s) => s.fileId === a.id || s.fileId === b.id)).toBe(true);
+    db.close();
+  });
+});
+
+describe('previewSource', () => {
+  it('counts the translatable segments and returns the first few, in order, without the rest', () => {
+    const db = openProjectDb(dbPath());
+    const file = insertFile(
+      db,
+      'a.docx',
+      assembleFile(loadDocx('rich-mixed-content.docx'), rulesFor('en')),
+      {
+        actor: TEST_ACTOR,
+      },
+    );
+    const translatable = listSegments(db, file.id).filter(
+      (s) => !s.locked && !s.fallbackCopy,
+    );
+    expect(translatable.length).toBeGreaterThan(2);
+    const preview = previewSource(db, 2);
+    expect(preview.segments).toBe(translatable.length);
+    expect(preview.sample.map((s) => s.id)).toEqual(
+      translatable.slice(0, 2).map((s) => s.id),
+    );
+    expect(previewSource(db, 0).sample).toEqual([]);
+    db.close();
+  });
+
+  it('is empty for a project with no files', () => {
+    const db = openProjectDb(dbPath());
+    expect(previewSource(db, 5)).toEqual({ segments: 0, sample: [] });
     db.close();
   });
 });
