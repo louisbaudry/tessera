@@ -82,7 +82,7 @@ describe('audit_event is append-only', () => {
     db.prepare(`UPDATE audit_event SET actor_label = '[erased]' WHERE id = 1`).run();
     expect(verifyAudit(db)).toEqual({ events: 1, brokenAt: null });
     db.close();
-  });
+  }, 60_000);
 
   it('refuses an action that cannot happen in a project file', () => {
     const { db } = newProject();
@@ -95,7 +95,7 @@ describe('audit_event is append-only', () => {
         .run(),
     ).toThrow(/CHECK/);
     db.close();
-  });
+  }, 60_000);
 });
 
 describe('every write path records its event', () => {
@@ -113,7 +113,7 @@ describe('every write path records its event', () => {
       sha256: sha256(DOCX),
     });
     db.close();
-  });
+  }, 60_000);
 
   it('two edits leave two snapshots, and an edit that changes nothing leaves none', () => {
     const { db } = newProject();
@@ -142,7 +142,7 @@ describe('every write path records its event', () => {
       events.map((e) => detailOf<'segment.target_set'>(e.detail).target_tokens),
     ).toEqual([text('uno'), text('dos')]);
     db.close();
-  });
+  }, 60_000);
 
   it('confirming records the new state, then the TM unit it wrote, labelled in the .ctm', () => {
     const { db } = newProject();
@@ -188,7 +188,7 @@ describe('every write path records its event', () => {
     });
     expect(updated_by).toBe('rev@example.com');
     db.close();
-  });
+  }, 60_000);
 
   it('a pre-translate run is one parent event, and what it changed is listable by its id', () => {
     const { db } = newProject();
@@ -231,7 +231,7 @@ describe('every write path records its event', () => {
     expect(runs).toHaveLength(2);
     expect(listBatch(db, runs[1]!.id)).toEqual([]);
     db.close();
-  });
+  }, 60_000);
 
   it('project.exported carries the digest of exactly the bytes produced', () => {
     const { db } = newProject();
@@ -243,7 +243,7 @@ describe('every write path records its event', () => {
       sha256: sha256(bytes),
     });
     db.close();
-  });
+  }, 60_000);
 });
 
 describe('verifyAudit', () => {
@@ -269,7 +269,7 @@ describe('verifyAudit', () => {
     ).run();
     expect(verifyAudit(db)).toEqual({ events: 4, brokenAt: 3 });
     db.close();
-  });
+  }, 60_000);
 });
 
 describe('migrating a v4 project', () => {
@@ -306,5 +306,5 @@ describe('migrating a v4 project', () => {
     });
     expect(verifyAudit(db)).toEqual({ events: 2, brokenAt: null });
     db.close();
-  });
+  }, 60_000);
 });

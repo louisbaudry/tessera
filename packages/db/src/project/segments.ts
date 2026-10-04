@@ -96,6 +96,30 @@ export function listAllSegments(db: Database.Database): Segment[] {
   return rows.map(fromRow);
 }
 
+export interface SourcePreview {
+  /** Translatable segments: not locked, and not a text box's fallback copy. */
+  readonly segments: number;
+  /** The first `limit` of them, in file then document order. */
+  readonly sample: Segment[];
+}
+
+/**
+ * A few of a project's translatable segments and how many there are, without
+ * loading the rest (backlog #50): what a vendor is shown before accepting.
+ */
+export function previewSource(db: Database.Database, limit: number): SourcePreview {
+  const { n } = db
+    .prepare('SELECT COUNT(*) AS n FROM segment WHERE locked = 0 AND fallback_copy = 0')
+    .get() as { n: number };
+  const rows = db
+    .prepare(
+      `SELECT * FROM segment WHERE locked = 0 AND fallback_copy = 0
+       ORDER BY file_id, ord LIMIT ?`,
+    )
+    .all(Math.max(0, Math.floor(limit))) as SegmentRow[];
+  return { segments: n, sample: rows.map(fromRow) };
+}
+
 export interface SetTargetOptions {
   readonly targetTokens: readonly Token[] | null;
   readonly status: SegmentStatus;

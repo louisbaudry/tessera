@@ -583,3 +583,35 @@ the project's words by tier at the moment of the offer; the owner's view
 carries `{ at, words }`, a vendor's does not yet (`#50`). The rate card to
 price it with is the one in force at the offer's date, which the assignment's
 `created_at` already records.
+
+**Implementation note (#50), written before the code (2026-10-04).** The
+vendor's two reads, JSON only (the screens are `#52`); accept, decline and
+claim already exist (`#48`).
+
+- **The feed is `GET /api/assignments?owner=<id>`**, a vendor's, on the
+  roster `?owner=` names (the owner's own id is not a vendor's feed and gets
+  the same 404 as a roster the caller is not on; the owner's list is `#51`).
+  Four groups, newest first: `needsResponse` (`offered`, and `claimed`, a
+  pool claim not yet accepted), `claimable` (the pool jobs they may claim),
+  `active` (`accepted`, `in_progress`) and `delivered` (`delivered`,
+  `reviewed`, the latest twenty). `declined` is a vendor's own answer and
+  is not a job to act on, so it is not listed.
+- **The offer detail is `GET /api/assignments/:id/offer?owner=<id>`**, for
+  the assignee or a pool member, and the same identical 404 for anyone else.
+  It carries what decision 11 asks for before an answer: deadline and the
+  PM's instructions; the words by tier **from the frozen analysis**
+  (`#49b`) with their total as the job's estimated size; a **source
+  preview** (the first five translatable segments, each capped at 300
+  characters, with the project's translatable segment count); and the
+  vendor's **own rate card for the project's pair, as it stood at the
+  offer's date** (`vendorRateCardAt`), so the tier words are legible as pay.
+  **Deliberately no total:** decision 10's "no single precomputed number".
+  An offer made without an analysis has `analysis: null` and says so rather
+  than showing a breakdown that was never taken.
+- **The preview is the one place a vendor reads the owner's project
+  before accepting**, so it is capped, plain text, and reached only through
+  the assignment (never a project route, never a grant): a vendor who
+  declines has seen five sentences, not the file. A project the owner has
+  since deleted gives an offer with no preview, not an error.
+- **The rate card is the vendor's own** (a pool job: the requesting
+  vendor's), never the roster's.
