@@ -20,9 +20,11 @@ import {
   assembleFile,
   attachmentDisposition,
   findMismatches,
+  formatActor,
   generateSessionToken,
   isSlug,
   parseTokens,
+  primarySubtag,
   rulesFor,
   scopeAllows,
   GlossarySessionError,
@@ -36,6 +38,7 @@ import {
   type SegmenterRules,
 } from '@cat-tool/core';
 import {
+  acceptExceptionProposal,
   addGlossaryRef,
   addTmRef,
   commitGlossarySession,
@@ -60,7 +63,9 @@ import {
   JobError,
   listFileQaIssues,
   listGlossaryRefs,
+  listExceptionProposals,
   listTermEntries,
+  listVariants,
   listFileSummaries,
   listSegments,
   listTmRefs,
@@ -89,6 +94,7 @@ import {
   startJob,
   TargetConflictError,
   TargetStructureError,
+  recordSegmentException,
   TermError,
   TmRefError,
   type Account,
@@ -1399,6 +1405,152 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }
     },
   );
+
+  /** Who is named in a decision: the label if there is one, else the formatted actor (as the session's commit does). */
+  const decidedBy = (req: FastifyRequest): string => {
+    const actor = sessionActor(req);
+    return actor.label ?? formatActor(actor.actor);
+  };
+
+  // Records a mismatch row as a segment exception (§6; backlog #110): the
+  // translator used an acceptable alternative here and says so. The row is named
+  // by its segment and term and recomputed, never trusted from the client, so
+  // only a real `missing_preferred` mismatch that names the alternative used can
+  // be recorded. It never moves the preference.
+  app.post<{
+    Params: { name: string; fileId: string };
+    Body: { segmentId?: unknown; termId?: unknown } | undefined;
+  }>('/api/projects/:name/files/:fileId/glossary/exceptions', async (req, reply) => {
+    const opened = openProject(req, reply, req.params.name, 'manage');
+    if (!opened) return reply;
+    const { db, project } = opened;
+    const { segmentId, termId } = req.body ?? {};
+    if (!Number.isInteger(segmentId) || !Number.isInteger(termId)) {
+      db.close();
+      return reply.code(400).send({ error: 'segmentId and termId must be integers' });
+    }
+    let target: ReturnType<typeof openGlossary> | null = null;
+    try {
+      const fileId = Number(req.params.fileId);
+      if (!Number.isInteger(fileId) || !getFileSummary(db, fileId)) {
+        return reply.code(404).send({ error: `no file #${req.params.fileId}` });
+      }
+      const targetPath = glossaryWriteTargetPath(db);
+      if (targetPath === null) {
+        return reply
+          .code(409)
+          .send({ error: 'this project has no glossary to record into' });
+      }
+      target = openGlossary(targetPath);
+      const langs = { srcLang: project.srcLang, tgtLang: project.tgtLang };
+      const row = findMismatches(
+        listTermEntries(target, langs),
+        listSegments(db, fileId),
+        langs,
+      ).find((m) => m.segmentId === segmentId && m.termId === termId);
+      if (!row || row.kind !== 'missing_preferred' || row.found === null) {
+        return reply.code(409).send({
+          error: 'that segment does not use an acceptable alternative of this term',
+        });
+      }
+      try {
+        recordSegmentException(target, {
+          termId: row.termId,
+          lang: project.tgtLang,
+          chosen: row.found,
+          sourceProject: req.params.name,
+          sourceSegment: row.ord,
+          decidedBy: decidedBy(req),
+        });
+      } catch (err) {
+        if (err instanceof TermError) return reply.code(409).send({ error: err.message });
+        throw err;
+      }
+      return { ok: true };
+    } finally {
+      target?.close();
+      db.close();
+    }
+  });
+
+  // The alternatives recorded often enough to propose making them preferred, and
+  // the one write that accepts one (a ruling, `override`). Derived from the log on
+  // each request; nothing about a proposal is stored.
+  app.get<{ Params: { name: string } }>(
+    '/api/projects/:name/glossary/proposals',
+    async (req, reply) => {
+      const opened = openProject(req, reply, req.params.name, 'manage');
+      if (!opened) return reply;
+      const { db, project } = opened;
+      let target: ReturnType<typeof openGlossary> | null = null;
+      try {
+        const targetPath = glossaryWriteTargetPath(db);
+        if (targetPath === null) return { glossary: null, proposals: [] };
+        target = openGlossary(targetPath);
+        const proposals = listExceptionProposals(target)
+          .filter((p) => primarySubtag(p.lang) === primarySubtag(project.tgtLang))
+          .map((p) => ({
+            ...p,
+            term:
+              listVariants(target!, p.termId).find(
+                (v) =>
+                  primarySubtag(v.lang) === primarySubtag(project.srcLang) &&
+                  !v.forbidden,
+              )?.text ?? null,
+          }));
+        return {
+          glossary: glossarySlugOf(config.storageRoot, owner(req), targetPath),
+          proposals,
+        };
+      } finally {
+        target?.close();
+        db.close();
+      }
+    },
+  );
+
+  app.post<{
+    Params: { name: string };
+    Body: { termId?: unknown; lang?: unknown; chosen?: unknown } | undefined;
+  }>('/api/projects/:name/glossary/proposals/accept', async (req, reply) => {
+    const opened = openProject(req, reply, req.params.name, 'manage');
+    if (!opened) return reply;
+    const { db } = opened;
+    const { termId, lang, chosen } = req.body ?? {};
+    if (
+      !Number.isInteger(termId) ||
+      typeof lang !== 'string' ||
+      typeof chosen !== 'string'
+    ) {
+      db.close();
+      return reply.code(400).send({ error: 'termId, lang and chosen are required' });
+    }
+    let target: ReturnType<typeof openGlossary> | null = null;
+    try {
+      const targetPath = glossaryWriteTargetPath(db);
+      if (targetPath === null) {
+        return reply
+          .code(409)
+          .send({ error: 'this project has no glossary to write into' });
+      }
+      target = openGlossary(targetPath);
+      try {
+        acceptExceptionProposal(target, {
+          termId: termId as number,
+          lang,
+          chosen,
+          decidedBy: decidedBy(req),
+        });
+      } catch (err) {
+        if (err instanceof TermError) return reply.code(409).send({ error: err.message });
+        throw err;
+      }
+      return { ok: true };
+    } finally {
+      target?.close();
+      db.close();
+    }
+  });
 
   const heldFor = (req: FastifyRequest, name: string, fileId: string) =>
     glossarySessions.get(sessionKey(owner(req).id, name, Number(fileId)));

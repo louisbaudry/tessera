@@ -10,6 +10,7 @@
 import type { Segment } from '@cat-tool/core';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
+import { GlossaryProposals } from './GlossaryProposals.js';
 import { api, ApiError, type GlossaryRefView } from './api.js';
 import {
   cardActions,
@@ -19,6 +20,7 @@ import {
   idsByOrd,
   latestVersion,
   MISMATCH_LABEL,
+  canRecordException,
   mismatchText,
   occurrenceText,
   stateText,
@@ -93,6 +95,13 @@ export function GlossaryPanel({
             onAttached={(next) => setRefsNow(next)}
           />
         )}
+        {tab === 'terms' && writeTarget !== null && (
+          <GlossaryProposals
+            project={project}
+            revision={written}
+            onAccepted={() => setWritten((n) => n + 1)}
+          />
+        )}
         {tab === 'terms' ? (
           <Terms
             project={project}
@@ -118,6 +127,7 @@ export function GlossaryPanel({
             positions={positions}
             glossaryRevision={written}
             onJump={onJump}
+            onRecorded={() => setWritten((n) => n + 1)}
           />
         )}
       </>
@@ -453,6 +463,7 @@ function Mismatches({
   positions,
   glossaryRevision,
   onJump,
+  onRecorded,
 }: {
   project: string;
   fileId: number;
@@ -460,8 +471,14 @@ function Mismatches({
   positions: ReadonlyMap<number, number>;
   glossaryRevision: number;
   onJump: (segmentId: number) => void;
+  /** An exception was recorded: the proposals may have changed. */
+  onRecorded: () => void;
 }) {
   const { token, signOut } = useSession();
+  const action = useAction();
+  // Rows recorded in this panel's lifetime: the mismatch stays (it is still a mismatch),
+  // so the row says it has been noted rather than offering the button again.
+  const [recorded, setRecorded] = useState<ReadonlySet<string>>(new Set());
   const version = useMemo(() => latestVersion(segments), [segments]);
   const [list, setList] = useState<MismatchList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -507,23 +524,48 @@ function Mismatches({
     );
   }
   return (
-    <ul className="gp-mismatches">
-      {list.mismatches.map((m) => (
-        <li key={`${m.segmentId}:${m.termId}`}>
-          <button
-            type="button"
-            className="gp-jump"
-            onClick={() => onJump(m.segmentId)}
-            title="Go to the segment"
-          >
-            <span className="ord">{(positions.get(m.segmentId) ?? m.ord) + 1}</span>
-            <span className="gp-kind">{MISMATCH_LABEL[m.kind]}</span>
-            <span>
-              <strong>{m.term}</strong> {mismatchText(m)}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <>
+      {action.error && <p className="error gp-pad">{action.error}</p>}
+      <ul className="gp-mismatches">
+        {list.mismatches.map((m) => (
+          <li key={`${m.segmentId}:${m.termId}`}>
+            <button
+              type="button"
+              className="gp-jump"
+              onClick={() => onJump(m.segmentId)}
+              title="Go to the segment"
+            >
+              <span className="ord">{(positions.get(m.segmentId) ?? m.ord) + 1}</span>
+              <span className="gp-kind">{MISMATCH_LABEL[m.kind]}</span>
+              <span>
+                <strong>{m.term}</strong> {mismatchText(m)}
+              </span>
+            </button>
+            {canRecordException(m) &&
+              (recorded.has(`${m.segmentId}:${m.termId}`) ? (
+                <span className="muted gp-recorded">Recorded as an exception</span>
+              ) : (
+                <button
+                  type="button"
+                  className="link gp-record"
+                  disabled={action.busy}
+                  title="Note that this alternative is acceptable here. It does not change the entry."
+                  onClick={async () => {
+                    const done = await action.run((t) =>
+                      api.recordException(t, project, fileId, m.segmentId, m.termId),
+                    );
+                    if (done) {
+                      setRecorded((r) => new Set(r).add(`${m.segmentId}:${m.termId}`));
+                      onRecorded();
+                    }
+                  }}
+                >
+                  Record as exception
+                </button>
+              ))}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

@@ -348,7 +348,9 @@ export function listDecisions(
 /**
  * The current preferred rendering of a term in a language — derived,
  * never stored (smart-glossary-spec.md §3.3): the non-forbidden variant
- * named by the most recent non-deprecation decision; with no decision
+ * named by the most recent decision that settled one (not a deprecation,
+ * and not a recorded segment exception: that is evidence, not a ruling,
+ * `exceptions.ts`); with no decision
  * at all, the earliest non-forbidden variant. Language matching is
  * region-insensitive, like `retrievePair`.
  */
@@ -365,7 +367,7 @@ export function preferredVariant(
        WHERE d.term_id = v.term_id
          AND primary_subtag(d.lang) = primary_subtag(v.lang)
          AND d.chosen = v.plain
-         AND d.kind <> 'deprecation')`;
+         AND d.kind NOT IN ('deprecation', 'segment_exception'))`;
   const row = db
     .prepare(
       `SELECT v.* FROM ${s}term_variant v

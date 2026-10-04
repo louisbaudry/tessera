@@ -155,6 +155,33 @@ export function mismatchText(m: GlossaryMismatch): string {
     : `uses “${m.found}”, not ${preferred}`;
 }
 
+/**
+ * Whether a mismatch row can be recorded as an exception (§6; backlog #110): only
+ * when the translator used another acceptable rendering of the term. A forbidden
+ * one is not an exception to record, and a row naming nothing used has no
+ * rendering to record.
+ */
+export const canRecordException = (m: GlossaryMismatch): boolean =>
+  m.kind === 'missing_preferred' && m.found !== null;
+
+/** An alternative recorded often enough to propose making it preferred. */
+export interface ExceptionProposalView {
+  readonly termId: number;
+  readonly lang: string;
+  /** The term as the source language writes it; null if the entry holds none. */
+  readonly term: string | null;
+  readonly chosen: string;
+  readonly preferred: string;
+  /** Distinct segments it was recorded for. */
+  readonly segments: number;
+}
+
+/** What a proposal says, in one line: the evidence, then the change it would make. */
+export function proposalText(p: ExceptionProposalView): string {
+  const where = p.segments === 1 ? '1 segment' : `${p.segments} segments`;
+  return `“${p.chosen}” was recorded as the translation in ${where}: make it preferred over “${p.preferred}”?`;
+}
+
 /** A name a person typed for a glossary, as the slug the API takes (trimmed, lower-cased). */
 export function glossaryNameInput(raw: string): string {
   return raw.trim().toLowerCase();

@@ -12,8 +12,19 @@ export const DECISION_KINDS = [
   'accepted_suggestion',
   /** Typed a rendering that was not offered. */
   'custom',
-  /** A segment-level departure from the preferred rendering the translator chose to record. */
+  /**
+   * Settled: the entry's preferred rendering is deliberately changed to this
+   * one (the Terms tab's override, or accepting an exception proposal). It
+   * moves the preference at once.
+   */
   'override',
+  /**
+   * A translator used an acceptable alternative in one segment and chose to
+   * record it. It never moves the preference by itself: only enough of
+   * them, for distinct segments, propose a flip (`EXCEPTION_PROPOSAL_MIN`,
+   * smart-glossary-spec.md §6).
+   */
+  'segment_exception',
   /** Marked the rendering forbidden (`TermVariant.forbidden`). */
   'deprecation',
 ] as const;

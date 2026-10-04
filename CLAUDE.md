@@ -277,6 +277,13 @@ format for glossaries, through the same shared migration runner —
   `core/glossary/key.ts`), which segment hashing deliberately is not
   (`tm-format-spec.md` §4) — the two are different facts, kept as two
   functions.
+- **`override` is a ruling and `segment_exception` is evidence** (backlog #110,
+  `db/glossary/exceptions.ts`). An `override` decision moves the preferred
+  rendering at once (`preferredVariant`); a `segment_exception` never does, and
+  only enough of them for distinct segments _propose_ an `override`, which a
+  person accepts. A proposal is a count over the log, never stored. Don't
+  record an exception as an `override`: the Terms tab relies on that kind to
+  settle an entry.
 - **A glossary session is held in server memory, and detection consults
   only the project's write-target `.ctg`** (backlog #43a,
   `smart-glossary-spec.md` §5a.1). A `termId` is a row in one file;

@@ -8,7 +8,9 @@ import {
   glossaryNameInput,
   idsByOrd,
   latestVersion,
+  canRecordException,
   mismatchText,
+  proposalText,
   occurrenceText,
   stateText,
   type FlagView,
@@ -138,5 +140,38 @@ describe('mismatchText', () => {
 describe('glossaryNameInput', () => {
   it('trims and lower-cases what a person typed', () => {
     expect(glossaryNameInput('  Acme ')).toBe('acme');
+  });
+});
+
+describe('exceptions (#110)', () => {
+  const row = (over: Partial<GlossaryMismatch>): GlossaryMismatch => ({
+    ord: 0,
+    segmentId: 1,
+    termId: 2,
+    term: 'invoice',
+    kind: 'missing_preferred',
+    preferred: 'Rechnung',
+    found: 'Faktura',
+    ...over,
+  });
+
+  it('records only a row where another acceptable rendering was used', () => {
+    expect(canRecordException(row({}))).toBe(true);
+    expect(canRecordException(row({ found: null }))).toBe(false);
+    expect(canRecordException(row({ kind: 'forbidden', found: 'Beleg' }))).toBe(false);
+  });
+
+  it('words a proposal as the evidence and the change', () => {
+    const p = {
+      termId: 2,
+      lang: 'de',
+      term: 'invoice',
+      chosen: 'Faktura',
+      preferred: 'Rechnung',
+    };
+    expect(proposalText({ ...p, segments: 3 })).toBe(
+      '“Faktura” was recorded as the translation in 3 segments: make it preferred over “Rechnung”?',
+    );
+    expect(proposalText({ ...p, segments: 1 })).toContain('in 1 segment:');
   });
 });

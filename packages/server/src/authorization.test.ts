@@ -281,6 +281,9 @@ describe('an assigned translator', () => {
       ['GET', `/api/projects/job/glossaries?${q}`],
       ['POST', `/api/projects/job/glossaries?${q}`],
       ['GET', `/api/projects/job/files/${fileId}/glossary/mismatches?${q}`],
+      ['POST', `/api/projects/job/files/${fileId}/glossary/exceptions?${q}`],
+      ['GET', `/api/projects/job/glossary/proposals?${q}`],
+      ['POST', `/api/projects/job/glossary/proposals/accept?${q}`],
       ['POST', `/api/projects/job/files/${fileId}/glossary/session?${q}`],
     ];
     for (const [method, url] of probes) {
