@@ -431,6 +431,19 @@ written, by E-001's bench):**
    locally. A hosted embedding API would need its own decision
    (semantic-matching-spec.md §3.3).
 
+**Open before the product writes vectors: storage.** E-001 measured
+about 4.7 KB per unit on disk (`storage.bytes_per_unit`, at 384 and at
+768 dimensions alike), three times the 1.5 KiB estimate
+(semantic-matching-spec.md §3.4); at 1M units that is 4.7 GB per model.
+The likely cause is the schema, not the vectors: `tuv_vec` is `WITHOUT
+ROWID`, which SQLite advises against for rows above about a twentieth
+of a page, so a 1.5 KB blob spills to an overflow page (about one 4 KiB
+page per vector) and the `model` text is repeated in every row. This is
+a hypothesis, not yet tested. The fix to try before the first product
+write is a rowid table keyed by `(tuv_id, model_id)` with a small
+integer `model_id` into a one-row-per-model table. Measure it, then
+change the DDL above in the same change. E-001's bench does not change.
+
 ### 2.9 `tm_import` — import runs (format version 2)
 
 ```sql

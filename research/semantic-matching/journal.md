@@ -400,3 +400,15 @@ Still to do for its "done when":
 
 The remaining results files will come in a follow-up branch from
 `main`.
+
+---
+
+## 2026-10-04 — Storage finding written into the format spec
+
+No run and nothing measured. The `tuv_vec` contract was already in
+`tm-format-spec.md` §2.8 (written with the first vectors). This session
+added the one thing that was still only in this journal: the 4.7 KB per
+unit storage finding and its untested cause (`WITHOUT ROWID` overflow,
+repeated `model` text), as an open item before the product writes
+vectors. Card `#59` stays open for its remaining runs (synthetic 5M,
+synthetic-100k `hnsw`, private memories) and spec §9.1.
