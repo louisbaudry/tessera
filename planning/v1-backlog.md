@@ -3174,13 +3174,24 @@ rest of that range:
   - **Not here:** the roster's own routes (add a vendor, set rates: `#51`),
     the job feed and offer detail (`#50`), review's gate (`#51`); a roster entry
     exists today only because something wrote it into the `.ctv`.
-- **#49 · Tiered rate/payable calculation · M** · [issue #28] —
-  `db/vendor` reading `db/tm`'s `retrievePair` output, the cross-package
-  dependency spec §1 decision 9 calls out explicitly. Words are counted by
-  `core`'s `countRegionWords` (`v1-spec.md` §3.6, `#62`), which returns
-  `null` for zh/ja/th/lo/km/my/bo: decide their unit here. Count a
-  stored segment with `segmentWords`, which reads `segment.fallback_copy`
-  (`#34`), or a text box is paid twice.
+- **#49 · ~~Tiered rate/payable calculation~~ · DONE — `vendor-core/src/payable.ts`, `db/src/vendor/payable.ts`.**
+  `computePayable` (pure: words per tier × the tier's rate, integer
+  micros) and `priceTierWords` (the rate in force at an offer's date, from
+  the `.ctv`), with `analyseTierWords` reading a project's words by tier.
+  - **A tier cannot be read live from a segment.** `editSegmentTarget`
+    clears `origin`, so `tierForOrigin` over a segment in progress would
+    pay an edited 100% match as no match. It is the analysis made at offer
+    time; freezing that analysis with the assignment is the open follow-up
+    (issue filed), and `#50`/`#53` must not call it on a job under way.
+  - **A tier with words and no rate is `unpriced`, never zero**, and a
+    card in two currencies is refused rather than summed.
+  - **Unspaced source languages (zh/ja/th/lo/km/my/bo) are refused**, not
+    given a unit: `countRegionWords` has no answer there, and inventing
+    characters-as-words would price them by a rule nobody agreed. Their
+    unit is a decision for whoever first prices one.
+  - **Fuzzy bands are still `#61`'s**: `tm_fuzzy_NN` origins are mapped to
+    the provisional bands, but nothing writes one yet, so a real file is
+    `no_match` or `exact` today.
 - **#50 · Vendor-facing API: job feed, offer detail, accept/decline/
   claim · S** · [issue #29] — JSON only; the UI for it is `#52`.
 - **#51 · PM-facing API: assign vendor, review/close assignment · S** ·

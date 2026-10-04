@@ -562,3 +562,14 @@ when a job is offered or a deadline approaches; the PM-facing side of
 posting to the pool vs. pushing directly; performance-history display.
 Each needs its own pass once the flow above is validated against real
 use, not designed speculatively here.
+
+**Implementation note (#49), 2026-10-03.** The payable is arithmetic over
+two inputs kept apart: words per tier (`analyseTierWords`, from a project)
+and a rate per tier (`vendorRateAt`, from the `.ctv`, at the offer's date,
+so a later rate never moves it). A segment's tier is `tierForOrigin` of the
+origin it was pre-translated with and is **only meaningful at analysis
+time**, because a translator's edit clears `origin`: decision 10's running
+total therefore needs the analysis frozen with the assignment, not re-read
+from live segments. A tier with words and no rate is reported unpriced, a
+card in two currencies is refused, and an unspaced source language has no
+per-word payable until its unit is decided.
