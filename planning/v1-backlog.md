@@ -3259,6 +3259,34 @@ rest of that range:
   - **Not here:** a vendor's `start`/`deliver` routes and the delivery lock
     on the payable (issue filed; they decide where the locked amount is stored),
     withdrawing an offer, and a missed deadline becoming a pool post.
+- **#51b · ~~Vendor start/deliver routes and the payable locked at delivery~~ · DONE — `db/src/vendor/delivery.ts` (`.ctv` schema v4), `server/src/assignments.ts`.**
+  `POST /api/assignments/:id/start` and `.../deliver` (a vendor's, `?owner=`),
+  and `assignment_payable` with its lines, written in the delivery's own
+  transaction. Filed by `#51`, which could not be driven end to end without it.
+  - **Locking stores a computation that was already immutable**: the words
+    are frozen at the offer (`#49b`) and a rate in force at a date can never be
+    rewritten (`#46`), so the amount cannot change; the lock records it and
+    its lines, immutable by trigger, so what the vendor was shown as final is
+    a row rather than a recomputation that depends on code staying the same.
+  - **`moveAssignment` gained an `afterMove` hook** that runs inside its
+    transaction, so the lock commits with the delivery or not at all (a test
+    makes the insert fail and the job stays `in_progress`). It is not a second
+    way to move: every move still goes through the one function.
+  - **A tier with no rate is stored as such, never as zero**: a null rate, no
+    amount, and `complete = 0`.
+  - **Delivery never fails for want of a payable**: no analysis, a deleted
+    project, an unspaced source language and a card in two currencies all
+    deliver with no payable row, and `payable` reads `null`. The vendor's work
+    is done; a gap in the owner's configuration is not a reason to refuse it.
+  - **The vendor sees the final amount once it exists** (decision 10's "no
+    stage where the vendor doesn't know what they're being paid"): the offer
+    detail's `payable` is null until delivered. The owner's view carries it too.
+  - **A boolean column has no CHECK here either**: the check-lists test picked
+    up `complete IN (0, 1)` as a closed set, and no other schema checks a
+    boolean, so it was dropped rather than listed.
+  - **Not decided, and left to the PM**: whether `deliver` refuses blocking QA
+    or untranslated segments (the review gate already refuses to close over a
+    blocking issue).
 - **#52 · Job feed + offer detail screens · M** · [issue #31] — after
   `#28`–`#35`, the same gating the glossary panel (`#43`) got.
 - **#53 · Running payable total in the editor · M** · [issue #32] —

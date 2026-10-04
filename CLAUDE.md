@@ -312,6 +312,11 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   `assignment_analysis`, immutable by trigger. A segment's tier can't be
   read later, because an edit clears its `origin`, so `analyseTierWords` is
   only for the moment of an offer, never a job in progress.
+- **The payable locks at delivery, in the delivery's own transaction**
+  (backlog #51b, `deliverAssignment`): `assignment_payable` and its lines,
+  immutable by trigger, from the frozen analysis and the rates of the
+  offer's date. A tier with no rate is a null rate, never zero; a job with
+  nothing to price is delivered with no payable, not refused.
 - **`reviewed` is gated by `isBlocking` and has no override** (backlog
   #51, `reviewAssignment`): a PM who must close over a blocking QA issue
   dismisses it, which is logged. The review also revokes the vendor's

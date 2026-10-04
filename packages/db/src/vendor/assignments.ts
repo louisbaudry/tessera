@@ -372,6 +372,12 @@ export interface MoveOptions {
   readonly actor: AuditActor;
   readonly note?: string | null;
   readonly now?: Date;
+  /**
+   * Runs inside the move's own transaction, after the status is changed and the
+   * event written, so what it writes commits with the move or not at all
+   * (backlog #120: the payable locked at delivery). Not a second way to move.
+   */
+  readonly afterMove?: (db: Database.Database, moved: Assignment, at: string) => void;
 }
 
 /**
@@ -444,7 +450,9 @@ export function moveAssignment(db: Database.Database, options: MoveOptions): Ass
       ) {
         repostToRest(db, before, options.vendorId!, options.actor, at);
       }
-      return getAssignment(db, before.id)!;
+      const moved = getAssignment(db, before.id)!;
+      options.afterMove?.(db, moved, at);
+      return moved;
     })
     .immediate();
 }

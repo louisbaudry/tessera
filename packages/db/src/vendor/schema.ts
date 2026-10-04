@@ -250,4 +250,58 @@ const v3: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3];
+/** `assignment_payable_line.tier` since v4: `RATE_TIERS` as of backlog #120 (provisional, see vendor-spec §5). */
+const V4_RATE_TIERS = [
+  'no_match',
+  'fuzzy_50_74',
+  'fuzzy_75_84',
+  'fuzzy_85_94',
+  'fuzzy_95_99',
+  'exact',
+  'ice',
+] as const satisfies readonly RateTier[];
+
+/**
+ * The payable locked at delivery (vendor-spec.md decision 10 and its #120
+ * note): the amount and its lines, written in the delivery's own transaction
+ * and immutable by trigger. A tier with no rate has a null rate and no
+ * amount, and `complete = 0` says the vendor was not fully priced. A job
+ * delivered with nothing to price has no row at all.
+ */
+const v4: Migration = {
+  version: 4,
+  description:
+    'assignment_payable and its lines: the payable locked at delivery (backlog #120)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE assignment_payable (
+        assignment_id INTEGER PRIMARY KEY REFERENCES assignment(id),
+        currency      TEXT,
+        words         INTEGER NOT NULL CHECK (words >= 0),
+        total_micros  INTEGER NOT NULL CHECK (total_micros >= 0),
+        complete      INTEGER NOT NULL,
+        locked_at     TEXT    NOT NULL
+      );
+
+      CREATE TABLE assignment_payable_line (
+        assignment_id INTEGER NOT NULL REFERENCES assignment(id),
+        tier          TEXT    NOT NULL CHECK (tier IN (${sqlList(V4_RATE_TIERS)})),
+        words         INTEGER NOT NULL CHECK (words > 0),
+        rate_micros   INTEGER CHECK (rate_micros IS NULL OR rate_micros >= 0),
+        amount_micros INTEGER NOT NULL CHECK (amount_micros >= 0),
+        PRIMARY KEY (assignment_id, tier)
+      ) WITHOUT ROWID;
+
+      CREATE TRIGGER assignment_payable_no_update BEFORE UPDATE ON assignment_payable
+      BEGIN SELECT RAISE(ABORT, 'assignment_payable is locked at delivery'); END;
+      CREATE TRIGGER assignment_payable_no_delete BEFORE DELETE ON assignment_payable
+      BEGIN SELECT RAISE(ABORT, 'assignment_payable is locked at delivery'); END;
+      CREATE TRIGGER assignment_payable_line_no_update BEFORE UPDATE ON assignment_payable_line
+      BEGIN SELECT RAISE(ABORT, 'assignment_payable is locked at delivery'); END;
+      CREATE TRIGGER assignment_payable_line_no_delete BEFORE DELETE ON assignment_payable_line
+      BEGIN SELECT RAISE(ABORT, 'assignment_payable is locked at delivery'); END;
+    `);
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4];

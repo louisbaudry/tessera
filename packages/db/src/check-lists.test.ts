@@ -92,6 +92,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'assignment_event.from_status': ASSIGNMENT_STATUSES,
       'assignment_event.to_status': ASSIGNMENT_STATUSES,
       'assignment_analysis.tier': RATE_TIERS,
+      'assignment_payable_line.tier': RATE_TIERS,
     },
   },
   tm: {

@@ -651,3 +651,45 @@ owner's side of the lifecycle, and the decision `#47` left to it.
   `#51` asks for them; they belong with the running payable and the delivery
   lock, `#53`), withdrawing an offer, and a missed deadline or declined offer
   becoming a pool post (§4's open question).
+
+**Implementation note (#120), written before the code (2026-10-04).** The
+vendor's last two moves and what "the payable locks at delivery" (decision
+10) means once the inputs are already frozen.
+
+- **Both moves are explicit vendor acts, over HTTP**: `POST
+  /api/assignments/:id/start` (`accepted → in_progress`) and `.../deliver`
+  (`in_progress → delivered`), through `moveAssignment` like every other
+  move, addressed `?owner=` with the same identical 404 for a stranger.
+  `start` is not implied by a first confirmed segment: an act the machine
+  already has an edge for, and one the editor's UI (`#52`/`#53`) can call
+  when the vendor opens the job, is simpler than inferring it from segment
+  writes.
+- **What locks is a record, not a number that could change.** The words are
+  frozen at the offer (`#49b`) and a rate in force at a date can never be
+  rewritten (`#46`), so the amount at the offer's date is already
+  immutable. Locking at delivery stores that computation (`assignment_payable`
+  and its lines, immutable by trigger) in the delivery's own transaction, so
+  what the vendor was shown as final is a row, not a recomputation that
+  depends on code and tier mapping staying the same. The words priced are
+  the frozen analysis; the rates are those of the offer's date
+  (`assignment.created_at`, which for a reposted pool job is the repost's);
+  the pair is the project's.
+- **A tier with no rate is stored as such, never as zero**: its line has a
+  null rate and no amount, and the payable is marked `complete = 0`, so the
+  PM reads that the vendor was not fully priced rather than a total that
+  silently omits them (`computePayable`'s `unpriced`).
+- **Delivery never fails for want of a payable.** An offer made without an
+  analysis, a project that has since been deleted (no pair), and a source
+  language with no per-word count have **no payable row**: the job is still
+  delivered, and `payable` reads `null`. The vendor's work is done; a gap in
+  the owner's configuration is the owner's to see and fix, not a reason to
+  refuse the delivery.
+- **The vendor sees the final amount once it exists**, which is what
+  decision 10 asks ("no stage where the vendor does not know what they are
+  being paid"): the offer detail carries `payable` (null until delivered),
+  as does the owner's view. Decision 10's "no precomputed total" is about the
+  offer, before an answer; after delivery the total is a fact.
+- **Not decided here, and left to the PM**: whether `deliver` refuses a
+  project with blocking QA (the review gate, `#51`, already refuses to close
+  over one) and whether it requires every segment translated. Each, if wanted,
+  is a precondition beside `transitionAssignment`, never inside it.
