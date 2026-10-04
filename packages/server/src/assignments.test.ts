@@ -14,10 +14,12 @@ import { fileURLToPath } from 'node:url';
 import { hashPassword, type AuditActor } from '@cat-tool/core';
 import {
   addVendor,
+  analyseTierWords,
   createAccount,
   createVendorFile,
   listEvents,
   openPlatformDb,
+  openProjectDb,
   type Account,
 } from '@cat-tool/db';
 import type { FastifyInstance } from 'fastify';
@@ -25,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { projectPath } from './storage.js';
 
 const FIXTURE = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -161,6 +164,32 @@ describe('the owner offers a project', () => {
     expect(assignment.events).toMatchObject([
       { from: null, to: 'offered', by: 'alice@example.com' },
     ]);
+  });
+
+  it('freezes the project’s tier analysis with the offer, and the owner sees it', async () => {
+    const a = await aliceWithProject();
+    const projectDb = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const now = analyseTierWords(projectDb);
+    projectDb.close();
+    expect(Object.values(now).reduce((n, w) => n + (w ?? 0), 0)).toBeGreaterThan(0);
+
+    const res = await post(a, offerBody());
+    const { assignment } = res.json() as {
+      assignment: { analysis: { at: string; words: Record<string, number> } | null };
+    };
+    expect(assignment.analysis?.words).toEqual(now);
+    expect(assignment.analysis?.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    // The project moves on (every segment now reads as an exact match): the
+    // frozen analysis does not.
+    const edited = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    edited.prepare("UPDATE segment SET origin = 'tm_exact'").run();
+    expect(analyseTierWords(edited)).not.toEqual(now);
+    edited.close();
+    const again = await get(a, 1);
+    expect(
+      (again.json() as { assignment: { analysis: unknown } }).assignment.analysis,
+    ).toEqual(assignment.analysis);
   });
 
   it('posts it to a pool of vendors on the roster', async () => {

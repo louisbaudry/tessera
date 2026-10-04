@@ -208,4 +208,46 @@ const v2: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2];
+/** `assignment_analysis.tier` since v3: `RATE_TIERS` as of backlog #116 (provisional, see vendor-spec §5). */
+const V3_RATE_TIERS = [
+  'no_match',
+  'fuzzy_50_74',
+  'fuzzy_75_84',
+  'fuzzy_85_94',
+  'fuzzy_95_99',
+  'exact',
+  'ice',
+] as const satisfies readonly RateTier[];
+
+/**
+ * The match-tier analysis frozen with an assignment (vendor-spec.md decision
+ * 10, backlog #116): words per tier as they stood when the job was offered.
+ * A segment's tier cannot be read later, because an edit clears its origin,
+ * so this is the only place the payable's words can come from. Immutable by
+ * trigger: a re-analysis is a new assignment, never an edit. A tier with no
+ * words has no row; `analysed_at` says an analysis was made at all (an empty
+ * project has no rows and is still analysed).
+ */
+const v3: Migration = {
+  version: 3,
+  description: 'assignment_analysis: the tier breakdown frozen at offer (backlog #116)',
+  up: (db) => {
+    db.exec(`
+      ALTER TABLE assignment ADD COLUMN analysed_at TEXT;
+
+      CREATE TABLE assignment_analysis (
+        assignment_id INTEGER NOT NULL REFERENCES assignment(id),
+        tier          TEXT    NOT NULL CHECK (tier IN (${sqlList(V3_RATE_TIERS)})),
+        words         INTEGER NOT NULL CHECK (words > 0),
+        PRIMARY KEY (assignment_id, tier)
+      ) WITHOUT ROWID;
+
+      CREATE TRIGGER assignment_analysis_no_update BEFORE UPDATE ON assignment_analysis
+      BEGIN SELECT RAISE(ABORT, 'assignment_analysis is frozen at offer'); END;
+      CREATE TRIGGER assignment_analysis_no_delete BEFORE DELETE ON assignment_analysis
+      BEGIN SELECT RAISE(ABORT, 'assignment_analysis is frozen at offer'); END;
+    `);
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3];

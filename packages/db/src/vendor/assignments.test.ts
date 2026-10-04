@@ -27,6 +27,7 @@ import {
   createVendorFile,
   declineAssignment,
   getAssignment,
+  getAssignmentAnalysis,
   listAssignmentEvents,
   listAssignmentsFor,
   listClaimable,
@@ -390,6 +391,101 @@ describe('the log and the table', () => {
   });
 });
 
+describe('the frozen tier analysis (backlog #116)', () => {
+  const WORDS = { no_match: 120, exact: 30 } as const;
+
+  it('is recorded with the offer, in the same transaction, and read back whole', () => {
+    const a = createDirectOffer(db, {
+      projectName: 'brief',
+      vendorId: ana,
+      analysis: WORDS,
+      actor: owner,
+      now: NOW,
+    });
+    expect(getAssignmentAnalysis(db, a.id)).toEqual({
+      at: NOW.toISOString(),
+      words: WORDS,
+    });
+  });
+
+  it('is null when none was made, and empty-but-made for a project with no words', () => {
+    expect(getAssignmentAnalysis(db, offer().id)).toBeNull();
+    const empty = createDirectOffer(db, {
+      projectName: 'brief',
+      vendorId: ben,
+      analysis: {},
+      actor: owner,
+      now: NOW,
+    });
+    expect(getAssignmentAnalysis(db, empty.id)).toEqual({
+      at: NOW.toISOString(),
+      words: {},
+    });
+  });
+
+  it('is refused whole, with the offer, for a bad tier or a fractional count', () => {
+    const before = db.prepare('SELECT COUNT(*) AS n FROM assignment').get();
+    expect(() =>
+      createDirectOffer(db, {
+        projectName: 'brief',
+        vendorId: ana,
+        analysis: { no_match: 1.5 },
+        actor: owner,
+        now: NOW,
+      }),
+    ).toThrow(VendorError);
+    expect(() =>
+      postToPool(db, {
+        projectName: 'brief',
+        vendorIds: [ana],
+        analysis: { bogus: 3 } as never,
+        actor: owner,
+        now: NOW,
+      }),
+    ).toThrow(/unknown rate tier/);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM assignment').get()).toEqual(before);
+  });
+
+  it('cannot be edited or deleted afterwards: the table refuses it', () => {
+    const a = createDirectOffer(db, {
+      projectName: 'brief',
+      vendorId: ana,
+      analysis: WORDS,
+      actor: owner,
+      now: NOW,
+    });
+    expect(() => db.prepare('UPDATE assignment_analysis SET words = 1').run()).toThrow(
+      /frozen/,
+    );
+    expect(() => db.prepare('DELETE FROM assignment_analysis').run()).toThrow(/frozen/);
+    expect(getAssignmentAnalysis(db, a.id)!.words).toEqual(WORDS);
+  });
+
+  it('is carried to the job a decline reposts, with the same time', () => {
+    const a = postToPool(db, {
+      projectName: 'brief',
+      vendorIds: [ana, ben],
+      analysis: WORDS,
+      actor: owner,
+      now: NOW,
+    });
+    claim(db, a.id, ana);
+    declineAssignment(db, {
+      assignmentId: a.id,
+      vendorId: ana,
+      actor: vendorActor('ana'),
+      now: new Date('2026-03-02T00:00:00Z'),
+    });
+    const again = db
+      .prepare('SELECT id FROM assignment WHERE reopened_from = ?')
+      .get(a.id) as { id: number };
+    expect(getAssignmentAnalysis(db, again.id)).toEqual({
+      at: NOW.toISOString(),
+      words: WORDS,
+    });
+  });
+});
+
 describe('the migration', () => {
   it('adds assignments to a roster file written at version 1, keeping its vendors', () => {
     const v1 = join(dir, 'old.ctv');
@@ -404,7 +500,7 @@ describe('the migration', () => {
       .run();
     old.close();
     const migrated = openVendorFile(v1);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(2);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(3);
     expect(listVendors(migrated)).toHaveLength(1);
     expect(migrated.prepare('SELECT COUNT(*) AS n FROM assignment').get()).toEqual({
       n: 0,

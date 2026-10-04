@@ -23,18 +23,21 @@ import {
   AssignmentAccessError,
   AssignmentConflictError,
   acceptAssignment,
+  analyseTierWords,
   claimAssignment,
   createDirectOffer,
   createVendorFile,
   declineAssignment,
   getAccountById,
   getAssignment,
+  getAssignmentAnalysis,
   getVendor,
   getVendorByAccount,
   grantProjectAuthorization,
   listAssignmentEvents,
   listPoolMembers,
   type openPlatformDb,
+  openProjectDb,
   openVendorFile,
   postToPool,
   VendorError,
@@ -61,6 +64,16 @@ export interface AssignmentRouteDeps {
 }
 
 const GENERATOR = 'cat-tool/server';
+
+/** The words of a project by match tier, read once and closed. */
+function analyseProject(path: string) {
+  const project = openProjectDb(path);
+  try {
+    return analyseTierWords(project);
+  } finally {
+    project.close();
+  }
+}
 
 /** `404 no such assignment`: what a missing assignment, a missing roster and a stranger all get. */
 const noSuch = (reply: FastifyReply) =>
@@ -94,6 +107,7 @@ export function registerAssignmentRoutes(
       getVendor(roster, vendorId)?.accountId ?? null;
     return {
       ...vendorView(a),
+      analysis: getAssignmentAnalysis(roster, a.id),
       vendorAccountId: a.vendorId === null ? null : accountOf(a.vendorId),
       eligible: listPoolMembers(roster, a.id).map(accountOf),
       events: listAssignmentEvents(roster, a.id).map((e) => ({
@@ -197,6 +211,9 @@ export function registerAssignmentRoutes(
         projectName: project,
         deadline: (deadline as string | null | undefined) ?? null,
         instructions: (instructions as string | null | undefined) ?? null,
+        // The project's words by tier as they stand now, frozen with the offer
+        // (backlog #116): a tier cannot be read from a segment later.
+        analysis: analyseProject(projectPath(storageRoot, me, project)),
         actor: deps.sessionActor(req),
       };
       const assignment =

@@ -3181,8 +3181,8 @@ rest of that range:
   - **A tier cannot be read live from a segment.** `editSegmentTarget`
     clears `origin`, so `tierForOrigin` over a segment in progress would
     pay an edited 100% match as no match. It is the analysis made at offer
-    time; freezing that analysis with the assignment is the open follow-up
-    (issue filed), and `#50`/`#53` must not call it on a job under way.
+    time; freezing that analysis with the assignment is `#49b` below, and
+    `#50`/`#53` must not call it on a job under way.
   - **A tier with words and no rate is `unpriced`, never zero**, and a
     card in two currencies is refused rather than summed.
   - **Unspaced source languages (zh/ja/th/lo/km/my/bo) are refused**, not
@@ -3192,6 +3192,25 @@ rest of that range:
   - **Fuzzy bands are still `#61`'s**: `tm_fuzzy_NN` origins are mapped to
     the provisional bands, but nothing writes one yet, so a real file is
     `no_match` or `exact` today.
+- **#49b · ~~Freeze the tier analysis with the assignment~~ · DONE — `.ctv` schema v3 (`db/src/vendor/schema.ts`, `assignments.ts`), `server/src/assignments.ts`.**
+  `assignment_analysis` (words per tier) and `assignment.analysed_at`,
+  written in the offer's own transaction from `analyseTierWords` over the
+  owner's project; the owner's `POST /api/assignments` takes it and the
+  owner's view returns it. Found by `#49`, which could not have worked
+  without it.
+  - **Immutable by trigger**, not by convention: a payable that rests on it
+    must not be movable by anyone holding the connection, and a re-analysis
+    is a new assignment, never an edit.
+  - **`analysed_at` is the fact that an analysis was made**, so a project
+    with no words (no rows) is distinguishable from an offer made before this
+    existed or without one (`null`). A tier with no words has no row.
+  - **A decline's repost copies it**, with the original time: same project,
+    same words, and the rate-card date for pricing stays the first offer's.
+  - **Not here:** the vendor's view of the breakdown and the rate card
+    beside it is `#50`; the project is read on the request thread
+    (`listAllSegments`), unmeasured at scale: time it on a 10k-segment
+    project, and make it a job if it is slow. An offer with no `analysis` (a direct repository call)
+    simply has none; the route always supplies it.
 - **#50 · Vendor-facing API: job feed, offer detail, accept/decline/
   claim · S** · [issue #29] — JSON only; the UI for it is `#52`.
 - **#51 · PM-facing API: assign vendor, review/close assignment · S** ·
