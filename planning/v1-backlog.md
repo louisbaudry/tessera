@@ -3233,9 +3233,32 @@ rest of that range:
   - **Not here:** the owner's list of assignments (`#51`); a vendor's view of
     a job in progress, and a vendor-side `start`/`deliver` route, which nothing
     asks for until the editor's payable (`#53`).
-- **#51 · PM-facing API: assign vendor, review/close assignment · S** ·
-  [issue #30] — where spec §4's `reviewed` gate (QA `isBlocking`, PM
-  read, or both) gets decided for real.
+- **#51 · ~~PM-facing API: assign vendor, review/close assignment~~ · DONE — `db/src/vendor/review.ts`, `server/src/assignments.ts`.**
+  `POST /api/assignments/:id/review` (the owner's `delivered → reviewed`),
+  the owner's list (`GET /api/assignments` with no `?owner`) and the roster's
+  own routes: `GET`/`POST /api/vendors`, `GET`/`PUT /api/vendors/:accountId/rates`.
+  Offering a vendor was `#48`'s.
+  - **The `reviewed` gate is both, and has no override**: only the owner's
+    route reaches `reviewed`, and it is refused (409, with the count) while
+    the project has an undismissed QA error (`isBlocking`, the CLI's one
+    definition of must-not-ship). A PM who must close over one dismisses it,
+    which is logged with its actor; an override flag would be a second,
+    unlogged way to the same end. A job not yet `delivered` is the machine's
+    409, not the gate's.
+  - **Reviewing revokes the translator's grant**, after the move commits. Two
+    files, so a failure between them leaves a reviewed job with live access:
+    `reviewed` is terminal, so repeating the call cannot mend it (issue filed
+    for a reconciliation of grants against assignment status, which also covers
+    `#48`'s accept-then-grant).
+  - **The roster never exposes an email** (account id and display name),
+    and adding an account that is no vendor's and one that does not exist
+    are one identical 400, so an owner cannot probe which ids are taken.
+  - **Mutation checks**: disabling the gate fails the refusal test, and
+    disabling the revoke fails the access test. Typecheck caught a helper in
+    the first test that vitest, which only transpiles, did not.
+  - **Not here:** a vendor's `start`/`deliver` routes and the delivery lock
+    on the payable (issue filed; they decide where the locked amount is stored),
+    withdrawing an offer, and a missed deadline becoming a pool post.
 - **#52 · Job feed + offer detail screens · M** · [issue #31] — after
   `#28`–`#35`, the same gating the glossary panel (`#43`) got.
 - **#53 · Running payable total in the editor · M** · [issue #32] —

@@ -23,6 +23,7 @@ import {
   AssignmentAccessError,
   AssignmentConflictError,
   acceptAssignment,
+  addVendor,
   analyseTierWords,
   claimAssignment,
   createDirectOffer,
@@ -31,17 +32,25 @@ import {
   getAccountById,
   getAssignment,
   getAssignmentAnalysis,
+  getProfile,
   getVendor,
   getProject,
   getVendorByAccount,
   grantProjectAuthorization,
   listAssignmentEvents,
+  listAssignments,
   listPoolMembers,
+  listVendors,
   previewSource,
   type openPlatformDb,
   openProjectDb,
   openVendorFile,
   postToPool,
+  ReviewBlockedError,
+  reviewAssignment,
+  revokeProjectAuthorization,
+  setVendorRate,
+  vendorRateHistory,
   vendorFeed,
   vendorRateCardAt,
   VendorError,
@@ -51,6 +60,7 @@ import {
 import {
   AssignmentPartyError,
   InvalidAssignmentTransitionError,
+  type RateTier,
 } from '@cat-tool/vendor-core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
@@ -170,6 +180,9 @@ export function registerAssignmentRoutes(
 
   function mapError(err: unknown, reply: FastifyReply) {
     if (err instanceof AssignmentAccessError) return noSuch(reply);
+    if (err instanceof ReviewBlockedError) {
+      return reply.code(409).send({ error: err.message, blocking: err.blocking });
+    }
     if (
       err instanceof InvalidAssignmentTransitionError ||
       err instanceof AssignmentPartyError ||
@@ -289,6 +302,16 @@ export function registerAssignmentRoutes(
   // not on is the same 404.
   app.get('/api/assignments', async (req, reply) => {
     const me = deps.owner(req);
+    // No `?owner`: the owner's own list (backlog #51), newest first.
+    if ((req.query as { owner?: unknown } | undefined)?.owner === undefined) {
+      const own = openRoster(me);
+      if (!own) return { assignments: [] };
+      try {
+        return { assignments: listAssignments(own).map((a) => ownerView(own, a)) };
+      } finally {
+        own.close();
+      }
+    }
     const ownerAccount = ownerParam(req);
     if (!ownerAccount || ownerAccount.id === me.id) return noSuch(reply);
     const roster = openRoster(ownerAccount);
@@ -371,6 +394,239 @@ export function registerAssignmentRoutes(
       }
     },
   );
+
+  // The owner's sign-off (backlog #51, vendor-spec §4): `delivered → reviewed`,
+  // refused while the project has a blocking QA issue, and ending the vendor's
+  // access to the project. Owner-only: it opens the caller's own roster, so a
+  // vendor reaches nothing here.
+  app.post<{ Params: { id: string }; Body: { note?: unknown } | undefined }>(
+    '/api/assignments/:id/review',
+    async (req, reply) => {
+      const me = deps.owner(req);
+      const id = /^[1-9]\d{0,14}$/.test(req.params.id) ? Number(req.params.id) : 0;
+      if (id === 0) return noSuch(reply);
+      const note = req.body?.note;
+      if (note !== undefined && note !== null && typeof note !== 'string') {
+        return reply.code(400).send({ error: 'note must be text' });
+      }
+      const roster = openRoster(me);
+      if (!roster) return noSuch(reply);
+      try {
+        const assignment = getAssignment(roster, id);
+        if (!assignment) return noSuch(reply);
+        const path = projectPath(storageRoot, me, assignment.projectName);
+        if (!existsSync(path)) {
+          return reply.code(409).send({
+            error: `the project "${assignment.projectName}" is gone: there is nothing to review the job against`,
+          });
+        }
+        const project = openProjectDb(path);
+        let reviewed: Assignment;
+        try {
+          reviewed = reviewAssignment(roster, project, {
+            assignmentId: id,
+            note: (note as string | null | undefined) ?? null,
+            actor: deps.sessionActor(req),
+          });
+        } finally {
+          project.close();
+        }
+        // The job is closed, so the translator's access to the editor ends. Two
+        // files, so not one transaction: the move is committed, the revoke is
+        // idempotent and follows (vendor-spec §4, #51 note).
+        const vendor =
+          reviewed.vendorId === null ? null : getVendor(roster, reviewed.vendorId);
+        if (vendor) {
+          revokeProjectAuthorization(platform, {
+            accountId: vendor.accountId,
+            project: { accountId: me.id, name: reviewed.projectName },
+            actor: deps.sessionActor(req),
+          });
+        }
+        return { assignment: ownerView(roster, reviewed) };
+      } catch (err) {
+        return mapError(err, reply);
+      } finally {
+        roster.close();
+      }
+    },
+  );
+
+  // --- the owner's roster (backlog #51): who they engage, and what they pay ---
+
+  const accountParam = (raw: string): number =>
+    /^[1-9]\d{0,14}$/.test(raw) ? Number(raw) : 0;
+
+  const rateView = (r: ReturnType<typeof vendorRateHistory>[number]) => ({
+    src: r.pair.src,
+    tgt: r.pair.tgt,
+    tier: r.tier,
+    rateMicros: r.rateMicros,
+    currency: r.currency,
+    effectiveFrom: r.effectiveFrom,
+  });
+
+  // The roster: account id and display name, languages and specialties. Never an email.
+  app.get('/api/vendors', async (req) => {
+    const roster = openRoster(deps.owner(req));
+    if (!roster) return { vendors: [] };
+    try {
+      return {
+        vendors: listVendors(roster).map((v) => {
+          const p = getProfile(roster, v.id)!;
+          return {
+            accountId: p.accountId,
+            displayName: p.displayName,
+            languages: p.languages,
+            specialties: p.specialties,
+          };
+        }),
+      };
+    } finally {
+      roster.close();
+    }
+  });
+
+  app.post<{
+    Body: {
+      account?: unknown;
+      displayName?: unknown;
+      languages?: unknown;
+      specialties?: unknown;
+    };
+  }>('/api/vendors', async (req, reply) => {
+    const me = deps.owner(req);
+    const { account, displayName, languages, specialties } = req.body ?? {};
+    if (!Number.isSafeInteger(account) || (account as number) < 1) {
+      return reply.code(400).send({ error: 'account must be an account id' });
+    }
+    if (
+      displayName !== undefined &&
+      displayName !== null &&
+      typeof displayName !== 'string'
+    ) {
+      return reply.code(400).send({ error: 'displayName must be text' });
+    }
+    const pairs = languages === undefined ? [] : languages;
+    if (
+      !Array.isArray(pairs) ||
+      !pairs.every(
+        (p) =>
+          typeof p === 'object' &&
+          p !== null &&
+          typeof (p as { src?: unknown }).src === 'string' &&
+          typeof (p as { tgt?: unknown }).tgt === 'string',
+      )
+    ) {
+      return reply.code(400).send({ error: 'languages must be a list of { src, tgt }' });
+    }
+    const tags = specialties === undefined ? [] : specialties;
+    if (!Array.isArray(tags) || !tags.every((t) => typeof t === 'string')) {
+      return reply.code(400).send({ error: 'specialties must be a list of text' });
+    }
+    // One answer for an account that does not exist and one that is not a vendor's:
+    // an owner learns nothing about which ids are taken.
+    const target = getAccountById(platform, account as number);
+    if (!target || target.role !== 'vendor') {
+      return reply
+        .code(400)
+        .send({ error: `account #${account} is not a vendor account` });
+    }
+    const roster = openOrCreateRoster(me);
+    try {
+      const vendor = addVendor(roster, {
+        accountId: target.id,
+        displayName: (displayName as string | null | undefined) ?? null,
+        languages: pairs as Array<{ src: string; tgt: string }>,
+        specialties: tags as string[],
+        actor: deps.sessionActor(req),
+      });
+      const profile = getProfile(roster, vendor.id)!;
+      return reply.code(201).send({
+        vendor: {
+          accountId: profile.accountId,
+          displayName: profile.displayName,
+          languages: profile.languages,
+          specialties: profile.specialties,
+        },
+      });
+    } catch (err) {
+      return mapError(err, reply);
+    } finally {
+      roster.close();
+    }
+  });
+
+  // A vendor's whole rate history, oldest first: a rate is a row, never an edit.
+  app.get<{ Params: { accountId: string } }>(
+    '/api/vendors/:accountId/rates',
+    async (req, reply) => {
+      // The address is checked before the roster is opened: returning early with
+      // the file open leaks a handle, and Windows will not delete an open file.
+      const accountId = accountParam(req.params.accountId);
+      if (accountId === 0) return reply.code(404).send({ error: 'no such vendor' });
+      const roster = openRoster(deps.owner(req));
+      if (!roster) return reply.code(404).send({ error: 'no such vendor' });
+      try {
+        const vendor = getVendorByAccount(roster, accountId);
+        if (!vendor) return reply.code(404).send({ error: 'no such vendor' });
+        return { rates: vendorRateHistory(roster, vendor.id).map(rateView) };
+      } finally {
+        roster.close();
+      }
+    },
+  );
+
+  // Adds a rate (`#46`'s rules: not before today, not before the newest for the same
+  // pair and tier). A refusal is a 400 saying why.
+  app.put<{
+    Params: { accountId: string };
+    Body: {
+      src?: unknown;
+      tgt?: unknown;
+      tier?: unknown;
+      rateMicros?: unknown;
+      currency?: unknown;
+      effectiveFrom?: unknown;
+    };
+  }>('/api/vendors/:accountId/rates', async (req, reply) => {
+    const accountId = accountParam(req.params.accountId);
+    if (accountId === 0) return reply.code(404).send({ error: 'no such vendor' });
+    const roster = openRoster(deps.owner(req));
+    if (!roster) return reply.code(404).send({ error: 'no such vendor' });
+    try {
+      const vendor = getVendorByAccount(roster, accountId);
+      if (!vendor) return reply.code(404).send({ error: 'no such vendor' });
+      const { src, tgt, tier, rateMicros, currency, effectiveFrom } = req.body ?? {};
+      if (
+        typeof src !== 'string' ||
+        typeof tgt !== 'string' ||
+        typeof tier !== 'string' ||
+        typeof rateMicros !== 'number' ||
+        typeof currency !== 'string' ||
+        typeof effectiveFrom !== 'string'
+      ) {
+        return reply.code(400).send({
+          error:
+            'a rate needs src, tgt, tier, rateMicros (a number), currency and effectiveFrom (text)',
+        });
+      }
+      const entry = setVendorRate(roster, {
+        vendorId: vendor.id,
+        pair: { src, tgt },
+        tier: tier as RateTier,
+        rateMicros,
+        currency,
+        effectiveFrom,
+        actor: deps.sessionActor(req),
+      });
+      return reply.code(201).send({ rate: rateView(entry) });
+    } catch (err) {
+      return mapError(err, reply);
+    } finally {
+      roster.close();
+    }
+  });
 
   /** A vendor's answer: claim, accept or decline, on the roster `?owner=` names. */
   function vendorMove(

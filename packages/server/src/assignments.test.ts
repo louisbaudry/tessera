@@ -14,10 +14,14 @@ import { fileURLToPath } from 'node:url';
 import { hashPassword, type AuditActor } from '@cat-tool/core';
 import {
   addVendor,
+  addQaIssue,
   analyseTierWords,
   createAccount,
   createVendorFile,
+  dismissQaIssue,
   listEvents,
+  listSegments,
+  moveAssignment,
   openPlatformDb,
   openProjectDb,
   openVendorFile,
@@ -622,5 +626,286 @@ describe('opening an offer', () => {
     const res = await offerOf(await login('bob'), 1);
     expect(res.statusCode, res.body).toBe(200);
     expect((res.json() as { offer: { source: unknown } }).offer.source).toBeNull();
+  });
+});
+
+/** Takes assignment #1 the rest of the way to `delivered`, as bob (there is no vendor route for it yet). */
+async function deliveredByBob(): Promise<void> {
+  const b = await login('bob');
+  expect((await act(b, 1, 'accept')).statusCode).toBe(200);
+  const roster = openVendorFile(
+    join(config.storageRoot, alice.storageRoot, 'vendors.ctv'),
+  );
+  try {
+    for (const to of ['in_progress', 'delivered'] as const) {
+      moveAssignment(roster, {
+        assignmentId: 1,
+        vendorId: 1,
+        to,
+        by: 'vendor',
+        actor: SETUP,
+      });
+    }
+  } finally {
+    roster.close();
+  }
+}
+
+const review = (token: string, id: number, payload: Record<string, unknown> = {}) =>
+  app.inject({
+    method: 'POST',
+    url: `/api/assignments/${id}/review`,
+    headers: as(token),
+    payload,
+  });
+
+/** A blocking QA issue on the first segment of alice's project. */
+function blockProject(): number {
+  const project = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+  try {
+    const segmentId = listSegments(project, 1)[0]!.id;
+    addQaIssue(project, {
+      segmentId,
+      rule: 'tag.missing',
+      severity: 'error',
+      message: 'x',
+    });
+    return segmentId;
+  } finally {
+    project.close();
+  }
+}
+
+const openedBy = (token: string) =>
+  app.inject({
+    method: 'GET',
+    url: `/api/projects/job?owner=${alice.id}`,
+    headers: as(token),
+  });
+
+describe('the owner reviews a delivered job', () => {
+  it('closes it, records the PM, and ends the translator’s access to the project', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    await deliveredByBob();
+    const b = await login('bob');
+    expect((await openedBy(b)).statusCode).toBe(200); // working access, until the review
+
+    const res = await review(a, 1, { note: 'read it, fine' });
+    expect(res.statusCode, res.body).toBe(200);
+    const { assignment } = res.json() as {
+      assignment: {
+        status: string;
+        events: Array<{ to: string; by: string; note: string | null }>;
+      };
+    };
+    expect(assignment.status).toBe('reviewed');
+    expect(assignment.events.at(-1)).toMatchObject({
+      to: 'reviewed',
+      by: 'alice@example.com',
+      note: 'read it, fine',
+    });
+    expect((await openedBy(b)).statusCode).toBe(404); // the grant is revoked
+  });
+
+  it('is refused with the count while a blocking QA issue remains, and open to one who dismisses it', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    await deliveredByBob();
+    const segmentId = blockProject();
+
+    const refused = await review(a, 1);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ blocking: 1 });
+    expect(refused.json<{ error: string }>().error).toMatch(/blocking QA issue/);
+    const b = await login('bob');
+    expect((await openedBy(b)).statusCode).toBe(200); // still working: nothing was closed
+
+    const project = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    dismissQaIssue(project, { segmentId, rule: 'tag.missing' }, { actor: SETUP });
+    project.close();
+    expect((await review(a, 1)).statusCode).toBe(200);
+  });
+
+  it('is the machine’s 409 for a job not yet delivered, even with a blocking issue', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    blockProject();
+    const res = await review(a, 1);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).not.toHaveProperty('blocking');
+  });
+
+  it('is the owner’s alone: a vendor, a stranger and a missing job get the same 404', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    await deliveredByBob();
+    expect((await review(await login('bob'), 1)).statusCode).toBe(404);
+    expect((await review(await login('dave'), 1)).statusCode).toBe(404);
+    expect((await review(a, 99)).statusCode).toBe(404);
+    expect((await review(a, 1, { note: 3 })).statusCode).toBe(400);
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/assignments/1/review' })).statusCode,
+    ).toBe(401);
+  });
+
+  it('says so, and leaves the job delivered, when the project has since been deleted', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    await deliveredByBob();
+    rmSync(projectPath(config.storageRoot, alice, 'job'), { force: true });
+    const res = await review(a, 1);
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ error: string }>().error).toMatch(/is gone/);
+  });
+});
+
+describe('the owner’s list of assignments', () => {
+  it('is theirs, newest first, in the owner’s view; and a vendor’s own roster is empty', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    await post(a, offerBody({ channel: 'pool', vendors: [bob.id, carol.id] }));
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/assignments',
+      headers: as(a),
+    });
+    expect(res.statusCode).toBe(200);
+    const { assignments } = res.json() as {
+      assignments: Array<{ id: number; events: unknown[] }>;
+    };
+    expect(assignments.map((x) => x.id)).toEqual([2, 1]);
+    expect(assignments[0]!.events).toHaveLength(1);
+
+    const b = await login('bob');
+    expect(
+      (
+        await app.inject({ method: 'GET', url: '/api/assignments', headers: as(b) })
+      ).json(),
+    ).toEqual({ assignments: [] });
+  });
+});
+
+describe('the owner’s roster', () => {
+  const vendorsOf = (token: string) =>
+    app.inject({ method: 'GET', url: '/api/vendors', headers: as(token) });
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  function addVendorAccount(name: string): number {
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      return createAccount(platform, {
+        email: `${name}@example.com`,
+        passwordHash: hashPassword(`${name}-pw`),
+        actor: SETUP,
+        role: 'vendor',
+      }).id;
+    } finally {
+      platform.close();
+    }
+  }
+
+  it('lists who they engage by account id and name, never an email', async () => {
+    const a = await login('alice');
+    const res = await vendorsOf(a);
+    expect(res.statusCode).toBe(200);
+    expect(
+      res
+        .json<{ vendors: Array<{ accountId: number }> }>()
+        .vendors.map((v) => v.accountId),
+    ).toEqual([bob.id, carol.id]);
+    expect(res.body).not.toContain('@example.com');
+    expect(await vendorsOf(await login('dave'))).toMatchObject({ statusCode: 200 });
+    expect((await vendorsOf(await login('dave'))).json()).toEqual({ vendors: [] });
+  });
+
+  it('adds a vendor account, with languages and specialties, once', async () => {
+    const a = await login('alice');
+    const eve = addVendorAccount('eve');
+    const add = (body: Record<string, unknown>) =>
+      app.inject({ method: 'POST', url: '/api/vendors', headers: as(a), payload: body });
+    const res = await add({
+      account: eve,
+      displayName: 'Eve',
+      languages: [{ src: 'en', tgt: 'de' }],
+      specialties: ['Legal'],
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json()).toMatchObject({
+      vendor: {
+        accountId: eve,
+        displayName: 'Eve',
+        languages: [{ src: 'en', tgt: 'de' }],
+        specialties: ['legal'],
+      },
+    });
+    expect((await add({ account: eve })).statusCode).toBe(400); // already on the roster
+    // an account that is no vendor's, one that does not exist, and a bad body: all 400
+    const notVendor = await add({ account: dave.id });
+    const missing = await add({ account: 99999 });
+    expect([notVendor.statusCode, missing.statusCode]).toEqual([400, 400]);
+    expect(notVendor.json<{ error: string }>().error.replace(String(dave.id), 'N')).toBe(
+      missing.json<{ error: string }>().error.replace('99999', 'N'),
+    );
+    expect((await add({ account: 'x' })).statusCode).toBe(400);
+    expect((await add({ account: eve + 1, languages: [1] })).statusCode).toBe(400);
+  });
+
+  it('adds a rate as a row, lists the history, and refuses what #46 refuses', async () => {
+    const a = await login('alice');
+    const put = (accountId: number | string, body: Record<string, unknown>) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/vendors/${accountId}/rates`,
+        headers: as(a),
+        payload: body,
+      });
+    const rate = {
+      src: 'en',
+      tgt: 'de',
+      tier: 'no_match',
+      rateMicros: 80_000,
+      currency: 'eur',
+      effectiveFrom: today(),
+    };
+    const ok = await put(bob.id, rate);
+    expect(ok.statusCode, ok.body).toBe(201);
+    expect(ok.json()).toEqual({ rate: { ...rate, currency: 'EUR' } });
+    const history = await app.inject({
+      method: 'GET',
+      url: `/api/vendors/${bob.id}/rates`,
+      headers: as(a),
+    });
+    expect(history.json()).toEqual({ rates: [{ ...rate, currency: 'EUR' }] });
+
+    expect((await put(bob.id, { ...rate, effectiveFrom: '2020-01-01' })).statusCode).toBe(
+      400,
+    );
+    expect((await put(bob.id, { ...rate, tier: 'bogus' })).statusCode).toBe(400);
+    expect((await put(bob.id, { ...rate, rateMicros: -1 })).statusCode).toBe(400);
+    expect((await put(bob.id, { src: 'en' })).statusCode).toBe(400);
+    expect((await put(dave.id, rate)).statusCode).toBe(404); // not on the roster
+    expect((await put('abc', rate)).statusCode).toBe(404);
+  });
+
+  it('is the owner’s own: a vendor writing rates reaches their own empty roster, not the owner’s', async () => {
+    const b = await login('bob');
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/vendors/${bob.id}/rates`,
+      headers: as(b),
+      payload: {
+        src: 'en',
+        tgt: 'de',
+        tier: 'no_match',
+        rateMicros: 1,
+        currency: 'EUR',
+        effectiveFrom: new Date().toISOString().slice(0, 10),
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/vendors' })).statusCode).toBe(
+      401,
+    );
   });
 });
