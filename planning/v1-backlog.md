@@ -3208,8 +3208,8 @@ rest of that range:
     same words, and the rate-card date for pricing stays the first offer's.
   - **Not here:** the vendor's view of the breakdown and the rate card
     beside it is `#50`; the project is read on the request thread
-    (`listAllSegments`), fine at 10k segments and worth a job if a project
-    ever outgrows it. An offer with no `analysis` (a direct repository call)
+    (`listAllSegments`), unmeasured at scale: time it on a 10k-segment
+    project, and make it a job if it is slow. An offer with no `analysis` (a direct repository call)
     simply has none; the route always supplies it.
 - **#50 · Vendor-facing API: job feed, offer detail, accept/decline/
   claim · S** · [issue #29] — JSON only; the UI for it is `#52`.
