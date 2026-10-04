@@ -3029,6 +3029,9 @@ Split so the headless part does not wait on the editor:
     matcher is cached per file against a fingerprint of the glossary's rows
     (8 tests in `glossary-qa.test.ts`, including a variant added after the
     first build).
+  - **Windows CI starved two #110 suites twice** (`db/glossary/exceptions.test.ts`, then
+    `server/glossary.test.ts`, 5 s timeouts, different tests each run; not this card's code).
+    Both got a 60 s limit, the #82 convention, rather than a skip.
   - Silent, never an error, with no write target, a missing or unreadable
     file, or no language pair. Not built: re-running the rule over a
     project when its glossary changes (a QA run does it on demand).

@@ -655,193 +655,205 @@ describe('glossary mismatches over one file (backlog #43c)', () => {
   });
 });
 
-describe('recording an exception and accepting its proposal (backlog #110)', () => {
-  const base = '/api/projects/ms';
-  const post = (token: string, url: string, payload: object) =>
-    app.inject({ method: 'POST', url, headers: auth(token), payload });
+// SQLite-heavy: a fixed 5 s starved out on the 2-fork Windows runner (#82), so the suite
+// gets the slack the other heavy suites have.
+describe(
+  'recording an exception and accepting its proposal (backlog #110)',
+  { timeout: 60_000 },
+  () => {
+    const base = '/api/projects/ms';
+    const post = (token: string, url: string, payload: object) =>
+      app.inject({ method: 'POST', url, headers: auth(token), payload });
 
-  const segmentsOf = async (token: string, fileId: number): Promise<Segment[]> =>
-    (
+    const segmentsOf = async (token: string, fileId: number): Promise<Segment[]> =>
       (
-        await app.inject({
-          method: 'GET',
-          url: `${base}/files/${fileId}/segments`,
-          headers: auth(token),
-        })
-      ).json() as { segments: Segment[] }
-    ).segments;
+        (
+          await app.inject({
+            method: 'GET',
+            url: `${base}/files/${fileId}/segments`,
+            headers: auth(token),
+          })
+        ).json() as { segments: Segment[] }
+      ).segments;
 
-  const setTarget = async (token: string, segment: Segment, text: string) => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `${base}/segments/${segment.id}`,
-      headers: auth(token),
-      payload: {
-        targetTokens: [{ t: 'text', v: text }],
-        baseUpdatedAt: segment.updatedAt,
-      },
-    });
-    expect(res.statusCode, res.body).toBe(200);
-  };
-
-  /** "Palisuf" is "Gemeinde" (preferred), "Pfarrei" (acceptable) and never "Kirche". */
-  function seed(): number {
-    const g = openGlossary(
-      join(config.storageRoot, alice.storageRoot, 'glossaries', 'acme.ctg'),
-    );
-    const term = insertTerm(g);
-    addVariant(g, { termId: term.id, lang: 'en', text: 'Palisuf' });
-    addVariant(g, { termId: term.id, lang: 'de', text: 'Gemeinde' });
-    addVariant(g, { termId: term.id, lang: 'de', text: 'Pfarrei' });
-    addVariant(g, { termId: term.id, lang: 'de', text: 'Kirche', forbidden: true });
-    g.close();
-    return term.id;
-  }
-
-  async function ready() {
-    const token = await login('alice@example.com', 'alice-pw');
-    const fileId = await projectWithFile(token);
-    await createGlossaryNamed(token, 'acme');
-    const termId = seed();
-    await attach(token, 'ms', 'acme', true);
-    const withTerm = (await segmentsOf(token, fileId)).filter((s) =>
-      /palisuf/i.test(plainText(s.sourceTokens)),
-    );
-    expect(withTerm.length).toBeGreaterThanOrEqual(4);
-    return { token, fileId, termId, withTerm };
-  }
-
-  const exceptions = (token: string, fileId: number, segmentId: number, termId: number) =>
-    post(token, `${base}/files/${fileId}/glossary/exceptions`, { segmentId, termId });
-  const proposals = async (token: string) =>
-    (
-      await app.inject({
-        method: 'GET',
-        url: `${base}/glossary/proposals`,
+    const setTarget = async (token: string, segment: Segment, text: string) => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `${base}/segments/${segment.id}`,
         headers: auth(token),
-      })
-    ).json() as {
-      glossary: string | null;
-      proposals: Array<{
-        term: string;
-        chosen: string;
-        preferred: string;
-        segments: number;
-      }>;
+        payload: {
+          targetTokens: [{ t: 'text', v: text }],
+          baseUpdatedAt: segment.updatedAt,
+        },
+      });
+      expect(res.statusCode, res.body).toBe(200);
     };
 
-  it('records the alternative used, proposes it at three segments, and accepting it flips the entry', async () => {
-    const { token, fileId, termId, withTerm } = await ready();
-    for (const s of withTerm.slice(0, 3)) await setTarget(token, s, 'Unsere Pfarrei.');
-
-    for (const s of withTerm.slice(0, 2)) {
-      expect((await exceptions(token, fileId, s.id, termId)).statusCode).toBe(200);
+    /** "Palisuf" is "Gemeinde" (preferred), "Pfarrei" (acceptable) and never "Kirche". */
+    function seed(): number {
+      const g = openGlossary(
+        join(config.storageRoot, alice.storageRoot, 'glossaries', 'acme.ctg'),
+      );
+      const term = insertTerm(g);
+      addVariant(g, { termId: term.id, lang: 'en', text: 'Palisuf' });
+      addVariant(g, { termId: term.id, lang: 'de', text: 'Gemeinde' });
+      addVariant(g, { termId: term.id, lang: 'de', text: 'Pfarrei' });
+      addVariant(g, { termId: term.id, lang: 'de', text: 'Kirche', forbidden: true });
+      g.close();
+      return term.id;
     }
-    expect((await proposals(token)).proposals).toEqual([]); // two is not a pattern yet
-    expect((await exceptions(token, fileId, withTerm[2]!.id, termId)).statusCode).toBe(
-      200,
-    );
 
-    const got = await proposals(token);
-    expect(got.glossary).toBe('acme');
-    expect(got.proposals).toEqual([
-      {
-        termId,
-        lang: 'de',
-        term: 'Palisuf',
-        chosen: 'Pfarrei',
-        preferred: 'Gemeinde',
-        segments: 3,
-      },
-    ]);
+    async function ready() {
+      const token = await login('alice@example.com', 'alice-pw');
+      const fileId = await projectWithFile(token);
+      await createGlossaryNamed(token, 'acme');
+      const termId = seed();
+      await attach(token, 'ms', 'acme', true);
+      const withTerm = (await segmentsOf(token, fileId)).filter((s) =>
+        /palisuf/i.test(plainText(s.sourceTokens)),
+      );
+      expect(withTerm.length).toBeGreaterThanOrEqual(4);
+      return { token, fileId, termId, withTerm };
+    }
 
-    const accepted = await post(token, `${base}/glossary/proposals/accept`, {
-      termId,
-      lang: 'de',
-      chosen: 'Pfarrei',
-    });
-    expect(accepted.statusCode, accepted.body).toBe(200);
-    expect((await proposals(token)).proposals).toEqual([]);
-
-    // the entry now prefers Pfarrei: "Unsere Gemeinde." is the one that departs
-    await setTarget(token, withTerm[3]!, 'Unsere Gemeinde.');
-    const list = (
-      await app.inject({
-        method: 'GET',
-        url: `${base}/files/${fileId}/glossary/mismatches`,
-        headers: auth(token),
-      })
-    ).json() as {
-      mismatches: Array<{ segmentId: number; preferred: string; found: string | null }>;
-    };
-    expect(list.mismatches.map((m) => [m.segmentId, m.preferred, m.found])).toEqual([
-      [withTerm[3]!.id, 'Pfarrei', 'Gemeinde'],
-    ]);
-  });
-
-  it('refuses a row that is not an acceptable alternative: a forbidden one, one that matches, an unknown pair', async () => {
-    const { token, fileId, termId, withTerm } = await ready();
-    await setTarget(token, withTerm[0]!, 'Unsere Kirche.'); // forbidden
-    await setTarget(token, withTerm[1]!, 'Unsere Gemeinde.'); // preferred: no mismatch
-    expect((await exceptions(token, fileId, withTerm[0]!.id, termId)).statusCode).toBe(
-      409,
-    );
-    expect((await exceptions(token, fileId, withTerm[1]!.id, termId)).statusCode).toBe(
-      409,
-    );
-    expect((await exceptions(token, fileId, 999999, termId)).statusCode).toBe(409);
-    expect((await exceptions(token, fileId, withTerm[0]!.id, 999999)).statusCode).toBe(
-      409,
-    );
-    expect(
-      (
-        await post(token, `${base}/files/${fileId}/glossary/exceptions`, {
-          segmentId: 'x',
-        })
-      ).statusCode,
-    ).toBe(400);
-    expect((await proposals(token)).proposals).toEqual([]);
-  });
-
-  it('refuses to accept what nothing proposes, and answers nothing without a write target', async () => {
-    const { token, termId } = await ready();
-    const stale = await post(token, `${base}/glossary/proposals/accept`, {
-      termId,
-      lang: 'de',
-      chosen: 'Pfarrei',
-    });
-    expect(stale.statusCode).toBe(409);
-    expect(
-      (await post(token, `${base}/glossary/proposals/accept`, { termId })).statusCode,
-    ).toBe(400);
-  });
-
-  it('answers nothing, and refuses to record, when the glossary is not the write target', async () => {
-    const token = await login('alice@example.com', 'alice-pw');
-    const fileId = await projectWithFile(token);
-    await createGlossaryNamed(token, 'acme');
-    const termId = seed();
-    await attach(token, 'ms', 'acme', false);
-    expect(await proposals(token)).toEqual({ glossary: null, proposals: [] });
-    expect((await exceptions(token, fileId, 1, termId)).statusCode).toBe(409);
-  });
-
-  it('is the account’s own: another account’s project is a 404, and no login a 401', async () => {
-    const { token, fileId, termId, withTerm } = await ready();
-    const b = await login('bob@example.com', 'bob-pw');
-    expect((await exceptions(b, fileId, withTerm[0]!.id, termId)).statusCode).toBe(404);
-    expect(
+    const exceptions = (
+      token: string,
+      fileId: number,
+      segmentId: number,
+      termId: number,
+    ) =>
+      post(token, `${base}/files/${fileId}/glossary/exceptions`, { segmentId, termId });
+    const proposals = async (token: string) =>
       (
         await app.inject({
           method: 'GET',
           url: `${base}/glossary/proposals`,
-          headers: auth(b),
+          headers: auth(token),
         })
-      ).statusCode,
-    ).toBe(404);
-    expect(
-      (await app.inject({ method: 'GET', url: `${base}/glossary/proposals` })).statusCode,
-    ).toBe(401);
-    void token;
-  });
-});
+      ).json() as {
+        glossary: string | null;
+        proposals: Array<{
+          term: string;
+          chosen: string;
+          preferred: string;
+          segments: number;
+        }>;
+      };
+
+    it('records the alternative used, proposes it at three segments, and accepting it flips the entry', async () => {
+      const { token, fileId, termId, withTerm } = await ready();
+      for (const s of withTerm.slice(0, 3)) await setTarget(token, s, 'Unsere Pfarrei.');
+
+      for (const s of withTerm.slice(0, 2)) {
+        expect((await exceptions(token, fileId, s.id, termId)).statusCode).toBe(200);
+      }
+      expect((await proposals(token)).proposals).toEqual([]); // two is not a pattern yet
+      expect((await exceptions(token, fileId, withTerm[2]!.id, termId)).statusCode).toBe(
+        200,
+      );
+
+      const got = await proposals(token);
+      expect(got.glossary).toBe('acme');
+      expect(got.proposals).toEqual([
+        {
+          termId,
+          lang: 'de',
+          term: 'Palisuf',
+          chosen: 'Pfarrei',
+          preferred: 'Gemeinde',
+          segments: 3,
+        },
+      ]);
+
+      const accepted = await post(token, `${base}/glossary/proposals/accept`, {
+        termId,
+        lang: 'de',
+        chosen: 'Pfarrei',
+      });
+      expect(accepted.statusCode, accepted.body).toBe(200);
+      expect((await proposals(token)).proposals).toEqual([]);
+
+      // the entry now prefers Pfarrei: "Unsere Gemeinde." is the one that departs
+      await setTarget(token, withTerm[3]!, 'Unsere Gemeinde.');
+      const list = (
+        await app.inject({
+          method: 'GET',
+          url: `${base}/files/${fileId}/glossary/mismatches`,
+          headers: auth(token),
+        })
+      ).json() as {
+        mismatches: Array<{ segmentId: number; preferred: string; found: string | null }>;
+      };
+      expect(list.mismatches.map((m) => [m.segmentId, m.preferred, m.found])).toEqual([
+        [withTerm[3]!.id, 'Pfarrei', 'Gemeinde'],
+      ]);
+    });
+
+    it('refuses a row that is not an acceptable alternative: a forbidden one, one that matches, an unknown pair', async () => {
+      const { token, fileId, termId, withTerm } = await ready();
+      await setTarget(token, withTerm[0]!, 'Unsere Kirche.'); // forbidden
+      await setTarget(token, withTerm[1]!, 'Unsere Gemeinde.'); // preferred: no mismatch
+      expect((await exceptions(token, fileId, withTerm[0]!.id, termId)).statusCode).toBe(
+        409,
+      );
+      expect((await exceptions(token, fileId, withTerm[1]!.id, termId)).statusCode).toBe(
+        409,
+      );
+      expect((await exceptions(token, fileId, 999999, termId)).statusCode).toBe(409);
+      expect((await exceptions(token, fileId, withTerm[0]!.id, 999999)).statusCode).toBe(
+        409,
+      );
+      expect(
+        (
+          await post(token, `${base}/files/${fileId}/glossary/exceptions`, {
+            segmentId: 'x',
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect((await proposals(token)).proposals).toEqual([]);
+    });
+
+    it('refuses to accept what nothing proposes, and answers nothing without a write target', async () => {
+      const { token, termId } = await ready();
+      const stale = await post(token, `${base}/glossary/proposals/accept`, {
+        termId,
+        lang: 'de',
+        chosen: 'Pfarrei',
+      });
+      expect(stale.statusCode).toBe(409);
+      expect(
+        (await post(token, `${base}/glossary/proposals/accept`, { termId })).statusCode,
+      ).toBe(400);
+    });
+
+    it('answers nothing, and refuses to record, when the glossary is not the write target', async () => {
+      const token = await login('alice@example.com', 'alice-pw');
+      const fileId = await projectWithFile(token);
+      await createGlossaryNamed(token, 'acme');
+      const termId = seed();
+      await attach(token, 'ms', 'acme', false);
+      expect(await proposals(token)).toEqual({ glossary: null, proposals: [] });
+      expect((await exceptions(token, fileId, 1, termId)).statusCode).toBe(409);
+    });
+
+    it('is the account’s own: another account’s project is a 404, and no login a 401', async () => {
+      const { token, fileId, termId, withTerm } = await ready();
+      const b = await login('bob@example.com', 'bob-pw');
+      expect((await exceptions(b, fileId, withTerm[0]!.id, termId)).statusCode).toBe(404);
+      expect(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `${base}/glossary/proposals`,
+            headers: auth(b),
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (await app.inject({ method: 'GET', url: `${base}/glossary/proposals` }))
+          .statusCode,
+      ).toBe(401);
+      void token;
+    });
+  },
+);
