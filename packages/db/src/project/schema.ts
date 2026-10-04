@@ -395,6 +395,51 @@ const v10: Migration = {
 };
 
 /**
+ * `qa_issue` and `qa_rule_setting` widened with `term.glossary_mismatch`
+ * (backlog #44), `rebuildTable`'s second use. The v7 DDL again with one
+ * more member in a fresh literal; every row and id is kept, and the rule
+ * starts enabled everywhere, `qa_rule_setting` being absence-based.
+ */
+const V11_QA_RULES = [
+  ...V7_QA_RULES,
+  'term.glossary_mismatch',
+] as const satisfies readonly QaRule[];
+
+const v11: Migration = {
+  version: 11,
+  description:
+    'qa_issue and qa_rule_setting widened with term.glossary_mismatch (smart-glossary-spec.md §6, backlog #44)',
+  up: (db) => {
+    rebuildTable(
+      db,
+      'qa_issue',
+      `
+      CREATE TABLE qa_issue (
+        id         INTEGER PRIMARY KEY,
+        segment_id INTEGER NOT NULL REFERENCES segment(id),
+        rule       TEXT NOT NULL CHECK (rule IN (${sqlList(V11_QA_RULES)})),
+        severity   TEXT NOT NULL CHECK (severity IN (${sqlList(V1_QA_SEVERITIES)})),
+        message    TEXT NOT NULL,
+        dismissed  INTEGER NOT NULL DEFAULT 0,
+        run_at     TEXT NOT NULL
+      );
+      CREATE INDEX qa_issue_segment ON qa_issue(segment_id);
+    `,
+    );
+    rebuildTable(
+      db,
+      'qa_rule_setting',
+      `
+      CREATE TABLE qa_rule_setting (
+        rule    TEXT PRIMARY KEY CHECK (rule IN (${sqlList(V11_QA_RULES)})),
+        enabled INTEGER NOT NULL DEFAULT 1
+      );
+    `,
+    );
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -410,4 +455,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v8,
   v9,
   v10,
+  v11,
 ];

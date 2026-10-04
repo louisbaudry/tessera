@@ -438,9 +438,11 @@ is the orchestration (load the segment, run the registry, persist);
 once, not once per segment (that cost seconds for one save of a
 much-repeated segment, backlog #29), and `rerunQaAfterEdit` reruns an
 edit and every segment whose `consistency.*` findings it can move;
-`db/project/qa-settings.ts` is the per-project switches. All thirteen
+`db/project/qa-settings.ts` is the per-project switches. All fourteen
 §6.4 rules are in the one `QA_CHECKS` registry (backlog #22 the tag
-rules, #23 `seg.*`/`consistency.*`, #24 `num.*`/`punct.*`); a new rule
+rules, #23 `seg.*`/`consistency.*`, #24 `num.*`/`punct.*`, #44
+`term.glossary_mismatch`, a `warning` that reads the project's
+write-target `.ctg` once per pass: `db/project/glossary-qa.ts`); a new rule
 goes there, never into a second one. The locale-aware rules keep their
 tables as data in `core/qa/locale.ts` (number formats, French spacing
 profiles) and their numeral matching in `core/qa/numbers.ts`; the

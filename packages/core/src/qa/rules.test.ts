@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { mismatchFinder } from '../glossary/mismatch.js';
 import type { QaRule } from '../model/qa.js';
 import type { FormatEntry, Token } from '../model/token.js';
 import { QA_CHECKS, runQaChecks, type QaCheckContext } from './rules.js';
@@ -766,5 +767,65 @@ describe('hidden placeholders (backlog #29)', () => {
     expect(
       runQaChecks({ source, target, srcLang: 'en', tgtLang: 'es' }, rules).length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe('checkGlossaryMismatch (term.glossary_mismatch)', () => {
+  const form = (t: string) => ({ text: t, plain: t.toLowerCase() });
+  const entries = [
+    {
+      termId: 1,
+      source: [form('invoice')],
+      preferred: form('Rechnung'),
+      alternatives: [form('Faktura')],
+      forbidden: [form('Quittung')],
+    },
+    {
+      termId: 2,
+      source: [form('due')],
+      preferred: form('f\u00e4llig'),
+      alternatives: [],
+      forbidden: [],
+    },
+  ];
+  const glossary = mismatchFinder(entries, { srcLang: 'en', tgtLang: 'de' });
+  const withGlossary = (source: string, target: string | null): QaCheckContext => ({
+    ...pair(source, target),
+    glossary,
+  });
+
+  it('reports nothing without a glossary in the loop', () => {
+    expect(only(pair('The invoice', 'Die Faktura'), 'term.glossary_mismatch')).toEqual(
+      [],
+    );
+  });
+
+  it('is one warning per segment naming every term', () => {
+    expect(
+      only(
+        withGlossary('The invoice is due.', 'Die Quittung ist bald.'),
+        'term.glossary_mismatch',
+      ),
+    ).toEqual([
+      {
+        rule: 'term.glossary_mismatch',
+        severity: 'warning',
+        message:
+          '\u201Cinvoice\u201D: forbidden rendering \u201CQuittung\u201D used; ' +
+          '\u201Cdue\u201D: expected \u201Cf\u00e4llig\u201D',
+      },
+    ]);
+  });
+
+  it('passes a target with the preferred renderings, and a missing target', () => {
+    expect(
+      only(
+        withGlossary('The invoice is due.', 'Die Rechnung ist f\u00e4llig.'),
+        'term.glossary_mismatch',
+      ),
+    ).toEqual([]);
+    expect(
+      only(withGlossary('The invoice is due.', null), 'term.glossary_mismatch'),
+    ).toEqual([]);
   });
 });

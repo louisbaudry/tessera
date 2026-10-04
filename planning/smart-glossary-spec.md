@@ -695,13 +695,35 @@ belongs to (§2.3): a `db` listing, a pure `core` matcher, one route.
   all of them. Measured (synthetic, 10,000 segments × 500 entries, a high
   hit rate): 1,115 ms with a search per pair, 148 ms indexed.
 
-**QA integration is deferred.** `QA_RULES` is a closed set baked into the
-project schema's CHECK constraint (`db/project/schema.ts`), so a
-`term.glossary_mismatch` rule is a project-format migration, not a
-constant added: it widens `qa_issue` and `qa_rule_setting` with
-`rebuildTable` (`db/migrate.ts`), as project v7 did (backlog `#64`).
-It lands with Epic 8's semantic QA (`v1-spec.md` §6.4 extended), where
-it belongs, and as `warning` at most.
+**QA integration (#44, 2026-10-04).** The same matcher is also a QA rule,
+`term.glossary_mismatch`, severity `warning` (never `error`, so it never
+blocks delivery: §6). `QA_RULES` is a closed set baked into the project
+schema's CHECK constraint, so it is project migration v11, which widens
+`qa_issue` and `qa_rule_setting` with `rebuildTable` (`db/migrate.ts`), as v7
+did (backlog `#64`).
+
+- **One matcher, two readers.** `mismatchFinder` (`core/glossary/mismatch.ts`)
+  is `findMismatches`'s body made reusable: entries in, a function from one
+  source/target pair to its mismatches out. The panel's list and the QA rule
+  therefore agree on which segments are flagged, by construction.
+- **One finding per segment**, naming every term (the QA rule of one row per
+  rule per segment). Dismissal is by rule, as for every rule: it hides the
+  warning, and is not "record this as an exception" (#110), which is the
+  evidence the preference flips on.
+- **Only the write-target glossary is consulted**, for the reason §5a.1 gives.
+  No write target, a file that is gone or unreadable, or no project language
+  pair: the rule is silent, as the panel's list is. QA never fails an edit
+  over a glossary.
+- **Read once per pass, cached per file** (`db/project/glossary-qa.ts`).
+  `listTermEntries` costs about 100 ms per thousand terms (a query per term),
+  500 ms at 5,000, which a save cannot pay. The built matcher is kept per path
+  and rebuilt when a cheap fingerprint of the file's decisions, terms and
+  variants moves. The file is opened as `peekTm` opens a memory
+  (`query_only`, no integrity check): it is read on every edit.
+- **Advice can be stale.** The rule runs on a segment when that segment is
+  edited or QA is run over the project; changing the glossary does not
+  re-run it over every segment. The panel's list, computed on request, is the
+  live view; the QA row is the one that survives in the QA panel.
 
 ---
 
@@ -777,8 +799,7 @@ the AI. Split because the server had no glossary routes at all — **#43a** the
 API (§5a.1), **#43b** the panel (§5a.2), and **#43c** the §6 mismatch
 list, which the panel's second tab waits for.
 
-**#44 · `term.glossary_mismatch` QA rule · S — with Epic 8 semantic QA.**
-Project-format migration extending `QA_RULES`. Severity `warning`.
+**#44 · ~~`term.glossary_mismatch` QA rule~~ · DONE** (see §6.1, "QA integration").
 
 #39–#41 have no dependency on Epic 6 or Epic 8 and can be built now.
 

@@ -25,6 +25,7 @@ export const QA_RULE_LABEL: Readonly<Record<QaRule, string>> = {
   'punct.brackets': 'Unbalanced brackets or quotes',
   'punct.inverted': 'Missing \u00BF or \u00A1',
   'punct.spacing': 'Spacing',
+  'term.glossary_mismatch': 'Glossary term',
 };
 
 export const QA_RULE_ORDER = Object.keys(QA_RULE_LABEL) as readonly QaRule[];

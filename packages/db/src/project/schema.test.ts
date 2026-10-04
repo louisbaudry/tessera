@@ -113,6 +113,8 @@ describe('openProjectDb', () => {
 });
 
 describe('v7: qa_issue and qa_rule_setting rebuilt (backlog #64)', () => {
+  /** The list v1 and v3 froze: today's, less what later migrations added. */
+  const V1_QA_RULES = QA_RULES.filter((r) => r !== 'term.glossary_mismatch');
   const TAG_RULES = ['tag.missing', 'tag.extra', 'tag.unbalanced'];
 
   /**
@@ -129,7 +131,7 @@ describe('v7: qa_issue and qa_rule_setting rebuilt (backlog #64)', () => {
             get: (target, key) =>
               key === 'exec'
                 ? (sql: string) =>
-                    target.exec(sql.replaceAll(sqlList(QA_RULES), sqlList(TAG_RULES)))
+                    target.exec(sql.replaceAll(sqlList(V1_QA_RULES), sqlList(TAG_RULES)))
                 : (Reflect.get(target, key) as unknown),
           }),
         ),
@@ -208,6 +210,52 @@ describe('v7: qa_issue and qa_rule_setting rebuilt (backlog #64)', () => {
       expect.objectContaining({ type: 'index', name: 'qa_issue_segment' }),
     );
     fresh.close();
+    db.close();
+  });
+});
+
+describe('v11: qa_issue and qa_rule_setting widened with term.glossary_mismatch (backlog #44)', () => {
+  it('a v10 file rejects the rule; opening it accepts it and keeps every row and id', () => {
+    const path = dbPath();
+    openAndMigrate(path, {
+      applicationId: PROJECT_APPLICATION_ID,
+      migrations: PROJECT_MIGRATIONS.slice(0, 10),
+    }).close();
+    const seeded = new Database(path);
+    seeded.exec(`
+      INSERT INTO file (id, rel_path, original_blob, skeleton, part_map, imported_at)
+        VALUES (1, 'a.docx', x'00', '[]', '[]', '2026-01-01');
+      INSERT INTO segment
+        (id, file_id, part, ord, para_key, para_ord, source_tokens, format_table, source_hash, status, updated_at, fallback_copy)
+        VALUES (1, 1, 'document', 0, 'p1', 0, '[]', '[]', 'h1', 'new', '2026-01-01', 0);
+      INSERT INTO qa_issue (id, segment_id, rule, severity, message, dismissed, run_at)
+        VALUES (7, 1, 'tag.missing', 'error', 'Missing tags: 1', 1, '2026-01-01');
+      INSERT INTO qa_rule_setting (rule, enabled) VALUES ('punct.spacing', 0);
+    `);
+    expect(() =>
+      seeded
+        .prepare(
+          "INSERT INTO qa_rule_setting (rule, enabled) VALUES ('term.glossary_mismatch', 0)",
+        )
+        .run(),
+    ).toThrow(/CHECK constraint failed/);
+    const issues = seeded.prepare('SELECT * FROM qa_issue ORDER BY id').all();
+    const settings = seeded.prepare('SELECT * FROM qa_rule_setting ORDER BY rule').all();
+    seeded.close();
+
+    const db = openProjectDb(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(PROJECT_MIGRATIONS.length);
+    expect(db.prepare('SELECT * FROM qa_issue ORDER BY id').all()).toEqual(issues);
+    expect(db.prepare('SELECT * FROM qa_rule_setting ORDER BY rule').all()).toEqual(
+      settings,
+    );
+    setRuleEnabled(db, 'term.glossary_mismatch', false);
+    db.prepare(
+      "INSERT INTO qa_issue (segment_id, rule, severity, message, run_at) VALUES (1, 'term.glossary_mismatch', 'warning', 'x', 't')",
+    ).run();
+    expect(
+      db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'qa_issue_segment'").get(),
+    ).toBeDefined();
     db.close();
   });
 });

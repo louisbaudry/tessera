@@ -945,6 +945,7 @@ acceptance test, not schema validity.
 | `punct.brackets` | error | Unbalanced `()[]{}` or quote pairs in target |
 | `punct.inverted` | error | ES only: `?` without a matching `¿`, or `!` without `¡` |
 | `punct.spacing` | warning | Double space, space before `,.;:`, missing FR narrow no-break space |
+| `term.glossary_mismatch` | warning | Target lacks a glossary term's preferred rendering, or uses a forbidden one (`smart-glossary-spec.md` §6.1; silent with no write-target glossary) |
 
 Rules run per segment on confirm, on every target the editor saves —
 that segment and every segment whose consistency findings the edit can

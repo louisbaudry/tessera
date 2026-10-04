@@ -3010,10 +3010,28 @@ Split so the headless part does not wait on the editor:
       (`authorization.test.ts`) caught it, which is what it is for.
     - Driven in Chromium: three records, the proposal, accepting it, the mismatch rows gone
       (the alternative is now preferred). The one console 404 is #43b's "no session yet".
-- **#44 · `term.glossary_mismatch` QA rule · S** · [issue #15] — with
-  Epic 8's semantic QA; a project-format migration, since `QA_RULES` is
-  a CHECK constraint: it widens both QA tables with `rebuildTable`
-  (`db/migrate.ts`, since `#64`), as project v7 did.
+- **#44 · ~~`term.glossary_mismatch` QA rule~~ · DONE — `core/qa/rules.ts`
+  (`checkGlossaryMismatch`), `core/glossary/mismatch.ts` (`mismatchFinder`),
+  `db/project/glossary-qa.ts`, project migration v11.** A `warning`, one finding
+  per segment naming every term, from the same matcher as the panel's
+  mismatch list (#43c), so the two cannot disagree. Design in
+  `smart-glossary-spec.md` §6.1 ("QA integration").
+  - **Migration v11** widens both QA tables with `rebuildTable` (its second
+    use), as v7 did; a test upgrades a v10 file and checks rows, ids and the
+    `qa_issue_segment` index survive. `check-lists.test.ts` held the constant
+    and the snapshot together, as #64 intended.
+  - **A test that narrowed a CHECK by matching the live list broke**, in the
+    right way: the v7 drift simulation replaced `sqlList(QA_RULES)` in the
+    v1 DDL, which stopped matching once `QA_RULES` grew past v1's frozen list.
+    It now derives v1's list as today's less what later migrations added.
+  - **Cost found by measuring, not by the tests**: reading a glossary's
+    entries is a query per term, 506 ms at 5,000 terms, on every save. The
+    matcher is cached per file against a fingerprint of the glossary's rows
+    (8 tests in `glossary-qa.test.ts`, including a variant added after the
+    first build).
+  - Silent, never an error, with no write target, a missing or unreadable
+    file, or no language pair. Not built: re-running the rule over a
+    project when its glossary changes (a QA run does it on demand).
 
 ### Epic 9 — Language Provider tools (spec'd 2026-09-22, not started)
 

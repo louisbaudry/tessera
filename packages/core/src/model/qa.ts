@@ -19,6 +19,8 @@ export const QA_RULES = [
   /** Spanish only: `?` without `¿`, or `!` without `¡`. No analogue in the other six languages. */
   'punct.inverted',
   'punct.spacing',
+  /** Advice, never an error: the target lacks the glossary's preferred rendering, or uses a forbidden one (smart-glossary-spec.md §6). */
+  'term.glossary_mismatch',
 ] as const;
 
 export type QaRule = (typeof QA_RULES)[number];
@@ -37,6 +39,7 @@ export const DEFAULT_SEVERITY: Readonly<Record<QaRule, QaSeverity>> = {
   'punct.brackets': 'error',
   'punct.inverted': 'error',
   'punct.spacing': 'warning',
+  'term.glossary_mismatch': 'warning',
 };
 
 export interface QaIssue {

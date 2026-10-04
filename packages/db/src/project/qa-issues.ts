@@ -15,6 +15,7 @@ import {
 import type Database from 'better-sqlite3';
 
 import { appendAuditEvent } from '../audit/events.js';
+import { glossaryMismatchFinder } from './glossary-qa.js';
 import { getProject } from './project.js';
 import { listEnabledRules } from './qa-settings.js';
 import { getSegment, SegmentRepoError } from './segments.js';
@@ -311,6 +312,10 @@ function runChecks(
   // those rules then report nothing rather than guess a locale.
   const project = getProject(db);
   const rules = listEnabledRules(db);
+  // Read once per pass, and only if the rule is on.
+  const glossary = rules.has('term.glossary_mismatch')
+    ? glossaryMismatchFinder(db, project)
+    : undefined;
   return segmentIds.flatMap((segmentId) => {
     const segment = getSegment(db, segmentId);
     if (!segment) {
@@ -326,6 +331,7 @@ function runChecks(
         srcLang: project?.srcLang,
         tgtLang: project?.tgtLang,
         formats: segment.formatTable,
+        glossary,
       },
       rules,
     );
