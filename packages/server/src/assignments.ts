@@ -29,9 +29,11 @@ import {
   createDirectOffer,
   createVendorFile,
   declineAssignment,
+  deliverAssignment,
   getAccountById,
   getAssignment,
   getAssignmentAnalysis,
+  getAssignmentPayable,
   getProfile,
   getVendor,
   getProject,
@@ -48,6 +50,7 @@ import {
   postToPool,
   ReviewBlockedError,
   reviewAssignment,
+  startAssignment,
   revokeProjectAuthorization,
   setVendorRate,
   vendorRateHistory,
@@ -103,6 +106,18 @@ function readPreview(path: string) {
   }
 }
 
+/** The project's language pair, or null if the project is gone (a delivery is not refused for that). */
+function readPair(path: string): { src: string; tgt: string } | null {
+  if (!existsSync(path)) return null;
+  const project = openProjectDb(path);
+  try {
+    const meta = getProject(project);
+    return meta ? { src: meta.srcLang, tgt: meta.tgtLang } : null;
+  } finally {
+    project.close();
+  }
+}
+
 /** The words of a project by match tier, read once and closed. */
 function analyseProject(path: string) {
   const project = openProjectDb(path);
@@ -146,6 +161,7 @@ export function registerAssignmentRoutes(
     return {
       ...vendorView(a),
       analysis: getAssignmentAnalysis(roster, a.id),
+      payable: getAssignmentPayable(roster, a.id),
       vendorAccountId: a.vendorId === null ? null : accountOf(a.vendorId),
       eligible: listPoolMembers(roster, a.id).map(accountOf),
       events: listAssignmentEvents(roster, a.id).map((e) => ({
@@ -386,6 +402,8 @@ export function registerAssignmentRoutes(
             source: preview
               ? { segments: preview.segments, preview: preview.sample }
               : null,
+            // Null until delivered; then the amount that locked (decision 10).
+            payable: getAssignmentPayable(roster, assignment.id),
             rateCard: card,
           },
         };
@@ -630,8 +648,12 @@ export function registerAssignmentRoutes(
 
   /** A vendor's answer: claim, accept or decline, on the roster `?owner=` names. */
   function vendorMove(
-    verb: 'claim' | 'accept' | 'decline',
-    move: typeof claimAssignment,
+    verb: 'claim' | 'accept' | 'decline' | 'start' | 'deliver',
+    move: (
+      roster: Roster,
+      o: Parameters<typeof claimAssignment>[1],
+      owner: Account,
+    ) => Assignment,
   ): void {
     app.post<{ Params: { id: string }; Body: { note?: unknown } | undefined }>(
       `/api/assignments/:id/${verb}`,
@@ -649,12 +671,16 @@ export function registerAssignmentRoutes(
         try {
           const vendor = getVendorByAccount(roster, me.id);
           if (!vendor) return noSuch(reply);
-          const assignment = move(roster, {
-            assignmentId: id,
-            vendorId: vendor.id,
-            note: (note as string | null | undefined) ?? null,
-            actor: deps.sessionActor(req),
-          });
+          const assignment = move(
+            roster,
+            {
+              assignmentId: id,
+              vendorId: vendor.id,
+              note: (note as string | null | undefined) ?? null,
+              actor: deps.sessionActor(req),
+            },
+            ownerAccount,
+          );
           if (verb === 'accept') {
             // Accepting opens the editor: the grant of #45. Two files, so not
             // one transaction: the move is committed, the grant is idempotent
@@ -679,4 +705,15 @@ export function registerAssignmentRoutes(
   vendorMove('claim', claimAssignment);
   vendorMove('accept', acceptAssignment);
   vendorMove('decline', declineAssignment);
+  vendorMove('start', startAssignment);
+  // Delivering locks the payable (#120), which is priced per the project's pair. The
+  // project is read only for the job's own vendor: anyone else is refused by the move.
+  vendorMove('deliver', (roster, o, owner) => {
+    const current = getAssignment(roster, o.assignmentId);
+    const pair =
+      current && current.vendorId === o.vendorId
+        ? readPair(projectPath(storageRoot, owner, current.projectName))
+        : null;
+    return deliverAssignment(roster, { ...o, pair });
+  });
 }

@@ -21,7 +21,6 @@ import {
   dismissQaIssue,
   listEvents,
   listSegments,
-  moveAssignment,
   openPlatformDb,
   openProjectDb,
   openVendorFile,
@@ -629,25 +628,11 @@ describe('opening an offer', () => {
   });
 });
 
-/** Takes assignment #1 the rest of the way to `delivered`, as bob (there is no vendor route for it yet). */
+/** Takes assignment #1 the rest of the way to `delivered`, as bob, through the routes. */
 async function deliveredByBob(): Promise<void> {
   const b = await login('bob');
-  expect((await act(b, 1, 'accept')).statusCode).toBe(200);
-  const roster = openVendorFile(
-    join(config.storageRoot, alice.storageRoot, 'vendors.ctv'),
-  );
-  try {
-    for (const to of ['in_progress', 'delivered'] as const) {
-      moveAssignment(roster, {
-        assignmentId: 1,
-        vendorId: 1,
-        to,
-        by: 'vendor',
-        actor: SETUP,
-      });
-    }
-  } finally {
-    roster.close();
+  for (const verb of ['accept', 'start', 'deliver']) {
+    expect((await act(b, 1, verb)).statusCode, verb).toBe(200);
   }
 }
 
@@ -907,5 +892,79 @@ describe('the owner’s roster', () => {
     expect((await app.inject({ method: 'GET', url: '/api/vendors' })).statusCode).toBe(
       401,
     );
+  });
+});
+
+describe('a vendor starts and delivers, and the payable locks', () => {
+  it('walks the job through the routes and shows the locked amount to both sides', async () => {
+    giveBobRates();
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    const b = await login('bob');
+    const words = (() => {
+      const project = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+      try {
+        return analyseTierWords(project).no_match ?? 0;
+      } finally {
+        project.close();
+      }
+    })();
+    expect(words).toBeGreaterThan(0);
+
+    expect((await act(b, 1, 'accept')).json()).toMatchObject({
+      assignment: { status: 'accepted' },
+    });
+    const early = (await offerOf(b, 1)).json() as { offer: { payable: unknown } };
+    expect(early.offer.payable).toBeNull(); // nothing is final before delivery
+    expect((await act(b, 1, 'start')).json()).toMatchObject({
+      assignment: { status: 'in_progress' },
+    });
+    const res = await act(b, 1, 'deliver');
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ assignment: { status: 'delivered' } });
+
+    const expected = {
+      currency: 'EUR',
+      words,
+      totalMicros: words * 80_000,
+      complete: true,
+      lines: [
+        { tier: 'no_match', words, rateMicros: 80_000, amountMicros: words * 80_000 },
+      ],
+    };
+    const vendorSees = (await offerOf(b, 1)).json() as { offer: { payable: unknown } };
+    expect(vendorSees.offer.payable).toMatchObject(expected);
+    const ownerSees = (await get(a, 1)).json() as { assignment: { payable: unknown } };
+    expect(ownerSees.assignment.payable).toMatchObject(expected);
+  });
+
+  it('refuses a move out of order, and a vendor who is not the job’s, as a 409 and a 404', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody({ channel: 'pool', vendors: [bob.id, carol.id] }));
+    const b = await login('bob');
+    const c = await login('carol');
+    await act(b, 1, 'claim');
+    await act(b, 1, 'accept');
+    expect((await act(b, 1, 'deliver')).statusCode).toBe(409); // not started
+    expect((await act(c, 1, 'start')).statusCode).toBe(404); // not theirs
+    expect((await act(await login('dave'), 1, 'start')).statusCode).toBe(404);
+    expect((await act(b, 1, 'start', bob.id)).statusCode).toBe(404); // the owner id is not theirs
+    expect((await act(b, 1, 'start')).statusCode).toBe(200);
+    expect((await act(b, 1, 'start')).statusCode).toBe(409); // already started
+  });
+
+  it('delivers all the same, with no payable, when the project has since been deleted', async () => {
+    giveBobRates();
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    const b = await login('bob');
+    await act(b, 1, 'accept');
+    await act(b, 1, 'start');
+    rmSync(projectPath(config.storageRoot, alice, 'job'), { force: true });
+    const res = await act(b, 1, 'deliver');
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ assignment: { status: 'delivered' } });
+    const seen = (await offerOf(b, 1)).json() as { offer: { payable: unknown } };
+    expect(seen.offer.payable).toBeNull();
   });
 });
