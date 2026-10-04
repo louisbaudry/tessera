@@ -561,10 +561,12 @@ export function registerAssignmentRoutes(
   app.get<{ Params: { accountId: string } }>(
     '/api/vendors/:accountId/rates',
     async (req, reply) => {
-      const roster = openRoster(deps.owner(req));
+      // The address is checked before the roster is opened: returning early with
+      // the file open leaks a handle, and Windows will not delete an open file.
       const accountId = accountParam(req.params.accountId);
-      if (!roster || accountId === 0)
-        return reply.code(404).send({ error: 'no such vendor' });
+      if (accountId === 0) return reply.code(404).send({ error: 'no such vendor' });
+      const roster = openRoster(deps.owner(req));
+      if (!roster) return reply.code(404).send({ error: 'no such vendor' });
       try {
         const vendor = getVendorByAccount(roster, accountId);
         if (!vendor) return reply.code(404).send({ error: 'no such vendor' });
@@ -588,10 +590,10 @@ export function registerAssignmentRoutes(
       effectiveFrom?: unknown;
     };
   }>('/api/vendors/:accountId/rates', async (req, reply) => {
-    const roster = openRoster(deps.owner(req));
     const accountId = accountParam(req.params.accountId);
-    if (!roster || accountId === 0)
-      return reply.code(404).send({ error: 'no such vendor' });
+    if (accountId === 0) return reply.code(404).send({ error: 'no such vendor' });
+    const roster = openRoster(deps.owner(req));
+    if (!roster) return reply.code(404).send({ error: 'no such vendor' });
     try {
       const vendor = getVendorByAccount(roster, accountId);
       if (!vendor) return reply.code(404).send({ error: 'no such vendor' });
