@@ -308,6 +308,10 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   is the log (append-only, actor required). The vendor routes are on
   `@cat-tool/server` (`server/src/assignments.ts`), addressed `?owner=`; a
   stranger, a non-member and a missing assignment are one identical 404.
+- **A job's match-tier words are frozen at offer** (backlog #49b):
+  `assignment_analysis`, immutable by trigger. A segment's tier can't be
+  read later, because an edit clears its `origin`, so `analyseTierWords` is
+  only for the moment of an offer, never a job in progress.
 - **`vendor-core` stays headless**, as `core` and `portal-core`: the only
   place a transition is enforced is `transitionAssignment`, never a route.
   Its closed sets (`ASSIGNMENT_STATUSES`, `RATE_TIERS`, `CAPACITY_STATUSES`)

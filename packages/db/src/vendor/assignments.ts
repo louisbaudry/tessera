@@ -18,10 +18,14 @@
 import { formatActor, type AuditActor } from '@cat-tool/core';
 import {
   initialStatus,
+  isRateTier,
+  RATE_TIERS,
   transitionAssignment,
   type AssignmentChannel,
   type AssignmentParty,
   type AssignmentStatus,
+  type RateTier,
+  type TierWords,
 } from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
@@ -148,6 +152,12 @@ export interface JobFields {
   readonly projectName: string;
   readonly deadline?: string | null;
   readonly instructions?: string | null;
+  /**
+   * The project's words by match tier, as they stand now: frozen with the
+   * assignment (backlog #116). Omitted, none is recorded and the job has no
+   * payable breakdown. A tier cannot be recovered later (an edit clears it).
+   */
+  readonly analysis?: TierWords;
   /** Who is offering it — required (audit-spec.md decision 3). */
   readonly actor: AuditActor;
   readonly now?: Date;
@@ -184,6 +194,7 @@ export function createDirectOffer(
         at,
       );
     const id = info.lastInsertRowid as number;
+    if (options.analysis) freezeAnalysis(db, id, options.analysis, at);
     appendEvent(db, {
       assignmentId: id,
       from: null,
@@ -230,6 +241,7 @@ export function postToPool(db: Database.Database, options: PoolPostOptions): Ass
       'INSERT INTO assignment_pool_member (assignment_id, vendor_id) VALUES (?, ?)',
     );
     for (const vendorId of ids) member.run(id, vendorId);
+    if (options.analysis) freezeAnalysis(db, id, options.analysis, at);
     appendEvent(db, {
       assignmentId: id,
       from: null,
@@ -239,6 +251,69 @@ export function postToPool(db: Database.Database, options: PoolPostOptions): Ass
     });
     return getAssignment(db, id)!;
   })();
+}
+
+/** Records an analysis with an assignment, once: the table refuses an edit or a delete. */
+function freezeAnalysis(
+  db: Database.Database,
+  assignmentId: number,
+  words: TierWords,
+  at: string,
+): void {
+  const insert = db.prepare(
+    'INSERT INTO assignment_analysis (assignment_id, tier, words) VALUES (?, ?, ?)',
+  );
+  for (const tier of RATE_TIERS) {
+    const n = words[tier] ?? 0;
+    if (!Number.isSafeInteger(n) || n < 0) {
+      throw new VendorError(`words for ${tier} must be a non-negative integer`);
+    }
+    if (n > 0) insert.run(assignmentId, tier, n);
+  }
+  for (const key of Object.keys(words)) {
+    if (!isRateTier(key)) throw new VendorError(`unknown rate tier "${key}"`);
+  }
+  db.prepare('UPDATE assignment SET analysed_at = ? WHERE id = ?').run(at, assignmentId);
+}
+
+/** A reposted job carries the analysis of the one it reposts: same project, same words. */
+function copyAnalysis(db: Database.Database, from: number, to: number): void {
+  const source = db
+    .prepare('SELECT analysed_at FROM assignment WHERE id = ?')
+    .get(from) as { analysed_at: string | null } | undefined;
+  if (!source?.analysed_at) return;
+  db.prepare(
+    `INSERT INTO assignment_analysis (assignment_id, tier, words)
+     SELECT ?, tier, words FROM assignment_analysis WHERE assignment_id = ?`,
+  ).run(to, from);
+  db.prepare('UPDATE assignment SET analysed_at = ? WHERE id = ?').run(
+    source.analysed_at,
+    to,
+  );
+}
+
+export interface AssignmentAnalysis {
+  /** When the words were counted: the offer's time. */
+  readonly at: string;
+  readonly words: TierWords;
+}
+
+/** The tier breakdown frozen with an assignment, or null if none was recorded. */
+export function getAssignmentAnalysis(
+  db: Database.Database,
+  assignmentId: number,
+): AssignmentAnalysis | null {
+  const head = db
+    .prepare('SELECT analysed_at FROM assignment WHERE id = ?')
+    .get(assignmentId) as { analysed_at: string | null } | undefined;
+  if (!head?.analysed_at) return null;
+  const words: Partial<Record<RateTier, number>> = {};
+  for (const r of db
+    .prepare('SELECT tier, words FROM assignment_analysis WHERE assignment_id = ?')
+    .all(assignmentId) as Array<{ tier: RateTier; words: number }>) {
+    words[r.tier] = r.words;
+  }
+  return { at: head.analysed_at, words };
 }
 
 export function getAssignment(db: Database.Database, id: number): Assignment | null {
@@ -405,6 +480,7 @@ function repostToRest(
     'INSERT INTO assignment_pool_member (assignment_id, vendor_id) VALUES (?, ?)',
   );
   for (const v of rest) member.run(id, v);
+  copyAnalysis(db, declined.id, id);
   appendEvent(db, {
     assignmentId: id,
     from: null,

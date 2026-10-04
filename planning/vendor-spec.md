@@ -573,3 +573,13 @@ total therefore needs the analysis frozen with the assignment, not re-read
 from live segments. A tier with words and no rate is reported unpriced, a
 card in two currencies is refused, and an unspaced source language has no
 per-word payable until its unit is decided.
+
+**Implementation note (#49b), 2026-10-04.** The analysis `#49` said must be
+frozen is: `assignment_analysis` (tier, words > 0) and
+`assignment.analysed_at`, v3 of the `.ctv`, written by `createDirectOffer`/
+`postToPool` in the offer's transaction and copied to a reposted job. The
+table refuses an `UPDATE` or `DELETE` by trigger. The owner's route reads
+the project's words by tier at the moment of the offer; the owner's view
+carries `{ at, words }`, a vendor's does not yet (`#50`). The rate card to
+price it with is the one in force at the offer's date, which the assignment's
+`created_at` already records.
