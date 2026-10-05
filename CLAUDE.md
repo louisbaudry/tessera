@@ -29,30 +29,11 @@ already settled differently.
 ## Shared rules
 
 How to work with Louis is shared across all his repos and lives once, in
-the public
-[`louisbaudry/claude-shared`](https://github.com/louisbaudry/claude-shared/blob/main/CLAUDE.md)
-(`CLAUDE.md`), with its [coding rules](https://github.com/louisbaudry/claude-shared/blob/main/CODING.md) (`CODING.md`). Read both at the start of
-every session. They cover:
-
-- **Communication** — concise, in Louis's language (French, English or
-  Spanish); one question at a time, always with options and a
-  recommendation; fact, inference and guess kept apart.
-- **Git and pull requests** — never merge without being asked (except
-  with `Continuous mode: true`, which this repo sets); one task,
-  one branch, one PR (`Closes #NN`); branch from `main` and merge back
-  promptly; one session at a time on one area; check open PRs and
-  unmerged branches before starting; file something broken that isn't
-  the task as an issue; after a merge, say whether the session can be
-  archived and why.
-- **Where work is tracked** — issues and the board hold status, never
-  markdown; the repo's files hold the record; the code is the final word.
-- **Before calling work done** — run the full set of checks and report
-  honestly what was and wasn't verified; a failing check means the change
-  is presumed wrong, never regenerate or loosen it to reach green.
-- **Design decisions on the record**, and shared facts defined once.
-- **AI output is a proposal, not a fact** — never invent source data.
-- **Public repositories** — no personal or client data, credentials or
-  internal hostnames, in any form.
+the public [`louisbaudry/claude-shared`](https://github.com/louisbaudry/claude-shared).
+A sync copies the rules into `.claude/shared/` and imports them at the top
+of this file (the managed block above), so every session loads them
+without fetching anything. Never edit those copies here; change the rules
+in `shared/` of `claude-shared`.
 
 Continuous mode (trial started 2026-10-01; see the shared
 rules' _Continuous mode_ section). Take cards one after another:
