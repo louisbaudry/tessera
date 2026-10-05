@@ -57,14 +57,18 @@ pnpm workspaces, `@cat-tool/core`, TS strict (`noUncheckedIndexedAccess`,
 — vitest only transpiles, so without that a type error in a test would go
 unnoticed. Changesets still to add when there is something to version.
 
-**#3 · CI matrix · PARTIAL** · [issue #1]
-GitHub Actions on Windows / macOS / Linux: install, typecheck, lint,
-format check, test, build. **Green.**
-*Remaining, re-scoped for the web-service pivot:* the 3-OS matrix mattered
-for a packaged desktop app; a server needs one build target — the
-container's own Linux — plus a smoke test of the built image against a
-throwaway volume. `better-sqlite3`'s native ABI now only has to match the
-container's Node, chosen once (TM format spec §1.1).
+**#3 · ~~CI matrix~~ · DONE**
+`.github/workflows/ci.yml`: install, build, typecheck, lint, format check
+and test on one target, the container's own Linux (TM format spec §1.1);
+the roundtrip gate and golden jobs are Linux too, and `🐳 container image`
+(`scripts/smoke-image.sh`, backlog #36) runs the real Dockerfile against a
+throwaway volume. The Windows/macOS matrix and the `@cat-tool/desktop`
+placeholder are gone: they paid for a packaged desktop app, and cost the
+Windows starvation fixes (#82, #105) for a platform nothing deploys to.
+*Taught:* the job names changed (`check (ubuntu-latest)` → `check`,
+`🚦 roundtrip gate (ubuntu-latest)` → `🚦 roundtrip gate`), so a branch
+protection rule naming the old ones waits forever on a check that no
+longer exists.
 
 **#4 · ~~Core domain types~~ · DONE**
 `Token`, `TmToken`, `TagKind`, `Segment`, `SegmentStatus`, `Origin`,
