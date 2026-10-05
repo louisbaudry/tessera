@@ -32,7 +32,7 @@ pool) rides on top later and is out of scope here.
 | Deferred | Reason |
 |---|---|
 | Bilingual review export (DOCX table / XLIFF) | Confirmed: no one reviews the work before delivery. Clean v1.1 addition if that changes — the segment table already holds everything it needs. |
-| Fuzzy matching | Explicit v1 cut. Schema is built fuzzy-ready (§4.3) so it lands later without migration. |
+| Fuzzy matching | Explicit v1 cut. Schema is built fuzzy-ready (§4.3) so it lands later without migration. Designed in §6.1a (backlog #61); not built. |
 | Concordance search | Falls out almost free once the TM index exists — first candidate for v1.1. |
 | Termbase / MT / QA against glossary | No user need yet. |
 | XLIFF, XLSX, PPTX, TXT | DOCX is the whole job. |
@@ -909,6 +909,116 @@ On pre-translate, for each unlocked segment:
 
 Pre-translate is idempotent and never touches `confirmed` or `locked`
 segments.
+
+### 6.1a Fuzzy matching (backlog #61 — designed, not built)
+
+Written 2026-10-05, ahead of the code: the card is sequenced after the
+real dogfood job (`#37`), and this section is the part of "spec before
+code" that can land first. It reverses the v1 cut in §1; nothing here is
+implemented, and §6.1's exact path is unchanged. The decisions below are
+the proposals the code phase starts from; the owner confirms the bands
+(they set prices) before code is written.
+
+**1. The scorer is FS-2, and FS-1 stays the research baseline.**
+`semantic-matching-spec.md` §2 reserves "FS-2" for exactly this, and says
+a new scorer is never a silent change to FS-1. So:
+
+- **Distance.** Word-level Levenshtein over `words()` of the
+  normalised plain text (§4.4, case folded for the comparison), the same
+  distance FS-1 uses. Character-level costs roughly (chars/words)² more
+  per comparison (`db/tm/bench/stats.ts`), which at 1M units is the
+  difference between a usable and an unusable retrieval stage.
+- **Numbers.** A numeral is compared as a class, not a word: two
+  segments that differ only in a number's value score as if equal, minus
+  a fixed 2 points per differing numeral. A translator fixes a number in
+  a second; pricing it as a replaced word is the usual complaint with
+  edit-distance scorers. The `num.*` QA rules (§6.4) already read the
+  same numerals.
+- **Tags.** Compared as in §6.1: the visible tag multiset by
+  `(kind, role)`. Each tag present on one side only costs 1 point,
+  capped at 5. Hidden tags never count (a memory holds none, §3).
+- **Case and punctuation.** Not part of the distance, so a pair that
+  differs only there scores 99, never 100.
+- **The score is an integer, 0–99, rounded down.** 100 is only the
+  exact tier, which stays hash-based and case-sensitive (§6.1). Rounding
+  down means a score never lands in a better band than it earned.
+- **No score for unspaced source languages** (zh/ja/th/lo/km/my/bo):
+  the same refusal as `countRegionWords`, for the same reason. A
+  character-based scorer for them is its own decision.
+
+FS-1 is not replaced: the bench keeps it, so results measured before and
+after stay comparable. The bench gains an FS-2 mode, and the first
+journal entry that uses it says so.
+
+**2. Bands and threshold.** The conventional bands, which are what
+`RATE_TIERS` already holds provisionally (`vendor-spec.md` decision 9):
+
+| Score | Tier |
+| ----- | ---- |
+| 95–99 | `fuzzy_95_99` |
+| 85–94 | `fuzzy_85_94` |
+| 75–84 | `fuzzy_75_84` |
+| 50–74 | `fuzzy_50_74` |
+| below 50 | `no_match` |
+
+Two thresholds, deliberately separate:
+
+- **Analysis floor: 50.** Below it a unit is a no-match for pricing.
+- **Pre-translate threshold: a project setting, default 75.** Below it a
+  match is retrievable in the editor but never written into a segment,
+  because a 60% match placed in the target is noise the translator
+  deletes. A match that is placed is a `draft`, never `translated`
+  (§6.1's tagdiff rule, extended): a fuzzy match is always a proposal.
+
+**3. The `origin` is `tm_fuzzy_<score>`, not `tm_fuzzy_<band>`.** The
+card proposed the band; the code already reads the score
+(`tierForOrigin` parses `tm_fuzzy_NN` and maps it to a band), and the
+score keeps what the band throws away. When `#61`'s bands are revised,
+nothing stored needs a migration, only the mapping: the property §4.3
+item 3 was designed to give. `KNOWN_ORIGINS` gains the pattern, not 50
+literals. A fuzzy match whose tags did not correspond is
+`tm_fuzzy_<score>` with a QA warning, as `tm_exact_tagdiff` is, not a
+second family of origins.
+
+**4. Analysis reads the memory, not the origin.** Today
+`analyseTierWords` can only read `origin`, and an edit clears it (§7.2),
+so it is right only at the moment of an offer (`#49b`). Fuzzy keeps that
+rule and adds a way to meet it: the analysis pass runs retrieval at the
+50 floor for each segment, independent of the pre-translate threshold, so
+a 60% match is priced as `fuzzy_50_74` though it was never placed. The
+offer's frozen `assignment_analysis` is unchanged in shape. A semantic
+match (`semantic-matching-spec.md` §4) stays a no-match here.
+
+**5. Retrieval.** `retrieveFuzzy(db, params, { schema? })` in `db/tm/`,
+the same three-argument shape as `retrievePair`, so an attached TM works.
+It returns the best candidates by score (ties broken by the attached
+TM's `priority`, then recency), at most 3. Language match goes through
+`matchingLangs`, and a test pins `EXPLAIN QUERY PLAN` to `SEARCH`, not
+`SCAN` (CLAUDE.md gotcha). The scorer is pure and lives in `core/tm/`;
+the candidate stage is the only part that touches SQLite.
+
+**6. The shortlist is the open part, and it is not decided here.**
+`tm-format-spec.md` §12.5 measured a top-50 FTS shortlist losing the best
+edit-distance match 10% of the time at 100k units and a third at 1M. The
+options (a larger or adaptive shortlist, a length-aware rank, n-gram
+terms, embeddings as a second source) are what E-001 (`#59`) measures.
+The contract fixed here is the interface, `candidates(segment) → unit
+ids`, so the stage can change without touching the scorer. The interim
+default is the FTS shortlist, widened until it holds recall at 100k
+units; the choice for 1M is written into §12.5 when `#59` reports, or
+when the code phase starts without it, whichever is first, with the
+measured recall beside it.
+
+**7. Out of scope here, on purpose.** Internal fuzzy (repetitions within a
+project stay exact, §6.1 item 4), ICE / 101% context matches (§4.2's
+context columns exist, no tier reads them), concordance search, and
+auto-substitution of numbers and dates (§1).
+
+**8. Done when** (from the card): a fuzzy match is retrieved, scored,
+banded and recorded with its `origin` through the CLI; the golden
+transcript shows it (`pnpm test:golden` moves, and its diff is read, not
+regenerated); latency and recall at 1M are measured in `tm-format-spec.md`
+§11; and `RATE_TIERS` is reconciled with §2's table in the same change.
 
 ### 6.2 Write-back
 

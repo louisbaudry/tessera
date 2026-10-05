@@ -3711,7 +3711,8 @@ Sized issues:
   tiers. Reverses a v1 cut. **Sequenced after `#37`** (owner,
   2026-09-25): v1 ships as planned, and `#59`/`#60` need no product
   fuzzy, so their results can inform the shortlist design first. Spec
-  first.
+  first. The design is written (`v1-spec.md` §6.1a, 2026-10-05); the code
+  phase is what stays sequenced after `#37`.
 
 S4 (the semantic match type in the editor), S5 (LLM context, with Epic
 8) and S6 (real-use data) are not carded yet: each waits on the editor,

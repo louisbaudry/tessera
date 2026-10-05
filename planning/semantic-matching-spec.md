@@ -94,7 +94,7 @@ Four terms, used exactly this way here and in `research/`:
   scorer may differ (character-based, tag penalties). The research
   baseline stays FS-1 until a journal entry says otherwise, so results
   measured months apart stay comparable. A new scorer is FS-2, never a
-  silent change to FS-1.
+  silent change to FS-1. FS-2 is defined in `v1-spec.md` §6.1a.
 - **Semantic similarity.** Cosine similarity between two embeddings from
   the same model. It is never shown as a percentage and never compared
   with an FS score (§4).

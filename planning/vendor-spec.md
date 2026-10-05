@@ -457,7 +457,7 @@ Grounded in §7's daily experience and decisions 8–9 above, not a guess:
   number a vendor checks against their own.
 - **The tier vocabulary is provisional.** Decision 9 says "no-match / fuzzy
   bands / 100% / ICE" and does not name the bands; fuzzy matching and its
-  bands are `#61`'s. Until then the tiers are the conventional ones:
+  bands are `#61`'s (proposed in `v1-spec.md` §6.1a, awaiting the owner). Until then the tiers are the conventional ones:
   `no_match`, `fuzzy_50_74`, `fuzzy_75_84`, `fuzzy_85_94`, `fuzzy_95_99`,
   `exact` (100% and repetitions) and `ice` (101%). `RATE_TIERS` in
   `vendor-core` is the one definition; when `#61` fixes the real bands it
