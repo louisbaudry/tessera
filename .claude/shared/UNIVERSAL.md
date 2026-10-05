@@ -103,7 +103,7 @@ question or a one-line task still gets the report first.
    meant to cause.
 5. **Check what is in flight before starting.** `git fetch origin main`
    before deciding anything is open, and look at open PRs and unmerged
-   branches, not just the board. A card in Todo means nobody has *merged*
+   branches, not just the board. A card in Todo means nobody has _merged_
    it, not that nobody is on it. If another branch already holds the work,
    say so and ask before duplicating it.
 6. **Found something broken that isn't your task?** File it as an issue
