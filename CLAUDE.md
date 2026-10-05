@@ -742,7 +742,7 @@ pattern.
   per-item warning path needs to be sanity-checked against something
   larger than a hand-built test fixture before it ships, or the failure
   mode only shows up on a real file.
-- **`github.base_ref` is empty on `push` events**, and a workflow
+- **CI runs on Linux only since backlog #3** (the container's own platform); the Windows/macOS notes below are history, kept for the lessons. **`github.base_ref` is empty on `push` events**, and a workflow
   expression that reads it will quietly choose the wrong branch of a
   ternary on every push. Combined with a job-level `if:` that skipped the
   `pull_request` run as a duplicate, this disabled `ci.yml`'s three-OS

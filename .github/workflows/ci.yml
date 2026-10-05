@@ -14,34 +14,15 @@ concurrency:
 
 jobs:
   check:
-    name: check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: check
+    # One target: the container's own Linux (backlog #3, tm-format-spec.md
+    # §1.1). The server ships as one image, so better-sqlite3's ABI only has
+    # to match that image's Node. The three-OS matrix this replaced paid for
+    # a packaged desktop app, and cost two Windows-only starvation fixes
+    # (#82, #105) for a platform nothing deploys to. The image job below
+    # still runs the real Dockerfile.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        # Full three-OS matrix only where it protects something: pushes to
-        # main and PRs targeting main. Feature-branch pushes with no PR yet
-        # run Linux only — macOS alone is ~62% of the cost of a run at
-        # GitHub's runner multipliers.
-        #
-        # **`github.base_ref` must not appear in this expression.** It is
-        # populated on `pull_request` events and empty on `push`. Paired with
-        # a job-level `if:` that skipped the pull_request run for same-repo
-        # branches, it silently cancelled this matrix out entirely: the push
-        # run saw an empty base_ref and chose Linux only, and the PR run that
-        # would have expanded it never executed. Every PR into main between
-        # #69 and this change therefore ran on Linux alone, macOS and Windows
-        # never once — including the PR that fixed a Windows-only file-locking
-        # bug found by this very job three days earlier. Both guards were
-        # reasonable alone; the interaction was invisible because the skipped
-        # run still reported a green check.
-        #
-        # `github.event_name` is true on the event that carries it, so the
-        # expression cannot be disarmed by whether some other event ran.
-        os: ${{ (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
-          && fromJSON('["ubuntu-latest","windows-latest","macos-latest"]')
-          || fromJSON('["ubuntu-latest"]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -72,21 +53,8 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
-      # Two test processes on Windows, the default (one per core) elsewhere
-      # (#82). The suites write and read many SQLite files in the temp dir;
-      # four forks at once on the 4-vCPU Windows runner starved it until
-      # millisecond tests took 6-10 s, ten hit the 5 s timeout, and vitest's
-      # own worker RPC timed out ("Timeout calling onTaskUpdate"): a red
-      # check with no test at fault, twice in one day. Fewer processes
-      # finish sooner there than many stalled ones. Vitest reads
-      # VITEST_MAX_FORKS; an empty value leaves its default alone.
       - name: Test
         run: pnpm test
-        env:
-          VITEST_MAX_FORKS: ${{ runner.os == 'Windows' && '2' || '' }}
-          # A fixed 5 s per test starves out on that runner whichever suite
-          # happens to run beside a worker-thread test (vitest.config.ts).
-          VITEST_TEST_TIMEOUT: ${{ runner.os == 'Windows' && '60000' || '' }}
 
   # 🚦 THE ROUNDTRIP GATE — backlog #8.
   #
@@ -105,12 +73,8 @@ jobs:
     # to carry — that one made a run disappear while still reporting green,
     # which is the failure mode this file is being fixed for.
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -123,9 +87,6 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # Runs on Windows too: line-ending handling is a classic way to break
-      # byte fidelity, and .gitattributes marks *.docx binary to prevent it.
-      # If that ever regresses, this is where it surfaces.
       - name: Roundtrip gate
         run: pnpm test:gate
 
@@ -192,10 +153,3 @@ jobs:
 
       - name: Build and smoke-test the image
         run: scripts/smoke-image.sh
-
-  # Placeholder for backlog #3's second half: once @cat-tool/desktop exists,
-  # build and smoke-run the *packaged* app on all three platforms and open a
-  # .ctm file. better-sqlite3 is a native module and its Electron ABI
-  # rebuild is the most likely "works locally, broken in the installer"
-  # failure — running tests alone would not catch it.
-  # See planning/tm-format-spec.md §1.1.
