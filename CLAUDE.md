@@ -1,3 +1,8 @@
+<!-- claude-shared:begin (managed by claude-shared sync; do not edit) -->
+@.claude/shared/UNIVERSAL.md
+@.claude/shared/CODING.md
+<!-- claude-shared:end -->
+
 # Working in this repo
 
 An AI-native CAT tool and translation-business platform, built outward
