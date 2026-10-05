@@ -1,3 +1,8 @@
+<!-- claude-shared:begin (managed by claude-shared sync; do not edit) -->
+@.claude/shared/UNIVERSAL.md
+@.claude/shared/CODING.md
+<!-- claude-shared:end -->
+
 # Agent instructions
 
 This project's actual instructions for coding agents live in
