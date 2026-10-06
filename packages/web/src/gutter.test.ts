@@ -43,11 +43,12 @@ describe('originBadge', () => {
     expect(originBadge('tm_exact_tagdiff')?.text).toBe('TM\u2260');
   });
 
+  it('shows a fuzzy match as its score', () => {
+    expect(originBadge('tm_fuzzy_85')?.text).toBe('85%');
+  });
+
   it('shows an origin it does not know verbatim, and nothing for none', () => {
-    expect(originBadge('tm_fuzzy_85')).toEqual({
-      text: 'tm_fuzzy_85',
-      title: 'Origin: tm_fuzzy_85',
-    });
+    expect(originBadge('tm_ice')).toEqual({ text: 'tm_ice', title: 'Origin: tm_ice' });
     expect(originBadge(null)).toBeNull();
   });
 });

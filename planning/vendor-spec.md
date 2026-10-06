@@ -455,15 +455,15 @@ Grounded in §7's daily experience and decisions 8–9 above, not a guess:
   word**, with the currency beside it. A float would be wrong in the last
   place on a total of tens of thousands of words, and a payable is a
   number a vendor checks against their own.
-- **The tier vocabulary is provisional.** Decision 9 says "no-match / fuzzy
-  bands / 100% / ICE" and does not name the bands; fuzzy matching and its
-  bands are `#61`'s (proposed in `v1-spec.md` §6.1a, awaiting the owner). Until then the tiers are the conventional ones:
-  `no_match`, `fuzzy_50_74`, `fuzzy_75_84`, `fuzzy_85_94`, `fuzzy_95_99`,
-  `exact` (100% and repetitions) and `ice` (101%). `RATE_TIERS` in
-  `vendor-core` is the one definition; when `#61` fixes the real bands it
-  is a migration that rebuilds `rate_card_entry` (nothing references it)
-  and a mapping for the rows already there. Said here so nobody mistakes
-  these for the settled bands.
+- **The tier vocabulary is the conventional one, and the owner confirmed
+  the fuzzy bands** (2026-10-06, `v1-spec.md` §6.1a). Decision 9 says "no-match /
+  fuzzy bands / 100% / ICE" and does not name them: they are `no_match`,
+  `fuzzy_50_74`, `fuzzy_75_84`, `fuzzy_85_94`, `fuzzy_95_99`, `exact`
+  (100% and repetitions) and `ice` (101%). `RATE_TIERS` in `vendor-core`
+  is the one definition, and a pre-translate writes `tm_fuzzy_<score>`,
+  which `tierForOrigin` maps onto it. Changing a band later is a migration
+  that rebuilds `rate_card_entry` (nothing references it) and a mapping for
+  the rows already there.
 - **Capacity is one row per vendor, current only** (decision 8: no history
   until a need shows up): `available`, `busy` or `away`, a free-text note,
   when, and who set it (an account id: the vendor's own, or an owner's on

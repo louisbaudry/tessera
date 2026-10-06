@@ -41,7 +41,12 @@ matches; it is shaped like a memory a job actually inherits:
   carried around it (backlog #29). Until #29 that unit was the tag-diff
   draft, and the review "reapplied" a tag no editor would have shown.
 - **One unit for a sentence the document misspells.** The memory says
-  "Your …"; the document, through a run split, says "Y our …". No match, correctly — the segment is delivered in English.
+  "Your …"; the document, through a run split, says "Y our …". Before fuzzy
+  matching (backlog #61) that was no match, and the segment was delivered in
+  English. Now it is the fuzzy case: one word more in the source, a score of
+  81, placed as a draft with `origin` `tm_fuzzy_81` (the transcript counts it
+  as "1 fuzzy (draft)"). Nothing in the review step touches it, so the
+  delivered document carries the draft's German, as it does a tag-diff one.
 - **One sentence missing from the memory** (the first of a two-sentence
   paragraph) so the export has to fold a paragraph back from one
   untranslated and one translated segment (`v1-spec.md` §3.4).

@@ -108,7 +108,7 @@ describe('cat-tool: a full job, headless', () => {
     const pre = run('pretranslate', project);
     expect(pre.code, pre.err).toBe(0);
     expect(pre.out).toMatch(
-      /^Pre-translated: 1 exact, 0 tag-diff \(draft\), 0 propagated, \d+ unmatched, \d+ skipped/,
+      /^Pre-translated: 1 exact, 0 tag-diff \(draft\), 0 fuzzy \(draft\), 0 propagated, \d+ unmatched, \d+ skipped/,
     );
 
     const qa = run('qa', project);
@@ -201,6 +201,24 @@ describe('cat-tool: the audit trail', () => {
     const missing = run('history', project, '999');
     expect(missing.code).toBe(1);
     expect(missing.err).toBe('error: no segment #999 in this project');
+  });
+});
+
+describe('cat-tool: pretranslate --fuzzy', () => {
+  it('takes a threshold or off, and refuses anything else (v1-spec.md §6.1a)', () => {
+    const project = join(dir, 'project.catdb');
+    expect(run('init', project, '--src', 'en', '--tgt', 'de').code).toBe(0);
+    expect(run('add-file', project, FIXTURE).code).toBe(0);
+
+    const off = run('pretranslate', project, '--fuzzy', 'off');
+    expect(off.code, off.err).toBe(0);
+    expect(off.out).toContain('0 fuzzy (draft)');
+    expect(run('pretranslate', project, '--fuzzy', '60').code).toBe(0);
+
+    const low = run('pretranslate', project, '--fuzzy', '40');
+    expect(low.code).toBe(1);
+    expect(low.err).toContain('fuzzy threshold must be a whole number from 50 to 99');
+    expect(run('pretranslate', project, '--fuzzy', 'high').code).toBe(1);
   });
 });
 

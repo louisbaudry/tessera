@@ -910,14 +910,13 @@ On pre-translate, for each unlocked segment:
 Pre-translate is idempotent and never touches `confirmed` or `locked`
 segments.
 
-### 6.1a Fuzzy matching (backlog #61 — designed, not built)
+### 6.1a Fuzzy matching (backlog #61)
 
-Written 2026-10-05, ahead of the code: the card is sequenced after the
-real dogfood job (`#37`), and this section is the part of "spec before
-code" that can land first. It reverses the v1 cut in §1; nothing here is
-implemented, and §6.1's exact path is unchanged. The decisions below are
-the proposals the code phase starts from; the owner confirms the bands
-(they set prices) before code is written.
+Designed 2026-10-05, built 2026-10-06; the owner confirmed the bands
+(they set prices) between the two. It reverses the v1 cut in §1, and
+§6.1's exact path is unchanged: fuzzy runs only for a segment the exact
+path and propagation left unmatched. Where the build departed from the
+design, the point says so.
 
 **1. The scorer is FS-2, and FS-1 stays the research baseline.**
 `semantic-matching-spec.md` §2 reserves "FS-2" for exactly this, and says
@@ -934,9 +933,12 @@ a new scorer is never a silent change to FS-1. So:
   a second; pricing it as a replaced word is the usual complaint with
   edit-distance scorers. The `num.*` QA rules (§6.4) already read the
   same numerals.
-- **Tags.** Compared as in §6.1: the visible tag multiset by
-  `(kind, role)`. Each tag present on one side only costs 1 point,
-  capped at 5. Hidden tags never count (a memory holds none, §3).
+- **Tags.** Compared as in §6.1, by `(kind, role)`: the segment's visible
+  tags against the unit's, and against all of the segment's tags when that
+  is closer (`remapTmTokens` makes the same second try, for a unit another
+  tool tagged run by run). Each tag on one side only costs 1 point,
+  capped at 5. A unit with no kind hint (a Trados export) corresponds to
+  nothing, and pays.
 - **Case and punctuation.** Not part of the distance, so a pair that
   differs only there scores 99, never 100.
 - **The score is an integer, 0–99, rounded down.** 100 is only the
@@ -964,7 +966,9 @@ journal entry that uses it says so.
 Two thresholds, deliberately separate:
 
 - **Analysis floor: 50.** Below it a unit is a no-match for pricing.
-- **Pre-translate threshold: a project setting, default 75.** Below it a
+- **Pre-translate threshold: default 75.** A run option and the CLI's
+  `--fuzzy <50-99|off>` today; a persisted per-project setting is
+  issue #139, because it needs a project-schema migration. Below it a
   match is retrievable in the editor but never written into a segment,
   because a 60% match placed in the target is noise the translator
   deletes. A match that is placed is a `draft`, never `translated`
@@ -980,41 +984,51 @@ literals. A fuzzy match whose tags did not correspond is
 `tm_fuzzy_<score>` with a QA warning, as `tm_exact_tagdiff` is, not a
 second family of origins.
 
-**4. Analysis reads the memory, not the origin.** Today
-`analyseTierWords` can only read `origin`, and an edit clears it (§7.2),
-so it is right only at the moment of an offer (`#49b`). Fuzzy keeps that
-rule and adds a way to meet it: the analysis pass runs retrieval at the
-50 floor for each segment, independent of the pre-translate threshold, so
-a 60% match is priced as `fuzzy_50_74` though it was never placed. The
-offer's frozen `assignment_analysis` is unchanged in shape. A semantic
-match (`semantic-matching-spec.md` §4) stays a no-match here.
+**4. Analysis reads the memory, not the origin — designed, not built
+(issue #138).** Today `analyseTierWords` can only read `origin`, and an
+edit clears it (§7.2), so it is right only at the moment of an offer
+(`#49b`). Fuzzy keeps that rule and adds a way to meet it: the analysis
+pass runs retrieval at the 50 floor for each segment, independent of the
+pre-translate threshold, so a 60% match is priced as `fuzzy_50_74` though
+it was never placed. The offer's frozen `assignment_analysis` is
+unchanged in shape. A semantic match (`semantic-matching-spec.md` §4)
+stays a no-match here. **Until it is built, a match placed by
+pre-translate (75 and up by default) is priced through its `origin`, and
+one between 50 and the threshold is priced as no match.**
 
-**5. Retrieval.** `retrieveFuzzy(db, params, { schema? })` in `db/tm/`,
-the same three-argument shape as `retrievePair`, so an attached TM works.
-It returns the best candidates by score (ties broken by the attached
-TM's `priority`, then recency), at most 3. Language match goes through
-`matchingLangs`, and a test pins `EXPLAIN QUERY PLAN` to `SEARCH`, not
-`SCAN` (CLAUDE.md gotcha). The scorer is pure and lives in `core/tm/`;
-the candidate stage is the only part that touches SQLite.
+**5. Retrieval.** `retrieveFuzzy(db, params, { schema? })` in
+`db/tm/fuzzy.ts`, the same three-argument shape as `retrievePair`, so an
+attached TM works. Within one memory it returns up to 3 matches by score,
+then quality, then recency. Across memories, pre-translate takes the
+highest score, and on a tie the memory earlier in `priority`: priority
+breaks a tie, it never outranks a closer match. Language match goes
+through `matchingLangs`, and a test pins `EXPLAIN QUERY PLAN` to the FTS
+index, with no `SCAN` of `tuv` (CLAUDE.md gotcha). The scorer is pure and
+lives in `core/tm/fuzzy.ts`; the candidate stage is the only part that
+touches SQLite. A segment whose source language is unspaced is not
+scored.
 
-**6. The shortlist is the open part, and it is not decided here.**
-`tm-format-spec.md` §12.5 measured a top-50 FTS shortlist losing the best
-edit-distance match 10% of the time at 100k units and a third at 1M. The
-options (a larger or adaptive shortlist, a length-aware rank, n-gram
-terms, embeddings as a second source) are what E-001 (`#59`) measures.
-The contract fixed here is the interface, `candidates(segment) → unit
-ids`, so the stage can change without touching the scorer. The interim
-default is the FTS shortlist, widened until it holds recall at 100k
-units; the choice for 1M is written into §12.5 when `#59` reports, or
-when the code phase starts without it, whichever is first, with the
-measured recall beside it.
+**6. The shortlist is the open part, and `#61` shipped only an interim
+one.** `tm-format-spec.md` §12.5 measured a top-50 FTS shortlist losing
+the best edit-distance match 10% of the time at 100k units and a third at
+1M. The options (a larger or adaptive shortlist, a length-aware rank,
+n-gram terms, embeddings as a second source) are what E-001 (`#59`)
+measures, and none of them is chosen here. The contract is the stage's
+interface, a segment in and candidate units out, so it can change without
+touching the scorer. The interim default is bounded by postings: the
+segment's rarest words that fit `POSTING_BUDGET` (20,000), scored on the
+best 200 by bm25. **Measured (`tm-format-spec.md` §11.5): 67 ms at p50 and
+412 ms at p99 at 1M units, with recall 90% at 100k and 67% at 1M** (the
+latter over 6 queries). Latency is acceptable and recall at scale is not
+yet; improving it is the shortlist work above, not a change to the scorer.
 
 **7. Out of scope here, on purpose.** Internal fuzzy (repetitions within a
 project stay exact, §6.1 item 4), ICE / 101% context matches (§4.2's
 context columns exist, no tier reads them), concordance search, and
 auto-substitution of numbers and dates (§1).
 
-**8. Done when** (from the card): a fuzzy match is retrieved, scored,
+**8. Done when** (from the card, and met by `#61` except where §4 and §6
+say otherwise): a fuzzy match is retrieved, scored,
 banded and recorded with its `origin` through the CLI; the golden
 transcript shows it (`pnpm test:golden` moves, and its diff is read, not
 regenerated); latency and recall at 1M are measured in `tm-format-spec.md`

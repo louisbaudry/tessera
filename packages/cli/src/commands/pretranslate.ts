@@ -10,13 +10,26 @@ import {
   type CliIo,
 } from '../support.js';
 
-export const PRETRANSLATE_USAGE = 'cat-tool pretranslate <project.catdb> [--file <id>]';
+export const PRETRANSLATE_USAGE =
+  'cat-tool pretranslate <project.catdb> [--file <id>] [--fuzzy <50-99|off>]';
 
-/** The exact matcher over every eligible segment (v1-spec.md §6.1). */
+/**
+ * The exact matcher over every eligible segment (v1-spec.md §6.1), then fuzzy
+ * matches from a threshold up (default 75; `--fuzzy off` for exact only, §6.1a).
+ */
 export function pretranslate(args: readonly string[], io: CliIo): number {
-  const { values, positionals } = parse(args, { file: { type: 'string' } });
+  const { values, positionals } = parse(args, {
+    file: { type: 'string' },
+    fuzzy: { type: 'string' },
+  });
   const projectPath = positional(positionals, 0, 'project path', PRETRANSLATE_USAGE);
   const fileId = integer(values.file, '--file');
+  const fuzzyThreshold =
+    values.fuzzy === undefined
+      ? undefined
+      : values.fuzzy === 'off'
+        ? null
+        : integer(values.fuzzy, '--fuzzy');
 
   const { db } = openExistingProject(projectPath);
   try {
@@ -26,9 +39,11 @@ export function pretranslate(args: readonly string[], io: CliIo): number {
     const s = runPretranslate(db, {
       actor: cliActor(),
       ...(fileId === undefined ? {} : { fileId }),
+      ...(fuzzyThreshold === undefined ? {} : { fuzzyThreshold }),
     });
     io.stdout(
       `Pre-translated: ${s.exact} exact, ${s.tagdiff} tag-diff (draft), ` +
+        `${s.fuzzy} fuzzy (draft), ` +
         `${s.propagated} propagated, ${s.unmatched} unmatched, ` +
         `${s.skipped} skipped (confirmed or locked)`,
     );

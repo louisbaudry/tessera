@@ -10,13 +10,14 @@ import { copyFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { hashOf, primarySubtag } from '@cat-tool/core';
+import { hashOf, primarySubtag, scoreFuzzy } from '@cat-tool/core';
 import type { TmToken } from '@cat-tool/core';
 import {
   createTm,
   ensurePrimarySubtagFn,
   importSdltmFrom,
   importTmx,
+  retrieveFuzzy,
   retrievePair,
   writeBack,
 } from '@cat-tool/db';
@@ -380,6 +381,47 @@ const fuzzy = {
   shortlistNoStopwords: shortlistRun((q) => q.filter((w) => !lists.stopwords.has(w))),
 };
 
+// ------------------------------------------------- the product path (#61)
+// `retrieveFuzzy` (FS-2, v1-spec.md §6.1a): the FTS shortlist, then the
+// product scorer. Recall is against a naive FS-2 scan of every source
+// variant, not against FS-1, so it is the shortlist's loss and nothing
+// else. Queries are the same sentences as above, with no tags.
+log('fuzzy: retrieveFuzzy (FS-2)');
+const productQueries = fuzzyQueries.map((ws) => ({ plain: ws.join(' '), tagSlots: [] }));
+const productNaiveBest: number[] = [];
+const productNaiveMs = sample(
+  (i) => {
+    const q = productQueries[i]!;
+    let best = 0;
+    for (const r of allSources.iterate(SRC)) {
+      const s = scoreFuzzy(q, { plain: r.plain, tagSlots: [] }, 50);
+      if (s !== null && s > best) best = s;
+    }
+    productNaiveBest[i] = best;
+  },
+  { max: 10, min: 3, budgetMs: BUDGET_MS },
+);
+let productFound = 0;
+let productAnswered = 0;
+const productMs = sample(
+  (i) => {
+    const q = productQueries[i]!;
+    const top = retrieveFuzzy(db, { srcLang: SRC, tgtLang: TGT, source: q, limit: 1 });
+    // A query with no unit at 50 or more has a naive best of 0 and nothing to lose.
+    if (i < productNaiveBest.length) {
+      productAnswered++;
+      if ((top[0]?.score ?? 0) >= productNaiveBest[i]!) productFound++;
+    }
+  },
+  { max: productQueries.length, min: productQueries.length, budgetMs: BUDGET_MS },
+);
+const fuzzyProduct = {
+  naive: summarize(productNaiveMs),
+  ms: summarize(productMs),
+  recall: productAnswered === 0 ? 0 : productFound / productAnswered,
+  scored: productAnswered,
+};
+
 // ------------------------------------------------------ ANALYZE effect
 log('ANALYZE');
 let t = process.hrtime.bigint();
@@ -452,6 +494,7 @@ const result = {
   concordance,
   writeBackMs,
   fuzzy,
+  fuzzyProduct,
   copyMs,
   backupMs,
   peakRssMiB: peakRssMiB(),

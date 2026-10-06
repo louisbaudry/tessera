@@ -21,11 +21,27 @@ export type SegmentStatus = (typeof SEGMENT_STATUSES)[number];
  *
  * Deliberately a widened string rather than a closed union: adding
  * `tm_fuzzy_85` or `tm_ice` later must not require a schema migration
- * (planning/v1-spec.md §4.3).
+ * (planning/v1-spec.md §4.3). `tm_fuzzy_<score>` is now written
+ * (`fuzzyOrigin`).
  */
 export const KNOWN_ORIGINS = ['tm_exact', 'tm_exact_tagdiff', 'propagated'] as const;
 export type KnownOrigin = (typeof KNOWN_ORIGINS)[number];
 export type Origin = KnownOrigin | (string & {});
+
+/**
+ * The `origin` a placed fuzzy match carries: its score, not its band
+ * (`v1-spec.md` §6.1a, 3), so a revision of the bands needs no migration.
+ * Not in {@link KNOWN_ORIGINS}, which is a closed list of literals.
+ */
+export function fuzzyOrigin(score: number): string {
+  return `tm_fuzzy_${score}`;
+}
+
+/** The score in a fuzzy `origin`, or `null` when it is any other origin. */
+export function fuzzyScoreOfOrigin(origin: string | null): number | null {
+  const m = /^tm_fuzzy_(\d{1,3})$/.exec(origin ?? '');
+  return m ? Number(m[1]) : null;
+}
 
 /**
  * Which XML part a segment was extracted from.

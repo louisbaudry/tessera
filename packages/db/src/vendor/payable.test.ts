@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assembleFile, rulesFor, segmentWords } from '@cat-tool/core';
+import { assembleFile, fuzzyOrigin, rulesFor, segmentWords } from '@cat-tool/core';
+import { tierForOrigin } from '@cat-tool/vendor-core';
 import type { Database } from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -184,5 +185,25 @@ describe('priceTierWords', () => {
         at: '2026-03-02',
       }),
     ).toThrow(/no word count/);
+  });
+});
+
+describe('the origin a fuzzy match is written with', () => {
+  // `core` writes `tm_fuzzy_<score>` and `vendor-core` reads it; the two
+  // share no import, so this is the one place that holds them to each other
+  // (v1-spec.md §6.1a's table of bands).
+  it('lands in the tier of its band', () => {
+    const tier = (score: number) => tierForOrigin(fuzzyOrigin(score));
+    expect([49, 50, 74, 75, 84, 85, 94, 95, 99].map(tier)).toEqual([
+      'no_match',
+      'fuzzy_50_74',
+      'fuzzy_50_74',
+      'fuzzy_75_84',
+      'fuzzy_75_84',
+      'fuzzy_85_94',
+      'fuzzy_85_94',
+      'fuzzy_95_99',
+      'fuzzy_95_99',
+    ]);
   });
 });

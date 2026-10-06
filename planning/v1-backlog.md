@@ -3706,13 +3706,43 @@ Sized issues:
 - **#60 · Semantic matching E-002: usefulness below the fuzzy threshold
   (H2) · M** · [issue #51] — public corpora only; model choice from
   `#59`, harness work can start in parallel.
-- **#61 · Fuzzy matching in the product · L** · [issue #52] — the
-  prerequisite for the semantic match type (S4) and for `#49`'s rate
-  tiers. Reverses a v1 cut. **Sequenced after `#37`** (owner,
-  2026-09-25): v1 ships as planned, and `#59`/`#60` need no product
-  fuzzy, so their results can inform the shortlist design first. Spec
-  first. The design is written (`v1-spec.md` §6.1a, 2026-10-05); the code
-  phase is what stays sequenced after `#37`.
+- **#61 · ~~Fuzzy matching in the product~~ · DONE — `core/tm/fuzzy.ts`, `db/tm/fuzzy.ts`, `db/project/pretranslate.ts`, `v1-spec.md` §6.1a.**
+  The prerequisite for the semantic match type (S4) and for `#49`'s rate
+  tiers; it reversed a v1 cut. Spec first (merged 2026-10-05), code after
+  the owner confirmed the bands (2026-10-06), though the card sequenced it
+  after `#37`: the owner chose to start it.
+  - **FS-2 is a pure scorer**: word-level edit distance, numerals as a
+    class (2 points each, not a replaced word), 1 point per tag on one
+    side only (cap 5), an integer 0–99 rounded down, never 100 (that is
+    the hash-based exact tier). FS-1 stays the research baseline.
+  - **`origin` is `tm_fuzzy_<score>`, not `<band>`** as the card said:
+    `tierForOrigin` already read the score, and the bands can then move
+    without a migration. A placed match is always a `draft`; the threshold
+    (default 75, `--fuzzy <50-99|off>`) is a run option, and a placed one is
+    a gutter badge (`85%`). A test in `db/vendor` ties `fuzzyOrigin` to
+    `tierForOrigin`'s bands, since `core` and `vendor-core` share no import.
+  - **The tag penalty compares against the segment's visible tags, then all
+    of them**, the same second try `remapTmTokens` makes. The first cut
+    compared visible only and docked the golden sentence a point for a
+    hidden run the memory had tagged, which is every unit of a Trados
+    export.
+  - **The cost is in the postings, not the rows.** The first shortlist took
+    a segment's twelve longest words and cost 187 ms at 200,000 units: bm25
+    ranks every unit holding any queried word. Taking the rarest words
+    within a 20,000-posting budget (counts from a temp `fts5vocab` table,
+    which a `query_only` handle cannot make: it falls back to the longest
+    words) brought it to 16 ms at 100k and 67 ms at 1M (`tm-format-spec.md`
+    §11.5). **Recall is the open problem**: 90% at 100k and 67% at 1M on
+    the synthetic corpus, and the shortlist work (`#59`, §12.5) is what
+    moves it.
+  - **The golden transcript moved by one placement.** The sentence the
+    document misspells ("Y our …") was "no match, delivered in English"; it
+    is now a fuzzy 81, placed as a draft. Read, not regenerated away: the
+    other differences are that segment's audit events shifting by one.
+  - **Not built here**, each its own issue: analysis reading the memory so
+    a 50–74 match that was never placed is priced `fuzzy_50_74` (issue
+    #138), and the threshold as a persisted project setting (issue #139).
+    Until #138, pay for a match under the threshold is no-match.
 
 S4 (the semantic match type in the editor), S5 (LLM context, with Epic
 8) and S6 (real-use data) are not carded yet: each waits on the editor,
@@ -3761,4 +3791,3 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51
-[issue #52]: https://github.com/louisbaudry/tessera/issues/52

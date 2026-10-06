@@ -13,6 +13,7 @@ import type {
   Segment,
   SegmentStatus,
 } from '@cat-tool/core';
+import { fuzzyScoreOfOrigin } from '@cat-tool/core/model';
 
 export interface Badge {
   readonly text: string;
@@ -45,6 +46,10 @@ const ORIGIN_BADGE: Readonly<Record<KnownOrigin, Badge>> = {
  */
 export function originBadge(origin: Origin | null): Badge | null {
   if (origin === null) return null;
+  const score = fuzzyScoreOfOrigin(origin);
+  if (score !== null) {
+    return { text: `${score}%`, title: `Fuzzy TM match, ${score}% (a draft to review)` };
+  }
   return (
     (ORIGIN_BADGE as Readonly<Record<string, Badge>>)[origin] ?? {
       text: origin,

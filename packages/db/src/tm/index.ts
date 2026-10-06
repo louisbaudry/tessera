@@ -71,6 +71,7 @@ export {
 export * from './errors.js';
 export * from './describe.js';
 export * from './retrieve.js';
+export * from './fuzzy.js';
 export * from './import-common.js';
 export * from './import-tmx.js';
 export * from './import-sdltm.js';

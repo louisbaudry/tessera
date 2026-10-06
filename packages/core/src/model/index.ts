@@ -14,3 +14,4 @@ export * from './hidden-tags.js';
 export * from './words.js';
 export * from './lang.js';
 export * from './slug.js';
+export * from './segment.js';
