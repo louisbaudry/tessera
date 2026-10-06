@@ -25,7 +25,6 @@ import {
   acceptAssignment,
   addRosterMembership,
   addVendor,
-  analyseTierWords,
   claimAssignment,
   createDirectOffer,
   createVendorFile,
@@ -57,6 +56,7 @@ import {
   reconcileMemberships,
   reviewAssignment,
   startAssignment,
+  startJob,
   revokeProjectAuthorization,
   setCapacity,
   setVendorRate,
@@ -73,6 +73,7 @@ import {
   isCapacityStatus,
   InvalidAssignmentTransitionError,
   type RateTier,
+  type TierWords,
 } from '@cat-tool/vendor-core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
@@ -140,14 +141,16 @@ function capacityView(c: Capacity | null): CapacityView {
     : { status: null, note: null, setAt: null };
 }
 
-/** The words of a project by match tier, read once and closed. */
-function analyseProject(path: string) {
-  const project = openProjectDb(path);
-  try {
-    return analyseTierWords(project);
-  } finally {
-    project.close();
-  }
+/**
+ * The words of a project by match tier, memories consulted, on a worker:
+ * a retrieval per distinct segment is bulk work (`project.analyseTiers`,
+ * CLAUDE.md: "bulk work is a job, never a request"), and an offer waits for
+ * it without holding the event loop.
+ */
+async function analyseProject(path: string): Promise<TierWords> {
+  const outcome = await startJob('project.analyseTiers', { projectPath: path }).done;
+  if (outcome.status !== 'done') throw new Error('the tier analysis was cancelled');
+  return outcome.value;
 }
 
 /** `404 no such assignment`: what a missing assignment, a missing roster and a stranger all get. */
@@ -293,7 +296,7 @@ export function registerAssignmentRoutes(
         instructions: (instructions as string | null | undefined) ?? null,
         // The project's words by tier as they stand now, frozen with the offer
         // (backlog #116): a tier cannot be read from a segment later.
-        analysis: analyseProject(projectPath(storageRoot, me, project)),
+        analysis: await analyseProject(projectPath(storageRoot, me, project)),
         actor: deps.sessionActor(req),
       };
       const assignment =

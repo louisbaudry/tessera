@@ -15,12 +15,15 @@ import { copyFileSync } from 'node:fs';
 import { basename } from 'node:path';
 
 import type { AuditActor } from '@cat-tool/core';
+import type { TierWords } from '@cat-tool/vendor-core';
 
 import { Cancelled } from '../cancelled.js';
 import { importSdltm, type ImportSdltmResult } from '../tm/import-sdltm.js';
 import { importTmxFile, type ImportTmxResult } from '../tm/import-tmx.js';
 import { mergeTm, type MergeTmResult } from '../tm/merge.js';
+import { openProjectDb } from '../project/index.js';
 import { describeTm, openTm, type TmSummary } from '../tm/index.js';
+import { analyseTierWords } from '../vendor/payable.js';
 
 /** What a running operation tells the world. `fraction` is null when it cannot say. */
 export interface JobProgress {
@@ -75,6 +78,15 @@ export interface OpTable {
       readonly actor: AuditActor;
     };
     result: MergeTmResult;
+  };
+  /**
+   * A project's words by match tier, memories consulted (`analyseTierWords`,
+   * `v1-spec.md` §6.1a, 4): a retrieval per distinct segment, which on a large
+   * memory is minutes, so an offer awaits it off the request thread.
+   */
+  'project.analyseTiers': {
+    args: { readonly projectPath: string; readonly fileId?: number };
+    result: TierWords;
   };
   'tm.vacuum': {
     args: { readonly tmPath: string };
@@ -181,6 +193,15 @@ export const OPS: Ops = {
         cancelled: false,
       };
     }),
+
+  'project.analyseTiers': (args) => {
+    const db = openProjectDb(args.projectPath);
+    try {
+      return { value: analyseTierWords(db, args.fileId), cancelled: false };
+    } finally {
+      db.close();
+    }
+  },
 };
 
 const EMPTY_MERGE: MergeTmResult = {

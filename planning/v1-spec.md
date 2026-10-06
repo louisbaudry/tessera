@@ -984,17 +984,22 @@ literals. A fuzzy match whose tags did not correspond is
 `tm_fuzzy_<score>` with a QA warning, as `tm_exact_tagdiff` is, not a
 second family of origins.
 
-**4. Analysis reads the memory, not the origin — designed, not built
-(issue #138).** Today `analyseTierWords` can only read `origin`, and an
+**4. Analysis reads the memory where there is no origin (issue #138,
+built 2026-10-06).** `analyseTierWords` used to read only `origin`, and an
 edit clears it (§7.2), so it is right only at the moment of an offer
-(`#49b`). Fuzzy keeps that rule and adds a way to meet it: the analysis
-pass runs retrieval at the 50 floor for each segment, independent of the
-pre-translate threshold, so a 60% match is priced as `fuzzy_50_74` though
-it was never placed. The offer's frozen `assignment_analysis` is
-unchanged in shape. A semantic match (`semantic-matching-spec.md` §4)
-stays a no-match here. **Until it is built, a match placed by
-pre-translate (75 and up by default) is priced through its `origin`, and
-one between 50 and the threshold is priced as no match.**
+(`#49b`). That rule stays: a segment with an origin is priced by it. A
+segment with **none** is now read from the project's enabled memories
+whose file exists: an exact hash is `exact`, else the best FS-2 score at
+the 50 floor, independent of the pre-translate threshold, is its band. So
+a 60% match pre-translate never placed is `fuzzy_50_74`, and a project
+offered before it was pre-translated is priced by what its memories hold,
+exact matches included (an unplaced exact hit used to be `no_match`).
+Memories are attached for the call and detached after, only those it
+attached. The offer's frozen `assignment_analysis` is unchanged in shape.
+A semantic match (`semantic-matching-spec.md` §4) stays a no-match here.
+It is a retrieval per distinct segment, so it is bulk work: the server
+runs it on a worker (`project.analyseTiers`) and an offer awaits it, never
+on the request thread.
 
 **5. Retrieval.** `retrieveFuzzy(db, params, { schema? })` in
 `db/tm/fuzzy.ts`, the same three-argument shape as `retrievePair`, so an

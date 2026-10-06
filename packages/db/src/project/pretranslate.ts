@@ -308,7 +308,7 @@ function findExactTmMatch(
   return null;
 }
 
-interface FuzzyHit {
+export interface FuzzyHit {
   readonly score: number;
   readonly tokens: readonly TmToken[];
 }
@@ -319,7 +319,7 @@ interface FuzzyHit {
  * A lower-priority memory's better match still beats a higher one's worse
  * match: priority breaks ties, it does not outrank a closer match.
  */
-function findBestFuzzyMatch(
+export function findBestFuzzyMatch(
   db: Database.Database,
   refs: readonly TmRef[],
   srcLang: string,

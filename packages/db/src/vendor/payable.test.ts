@@ -2,12 +2,19 @@
  * A vendor's payable (backlog #49; vendor-spec.md decisions 9–10): a
  * project's words by tier, priced with the rate card in force on a date.
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assembleFile, fuzzyOrigin, rulesFor, segmentWords } from '@cat-tool/core';
+import {
+  assembleFile,
+  fuzzyOrigin,
+  plainText,
+  rulesFor,
+  segmentWords,
+} from '@cat-tool/core';
 import { tierForOrigin } from '@cat-tool/vendor-core';
 import type { Database } from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -15,6 +22,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
 import { insertFile } from '../project/files.js';
 import { openProjectDb } from '../project/index.js';
+import { createProject } from '../project/project.js';
+import { addTmRef, listTmRefs, tmAlias } from '../project/tm-refs.js';
+import { createTm } from '../tm/index.js';
 import { listSegments } from '../project/segments.js';
 import {
   addVendor,
@@ -88,6 +98,123 @@ describe('analyseTierWords', () => {
     const words = analyseTierWords(project, file.id);
     expect(words.exact).toBe(segmentWords(first!));
     expect(words.no_match).toBeGreaterThan(0);
+  });
+});
+
+describe('analyseTierWords: an unplaced segment is read from the memories (v1-spec.md §6.1a, 4)', () => {
+  /** A project over a prose file, and its segments of eight plain words or more. */
+  function setup() {
+    createProject(project, { name: 'p', srcLang: 'en', tgtLang: 'de' });
+    const file = insertFile(
+      project,
+      'prose.docx',
+      assembleFile(
+        new Uint8Array(readFileSync(join(dirname(FIXTURE), 'prose-short.docx'))),
+        rulesFor('en'),
+      ),
+      { actor: TEST_ACTOR },
+    );
+    const wordsOnly = (t: string) =>
+      t.split(' ').every((w) => /^\p{L}+[.,;:!?]?$/u.test(w));
+    const candidates = listSegments(project, file.id).filter((s) => {
+      const t = plainText(s.sourceTokens).trim();
+      return (
+        segmentWords(s) > 0 &&
+        s.formatTable.every((f) => !f.visible) &&
+        t.split(' ').length >= 8 &&
+        wordsOnly(t)
+      );
+    });
+    expect(candidates.length).toBeGreaterThanOrEqual(2);
+    return { file, a: candidates[0]!, b: candidates[1]! };
+  }
+
+  /** A unit with this source text and hash, and a German target. */
+  function unit(tm: Database, srcPlain: string, hash: string): void {
+    const now = new Date().toISOString();
+    const tuId = tm
+      .prepare('INSERT INTO tu (uuid, created_at, updated_at) VALUES (?, ?, ?)')
+      .run(randomUUID(), now, now).lastInsertRowid as number;
+    for (const [lang, text, h] of [
+      ['en', srcPlain, hash],
+      ['de', 'Ziel', `de:${hash}`],
+    ] as const) {
+      tm.prepare(
+        `INSERT INTO tuv (tu_id, lang, tokens, plain, hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(tuId, lang, JSON.stringify([{ t: 'text', v: text }]), text, h, now, now);
+    }
+  }
+
+  /** `text` with its last `k` words replaced. */
+  const changed = (text: string, k: number): string => {
+    const w = text.trim().split(' ');
+    return [...w.slice(0, w.length - k), ...Array.from({ length: k }, () => 'zzqx')].join(
+      ' ',
+    );
+  };
+
+  it('prices an exact hit as exact and a 50-74 match as fuzzy_50_74, though neither was placed', () => {
+    const { file, a, b } = setup();
+    const memory = join(dir, 'm.ctm');
+    const tm = createTm(memory, { name: 'm', generator: 'test' });
+    unit(tm, 'whatever the text was', a.sourceHash);
+    const n = plainText(b.sourceTokens).trim().split(' ').length;
+    unit(tm, changed(plainText(b.sourceTokens), Math.ceil(n * 0.3)), 'other-hash');
+    tm.close();
+    addTmRef(project, { actor: TEST_ACTOR, path: memory, priority: 1 });
+
+    const words = analyseTierWords(project, file.id);
+    expect(words.exact).toBe(segmentWords(a));
+    expect(words.fuzzy_50_74).toBe(segmentWords(b));
+    const total = listSegments(project, file.id).reduce((x, s) => x + segmentWords(s), 0);
+    expect(Object.values(words).reduce((x, y) => x + y, 0)).toBe(total);
+  });
+
+  it('leaves a segment that has an origin to its origin, whatever the memory says', () => {
+    const { file, a } = setup();
+    const memory = join(dir, 'm.ctm');
+    const tm = createTm(memory, { name: 'm', generator: 'test' });
+    unit(tm, 'whatever the text was', a.sourceHash);
+    tm.close();
+    addTmRef(project, { actor: TEST_ACTOR, path: memory, priority: 1 });
+    project
+      .prepare('UPDATE segment SET origin = ? WHERE id = ?')
+      .run(fuzzyOrigin(80), a.id);
+
+    const words = analyseTierWords(project, file.id);
+    expect(words.fuzzy_75_84).toBe(segmentWords(a));
+    expect(words.exact).toBeUndefined();
+  });
+
+  it('skips a memory whose file is gone, and does not create it', () => {
+    const { file } = setup();
+    const gone = join(dir, 'gone.ctm');
+    addTmRef(project, { actor: TEST_ACTOR, path: gone, priority: 1 });
+    const total = listSegments(project, file.id).reduce((x, s) => x + segmentWords(s), 0);
+    expect(analyseTierWords(project, file.id)).toEqual({ no_match: total });
+    expect(existsSync(gone)).toBe(false);
+  });
+
+  it('detaches what it attached, and only that', () => {
+    const { file } = setup();
+    for (const name of ['one.ctm', 'two.ctm']) {
+      createTm(join(dir, name), { name, generator: 'test' }).close();
+      addTmRef(project, { actor: TEST_ACTOR, path: join(dir, name), priority: 1 });
+    }
+    const attachedNames = () =>
+      (project.pragma('database_list') as Array<{ name: string }>)
+        .map((d) => d.name)
+        .filter((n) => n !== 'main' && n !== 'temp');
+    expect(attachedNames()).toEqual([]);
+    analyseTierWords(project, file.id);
+    expect(attachedNames()).toEqual([]);
+
+    // A memory the caller already attached stays attached.
+    const [first] = listTmRefs(project);
+    project.prepare(`ATTACH DATABASE ? AS ${tmAlias(first!.id)}`).run(first!.path);
+    analyseTierWords(project, file.id);
+    expect(attachedNames()).toEqual([tmAlias(first!.id)]);
   });
 });
 
