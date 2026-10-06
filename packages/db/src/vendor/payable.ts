@@ -5,7 +5,17 @@
  * project (words and origins) and the `.ctv` (rates).
  */
 
-import { hasSpacedWords, segmentWords, type Segment } from '@cat-tool/core';
+import { existsSync } from 'node:fs';
+
+import {
+  FUZZY_FLOOR,
+  fuzzyOrigin,
+  hasSpacedWords,
+  operandOfSource,
+  segmentWords,
+  type Segment,
+  type TmRef,
+} from '@cat-tool/core';
 import {
   computePayable,
   isRateTier,
@@ -18,30 +28,121 @@ import {
 } from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
+import { findBestFuzzyMatch } from '../project/pretranslate.js';
+import { getProject } from '../project/project.js';
 import { listAllSegments, listSegments } from '../project/segments.js';
+import { attachTms, detachTms, listTmRefs, tmAlias } from '../project/tm-refs.js';
+import { retrievePair } from '../tm/retrieve.js';
 import { VendorError } from './error.js';
 import { vendorRateAt } from './rates.js';
 import { normalizePair, type LanguagePair } from './vendors.js';
 
 /**
- * The words of a project's segments (one file's, or all) by the tier of the
- * origin each was pre-translated with. **Only true while that origin is
- * there**: an edit clears it, so this is the analysis made at offer time,
- * not a live figure to re-run over a job in progress (see
- * `tierForOrigin`). Locked segments and a text box's fallback copy count
- * for nothing, as everywhere (`segmentWords`).
+ * The words of a project's segments (one file's, or all) by match tier.
+ *
+ * **A segment with an origin is read from it** (`tierForOrigin`): what
+ * pre-translate placed is what it was priced as, and an edit clears it, so
+ * this is the analysis made at offer time, not a live figure to re-run over
+ * a job in progress. **A segment with none is read from the memories**
+ * (`v1-spec.md` §6.1a, 4): an exact hash is `exact`, else its best fuzzy
+ * score at the analysis floor is its band. That is what prices a 60% match
+ * pre-translate never placed (the threshold is 75), and a project offered
+ * before it was pre-translated at all. Only the project's enabled memories
+ * whose file exists count: a missing one is skipped, never created by an
+ * `ATTACH`. Locked segments and a text box's fallback copy count for
+ * nothing, as everywhere (`segmentWords`).
+ *
+ * A retrieval per distinct segment, so this is bulk work: a server runs it
+ * on a worker (`project.analyseTiers`), never on the request thread.
  */
 export function analyseTierWords(project: Database.Database, fileId?: number): TierWords {
   const segments: Segment[] =
     fileId === undefined ? listAllSegments(project) : listSegments(project, fileId);
-  const words: Partial<Record<RateTier, number>> = {};
-  for (const s of segments) {
-    const n = segmentWords(s);
-    if (n === 0) continue;
-    const tier = tierForOrigin(s.origin);
-    words[tier] = (words[tier] ?? 0) + n;
+  const memories = attachExistingMemories(project);
+  try {
+    const lang = getProject(project);
+    const consult = lang && memories.refs.length > 0;
+    const exactCache = new Map<string, boolean>();
+    const fuzzyCache = new Map<string, number | null>();
+    const fuzzyOn = consult && hasSpacedWords(lang.srcLang);
+
+    const tierFromMemories = (s: Segment): RateTier => {
+      let exact = exactCache.get(s.sourceHash);
+      if (exact === undefined) {
+        exact = memories.refs.some(
+          (ref) =>
+            retrievePair(
+              project,
+              { srcLang: lang!.srcLang, srcHash: s.sourceHash, tgtLang: lang!.tgtLang },
+              { schema: tmAlias(ref.id) },
+            ).length > 0,
+        );
+        exactCache.set(s.sourceHash, exact);
+      }
+      if (exact) return 'exact';
+      if (!fuzzyOn) return 'no_match';
+
+      const operand = operandOfSource(s.sourceTokens, s.formatTable);
+      const key = `${operand.plain}\u0000${operand.tagSlots.join(',')}`;
+      let score = fuzzyCache.get(key);
+      if (score === undefined) {
+        score =
+          findBestFuzzyMatch(
+            project,
+            memories.refs,
+            lang!.srcLang,
+            lang!.tgtLang,
+            operand,
+            FUZZY_FLOOR,
+          )?.score ?? null;
+        fuzzyCache.set(key, score);
+      }
+      return score === null ? 'no_match' : tierForOrigin(fuzzyOrigin(score));
+    };
+
+    const words: Partial<Record<RateTier, number>> = {};
+    for (const s of segments) {
+      const n = segmentWords(s);
+      if (n === 0) continue;
+      const tier =
+        s.origin === null
+          ? consult
+            ? tierFromMemories(s)
+            : 'no_match'
+          : tierForOrigin(s.origin);
+      words[tier] = (words[tier] ?? 0) + n;
+    }
+    return words;
+  } finally {
+    memories.release();
   }
-  return words;
+}
+
+/**
+ * Attaches the project's enabled memories whose file exists, and hands back a
+ * way to detach exactly those it attached (a connection that already had
+ * some attached keeps them). A path that does not exist is left out: SQLite
+ * would create an empty database there.
+ */
+function attachExistingMemories(project: Database.Database): {
+  refs: TmRef[];
+  release: () => void;
+} {
+  const before = new Set(
+    (project.pragma('database_list') as Array<{ name: string }>).map((d) => d.name),
+  );
+  const refs = attachTms(
+    project,
+    listTmRefs(project).filter((r) => existsSync(r.path)),
+  );
+  return {
+    refs,
+    release: () =>
+      detachTms(
+        project,
+        refs.filter((r) => !before.has(tmAlias(r.id))),
+      ),
+  };
 }
 
 export interface PayableOptions {

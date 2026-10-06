@@ -3739,10 +3739,13 @@ Sized issues:
     document misspells ("Y our …") was "no match, delivered in English"; it
     is now a fuzzy 81, placed as a draft. Read, not regenerated away: the
     other differences are that segment's audit events shifting by one.
-  - **Not built here**, each its own issue: analysis reading the memory so
-    a 50–74 match that was never placed is priced `fuzzy_50_74` (issue
-    #138), and the threshold as a persisted project setting (issue #139).
-    Until #138, pay for a match under the threshold is no-match.
+  - **Not built here**, each its own issue: the threshold as a persisted
+    project setting (issue #139), and analysis reading the memory so a 50–74
+    match that was never placed is priced `fuzzy_50_74` (issue #138, built
+    the next day: `analyseTierWords` reads the memories for a segment with
+    no origin, exact hits included, and the server's offer runs it on a
+    worker, `project.analyseTiers`, because a retrieval per segment on a
+    large memory is minutes and an offer is a request).
 
 S4 (the semantic match type in the editor), S5 (LLM context, with Epic
 8) and S6 (real-use data) are not carded yet: each waits on the editor,

@@ -306,7 +306,10 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
 - **A job's match-tier words are frozen at offer** (backlog #49b):
   `assignment_analysis`, immutable by trigger. A segment's tier can't be
   read later, because an edit clears its `origin`, so `analyseTierWords` is
-  only for the moment of an offer, never a job in progress.
+  only for the moment of an offer, never a job in progress. A segment with
+  no origin is read from the attached memories (exact, else fuzzy band;
+  `v1-spec.md` §6.1a, 4), which is a retrieval per segment: the server runs
+  it as the `project.analyseTiers` job and awaits it, never inline.
 - **The payable locks at delivery, in the delivery's own transaction**
   (backlog #51b, `deliverAssignment`): `assignment_payable` and its lines,
   immutable by trigger, from the frozen analysis and the rates of the

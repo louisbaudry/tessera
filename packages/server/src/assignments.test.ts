@@ -6,18 +6,21 @@
  * owner's project to the vendor through #45's grant.
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { hashPassword, type AuditActor } from '@cat-tool/core';
+import { hashPassword, segmentWords, type AuditActor } from '@cat-tool/core';
 import {
   addRosterMembership,
   addVendor,
   addQaIssue,
+  addTmRef,
   analyseTierWords,
   createAccount,
+  createTm,
   createVendorFile,
   dismissQaIssue,
   listEvents,
@@ -173,6 +176,38 @@ describe('the owner offers a project', () => {
     expect(assignment.events).toMatchObject([
       { from: null, to: 'offered', by: 'alice@example.com' },
     ]);
+  });
+
+  it('reads an attached memory into the frozen analysis: an exact hit is exact, with no pre-translate', async () => {
+    const a = await aliceWithProject();
+    const path = projectPath(config.storageRoot, alice, 'job');
+    const projectDb = openProjectDb(path);
+    const target = listSegments(projectDb, 1).find((s) => segmentWords(s) > 0)!;
+    const memory = join(dirname(path), 'offer-memory.ctm');
+    const tm = createTm(memory, { name: 'm', generator: 'test' });
+    const now = new Date().toISOString();
+    const tuId = tm
+      .prepare('INSERT INTO tu (uuid, created_at, updated_at) VALUES (?, ?, ?)')
+      .run(randomUUID(), now, now).lastInsertRowid as number;
+    for (const [lang, text, hash] of [
+      ['en', 'source text', target.sourceHash],
+      ['de', 'Zieltext', 'target-hash'],
+    ] as const) {
+      tm.prepare(
+        `INSERT INTO tuv (tu_id, lang, tokens, plain, hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(tuId, lang, JSON.stringify([{ t: 'text', v: text }]), text, hash, now, now);
+    }
+    tm.close();
+    addTmRef(projectDb, { actor: SETUP, path: memory, priority: 1 });
+    projectDb.close();
+
+    const res = await post(a, offerBody());
+    expect(res.statusCode, res.body).toBe(201);
+    const { assignment } = res.json() as {
+      assignment: { analysis: { words: Record<string, number> } | null };
+    };
+    expect(assignment.analysis?.words['exact']).toBe(segmentWords(target));
   });
 
   it('freezes the project’s tier analysis with the offer, and the owner sees it', async () => {

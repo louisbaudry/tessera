@@ -16,9 +16,11 @@ import type Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
+import { openProjectDb } from '../project/index.js';
 import { importTmxFile } from '../tm/import-tmx.js';
 import { createTm, openTm } from '../tm/index.js';
 import { mergeTm } from '../tm/merge.js';
+import { analyseTierWords } from '../vendor/payable.js';
 import type { JobProgress } from './ops.js';
 import { JobError, startJob } from './run.js';
 
@@ -403,4 +405,18 @@ describe('the other operations', () => {
     expect(outcome.value.summary).toMatchObject({ name: 's', units: 1234 });
     expect([...outcome.value.summary.langs].sort()).toEqual(['en', 'es']);
   }, 60_000);
+});
+
+describe('project.analyseTiers', () => {
+  it("returns a project's words by tier, the same as the function run in place", async () => {
+    const projectPath = path('project.catdb');
+    openProjectDb(projectPath).close();
+    const outcome = await startJob('project.analyseTiers', { projectPath }).done;
+    expect(outcome.status).toBe('done');
+    const reopened = openProjectDb(projectPath);
+    open.push(reopened);
+    expect(outcome.status === 'done' && outcome.value).toEqual(
+      analyseTierWords(reopened),
+    );
+  });
 });
