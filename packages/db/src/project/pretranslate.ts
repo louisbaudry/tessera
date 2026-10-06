@@ -15,7 +15,13 @@
  */
 
 import {
+  DEFAULT_FUZZY_THRESHOLD,
+  FUZZY_FLOOR,
+  FUZZY_MAX_SCORE,
+  fuzzyOrigin,
+  hasSpacedWords,
   isProtectedFromPretranslate,
+  operandOfSource,
   placeMatch,
   toTmTokens,
   type AuditActor,
@@ -26,6 +32,7 @@ import {
 import type Database from 'better-sqlite3';
 
 import { appendAuditEvent } from '../audit/events.js';
+import { retrieveFuzzy } from '../tm/fuzzy.js';
 import { retrievePair } from '../tm/retrieve.js';
 import { getProject } from './project.js';
 import { replaceQaIssues } from './qa-issues.js';
@@ -53,6 +60,14 @@ export interface PretranslateOptions {
    * `segment.target_set` child of it (spec §2.3).
    */
   readonly actor: AuditActor;
+  /**
+   * The lowest fuzzy score written into a segment (v1-spec.md §6.1a, 2);
+   * defaults to {@link DEFAULT_FUZZY_THRESHOLD}. `null` turns fuzzy off, so
+   * a run is exactly the exact-and-propagation pre-translate it was.
+   * Below it a match exists but is never placed: a 60% match in the target
+   * is noise the translator deletes.
+   */
+  readonly fuzzyThreshold?: number | null;
 }
 
 export interface PretranslateSummary {
@@ -60,6 +75,8 @@ export interface PretranslateSummary {
   readonly exact: number;
   /** Same source text, but the match's tags didn't correspond to this segment's — text only, `origin: 'tm_exact_tagdiff'`, flagged for review. */
   readonly tagdiff: number;
+  /** A fuzzy match at or above the threshold — a draft, `origin: 'tm_fuzzy_<score>'` (v1-spec.md §6.1a). */
+  readonly fuzzy: number;
   /** No TM hit; populated from an already-confirmed sibling segment sharing the same source hash — `origin: 'propagated'`. */
   readonly propagated: number;
   /** Eligible but nothing matched — left untouched. */
@@ -77,7 +94,7 @@ interface Placement {
   readonly segment: Segment;
   readonly targetTokens: Segment['targetTokens'];
   readonly tagsMatched: boolean;
-  readonly origin: 'tm_exact' | 'tm_exact_tagdiff' | 'propagated';
+  readonly origin: string;
   readonly status: 'translated' | 'draft';
   readonly sourceLabel: string;
 }
@@ -101,6 +118,22 @@ export function pretranslate(
   if (!project) {
     throw new PretranslateError('project has no identity row — nothing to pre-translate');
   }
+  const fuzzyThreshold =
+    options.fuzzyThreshold === undefined
+      ? DEFAULT_FUZZY_THRESHOLD
+      : options.fuzzyThreshold;
+  if (
+    fuzzyThreshold !== null &&
+    (!Number.isInteger(fuzzyThreshold) ||
+      fuzzyThreshold < FUZZY_FLOOR ||
+      fuzzyThreshold > FUZZY_MAX_SCORE)
+  ) {
+    throw new PretranslateError(
+      `fuzzy threshold must be a whole number from ${FUZZY_FLOOR} to ${FUZZY_MAX_SCORE}, or off`,
+    );
+  }
+  // An unspaced source has no word to score (`hasSpacedWords`).
+  const fuzzyOn = fuzzyThreshold !== null && hasSpacedWords(project.srcLang);
 
   // ATTACHing must happen before the transaction below starts — SQLite
   // refuses ATTACH/DETACH once one is open.
@@ -148,8 +181,29 @@ export function pretranslate(
       return found;
     };
 
+    // The score depends on the segment's visible tags as well as its text,
+    // so the cache is keyed by both.
+    const fuzzyCache = new Map<string, FuzzyHit | null>();
+    const findFuzzy = (segment: Segment): FuzzyHit | null => {
+      const operand = operandOfSource(segment.sourceTokens, segment.formatTable);
+      const key = `${operand.plain}\u0000${operand.tagSlots.join(',')}`;
+      const cached = fuzzyCache.get(key);
+      if (cached !== undefined) return cached;
+      const found = findBestFuzzyMatch(
+        db,
+        attached,
+        project.srcLang,
+        project.tgtLang,
+        operand,
+        fuzzyThreshold!,
+      );
+      fuzzyCache.set(key, found);
+      return found;
+    };
+
     let exact = 0;
     let tagdiff = 0;
+    let fuzzy = 0;
     let propagated = 0;
     let unmatched = 0;
     let skipped = 0;
@@ -197,10 +251,29 @@ export function pretranslate(
         continue;
       }
 
+      const fuzzyHit = fuzzyOn ? findFuzzy(segment) : null;
+      if (fuzzyHit) {
+        const placed = placeMatch(
+          fuzzyHit.tokens,
+          segment.sourceTokens,
+          segment.formatTable,
+        );
+        placements.push({
+          segment,
+          targetTokens: placed.targetTokens,
+          tagsMatched: placed.tagsMatched,
+          origin: fuzzyOrigin(fuzzyHit.score),
+          status: 'draft',
+          sourceLabel: `a ${fuzzyHit.score}% fuzzy TM match`,
+        });
+        fuzzy++;
+        continue;
+      }
+
       unmatched++;
     }
 
-    const summary = { exact, tagdiff, propagated, unmatched, skipped };
+    const summary = { exact, tagdiff, fuzzy, propagated, unmatched, skipped };
     const batch = appendAuditEvent(db, {
       actor: options.actor,
       action: 'project.pretranslate',
@@ -233,6 +306,39 @@ function findExactTmMatch(
     if (matches.length > 0) return matches[0]!.tokens;
   }
   return null;
+}
+
+interface FuzzyHit {
+  readonly score: number;
+  readonly tokens: readonly TmToken[];
+}
+
+/**
+ * The best fuzzy match across the attached TMs: the highest score wins, and
+ * on a tie the memory earlier in priority order (v1-spec.md §6.1a, 5).
+ * A lower-priority memory's better match still beats a higher one's worse
+ * match: priority breaks ties, it does not outrank a closer match.
+ */
+function findBestFuzzyMatch(
+  db: Database.Database,
+  refs: readonly TmRef[],
+  srcLang: string,
+  tgtLang: string,
+  source: ReturnType<typeof operandOfSource>,
+  minScore: number,
+): FuzzyHit | null {
+  let best: FuzzyHit | null = null;
+  for (const ref of refs) {
+    const [top] = retrieveFuzzy(
+      db,
+      { srcLang, tgtLang, source, minScore, limit: 1 },
+      { schema: tmAlias(ref.id) },
+    );
+    if (top && (best === null || top.score > best.score)) {
+      best = { score: top.score, tokens: top.tokens };
+    }
+  }
+  return best;
 }
 
 /**

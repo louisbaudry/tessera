@@ -293,8 +293,8 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   trigger). The rate in force at a date is `vendorRateAt`, and a new
   entry may not be dated before today or before the newest one for the
   same vendor, pair and tier, so a later row can never change what a past
-  period paid. Money is `rate_micros`, an integer. `RATE_TIERS` is
-  provisional until `#61` fixes the fuzzy bands.
+  period paid. Money is `rate_micros`, an integer. `RATE_TIERS` holds the
+  fuzzy bands `#61` fixed (`v1-spec.md` §6.1a); a revision is a migration.
 - **An assignment moves only through `moveAssignment`** (`db/vendor/assignments.ts`,
   backlog #48), over `transitionAssignment`. It takes the write lock first
   (`BEGIN IMMEDIATE`): that, not the conditional `UPDATE`, is what makes two
@@ -643,6 +643,19 @@ constraint and dependency isolation:
   `tuv_history` must respect the `(tuv_id, rev)` key the same way. A
   `.ctm` has no `audit_event`, so a merge leaves its trace in the
   retained revisions only.
+- **Fuzzy matching (backlog #61, `v1-spec.md` §6.1a) is two stages and one
+  scale rule.** `core/tm/fuzzy.ts` is the pure FS-2 scorer, an integer 0–99
+  that is never 100 (that is the exact, hash-based tier); `db/tm/fuzzy.ts`'s
+  `retrieveFuzzy` is an FTS5 shortlist in front of it. A fuzzy match's
+  `origin` is `tm_fuzzy_<score>`, never the band (`fuzzyOrigin`), so the
+  bands can move without a migration, and a placed one is always a `draft`.
+  **The shortlist is bounded by postings, not by rows:** bm25 ranks every
+  unit holding any queried word, so the query takes the rarest words that
+  fit `POSTING_BUDGET` (their counts from a temp `fts5vocab` table). The
+  first version took the twelve longest words and cost 187 ms a segment at
+  200,000 units; `retrieveFuzzy` is the one place to change this, and
+  `pnpm bench:tm`'s product-path row is how to check it. FS-1 stays the
+  research scorer (`db/tm/bench/stats.ts`) and is never "fixed" into FS-2.
 - **Schema and repository** — `db/tm/schema.ts` owns `.ctm` schema versioning
   and writes through the shared migration runner. Pair retrieval
   (`retrievePair`) lives in `db/tm/retrieve.ts`, not in `core`.

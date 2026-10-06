@@ -18,7 +18,7 @@ Attached <job>/job.ctm as TM #2 (priority 2, write target)
 exit 0
 
 ## $ cat-tool pretranslate <job>/job.catdb
-Pre-translated: 14 exact, 1 tag-diff (draft), 0 propagated, 2 unmatched, 1 skipped (confirmed or locked)
+Pre-translated: 14 exact, 1 tag-diff (draft), 1 fuzzy (draft), 0 propagated, 1 unmatched, 1 skipped (confirmed or locked)
 exit 0
 
 ## $ cat-tool qa <job>/job.catdb
@@ -44,24 +44,24 @@ QA: 4 issues across 18 segments — 1 errors, 3 warnings, 0 info; 0 blocking
 exit 0
 
 ## $ cat-tool export <job>/job.catdb --out <job>/out
-Wrote <job>/out/prose-short.docx: 9/10 paragraphs rebuilt, 15/18 segments with a target
+Wrote <job>/out/prose-short.docx: 9/10 paragraphs rebuilt, 16/18 segments with a target
 exit 0
 
 ## $ cat-tool history <job>/job.catdb 1
 #5	<at>	cli:<user>	segment.target_set (batch #4)	draft	tm_exact_tagdiff	"Nizßpoce hejo Nafovaf guse der Kifogonan"
-#20	<at>	cli:golden	segment.target_set	translated	tm_exact_tagdiff	"{1}Nizßpoce hejo Nafovaf guse der Kifogonan{/1}"
-#21	<at>	cli:golden	segment.target_set	confirmed	tm_exact_tagdiff	"{1}Nizßpoce hejo Nafovaf guse der Kifogonan{/1}"
-#22	<at>	cli:golden	segment.confirmed	TM unit <uuid> rev 1
+#21	<at>	cli:golden	segment.target_set	translated	tm_exact_tagdiff	"{1}Nizßpoce hejo Nafovaf guse der Kifogonan{/1}"
+#22	<at>	cli:golden	segment.target_set	confirmed	tm_exact_tagdiff	"{1}Nizßpoce hejo Nafovaf guse der Kifogonan{/1}"
+#23	<at>	cli:golden	segment.confirmed	TM unit <uuid> rev 1
 4 events for segment #1
 exit 0
 
 ## $ cat-tool audit-verify <job>/job.catdb
-Audit chain intact: 24 events
+Audit chain intact: 25 events
 exit 0
 
 ## delivered
 word/document.xml	"Nizßpoce hejo Nafovaf guse der Kifogonan"
-word/document.xml	"Suzamil Jubum Tolucumecus Cal Mil Mib, tureve Tofu, sula Dov bejog mit jil die Jaösulibazevara danabit 12. Vefodepicohuben gojelo. Y our hejubejo and vecula duvu a gasen kasa to da."
+word/document.xml	"Suzamil Jubum Tolucumecus Cal Mil Mib, tureve Tofu, sula Dov bejog mit jil die Jaösulibazevara danabit 12. Vefodepicohuben gojelo. Naji Jegufenikot und Zub Fobor tebedilu jil funi jeso."
 word/document.xml	"Hut nagße losi zici zatapo Larigitiju talebelu gigahapodi, die veha sazoref josi, zo mit jil kofak an sofehi Nafovaf sohebafenupa.  Defus cicakukoruke Tofu poka losi gomovol gamehogegej Hovebepidoju und Fukasisu, nejib Bilil zatapo Digedi bi Fobor zesomun und nazof relöpo Lekubeji depapofoza kalav.  Latat, sula Dov Naji Kuvu und Zub Faluzu mit jil peguva."
 word/document.xml	"Sub pamut siv Kugut zuhegi, tituma das Vaguj danabit Pipuhido Liredamu Vim: Der Bofe hi bif Mönetesikepeg, gegajekuje siv bif Dedumo der Zimovis:  „Juveg, hut dimuc gogik har.“ (Mabudikezed 14,2)."
 word/document.xml	"Gor liredamu Vim ist gor Vim des Gesihuco, des Canacufumu und der Ruzedoto – gor Vim, der jil cacuäbe hi tagicud, sula Siju maholuj loni zege Jotolib für zatapo Jezepisakazu peberabejav."

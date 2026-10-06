@@ -163,8 +163,9 @@ export function ProjectMemories({ project }: { project: string }) {
         </button>
         {ran && (
           <span className="muted" role="status">
-            {ran.exact} exact, {ran.tagdiff} with different tags (draft), {ran.propagated}{' '}
-            propagated, {ran.unmatched} unmatched, {ran.skipped} skipped
+            {ran.exact} exact, {ran.tagdiff} with different tags (draft), {ran.fuzzy}{' '}
+            fuzzy (draft), {ran.propagated} propagated, {ran.unmatched} unmatched,{' '}
+            {ran.skipped} skipped
           </span>
         )}
       </div>

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import {
   assembleFile,
   carryHiddenTags,
+  fuzzyOrigin,
+  plainText,
   rulesFor,
   withoutHiddenTags,
 } from '@cat-tool/core';
@@ -458,6 +460,179 @@ describe('pretranslate', () => {
     const summary = pretranslate(db, { actor: TEST_ACTOR, fileId: fileB.id });
     expect(summary.propagated).toBe(1);
     expect(getSegment(db, segmentB.id)!.origin).toBe('propagated');
+    db.close();
+  });
+});
+
+/** A unit whose source is `srcPlain` — a different hash from any segment's, so only fuzzy can find it. */
+function insertFuzzyUnit(
+  tmDb: Database.Database,
+  options: { srcPlain: string; tgtText: string; srcLang?: string; tgtLang?: string },
+): void {
+  const now = new Date().toISOString();
+  const tuId = tmDb
+    .prepare('INSERT INTO tu (uuid, created_at, updated_at) VALUES (?, ?, ?)')
+    .run(randomUUID(), now, now).lastInsertRowid as number;
+  const add = (lang: string, text: string, quality: number) =>
+    tmDb
+      .prepare(
+        `INSERT INTO tuv (tu_id, lang, tokens, plain, hash, quality, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        tuId,
+        lang,
+        JSON.stringify([{ t: 'text', v: text }]),
+        text,
+        `hash:${lang}:${text}`,
+        quality,
+        now,
+        now,
+      );
+  add(options.srcLang ?? 'en', options.srcPlain, 2);
+  add(options.tgtLang ?? 'es', options.tgtText, 2);
+}
+
+/** `text` with its last word replaced: one word of `n` differs, a score of floor(100 * (n - 1) / n). */
+function withLastWordChanged(text: string): { changed: string; score: number } {
+  const words = text.split(' ');
+  words[words.length - 1] = 'zzqx';
+  return {
+    changed: words.join(' '),
+    score: Math.floor((100 * (words.length - 1)) / words.length),
+  };
+}
+
+describe('pretranslate: fuzzy matches (v1-spec.md §6.1a)', () => {
+  /** A project with one plain segment of at least eight words, and that segment's text. */
+  function setup() {
+    const db = openProjectDb(dbPath());
+    createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'es' });
+    const file = insertFile(
+      db,
+      'a.docx',
+      assembleFile(loadDocx('prose-short.docx'), rulesFor('en')),
+      { actor: TEST_ACTOR },
+    );
+    // Only hidden tags (or none), and plain words: the score is then the
+    // arithmetic in `withLastWordChanged`, with no tag or numeral term.
+    const wordsOnly = (text: string) =>
+      text.split(' ').every((w) => /^\p{L}+[.,;:!?]?$/u.test(w));
+    const segment = listSegments(db, file.id).find((s) => {
+      const text = plainText(s.sourceTokens).trim();
+      return (
+        !s.locked &&
+        s.formatTable.every((f) => !f.visible) &&
+        text.split(' ').length >= 8 &&
+        wordsOnly(text)
+      );
+    });
+    if (!segment) throw new Error('fixture has no plain segment of eight words');
+    return { db, segment, text: plainText(segment.sourceTokens).trim() };
+  }
+
+  it('places a close match as a draft, with its score as the origin', () => {
+    const { db, segment, text } = setup();
+    const { changed, score } = withLastWordChanged(text);
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    insertFuzzyUnit(tm, { srcPlain: changed, tgtText: 'Texto cercano' });
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
+    expect(summary.fuzzy).toBe(1);
+    expect(summary.exact).toBe(0);
+
+    const after = getSegment(db, segment.id)!;
+    expect(after.origin).toBe(fuzzyOrigin(score));
+    expect(after.status).toBe('draft');
+    expect(withoutHiddenTags(after.targetTokens!, after.formatTable)).toEqual([
+      { t: 'text', v: 'Texto cercano' },
+    ]);
+    db.close();
+  });
+
+  it('never writes a match under the threshold, however close the next one is', () => {
+    const { db, segment, text } = setup();
+    const { changed, score } = withLastWordChanged(text);
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    insertFuzzyUnit(tm, { srcPlain: changed, tgtText: 'Texto cercano' });
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+
+    const summary = pretranslate(db, { actor: TEST_ACTOR, fuzzyThreshold: score + 1 });
+    expect(summary.fuzzy).toBe(0);
+    expect(getSegment(db, segment.id)!.targetTokens).toBeNull();
+    db.close();
+  });
+
+  it('is off with a null threshold', () => {
+    const { db, segment, text } = setup();
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    insertFuzzyUnit(tm, { srcPlain: withLastWordChanged(text).changed, tgtText: 'x' });
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+
+    expect(pretranslate(db, { actor: TEST_ACTOR, fuzzyThreshold: null }).fuzzy).toBe(0);
+    expect(getSegment(db, segment.id)!.targetTokens).toBeNull();
+    db.close();
+  });
+
+  it('refuses a threshold outside 50-99', () => {
+    const { db } = setup();
+    for (const bad of [49, 100, 75.5]) {
+      expect(() => pretranslate(db, { actor: TEST_ACTOR, fuzzyThreshold: bad })).toThrow(
+        PretranslateError,
+      );
+    }
+    db.close();
+  });
+
+  it('prefers the closer match across memories, and priority only on a tie', () => {
+    const { db, segment, text } = setup();
+    const near = withLastWordChanged(text).changed;
+    // Two words differ in the second memory's unit: a lower score.
+    const words = near.split(' ');
+    words[0] = 'zzqy';
+    const farther = words.join(' ');
+
+    for (const [name, srcPlain, tgtText, priority] of [
+      ['a.ctm', farther, 'del primero', 1],
+      ['b.ctm', near, 'del segundo', 2],
+      ['c.ctm', near, 'del tercero', 3],
+    ] as const) {
+      const tm = createTm(ctmPath(name), { name, generator: 'test' });
+      insertFuzzyUnit(tm, { srcPlain, tgtText });
+      tm.close();
+      addTmRef(db, { actor: TEST_ACTOR, path: ctmPath(name), priority });
+    }
+
+    pretranslate(db, { actor: TEST_ACTOR, fuzzyThreshold: 50 });
+    // b beats a on score; c ties b and loses on priority.
+    expect(
+      withoutHiddenTags(getSegment(db, segment.id)!.targetTokens!, segment.formatTable),
+    ).toEqual([{ t: 'text', v: 'del segundo' }]);
+    db.close();
+  });
+
+  it('leaves an exact match to the exact path, and a confirmed segment alone', () => {
+    const { db, segment, text } = setup();
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    insertTmUnit(tm, {
+      srcLang: 'en',
+      srcHash: segment.sourceHash,
+      tgtLang: 'es',
+      targetTokens: [{ t: 'text', v: 'Exacto' }],
+    });
+    insertFuzzyUnit(tm, {
+      srcPlain: withLastWordChanged(text).changed,
+      tgtText: 'Cercano',
+    });
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+
+    pretranslate(db, { actor: TEST_ACTOR });
+    expect(getSegment(db, segment.id)!.origin).toBe('tm_exact');
     db.close();
   });
 });

@@ -202,6 +202,7 @@ export interface TmRefView {
 export interface PretranslateSummary {
   readonly exact: number;
   readonly tagdiff: number;
+  readonly fuzzy: number;
   readonly propagated: number;
   readonly unmatched: number;
   readonly skipped: number;

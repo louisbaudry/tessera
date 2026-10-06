@@ -218,7 +218,9 @@ describe('every write path records its event', () => {
       counts: summary,
     });
     const children = listBatch(db, run!.id);
-    expect(children.length).toBe(summary.exact + summary.tagdiff + summary.propagated);
+    expect(children.length).toBe(
+      summary.exact + summary.tagdiff + summary.fuzzy + summary.propagated,
+    );
     expect(children.length).toBeGreaterThan(0);
     expect(children.every((e) => e.action === 'segment.target_set')).toBe(true);
     expect(new Set(children.map((e) => e.subjectId))).toContain(

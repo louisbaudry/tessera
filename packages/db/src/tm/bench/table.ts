@@ -46,6 +46,13 @@ interface Measured {
     readonly shortlistAllTerms: { readonly ms: Summary; readonly recall: number };
     readonly shortlistNoStopwords: { readonly ms: Summary; readonly recall: number };
   };
+  /** Absent in results from before backlog #61. */
+  readonly fuzzyProduct?: {
+    readonly naive: Summary;
+    readonly ms: Summary;
+    readonly recall: number;
+    readonly scored: number;
+  };
   readonly copyMs: number;
   readonly backupMs: number;
   readonly peakRssMiB: number;
@@ -165,6 +172,23 @@ export function markdownTables(r: BenchResults): string {
         `${pp(f.shortlistAllTerms.ms)}, recall ${pct(f.shortlistAllTerms.recall)} | ` +
         `${pp(f.shortlistNoStopwords.ms)}, recall ${pct(f.shortlistNoStopwords.recall)} |`,
     );
+  }
+  const withProduct = ok.filter(({ measured: x }) => x.fuzzyProduct !== undefined);
+  if (withProduct.length > 0) {
+    lines.push(
+      '',
+      "The product path (`retrieveFuzzy`, FS-2, shortlist 200, `v1-spec.md` §6.1a), p50 / p99 per query; recall = its best score equals a naive FS-2 scan's:",
+      '',
+      '| Units | Naive FS-2 scan | `retrieveFuzzy` | Recall |',
+      '|---|---|---|---|',
+    );
+    for (const { size, measured: x } of withProduct) {
+      const f = x.fuzzyProduct!;
+      lines.push(
+        `| ${label(size, x)} | ${pp(f.naive)} (${f.naive.n}) | ${pp(f.ms)} | ` +
+          `${pct(f.recall)} of ${f.scored} |`,
+      );
+    }
   }
   return lines.join('\n');
 }

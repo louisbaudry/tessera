@@ -23,6 +23,7 @@ export * from './segment/edit.js';
 export * from './tm/context.js';
 export * from './tm/mapping.js';
 export * from './tm/embedding.js';
+export * from './tm/fuzzy.js';
 export * from './tm/normalize.js';
 export * from './tm/pretranslate.js';
 export * from './tm/tmx.js';
