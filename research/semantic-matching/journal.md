@@ -412,3 +412,27 @@ unit storage finding and its untested cause (`WITHOUT ROWID` overflow,
 repeated `model` text), as an open item before the product writes
 vectors. Card `#59` stays open for its remaining runs (synthetic 5M,
 synthetic-100k `hnsw`, private memories) and spec §9.1.
+
+---
+
+## 2026-10-06 — Product fuzzy matching built (FS-2); nothing here tests a hypothesis
+
+Backlog `#61`, the prerequisite for the semantic match type, was built
+(`v1-spec.md` §6.1a). It is not an experiment and no hypothesis was
+tested; this entry records what future runs must know.
+
+- **FS-2 exists** (`core/tm/fuzzy.ts`). FS-1 (`db/tm/bench/stats.ts`)
+  is untouched and remains the research baseline: results measured with
+  either stay comparable only to their own kind.
+- **A product shortlist exists** (`db/tm/fuzzy.ts`): the segment's rarest
+  words within a 20,000-posting budget, best 200 by bm25. On the
+  synthetic corpus its best-match recall against a naive FS-2 scan was
+  90% of 10 queries at 100k units and 67% of 6 at 1M (`tm-format-spec.md`
+  §11.5). **Exploratory, not confirmatory**: the variants (longest-12,
+  rarest-k, a share-of-rows budget) were tried on 30 queries at 200,000
+  units and compared by eye before the budget was fixed, with no
+  hypothesis committed first. Do not cite these as E-001 results; E-001's
+  arms are unchanged and its shortlist baselines are still FTS top-50.
+- **A semantic match still never gets a percentage** and an accepted one
+  is still a no-match in analysis and pay (spec §4). Fuzzy origins are
+  `tm_fuzzy_<score>`; no semantic origin exists yet.

@@ -1523,6 +1523,45 @@ What it says:
 
 ---
 
+### 11.5 Product fuzzy retrieval (backlog #61, 2026-10-06)
+
+`retrieveFuzzy` (`v1-spec.md` §6.1a), measured by `pnpm bench:tm --sizes
+100000,1000000` on the synthetic corpus of §11.1, on a 4-vCPU Xeon at
+2.1 GHz, with a little unrelated work running on the same machine. Per
+query sentence (a stored source with one word replaced and one dropped),
+`p50 / p99`. Recall is against a naive FS-2 scan of every source variant:
+the retrieval's best score equals the scan's.
+
+| Units | Naive FS-2 scan | `retrieveFuzzy` | Recall |
+| ----- | --------------- | --------------- | ------ |
+| 100k  | 838 ms / 1.1 s (10 queries) | 16 ms / 33 ms | 90% of 10 |
+| 1M    | 9.8 s / 14 s (6 queries)    | 67 ms / 412 ms | 67% of 6 |
+
+What this says, and does not:
+
+- **Latency is fine; recall is not yet.** 67 ms at the median means
+  pre-translating 5,000 segments of a document against a 1M memory is
+  about six minutes, a job and not an outage. But a third of queries
+  lost the best match at 1M, which is §12.5's finding again, now with the
+  product scorer. The 1M recall figure rests on 6 queries (the naive scan
+  is 10 s each), so its error bar is wide; read it as "clearly below the
+  100k figure", not as 67%.
+- **The first design was ten times slower.** Querying a segment's twelve
+  longest words took 187 ms at p50 on 200,000 units (a scratch
+  experiment, not kept): bm25 ranks every unit holding any queried word,
+  so the cost is the sum of those words' postings. Taking the rarest
+  words instead, up to a budget of 20,000 postings
+  (`POSTING_BUDGET`), made the median 14-30 ms at 200,000 on the same
+  queries, at 93-97% recall there; a budget as a share of the memory
+  bought recall back at a latency that grows with it. A fixed budget was
+  chosen so pre-translate costs the same per segment on any memory, and
+  the recall it gives up as the memory grows is the number above.
+- **What would move it** is §12.5's list, unchanged: a larger or adaptive
+  shortlist, a length-aware rank, n-gram terms, embeddings as a second
+  source (E-001, `#59`). The corpus is Zipfian and stopword-heavy on
+  purpose; a real memory is the check, which only the owner's machine
+  can do (§11.3).
+
 ## 12. Open questions
 
 1. **Permanent extension.** `CATM` is settled and name-independent. The
@@ -1597,7 +1636,9 @@ What it says:
    a larger or adaptive shortlist, a rank that rewards length
    similarity, n-gram rather than word terms, or embeddings
    (`tuv_vec`, §2.8) as a second candidate source. Measure against a
-   real memory before choosing (§11.3).
+   real memory before choosing (§11.3). **Backlog #61 shipped an interim
+   shortlist** (the rarest words within a 20,000-posting budget, §11.5):
+   fast at 1M, and still losing the best match one time in three there.
    **Embeddings taken up 2026-09-25** as a second candidate source,
    and as a separate unpriced match type:
    `planning/semantic-matching-spec.md`. The other levers stay open;

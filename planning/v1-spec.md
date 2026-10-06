@@ -1008,24 +1008,27 @@ lives in `core/tm/fuzzy.ts`; the candidate stage is the only part that
 touches SQLite. A segment whose source language is unspaced is not
 scored.
 
-**6. The shortlist is the open part, and it is not decided here.**
-`tm-format-spec.md` §12.5 measured a top-50 FTS shortlist losing the best
-edit-distance match 10% of the time at 100k units and a third at 1M. The
-options (a larger or adaptive shortlist, a length-aware rank, n-gram
-terms, embeddings as a second source) are what E-001 (`#59`) measures.
-The contract fixed here is the interface, `candidates(segment) → unit
-ids`, so the stage can change without touching the scorer. The interim
-default is the FTS shortlist, widened until it holds recall at 100k
-units; the choice for 1M is written into §12.5 when `#59` reports, or
-when the code phase starts without it, whichever is first, with the
-measured recall beside it.
+**6. The shortlist is the open part, and `#61` shipped only an interim
+one.** `tm-format-spec.md` §12.5 measured a top-50 FTS shortlist losing
+the best edit-distance match 10% of the time at 100k units and a third at
+1M. The options (a larger or adaptive shortlist, a length-aware rank,
+n-gram terms, embeddings as a second source) are what E-001 (`#59`)
+measures, and none of them is chosen here. The contract is the stage's
+interface, a segment in and candidate units out, so it can change without
+touching the scorer. The interim default is bounded by postings: the
+segment's rarest words that fit `POSTING_BUDGET` (20,000), scored on the
+best 200 by bm25. **Measured (`tm-format-spec.md` §11.5): 67 ms at p50 and
+412 ms at p99 at 1M units, with recall 90% at 100k and 67% at 1M** (the
+latter over 6 queries). Latency is acceptable and recall at scale is not
+yet; improving it is the shortlist work above, not a change to the scorer.
 
 **7. Out of scope here, on purpose.** Internal fuzzy (repetitions within a
 project stay exact, §6.1 item 4), ICE / 101% context matches (§4.2's
 context columns exist, no tier reads them), concordance search, and
 auto-substitution of numbers and dates (§1).
 
-**8. Done when** (from the card): a fuzzy match is retrieved, scored,
+**8. Done when** (from the card, and met by `#61` except where §4 and §6
+say otherwise): a fuzzy match is retrieved, scored,
 banded and recorded with its `origin` through the CLI; the golden
 transcript shows it (`pnpm test:golden` moves, and its diff is read, not
 regenerated); latency and recall at 1M are measured in `tm-format-spec.md`
