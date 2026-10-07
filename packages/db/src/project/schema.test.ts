@@ -38,6 +38,7 @@ describe('openProjectDb', () => {
     expect(tables).toEqual([
       'audit_event',
       'file',
+      'fuzzy_setting',
       'glossary_ref',
       'project',
       'qa_issue',

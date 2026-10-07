@@ -15,11 +15,9 @@
  */
 
 import {
-  DEFAULT_FUZZY_THRESHOLD,
-  FUZZY_FLOOR,
-  FUZZY_MAX_SCORE,
   fuzzyOrigin,
   hasSpacedWords,
+  isFuzzyThreshold,
   isProtectedFromPretranslate,
   operandOfSource,
   placeMatch,
@@ -34,6 +32,7 @@ import type Database from 'better-sqlite3';
 import { appendAuditEvent } from '../audit/events.js';
 import { retrieveFuzzy } from '../tm/fuzzy.js';
 import { retrievePair } from '../tm/retrieve.js';
+import { FUZZY_THRESHOLD_MESSAGE, getFuzzyThreshold } from './fuzzy-settings.js';
 import { getProject } from './project.js';
 import { replaceQaIssues } from './qa-issues.js';
 import { listAllSegments, setSegmentTarget } from './segments.js';
@@ -61,11 +60,12 @@ export interface PretranslateOptions {
    */
   readonly actor: AuditActor;
   /**
-   * The lowest fuzzy score written into a segment (v1-spec.md §6.1a, 2);
-   * defaults to {@link DEFAULT_FUZZY_THRESHOLD}. `null` turns fuzzy off, so
-   * a run is exactly the exact-and-propagation pre-translate it was.
-   * Below it a match exists but is never placed: a 60% match in the target
-   * is noise the translator deletes.
+   * The lowest fuzzy score written into a segment (v1-spec.md §6.1a, 2).
+   * Omitted, it is the project's own setting (`getFuzzyThreshold`, default
+   * 75); given, it wins for this run only. `null` turns fuzzy off, so a run
+   * is exactly the exact-and-propagation pre-translate it was. Below it a
+   * match exists but is never placed: a 60% match in the target is noise the
+   * translator deletes.
    */
   readonly fuzzyThreshold?: number | null;
 }
@@ -119,18 +119,9 @@ export function pretranslate(
     throw new PretranslateError('project has no identity row — nothing to pre-translate');
   }
   const fuzzyThreshold =
-    options.fuzzyThreshold === undefined
-      ? DEFAULT_FUZZY_THRESHOLD
-      : options.fuzzyThreshold;
-  if (
-    fuzzyThreshold !== null &&
-    (!Number.isInteger(fuzzyThreshold) ||
-      fuzzyThreshold < FUZZY_FLOOR ||
-      fuzzyThreshold > FUZZY_MAX_SCORE)
-  ) {
-    throw new PretranslateError(
-      `fuzzy threshold must be a whole number from ${FUZZY_FLOOR} to ${FUZZY_MAX_SCORE}, or off`,
-    );
+    options.fuzzyThreshold === undefined ? getFuzzyThreshold(db) : options.fuzzyThreshold;
+  if (fuzzyThreshold !== null && !isFuzzyThreshold(fuzzyThreshold)) {
+    throw new PretranslateError(FUZZY_THRESHOLD_MESSAGE);
   }
   // An unspaced source has no word to score (`hasSpacedWords`).
   const fuzzyOn = fuzzyThreshold !== null && hasSpacedWords(project.srcLang);
@@ -279,7 +270,11 @@ export function pretranslate(
       action: 'project.pretranslate',
       subjectType: 'project',
       subjectId: null,
-      detail: { tm_refs: attached.map((r) => r.path), counts: summary },
+      detail: {
+        tm_refs: attached.map((r) => r.path),
+        counts: summary,
+        fuzzy_threshold: fuzzyOn ? fuzzyThreshold : null,
+      },
     });
     for (const placement of placements) {
       writePlacement(db, placement, options.actor, batch.id);

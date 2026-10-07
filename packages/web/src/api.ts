@@ -22,6 +22,7 @@ import type {
   MismatchList,
   SessionView,
 } from './glossary-panel.js';
+import type { FuzzyThresholdView } from './fuzzy-threshold.js';
 import type { ImportJob } from './import-job.js';
 import type { RateEntry } from './jobs.js';
 import { parseProjectKey } from './project-key.js';
@@ -361,6 +362,17 @@ export const api = {
   detachMemory: (token: string, name: string, refId: number) =>
     call<{ refs: TmRefView[] }>(projectUrl(name, `/tms/${refId}`), token, {
       method: 'DELETE',
+    }),
+  fuzzyThreshold: (token: string, name: string, signal?: AbortSignal) =>
+    call<FuzzyThresholdView>(projectUrl(name, `/fuzzy-threshold`), token, { signal }),
+  setFuzzyThreshold: (
+    token: string,
+    name: string,
+    threshold: number | null | 'default',
+  ) =>
+    call<FuzzyThresholdView>(projectUrl(name, `/fuzzy-threshold`), token, {
+      method: 'PUT',
+      body: { threshold },
     }),
   pretranslate: (token: string, name: string) =>
     call<PretranslateSummary>(projectUrl(name, `/pretranslate`), token, {

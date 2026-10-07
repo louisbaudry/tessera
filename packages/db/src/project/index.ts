@@ -23,5 +23,6 @@ export * from './confirm-target.js';
 export * from './restructure.js';
 export * from './glossary-refs.js';
 export * from './qa-settings.js';
+export * from './fuzzy-settings.js';
 export * from './qa-issues.js';
 export * from './export.js';

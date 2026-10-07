@@ -7,6 +7,11 @@
 import { useCallback, useState } from 'react';
 
 import { api, type PretranslateSummary, type TmRefView } from './api.js';
+import {
+  thresholdChoice,
+  thresholdText,
+  type FuzzyThresholdView,
+} from './fuzzy-threshold.js';
 import { formatRoute } from './route.js';
 import { moved } from './tm-order.js';
 import { useAction } from './use-action.js';
@@ -19,6 +24,7 @@ export function ProjectMemories({ project }: { project: string }) {
         Promise.all([
           api.projectMemories(token, project, signal),
           api.memories(token, signal),
+          api.fuzzyThreshold(token, project, signal),
         ]),
       [project],
     ),
@@ -29,12 +35,17 @@ export function ProjectMemories({ project }: { project: string }) {
   const action = useAction();
   const [attach, setAttach] = useState('');
   const [ran, setRan] = useState<PretranslateSummary | null>(null);
+  // The fuzzy threshold: what the last save answered, and what is being typed.
+  const [saved, setSaved] = useState<FuzzyThresholdView | null>(null);
+  const [typed, setTyped] = useState<string | null>(null);
+  const [fuzzyError, setFuzzyError] = useState<string | null>(null);
 
   if (loaded.state === 'loading')
     return <p className="muted">Loading memories{'\u2026'}</p>;
   if (loaded.state === 'error') return <p className="error">{loaded.message}</p>;
 
-  const [{ refs: initial }, memories] = loaded.data;
+  const [{ refs: initial }, memories, loadedThreshold] = loaded.data;
+  const fuzzy = saved ?? loadedThreshold;
   const refs = changed ?? initial;
   const ids = refs.map((r) => r.id);
   const attached = new Set(refs.map((r) => r.tm));
@@ -47,6 +58,24 @@ export function ProjectMemories({ project }: { project: string }) {
     const answer = await action.run(write);
     if (answer) setChanged(answer.refs);
   };
+
+  // Saves what was typed (or the off box), if it says something new.
+  const saveThreshold = async (text: string, off: boolean) => {
+    const parsed = thresholdChoice(text, off, fuzzy);
+    if (!parsed.ok) {
+      setFuzzyError(parsed.message);
+      return;
+    }
+    setFuzzyError(null);
+    const view = await action.run((t) =>
+      api.setFuzzyThreshold(t, project, parsed.choice),
+    );
+    if (view) {
+      setSaved(view);
+      setTyped(null);
+    }
+  };
+  const fuzzyOff = fuzzy.threshold === null;
 
   return (
     <section className="panel">
@@ -169,9 +198,42 @@ export function ProjectMemories({ project }: { project: string }) {
           </span>
         )}
       </div>
-      {action.error && (
+      <div className="inline-form">
+        <label>
+          Fuzzy matches from{' '}
+          <input
+            type="number"
+            inputMode="numeric"
+            min={fuzzy.min}
+            max={fuzzy.max}
+            disabled={action.busy || fuzzyOff}
+            value={typed ?? thresholdText(fuzzy)}
+            placeholder={String(fuzzy.default)}
+            onChange={(e) => setTyped(e.target.value)}
+            onBlur={() => typed !== null && void saveThreshold(typed, false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && typed !== null) void saveThreshold(typed, false);
+            }}
+          />{' '}
+          %
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={fuzzyOff}
+            disabled={action.busy}
+            onChange={(e) => void saveThreshold('', e.target.checked)}
+          />{' '}
+          Off
+        </label>
+        <span className="muted">
+          Below this a match is not written into a segment; empty is the default (
+          {fuzzy.default}).
+        </span>
+      </div>
+      {(fuzzyError ?? action.error) && (
         <p className="error" role="alert">
-          {action.error}
+          {fuzzyError ?? action.error}
         </p>
       )}
     </section>

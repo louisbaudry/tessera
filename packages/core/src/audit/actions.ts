@@ -135,6 +135,8 @@ export interface AuditDetail {
   'project.pretranslate': {
     readonly tm_refs: readonly string[];
     readonly counts: { readonly [outcome: string]: number };
+    /** The fuzzy threshold the run used, or null when fuzzy was off (or the source unspaced). */
+    readonly fuzzy_threshold?: number | null;
   };
   /** The digest of the document produced — what exactly left. */
   'project.exported': { readonly sha256: string };

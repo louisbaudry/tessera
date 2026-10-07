@@ -20,6 +20,11 @@ export const FUZZY_FLOOR = 50;
 /** The default for the lowest score pre-translate will write into a segment. */
 export const DEFAULT_FUZZY_THRESHOLD = 75;
 
+/** Whether `n` can be a pre-translate threshold: a whole score from the analysis floor to the best a fuzzy match can be. */
+export function isFuzzyThreshold(n: unknown): n is number {
+  return Number.isInteger(n) && (n as number) >= FUZZY_FLOOR && (n as number) <= 99;
+}
+
 /** The best a fuzzy score can be: 100 is the exact tier, which is hash-based. */
 export const FUZZY_MAX_SCORE = 99;
 

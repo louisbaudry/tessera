@@ -16,6 +16,7 @@ import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createTm } from '../tm/index.js';
+import { setFuzzyThreshold } from './fuzzy-settings.js';
 import { createProject } from './project.js';
 import { insertFile } from './files.js';
 import { openProjectDb } from './index.js';
@@ -575,6 +576,41 @@ describe('pretranslate: fuzzy matches (v1-spec.md §6.1a)', () => {
 
     expect(pretranslate(db, { actor: TEST_ACTOR, fuzzyThreshold: null }).fuzzy).toBe(0);
     expect(getSegment(db, segment.id)!.targetTokens).toBeNull();
+    db.close();
+  });
+
+  it("uses the project's own threshold when the run gives none, and the run's wins", () => {
+    const { db, segment, text } = setup();
+    const { changed, score } = withLastWordChanged(text);
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    insertFuzzyUnit(tm, { srcPlain: changed, tgtText: 'Texto cercano' });
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+
+    // A setting above the match's score: nothing is placed.
+    setFuzzyThreshold(db, score + 1, TEST_ACTOR);
+    expect(pretranslate(db, { actor: TEST_ACTOR }).fuzzy).toBe(0);
+    expect(getSegment(db, segment.id)!.targetTokens).toBeNull();
+
+    // The run's own option wins over it, for that run.
+    expect(pretranslate(db, { actor: TEST_ACTOR, fuzzyThreshold: score }).fuzzy).toBe(1);
+    db.close();
+  });
+
+  it('is off when the project says off, and the run records the threshold it used', () => {
+    const { db, segment, text } = setup();
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    insertFuzzyUnit(tm, { srcPlain: withLastWordChanged(text).changed, tgtText: 'x' });
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+    setFuzzyThreshold(db, null, TEST_ACTOR);
+
+    expect(pretranslate(db, { actor: TEST_ACTOR }).fuzzy).toBe(0);
+    expect(getSegment(db, segment.id)!.targetTokens).toBeNull();
+    const run = db
+      .prepare("SELECT detail FROM audit_event WHERE action = 'project.pretranslate'")
+      .get() as { detail: string };
+    expect(JSON.parse(run.detail).fuzzy_threshold).toBeNull();
     db.close();
   });
 
