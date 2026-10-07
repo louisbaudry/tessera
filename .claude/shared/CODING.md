@@ -100,6 +100,42 @@ Several sessions may work on the same repo at once if they do not collide.
   that owns that area, and never against shared or production data from a
   session that doesn't.
 
+## Infrastructure register
+
+The infrastructure of every code repo is recorded in one file,
+`INFRASTRUCTURE.md`, at the root of the private `louisbaudry/claude-shared`
+repo. Read the repo's section before changing how it is hosted, built or
+deployed.
+
+- **What counts as an infrastructure change:** hosting provider, server,
+  region or OS; containers, Compose files, Dockerfile base image, runtime
+  or language major version; reverse proxy or TLS; database engine,
+  version, host or Supabase project; storage buckets; backups; CI or CD
+  workflows and the deploy mechanism; container or package registry;
+  scheduled jobs; domains and DNS; external service providers; where
+  secrets live; environments. Creating, moving, archiving or retiring a
+  repo that has any of these counts too.
+- **When:** in the same session as the change, before calling the work
+  done. The repo's PR carries one line, either "Infrastructure: updated,
+  with the link to the claude-shared PR" or "Infrastructure: no change".
+- **How:** open a separate, small draft PR in `claude-shared` on its own
+  branch that edits only that repo's section (plus its row in the
+  overview table and its "Last full survey" note if that was refreshed).
+  Louis authorizes this one cross-repo edit as a standing rule, limited
+  to `INFRASTRUCTURE.md`; it is the exception to "Working across
+  repositories" in `UNIVERSAL.md`. Never merge that PR unasked, since
+  `claude-shared` is not in continuous mode. A session that cannot reach
+  `claude-shared` says so in its PR and gives Louis the exact text to add.
+- **What to write:** standard terms (VPS, reverse proxy, Docker Compose,
+  CI, CD, container registry, scheduled job), using the fields already in
+  the file. State what the repo's files say; mark anything not confirmed
+  as unconfirmed.
+- **Never in the register:** credentials of any kind, including default
+  passwords, connection strings with a password and key values. Name
+  where a secret lives, not what it is. The file stays at the root of
+  `claude-shared`, never in `shared/`, because the sync copies `shared/`
+  into other repos, some of them public.
+
 ## Design
 
 - **Define a shared fact once and import it everywhere.** Two copies of a
