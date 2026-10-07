@@ -15,7 +15,7 @@ export const PRETRANSLATE_USAGE =
 
 /**
  * The exact matcher over every eligible segment (v1-spec.md §6.1), then fuzzy
- * matches from a threshold up (default 75; `--fuzzy off` for exact only, §6.1a).
+ * matches from a threshold up: the project's setting (default 75), or this run's `--fuzzy <50-99|off>` (§6.1a).
  */
 export function pretranslate(args: readonly string[], io: CliIo): number {
   const { values, positionals } = parse(args, {

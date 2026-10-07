@@ -19,9 +19,13 @@ import { pipeline } from 'node:stream/promises';
 import {
   assembleFile,
   attachmentDisposition,
+  DEFAULT_FUZZY_THRESHOLD,
   findMismatches,
+  FUZZY_FLOOR,
+  FUZZY_MAX_SCORE,
   formatActor,
   generateSessionToken,
+  isFuzzyThreshold,
   isSlug,
   parseTokens,
   primarySubtag,
@@ -57,6 +61,8 @@ import {
   getAccountBySessionToken,
   getFileSummary,
   getProject,
+  FUZZY_THRESHOLD_MESSAGE,
+  getFuzzyThreshold,
   getSegment,
   insertFile,
   isQaRule,
@@ -88,6 +94,7 @@ import {
   removeTmRef,
   reorderTmRefs,
   SegmentRepoError,
+  setFuzzyThreshold,
   setGlossaryWriteTarget,
   setWriteTarget,
   splitSegmentAt,
@@ -1230,6 +1237,49 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       if (!opened) return reply;
       try {
         return pretranslate(opened.db, { actor: sessionActor(req) });
+      } finally {
+        opened.db.close();
+      }
+    },
+  );
+
+  // The project's pre-translate fuzzy threshold (v1-spec.md §6.1a, 2; issue
+  // #139): what a run writes into a segment from. A person with `read` may
+  // see it; changing it is `manage`, as pre-translate itself is.
+  const fuzzySettingView = (db: Parameters<typeof getFuzzyThreshold>[0]) => ({
+    threshold: getFuzzyThreshold(db),
+    default: DEFAULT_FUZZY_THRESHOLD,
+    min: FUZZY_FLOOR,
+    max: FUZZY_MAX_SCORE,
+  });
+
+  app.get<{ Params: { name: string } }>(
+    '/api/projects/:name/fuzzy-threshold',
+    async (req, reply) => {
+      const opened = openProject(req, reply, req.params.name, 'read');
+      if (!opened) return reply;
+      try {
+        return fuzzySettingView(opened.db);
+      } finally {
+        opened.db.close();
+      }
+    },
+  );
+
+  // `{ threshold }`: a score from 50 to 99, `null` for off, `"default"` to
+  // go back to the default.
+  app.put<{ Params: { name: string }; Body: { threshold?: unknown } }>(
+    '/api/projects/:name/fuzzy-threshold',
+    async (req, reply) => {
+      const opened = openProject(req, reply, req.params.name, 'manage');
+      if (!opened) return reply;
+      try {
+        const choice = req.body?.threshold;
+        if (choice !== null && choice !== 'default' && !isFuzzyThreshold(choice)) {
+          return reply.code(400).send({ error: FUZZY_THRESHOLD_MESSAGE });
+        }
+        setFuzzyThreshold(opened.db, choice, sessionActor(req));
+        return fuzzySettingView(opened.db);
       } finally {
         opened.db.close();
       }

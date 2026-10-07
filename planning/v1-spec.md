@@ -966,9 +966,16 @@ journal entry that uses it says so.
 Two thresholds, deliberately separate:
 
 - **Analysis floor: 50.** Below it a unit is a no-match for pricing.
-- **Pre-translate threshold: default 75.** A run option and the CLI's
-  `--fuzzy <50-99|off>` today; a persisted per-project setting is
-  issue #139, because it needs a project-schema migration. Below it a
+- **Pre-translate threshold: a project setting, default 75** (issue #139,
+  built 2026-10-07). `fuzzy_setting` (project schema v12) holds at most one
+  row, absence-based like `qa_rule_setting`: no row is 75, so no existing
+  project changes, and a row with no threshold is fuzzy off. A run's own
+  option (`pretranslate`'s `fuzzyThreshold`, the CLI's `--fuzzy
+  <50-99|off>`) wins for that run; without one the project's applies. The
+  server has `GET`/`PUT /api/projects/:name/fuzzy-threshold` (`read` /
+  `manage`) and the Memories screen a field and an Off box. A change is one
+  `project.setting_changed` (key `fuzzy_threshold`), and each run records the
+  threshold it used in `project.pretranslate`'s `detail`. Below it a
   match is retrievable in the editor but never written into a segment,
   because a 60% match placed in the target is noise the translator
   deletes. A match that is placed is a `draft`, never `translated`

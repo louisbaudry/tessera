@@ -3740,7 +3740,10 @@ Sized issues:
     is now a fuzzy 81, placed as a draft. Read, not regenerated away: the
     other differences are that segment's audit events shifting by one.
   - **Not built here**, each its own issue: the threshold as a persisted
-    project setting (issue #139), and analysis reading the memory so a 50–74
+    project setting (issue #139, built 2026-10-07: `fuzzy_setting`, project
+    schema v12, absence-based; the range is a frozen literal tied to the
+    scorer's constants by `fuzzy-settings.test.ts`; a run records the
+    threshold it used), and analysis reading the memory so a 50–74
     match that was never placed is priced `fuzzy_50_74` (issue #138, built
     the next day: `analyseTierWords` reads the memories for a segment with
     no origin, exact hits included, and the server's offer runs it on a

@@ -440,6 +440,29 @@ const v11: Migration = {
 };
 
 /**
+ * `fuzzy_setting` (backlog #61, issue #139): the project's pre-translate
+ * fuzzy threshold, one row at most. **Absence-based**, like
+ * `qa_rule_setting`: no row means the default (75, `DEFAULT_FUZZY_THRESHOLD`),
+ * so no existing project changes. A row with a NULL threshold is fuzzy off.
+ * The range is a frozen literal, as every closed set in a migration is: it is
+ * the floor and the best score a fuzzy match can have as of v12, and
+ * `fuzzy-settings.test.ts` ties it to `FUZZY_FLOOR` and the top score.
+ */
+const v12: Migration = {
+  version: 12,
+  description:
+    "fuzzy_setting — the project's pre-translate fuzzy threshold (v1-spec.md §6.1a, issue #139)",
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE fuzzy_setting (
+        id        INTEGER PRIMARY KEY CHECK (id = 1),
+        threshold INTEGER CHECK (threshold IS NULL OR threshold BETWEEN 50 AND 99)
+      );
+    `);
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -456,4 +479,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v9,
   v10,
   v11,
+  v12,
 ];

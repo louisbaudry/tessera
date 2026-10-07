@@ -1650,6 +1650,39 @@ ${units
     expect(after.targetTokens).not.toBeNull();
     expect(after.origin).toMatch(/^tm_exact/);
   });
+
+  it("reads and sets the project's fuzzy threshold (issue #139)", async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    expect((await createProject(token, 'job')).statusCode).toBe(201);
+    const url = '/api/projects/job/fuzzy-threshold';
+    type View = { threshold: number | null; default: number; min: number; max: number };
+
+    const first = await call(token, 'GET', url);
+    expect(first.json()).toEqual({ threshold: 75, default: 75, min: 50, max: 99 });
+
+    expect(
+      ((await call(token, 'PUT', url, { threshold: 90 })).json() as View).threshold,
+    ).toBe(90);
+    expect(((await call(token, 'GET', url)).json() as View).threshold).toBe(90);
+    expect(
+      ((await call(token, 'PUT', url, { threshold: null })).json() as View).threshold,
+    ).toBeNull();
+    expect(
+      ((await call(token, 'PUT', url, { threshold: 'default' })).json() as View)
+        .threshold,
+    ).toBe(75);
+
+    for (const bad of [49, 100, 80.5, 'high', undefined]) {
+      const res = await call(token, 'PUT', url, { threshold: bad });
+      expect(res.statusCode, String(bad)).toBe(400);
+    }
+    expect(((await call(token, 'GET', url)).json() as View).threshold).toBe(75);
+
+    // Another account's project is a 404, for reading and for writing.
+    const bobToken = await login('bob@example.com', 'bob-pw');
+    expect((await call(bobToken, 'GET', url)).statusCode).toBe(404);
+    expect((await call(bobToken, 'PUT', url, { threshold: 60 })).statusCode).toBe(404);
+  });
 });
 
 function verifyAuditOf(path: string) {

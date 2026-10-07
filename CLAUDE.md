@@ -652,6 +652,9 @@ constraint and dependency isolation:
   `retrieveFuzzy` is an FTS5 shortlist in front of it. A fuzzy match's
   `origin` is `tm_fuzzy_<score>`, never the band (`fuzzyOrigin`), so the
   bands can move without a migration, and a placed one is always a `draft`.
+  The pre-translate threshold is a project setting (`fuzzy_setting`, one
+  absence-based row, no row is 75: `getFuzzyThreshold`), which a run's own
+  option overrides.
   **The shortlist is bounded by postings, not by rows:** bm25 ranks every
   unit holding any queried word, so the query takes the rarest words that
   fit `POSTING_BUDGET` (their counts from a temp `fts5vocab` table). The

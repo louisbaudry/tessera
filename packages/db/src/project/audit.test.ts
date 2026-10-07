@@ -216,6 +216,7 @@ describe('every write path records its event', () => {
     expect(detailOf<'project.pretranslate'>(run!.detail)).toEqual({
       tm_refs: [ctm],
       counts: summary,
+      fuzzy_threshold: 75,
     });
     const children = listBatch(db, run!.id);
     expect(children.length).toBe(
