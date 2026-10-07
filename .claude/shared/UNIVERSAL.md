@@ -36,6 +36,12 @@
 - **When asking Louis a question, always propose several options and a
   recommendation.** Never ask an open-ended question on its own. Lay out
   the options and say which one you would pick and why.
+  - **Ask with clickable options.** Louis often works from his phone, where
+    typing is slow. Use the `AskUserQuestion` tool (2-4 tappable options,
+    "Other" for free text) rather than a question in prose. Put the
+    recommended option first and label it "(Recommended)". Only where the
+    tool is unavailable, fall back to a text list with the same options and
+    recommendation.
   - Ask one question at a time, and wait for the answer before the next.
   - Make each question answerable without scrolling back: give what each
     option means and what it costs.
