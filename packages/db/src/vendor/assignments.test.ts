@@ -500,7 +500,7 @@ describe('the migration', () => {
       .run();
     old.close();
     const migrated = openVendorFile(v1);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(4);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(5);
     expect(listVendors(migrated)).toHaveLength(1);
     expect(migrated.prepare('SELECT COUNT(*) AS n FROM assignment').get()).toEqual({
       n: 0,

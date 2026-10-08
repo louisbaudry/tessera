@@ -60,6 +60,7 @@ export const VENDOR_AUDIT_ACTIONS = [
   'vendor.added',
   'vendor.profile_changed',
   'vendor.rate_set',
+  'payables.exported',
 ] as const;
 
 export type ProjectAuditAction = (typeof PROJECT_AUDIT_ACTIONS)[number];
@@ -209,6 +210,11 @@ export interface AuditDetail {
     readonly currency: string;
     readonly effective_from: string;
   };
+  /**
+   * The payables CSV left the system (backlog #112). What went, not who it
+   * was about: a row count and the digest of the bytes, no name or amount.
+   */
+  'payables.exported': { readonly rows: number; readonly sha256: string };
 }
 
 /** An order's price and the word count it was computed from (spec §2.6). */

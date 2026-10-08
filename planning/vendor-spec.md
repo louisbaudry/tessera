@@ -801,3 +801,62 @@ roster is each owner's own file, so the answer cannot be a query.
   There was no way to make one outside a test. How a vendor *gets* an account
   was decided separately (§3: an owner's invitation, backlog `#111`; the script
   stays the operator's path until then).
+
+**Implementation note (#112, issue #153), written before the code (2026-10-08).**
+The owner's side of "locked at delivery": which locked payables are unpaid,
+marking one paid, and getting the list out. Tessera moves no money; this is
+the record of it.
+
+- **A payment is an event, never an edit of the payable.** `assignment_payable`
+  stays immutable by trigger. A new `assignment_payment_event` (vendor schema
+  v5) is append-only like `assignment_event`, with a required actor: kind
+  `paid` (with the date it was paid) or `reopened` (a correction, no date).
+  The state of a payable is its **latest** event: none or `reopened` is
+  unpaid, `paid` is paid. Recording a payment on a paid payable, or reopening
+  an unpaid one, is a 409, so a wrong date is corrected by reopening and
+  paying again, and the log keeps both. The two kinds are a frozen literal in
+  the migration (`PAYMENT_KINDS` in `vendor-core`, tied by
+  `check-lists.test.ts`).
+- **Why not `audit_event`.** `assignment_event` is already "the whole record
+  of a transition" in this file, with the actor on the row; a payment is the
+  same kind of fact, and putting it in `audit_event` too would be two records
+  of one act. The one thing that is not a change to the roster but leaves it
+  is the CSV, so **`payables.exported`** is a new `audit_event` action
+  (widened by migration, `rebuildTable`): its detail is the row count and the
+  digest of the bytes sent, never a name or an amount, as `project.exported`
+  records the digest of the document.
+- **A date, not a timestamp, and not before the payable.** `paid_on` is a
+  `YYYY-MM-DD` the owner states: the day the money moved, which is not the
+  day they clicked. It may not be in the future and may not precede the day
+  the payable locked (a payment cannot settle what did not yet exist).
+- **Totals are per currency and never converted.** A list reports one total
+  per currency (and one for a payable with no currency: its tiers had no
+  rate, so it is `complete = 0` and 0 owed), split into unpaid and paid. No
+  exchange rate exists in this product, and a sum across currencies is a
+  number in none. An incomplete payable is **listed with its flag, never
+  hidden and never counted as zero owed without saying so**: the owner pays
+  what was priced and sees what was left out.
+- **The period is the day the payable locked** (`locked_at`), inclusive on
+  both ends, optional on both. It is the one date every payable has, and it
+  is immutable, so a period's list never moves under a reader once the
+  period is over. "Paid in this period" is a different question and not
+  asked here.
+- **A vendor sees their own record and nothing else**: `GET
+  /api/vendor/payments`, across every roster that lists them (the feed's
+  shape): per job the locked amount, whether it is paid, the paid date and
+  the days from locking to payment. Never another vendor's row, and never
+  an owner's total.
+- **The CSV is a formula-injection surface.** A project or vendor name that
+  begins `=`, `+`, `-`, `@`, tab or carriage return runs as a formula in a
+  spreadsheet. `payablesCsv` (pure, `vendor-core`) prefixes such a cell with
+  `'` and quotes per RFC 4180; money is written from the integer micros as a
+  decimal string, never through a float.
+- **Routes, all the owner's own roster** (`openRoster(me)`: a vendor reaches
+  nothing): `GET /api/payables`, `GET /api/payables.csv` (`?vendor=<account
+  id>&from=&to=&status=paid|unpaid`), `POST /api/assignments/:id/payment`
+  (`{ paidOn, note? }`) and `.../payment/reopen`. A vendor and a stranger get
+  the identical 404.
+- **Not built here:** the screens (the owner's pay-run view and the vendor's
+  record), a payment note shown to the vendor, an email when a payment is
+  recorded, and the vendor-confirmed statement of issue #158. The routes are
+  the contract the screens will use.

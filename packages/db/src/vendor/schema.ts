@@ -18,11 +18,12 @@ import type {
   AssignmentChannel,
   AssignmentStatus,
   CapacityStatus,
+  PaymentKind,
   RateTier,
 } from '@cat-tool/vendor-core';
 
 import { auditEventDdl } from '../audit/events.js';
-import { sqlList, type Migration } from '../migrate.js';
+import { rebuildTable, sqlList, type Migration } from '../migrate.js';
 
 /** "CATV" — distinct from "CATM", "CATG", "CATP", "CATO" and the platform's "CATL". */
 export const VENDOR_APPLICATION_ID = 0x43415456;
@@ -304,4 +305,62 @@ const v4: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4];
+/** `assignment_payment_event.kind` since v5: `PAYMENT_KINDS` as of backlog #112. */
+const V5_PAYMENT_KINDS = ['paid', 'reopened'] as const satisfies readonly PaymentKind[];
+
+/** `audit_event.action` since v5: `VENDOR_AUDIT_ACTIONS` as of backlog #112. */
+const V5_AUDIT_ACTIONS = [
+  'vendor.added',
+  'vendor.profile_changed',
+  'vendor.rate_set',
+  'payables.exported',
+] as const satisfies readonly VendorAuditAction[];
+
+/**
+ * Payments against the payable locked at delivery (vendor-spec.md, its #112
+ * note). The payable stays immutable; a payment is an event beside it, with a
+ * required actor and append-only by trigger from this first migration
+ * (`assignment_event`'s way). A payable's state is its latest event. `paid_on`
+ * is the date the owner states, present for `paid` and absent for `reopened`.
+ * The audit log gains `payables.exported`, so `audit_event` is rebuilt with the
+ * widened CHECK (`rebuildTable`, backlog #64).
+ */
+const v5: Migration = {
+  version: 5,
+  description:
+    'assignment_payment_event and the payables.exported audit action (backlog #112)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE assignment_payment_event (
+        id            INTEGER PRIMARY KEY,
+        assignment_id INTEGER NOT NULL REFERENCES assignment_payable(assignment_id),
+        kind          TEXT    NOT NULL CHECK (kind IN (${sqlList(V5_PAYMENT_KINDS)})),
+        paid_on       TEXT    CHECK (paid_on IS NULL OR length(paid_on) = 10),
+        actor         TEXT    NOT NULL,
+        actor_label   TEXT,
+        note          TEXT,
+        at            TEXT    NOT NULL,
+        CHECK ((kind = 'paid') = (paid_on IS NOT NULL))
+      );
+      CREATE INDEX assignment_payment_event_assignment
+        ON assignment_payment_event(assignment_id, id);
+
+      CREATE TRIGGER assignment_payment_event_no_delete
+      BEFORE DELETE ON assignment_payment_event BEGIN
+        SELECT RAISE(ABORT, 'assignment_payment_event is append-only');
+      END;
+      -- The one permitted UPDATE: erasing a person's display label, as
+      -- assignment_event's trigger allows (audit-spec.md §5).
+      CREATE TRIGGER assignment_payment_event_no_update
+      BEFORE UPDATE ON assignment_payment_event
+      WHEN NEW.id IS NOT OLD.id OR NEW.assignment_id IS NOT OLD.assignment_id
+        OR NEW.kind IS NOT OLD.kind OR NEW.paid_on IS NOT OLD.paid_on
+        OR NEW.actor IS NOT OLD.actor OR NEW.note IS NOT OLD.note OR NEW.at IS NOT OLD.at
+        OR NEW.actor_label IS NOT '[erased]'
+      BEGIN SELECT RAISE(ABORT, 'assignment_payment_event is append-only'); END;
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V5_AUDIT_ACTIONS));
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];

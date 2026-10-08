@@ -62,3 +62,4 @@ export * from './feed.js';
 export * from './review.js';
 export * from './delivery.js';
 export * from './reconcile.js';
+export * from './payments.js';

@@ -6,7 +6,7 @@
  * owner's project to the vendor through #45's grant.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -1344,5 +1344,308 @@ describe('a vendor’s feed across owners (#52a)', () => {
     expect(
       (await app.inject({ method: 'GET', url: '/api/vendor/feed' })).statusCode,
     ).toBe(401);
+  });
+});
+
+describe('payments against locked payables (#112)', () => {
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  /** Alice offers, bob walks the job to `delivered`: a payable locks at 80,000 micros a word. */
+  async function lockedPayable(): Promise<{ owner: string; vendor: string }> {
+    giveBobRates();
+    const owner = await aliceWithProject();
+    await post(owner, offerBody());
+    await deliveredByBob();
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      addRosterMembership(platform, { ownerId: alice.id, accountId: bob.id });
+    } finally {
+      platform.close();
+    }
+    return { owner, vendor: await login('bob') };
+  }
+
+  const payables = (token: string, query = '') =>
+    app.inject({ method: 'GET', url: `/api/payables${query}`, headers: as(token) });
+  const payAssignment = (
+    token: string,
+    id: number | string,
+    payload: Record<string, unknown> = { paidOn: today() },
+  ) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/assignments/${id}/payment`,
+      headers: as(token),
+      payload,
+    });
+  const reopen = (
+    token: string,
+    id: number | string,
+    payload: Record<string, unknown> = {},
+  ) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/assignments/${id}/payment/reopen`,
+      headers: as(token),
+      payload,
+    });
+
+  interface PayableView {
+    assignment: number;
+    project: string;
+    vendorAccountId: number;
+    currency: string | null;
+    totalMicros: number;
+    complete: boolean;
+    status: string;
+    paidOn: string | null;
+    daysToPay: number | null;
+  }
+
+  it('lists the locked payable with a total per currency, unpaid until it is paid', async () => {
+    const { owner } = await lockedPayable();
+    const res = await payables(owner);
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json() as { payables: PayableView[]; totals: unknown[] };
+    expect(body.payables).toHaveLength(1);
+    const [row] = body.payables;
+    expect(row).toMatchObject({
+      assignment: 1,
+      project: 'job',
+      vendorAccountId: bob.id,
+      currency: 'EUR',
+      complete: true,
+      status: 'unpaid',
+      paidOn: null,
+      daysToPay: null,
+    });
+    expect(row!.totalMicros).toBeGreaterThan(0);
+    expect(body.totals).toEqual([
+      {
+        currency: 'EUR',
+        count: 1,
+        unpaidMicros: row!.totalMicros,
+        paidMicros: 0,
+        totalMicros: row!.totalMicros,
+        incomplete: 0,
+      },
+    ]);
+  });
+
+  it('records a payment, shows it on the list and the assignment, and refuses a second', async () => {
+    const { owner } = await lockedPayable();
+    const paid = await payAssignment(owner, 1, {
+      paidOn: today(),
+      note: 'bank transfer',
+    });
+    expect(paid.statusCode, paid.body).toBe(200);
+    expect(paid.json()).toMatchObject({
+      payment: {
+        assignmentId: 1,
+        status: 'paid',
+        paidOn: today(),
+        daysToPay: 0,
+        events: [{ kind: 'paid', paidOn: today(), note: 'bank transfer' }],
+      },
+    });
+    const [row] = ((await payables(owner)).json() as { payables: PayableView[] })
+      .payables;
+    expect(row).toMatchObject({ status: 'paid', paidOn: today(), daysToPay: 0 });
+    const totals = (
+      (await payables(owner)).json() as {
+        totals: Array<{ unpaidMicros: number; paidMicros: number }>;
+      }
+    ).totals[0]!;
+    expect(totals.unpaidMicros).toBe(0);
+    expect(totals.paidMicros).toBe(row!.totalMicros);
+    expect(
+      ((await get(owner, 1)).json() as { assignment: { payment: unknown } }).assignment
+        .payment,
+    ).toMatchObject({
+      status: 'paid',
+    });
+
+    const again = await payAssignment(owner, 1);
+    expect(again.statusCode).toBe(409);
+  });
+
+  it('reopens a payment to correct it, and only a paid one', async () => {
+    const { owner } = await lockedPayable();
+    expect((await reopen(owner, 1)).statusCode).toBe(409); // not paid yet
+    await payAssignment(owner, 1);
+    const res = await reopen(owner, 1, { note: 'wrong day' });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({
+      payment: {
+        status: 'unpaid',
+        paidOn: null,
+        events: [{ kind: 'paid' }, { kind: 'reopened', note: 'wrong day' }],
+      },
+    });
+    expect((await payAssignment(owner, 1)).statusCode).toBe(200);
+  });
+
+  it('refuses a bad date, a future date, a bad note and a job with nothing locked', async () => {
+    const { owner } = await lockedPayable();
+    expect((await payAssignment(owner, 1, {})).statusCode).toBe(400);
+    expect((await payAssignment(owner, 1, { paidOn: '2026-3-4' })).statusCode).toBe(400);
+    expect((await payAssignment(owner, 1, { paidOn: '2999-01-01' })).statusCode).toBe(
+      400,
+    );
+    expect((await payAssignment(owner, 1, { paidOn: today(), note: 5 })).statusCode).toBe(
+      400,
+    );
+    expect((await reopen(owner, 1, { note: 5 })).statusCode).toBe(400);
+    expect((await payAssignment(owner, 99)).statusCode).toBe(404);
+    expect((await payAssignment(owner, 'abc')).statusCode).toBe(404);
+    // Nothing above recorded a thing.
+    expect(
+      ((await payables(owner)).json() as { payables: PayableView[] }).payables[0]!.status,
+    ).toBe('unpaid');
+  });
+
+  it('is the owner’s alone: a vendor and a stranger reach nothing, and are told nothing', async () => {
+    const { vendor } = await lockedPayable();
+    const dave2 = await login('dave');
+    for (const token of [vendor, dave2]) {
+      expect((await payAssignment(token, 1)).statusCode).toBe(404);
+      expect((await reopen(token, 1)).statusCode).toBe(404);
+      expect((await payables(token)).json()).toEqual({ payables: [], totals: [] });
+      expect(
+        (
+          await app.inject({
+            method: 'GET',
+            url: '/api/payables.csv',
+            headers: as(token),
+          })
+        ).statusCode,
+      ).toBe(404);
+    }
+    for (const url of ['/api/payables', '/api/payables.csv', '/api/vendor/payments']) {
+      expect((await app.inject({ method: 'GET', url })).statusCode, url).toBe(401);
+    }
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/assignments/1/payment',
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(401);
+  });
+
+  it('filters by vendor, status and the day the payable locked', async () => {
+    const { owner } = await lockedPayable();
+    const ids = async (query: string) =>
+      ((await payables(owner, query)).json() as { payables: PayableView[] }).payables.map(
+        (p) => p.assignment,
+      );
+    expect(await ids(`?vendor=${bob.id}`)).toEqual([1]);
+    expect(await ids(`?vendor=${carol.id}`)).toEqual([]); // on the roster, nothing delivered
+    expect((await payables(owner, `?vendor=${dave.id}`)).statusCode).toBe(404); // not on it
+    expect(await ids('?status=unpaid')).toEqual([1]);
+    expect(await ids('?status=paid')).toEqual([]);
+    expect(await ids(`?from=${today()}&to=${today()}`)).toEqual([1]);
+    expect(await ids('?to=2000-01-01')).toEqual([]);
+    for (const bad of [
+      '?status=maybe',
+      '?from=soon',
+      '?from=2026-03-05&to=2026-03-01',
+      '?vendor=abc',
+    ]) {
+      const res = await payables(owner, bad);
+      expect(res.statusCode, bad).toBe(bad === '?vendor=abc' ? 404 : 400);
+    }
+  });
+
+  it('sends the same list as a CSV and records that it left, without a name or an amount', async () => {
+    const { owner } = await lockedPayable();
+    await payAssignment(owner, 1);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/payables.csv?status=paid',
+      headers: as(owner),
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.headers['content-type']).toMatch(/^text\/csv/);
+    expect(res.headers['content-disposition']).toBe(
+      'attachment; filename="payables.csv"',
+    );
+    const lines = res.body.split('\r\n');
+    expect(lines[0]).toBe(
+      'assignment,project,vendor,currency,words,total,complete,locked_on,status,paid_on',
+    );
+    expect(lines[1]).toMatch(
+      new RegExp(
+        `^1,job,account ${bob.id},EUR,\\d+,\\d+\\.\\d\\d+,yes,${today()},paid,${today()}$`,
+      ),
+    );
+
+    const roster = openVendorFile(
+      join(config.storageRoot, alice.storageRoot, 'vendors.ctv'),
+    );
+    try {
+      const exported = roster
+        .prepare("SELECT * FROM audit_event WHERE action = 'payables.exported'")
+        .all() as Array<{ actor_label: string | null; detail: string }>;
+      expect(exported).toHaveLength(1);
+      expect(JSON.parse(exported[0]!.detail)).toEqual({
+        rows: 1,
+        sha256: createHash('sha256').update(res.body).digest('hex'),
+      });
+      expect(exported[0]!.detail).not.toMatch(/bob|job|EUR/);
+    } finally {
+      roster.close();
+    }
+  });
+
+  it('shows a vendor their own record, across owners, and nobody else’s', async () => {
+    const { owner, vendor } = await lockedPayable();
+    const mine = async (token: string) =>
+      app.inject({ method: 'GET', url: '/api/vendor/payments', headers: as(token) });
+    const before = (await mine(vendor)).json() as {
+      payments: Array<Record<string, unknown>>;
+      totals: Array<{ unpaidMicros: number }>;
+    };
+    expect(before.payments).toHaveLength(1);
+    expect(before.payments[0]).toMatchObject({
+      owner: alice.id,
+      assignment: 1,
+      project: 'job',
+      currency: 'EUR',
+      status: 'unpaid',
+      paidOn: null,
+      daysToPay: null,
+    });
+    // Never another person's account id, label or the owner's totals.
+    expect(Object.keys(before.payments[0]!)).not.toContain('vendorAccountId');
+    expect(Object.keys(before.payments[0]!)).not.toContain('vendor');
+
+    await payAssignment(owner, 1);
+    const after = (await mine(vendor)).json() as {
+      payments: Array<Record<string, unknown>>;
+      totals: Array<{ paidMicros: number; unpaidMicros: number }>;
+    };
+    expect(after.payments[0]).toMatchObject({
+      status: 'paid',
+      paidOn: today(),
+      daysToPay: 0,
+    });
+    expect(after.totals[0]!.unpaidMicros).toBe(0);
+
+    // carol is on the roster with no job; dave is on nobody's.
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      addRosterMembership(platform, { ownerId: alice.id, accountId: carol.id });
+    } finally {
+      platform.close();
+    }
+    for (const name of ['carol', 'dave']) {
+      expect((await mine(await login(name))).json()).toEqual({
+        payments: [],
+        totals: [],
+      });
+    }
   });
 });
