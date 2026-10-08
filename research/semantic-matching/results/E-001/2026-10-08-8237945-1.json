@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-10-08-8237945-1",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-10-08T10:08:33.095Z",
+  "finished_at": "2026-10-08T10:18:39.450Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "823794580636ff89ed5bb509bdaa9603596c2125",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "synthetic-1M",
+    "sha256": "f5bd65e461ebc2ef7c057186f9f6a7041d08fac041939f2549c851add9ecd922",
+    "units": 1000000,
+    "langs": [
+      "en-US",
+      "fr-FR"
+    ],
+    "para_eligible": 0
+  },
+  "model": null,
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "hnsw",
+    "hnsw": {
+      "M": 16,
+      "efConstruction": 200,
+      "efSearch": 128,
+      "seed": 100
+    },
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": null
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v80",
+    "node": "v22.22.0",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "latency_ms.lex.fts50": {
+      "n": 400,
+      "p50": 41.412562,
+      "p99": 151.014805,
+      "max": 185.979865
+    },
+    "latency_ms.lex.ftsK_m10": {
+      "n": 400,
+      "p50": 41.670078,
+      "p99": 154.615984,
+      "max": 164.259985
+    },
+    "latency_ms.lex.ftsK_m25": {
+      "n": 400,
+      "p50": 40.838075,
+      "p99": 143.521309,
+      "max": 171.265167
+    },
+    "latency_ms.lex.ftsK_m50": {
+      "n": 400,
+      "p50": 42.732026,
+      "p99": 159.306489,
+      "max": 191.564502
+    },
+    "latency_ms.lex.naive": {
+      "n": 400,
+      "p50": 269.915424,
+      "p99": 483.844572,
+      "max": 526.391853
+    },
+    "queries.lex.n": 400,
+    "queries.lex.sha256": "2bed51c6d055366c6d5615d550d08ccfbafc59d0044aba5194291248eec59b4c",
+    "recall.lex.fts50": 0.9075,
+    "recall.lex.ftsK_m10": 0.9075,
+    "recall.lex.ftsK_m25": 0.91,
+    "recall.lex.ftsK_m50": 0.91
+  },
+  "notes": "synthetic-1M hnsw, labse only: the e5s and minilm hnsw runs on this corpus are in earlier files"
+}

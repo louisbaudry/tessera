@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-10-08-d55bbca-1",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-10-08T09:04:53.408Z",
+  "finished_at": "2026-10-08T09:05:46.841Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "d55bbcac2fbe1d387f1563051f642d1eb71e3572",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "synthetic-100k",
+    "sha256": "5d3dfd51973b5f4c33138a488b548ef80b321a3de96a95d7bd71f43f54d7bdf3",
+    "units": 100000,
+    "langs": [
+      "en-US",
+      "fr-FR"
+    ],
+    "para_eligible": 0
+  },
+  "model": null,
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "hnsw",
+    "hnsw": {
+      "M": 16,
+      "efConstruction": 200,
+      "efSearch": 128,
+      "seed": 100
+    },
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": null
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v80",
+    "node": "v22.22.0",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "latency_ms.lex.fts50": {
+      "n": 400,
+      "p50": 3.899876,
+      "p99": 14.134428,
+      "max": 19.429126
+    },
+    "latency_ms.lex.ftsK_m10": {
+      "n": 400,
+      "p50": 3.532799,
+      "p99": 14.532831,
+      "max": 18.304582
+    },
+    "latency_ms.lex.ftsK_m25": {
+      "n": 400,
+      "p50": 3.77837,
+      "p99": 13.559071,
+      "max": 16.787833
+    },
+    "latency_ms.lex.ftsK_m50": {
+      "n": 400,
+      "p50": 3.835716,
+      "p99": 12.728094,
+      "max": 20.935124
+    },
+    "latency_ms.lex.naive": {
+      "n": 400,
+      "p50": 27.355562,
+      "p99": 54.67051,
+      "max": 66.396681
+    },
+    "queries.lex.n": 400,
+    "queries.lex.sha256": "b7af3315924b0f315295147c2dba2ff5920ac2669d885396039d6484e3e2244c",
+    "recall.lex.fts50": 0.925,
+    "recall.lex.ftsK_m10": 0.93,
+    "recall.lex.ftsK_m25": 0.94,
+    "recall.lex.ftsK_m50": 0.945
+  },
+  "notes": "resumed after a container restart killed the first process mid-embedding; embed.* covers the resumed part only"
+}
