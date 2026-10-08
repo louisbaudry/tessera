@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "experiment": "E-001",
+  "run": "2026-10-08-b454d86-1",
+  "hypotheses": [
+    "H1",
+    "H1b"
+  ],
+  "confirmatory": true,
+  "started_at": "2026-10-08T08:17:08.513Z",
+  "finished_at": "2026-10-08T08:17:45.976Z",
+  "outcome": "completed",
+  "code": {
+    "commit": "b454d86cd2878f7f4412aa12ef401d683b1e4b6b",
+    "dirty": false
+  },
+  "corpus": {
+    "id": "synthetic-100k",
+    "sha256": "5d3dfd51973b5f4c33138a488b548ef80b321a3de96a95d7bd71f43f54d7bdf3",
+    "units": 100000,
+    "langs": [
+      "en-US",
+      "fr-FR"
+    ],
+    "para_eligible": 0
+  },
+  "model": null,
+  "params": {
+    "fts_k": 50,
+    "vec_m": [
+      10,
+      25,
+      50
+    ],
+    "fuzzy_scorer": "FS-1",
+    "vector_search": "hnsw",
+    "hnsw": {
+      "M": 16,
+      "efConstruction": 200,
+      "efSearch": 128,
+      "seed": 100
+    },
+    "seed": 7,
+    "budget_ms": 100,
+    "max_units": null
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "ram_gib": 15.7,
+    "os": "linux 6.18.44-fc-v80",
+    "node": "v22.22.0",
+    "sqlite": "3.49.2"
+  },
+  "metrics": {
+    "latency_ms.lex.fts50": {
+      "n": 400,
+      "p50": 3.401587,
+      "p99": 12.926662,
+      "max": 15.834911
+    },
+    "latency_ms.lex.ftsK_m10": {
+      "n": 400,
+      "p50": 3.39104,
+      "p99": 12.995101,
+      "max": 15.355441
+    },
+    "latency_ms.lex.ftsK_m25": {
+      "n": 400,
+      "p50": 3.539417,
+      "p99": 13.381234,
+      "max": 16.093155
+    },
+    "latency_ms.lex.ftsK_m50": {
+      "n": 400,
+      "p50": 3.734069,
+      "p99": 14.068826,
+      "max": 16.170439
+    },
+    "latency_ms.lex.naive": {
+      "n": 400,
+      "p50": 20.991727,
+      "p99": 35.919788,
+      "max": 39.03174
+    },
+    "queries.lex.n": 400,
+    "queries.lex.sha256": "b7af3315924b0f315295147c2dba2ff5920ac2669d885396039d6484e3e2244c",
+    "recall.lex.fts50": 0.925,
+    "recall.lex.ftsK_m10": 0.93,
+    "recall.lex.ftsK_m25": 0.94,
+    "recall.lex.ftsK_m50": 0.945
+  },
+  "notes": ""
+}
