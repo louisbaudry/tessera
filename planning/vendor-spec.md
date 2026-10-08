@@ -169,6 +169,39 @@ epic in this repo (QA engine, smart glossary, portal):
 - ~~Whether `.ctv` is per-account or a single shop-wide file~~ — decided in
   backlog `#46`, see the implementation note after the §5 field list: one
   per **owner** account.
+- ~~How a vendor gets an account (signup, an owner's invitation, or only an
+  operator)~~ — decided 2026-10-08 (issue #125), see the note after this list:
+  an **owner's invitation**, built as backlog `#111`; the operator script is
+  all there is until then.
+
+**Decision: how a vendor gets an account (2026-10-08, issue #125).**
+A vendor is a platform account with `role = vendor` that an owner puts on
+their roster; the question was how that account comes to exist. Three
+options, one chosen:
+
+- **Operator-only** (`create-account --vendor`, what exists since `#52a`) is
+  kept as the only path for now. It is fine for a pilot with a handful of
+  vendors the operator already knows, and costs nothing to keep.
+- **Self-signup is rejected.** It needs a public registration endpoint with
+  nothing behind it (spam, abuse, a bot filling the roster picker), and
+  `v1-spec.md` §4.1a deliberately ships with no registration flow. A vendor
+  also has no use for an account until an owner has put them on a roster, so
+  an account nobody invited gives them nothing.
+- **An owner's invitation is the target**, built as backlog `#111`, not now.
+  The owner is the one who knows the vendor, so the invitation is the
+  owner vouching for an email, which keeps "the roster decides who is a
+  vendor" (`#52a`) true: the invited address becomes an account and a roster
+  member in one step, and an account the roster does not list stays invisible
+  to every owner. The link is a hashed, expiring, single-use token, so the
+  platform stores no password-setting capability in the clear.
+
+Why not build it now: it needs a token store and email delivery, and
+`@cat-tool/server` has no mail sender (the SMTP service is
+`portal-server`'s), so the card carries a second decision (a sender in the
+server, or the link shown to the owner to pass on) that nothing yet forces.
+The pilot has no vendor the operator would not create by hand. Cheap to
+reverse: the invitation is additive to `create-account`, which stays as the
+operator's path, and nothing in the roster or the index changes.
 
 **Implementation note (#45), written before the code (2026-10-03).**
 What `#45` settled that decision 2 left open:
@@ -766,5 +799,5 @@ roster is each owner's own file, so the answer cannot be a query.
   to the feed and an owner to their projects without guessing.
 - **A vendor account can be created**: `create-account` takes `--vendor`.
   There was no way to make one outside a test. How a vendor *gets* an account
-  (a signup, an owner's invitation) is a product question this does not answer
-  and is its own issue.
+  was decided separately (§3: an owner's invitation, backlog `#111`; the script
+  stays the operator's path until then).
