@@ -29,7 +29,7 @@ already settled differently.
 ## Shared rules
 
 How to work with Louis is shared across all his repos and lives once, in
-the public [`louisbaudry/claude-shared`](https://github.com/louisbaudry/claude-shared).
+the private `louisbaudry/claude-shared`.
 A sync copies the rules into `.claude/shared/` and imports them at the top
 of this file (the managed block above), so every session loads them
 without fetching anything. Never edit those copies here; change the rules
