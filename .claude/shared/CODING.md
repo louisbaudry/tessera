@@ -158,8 +158,9 @@ deployed.
 ## Supabase permissions
 
 Permission rules are read from the session repo's own `.claude/settings.json`,
-not from this repo, so each repo that uses Supabase copies a snippet from
-[`settings/`](https://github.com/louisbaudry/claude-shared/tree/main/settings):
+not from `claude-shared`, so each repo that uses Supabase copies a snippet from
+`settings/` in the private `claude-shared` repo (read it from a session that
+has that repo in scope; otherwise ask Louis for the file):
 
 - **Default (every Supabase repo):** merge `supabase-read.json`. Read-only
   tools no longer prompt. `execute_sql`, migrations, edge-function deploys
@@ -177,8 +178,8 @@ not from this repo, so each repo that uses Supabase copies a snippet from
   matches the tool name only, so it cannot tell one project or one statement
   from another. The hook can, which is why write access goes through it.
   The hook is a keyword check, not a security boundary; real enforcement is
-  database privileges. Never put a project ref or key in a snippet here:
-  this repo is public.
+  database privileges. Never put a project ref or key in a snippet in
+  `settings/`: snippets are copied into other repos, some of them public.
 
 ## AI output in code
 
