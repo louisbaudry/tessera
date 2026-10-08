@@ -3380,7 +3380,8 @@ rest of that range:
     an owner with no roster, or whose roster no longer lists the account, is
     skipped, not an error. It takes no `?owner`.
   - **`/api/me` carries `role`**, and `create-account --vendor` makes a vendor
-    account. How a vendor *gets* an account is a product question (issue filed).
+    account. How a vendor *gets* an account was decided afterwards (issue #125,
+    `vendor-spec.md` §3): an owner's invitation, `#111`.
   - **`INSERT OR IGNORE` hid an invalid row**: it swallows a CHECK violation too,
     so an owner added to their own roster reported "already there". The index's
     insert is `ON CONFLICT DO NOTHING`, which covers only the duplicate key; a
@@ -3426,6 +3427,16 @@ rest of that range:
     next save went to `?owner=undefined`: found only by driving the browser, because the
     route test asserted the status and not the shape the client reuses.
   - Not audited, per the schema's own reasoning; a mistyped owner is the identical 404.
+
+- **#111 · An owner's invitation creates a vendor account · M** · [issue #145]
+  — the decision from issue #125 (`vendor-spec.md` §3, 2026-10-08): an
+  owner adds an email to their roster, the invitee follows a one-time link,
+  sets a password and becomes a vendor account and a roster member in one
+  step. A hashed, expiring, single-use token store; audit events with the
+  owner as actor; and the card settles whether `@cat-tool/server` gets a mail
+  sender (only `portal-server` has one) or shows the link to the owner. Not
+  before the pilot has a vendor the operator would not create by hand;
+  until then `create-account --vendor` is the only path.
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
