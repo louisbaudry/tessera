@@ -70,7 +70,7 @@ const events = (vendorId: number) =>
 describe('the file', () => {
   it('is its own kind of file, with an identity row and the current format version', () => {
     expect(db.pragma('application_id', { simple: true })).toBe(VENDOR_APPLICATION_ID);
-    expect(db.pragma('user_version', { simple: true })).toBe(4);
+    expect(db.pragma('user_version', { simple: true })).toBe(5);
     const id = db.prepare('SELECT * FROM vendor_file').get() as { generator: string };
     expect(id.generator).toBe('test');
   });
