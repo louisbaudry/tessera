@@ -436,3 +436,75 @@ tested; this entry records what future runs must know.
 - **A semantic match still never gets a percentage** and an accepted one
   is still a no-match in analysis and pay (spec §4). Fuzzy origins are
   `tm_fuzzy_<score>`; no semantic origin exists yet.
+
+---
+
+## 2026-10-08 — synthetic-100k `hnsw` run; synthetic-1M `labse` left unrun
+
+Card `#59` (issue #50) stays open. This session ran the two synthetic
+items still listed on 2026-09-27 and stopped one of them short.
+
+**Run, on clean trees, confirmatory under the pre-registration:**
+
+- `synthetic-100k`, `hnsw`, all three models, at commit d55bbca:
+  results `2026-10-08-d55bbca-1` (model-free) to `-4`.
+- `synthetic-1M`, model-free arms only, at commit 8237945:
+  `2026-10-08-8237945-1`. It is the by-product of a `labse` `hnsw`
+  attempt that did not finish.
+
+**What happened, in the order it matters:**
+
+- The first 100k attempt (commit b454d86) was killed by a container
+  restart about 50k units into the `e5s` embedding. Its model-free file,
+  `2026-10-08-b454d86-1`, is kept. The run was resumed from the kept
+  `.ctm`, so `-2` (`e5s`) reports `embed.units` 38,560 and its
+  `embed.ms` and throughput cover only the resumed part. Nothing else
+  about the setup changed. A rerun writes a new model-free file, so
+  there are two for this corpus, both complete; the analysis script
+  takes the latest.
+- The 1M `labse` run was stopped by the 2-hour background limit at
+  about 256k of 1,000,000 units (44 units/s; the whole pass is about
+  6.3 hours). It wrote no `labse` file. Per the harness's own note it
+  was not restarted, and the owner chose to stop. **There is no
+  `labse` `hnsw` result at 1M**, so that cell of the synthetic
+  scaling table is empty, not zero. The 1M `e5s` and `minilm` `hnsw`
+  files from 2026-09-27 stand.
+
+**Numbers (100k, `lex`, 400 queries; descriptive, synthetic text):**
+
+- Recall of the best FS-1 match: `fts50` 0.925; `ftsK` (top-60, 75, 100) 0.930, 0.940, 0.945.
+- `union`, m = 10 / 25 / 50: `e5s` 0.9825 / 0.9875 / 0.9875;
+  `minilm` 0.96 / 0.9625 / 0.9675; `labse` 0.975 / 0.98 / 0.98.
+- Every cell has more queries found only by `union` than only by
+  `ftsK` (for example `e5s`, m = 25: 22 against 3, one-sided p
+  0.0001). Unadjusted; the Holm-adjusted test is for DGT `para`, not
+  for this set.
+- All nine cells meet the +100 ms budget. The `union` p99 is 43–51 ms
+  for `e5s` and `minilm` and 74–92 ms for `labse`, on a `fts50` p99 of
+  14 ms.
+- HNSW returned 93–98% of exact's top-m (`labse` lowest at m = 50,
+  0.932).
+- Storage again 4,683–4,687 bytes per unit at both 384 and 768
+  dimensions, as on DGT. Nothing new on the cause.
+- At 1M the model-free file puts `fts50` recall on `lex` at 0.9075 and
+  its p99 lookup at 151 ms.
+
+**What these do and do not say.** They add no weight to H1b, whose
+verdict stays the DGT-1M one of 2026-09-26: the synthetic text is
+pseudo-words, so a vector model sees subword noise, and the protocol
+says synthetic recall is reported but carries no weight. They show
+that the DGT result's direction holds on a second corpus at 100k, and
+that the `hnsw` arm's cost is flat in the ways already seen (a
+build of 3–5 minutes at 100k). The 1M `lex` recall of 0.9075 is the same value the 2026-09-26
+and 2026-09-27 model-free files give (the queries are drawn with a fixed
+seed, so a rerun reproduces it; its p99 lookup moved from 100–115 ms to
+151 ms, probably machine noise: not checked). It sits well
+above E-000's 67% at 1M, but E-000 drew only 40 queries per size, so the
+two are not a measured disagreement.
+
+**Still open on `#59`:** synthetic-1M `labse` `hnsw` (about 5 hours,
+three 2-hour chunks if resumed), the `e5s` synthetic-5M `exact` and
+`hnsw` runs (the vectors alone are about 23 GB, more than the 30 GB
+this container has free, so these need a larger disk), the private
+memories on the owner's machine, and spec §9.1. No hypothesis was
+written or changed in this session.
