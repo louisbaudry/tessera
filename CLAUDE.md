@@ -315,6 +315,13 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   immutable by trigger, from the frozen analysis and the rates of the
   offer's date. A tier with no rate is a null rate, never zero; a job with
   nothing to price is delivered with no payable, not refused.
+- **A payment is an event beside the locked payable, never an edit of it**
+  (backlog #112, `db/vendor/payments.ts`): `assignment_payment_event` is
+  append-only with a required actor, and the state is the latest event, so a
+  wrong date is reopened and paid again. A ledger total is **per currency and
+  never converted**, and an incomplete payable is listed with its flag, never
+  hidden. The CSV (`ledgerCsv`) neutralises formula-injection cells, writes money
+  from integer micros, and logs `payables.exported` with a count and a digest.
 - **A vendor finds their owners through `roster_membership`, a derived
   index** (backlog #52a, platform schema v5): the roster decides who is a
   vendor, so a row nothing backs shows its account nothing, and the index

@@ -3438,6 +3438,43 @@ rest of that range:
   before the pilot has a vendor the operator would not create by hand;
   until then `create-account --vendor` is the only path.
 
+- **#112 · ~~Payables ledger: pay-run view, paid state, vendor payment record, CSV~~ · DONE — `db/src/vendor/payments.ts` (vendor schema v5), `vendor-core/src/payment.ts`, routes in `server/src/assignments.ts`.**
+  From the 2026-10-08 competitor sweep (issue #153, which this closes). The
+  owner's side of "the payable locks at delivery": which locked payables are
+  unpaid, marking one paid, and a CSV to pay from. Tessera moves no money. The
+  design is in `vendor-spec.md` (the #112 note); the screens are not built.
+  - **A payment is an event beside the payable, never an edit of it.**
+    `assignment_payment_event` is append-only (kind `paid` with a date, or
+    `reopened`); a payable's state is its latest event, so a wrong date is
+    corrected by reopening and paying again and the log keeps both. It follows
+    `assignment_event` (the whole record of a transition, actor required) rather
+    than also writing `audit_event`: one act, one record.
+  - **The CSV is the only new `audit_event` action**, `payables.exported`, with a
+    row count and the digest of the bytes (never a name or an amount), which
+    widened the vendor CHECK through `rebuildTable` (v5). A test upgrades a real
+    v4 file with audit rows and checks the chain still verifies.
+  - **Totals are per currency and never converted**; an incomplete payable (a
+    tier with words and no rate) and one with no currency are listed with their
+    flag, not hidden and not silently zero. The period is the day the payable
+    locked, the one immutable date every payable has.
+  - **`paid_on` is the day the money moved**, not the day it was recorded: it
+    may not be in the future or before the payable locked.
+  - **The CSV is a formula-injection surface** (a project or vendor name starting
+    `=`, `+`, `-`, `@`): neutralised in the pure `ledgerCsv`, which writes money
+    from integer micros, never a float.
+  - Routes (owner's own roster, so a vendor and a stranger get the same 404):
+    `GET /api/payables[.csv]`, `POST /api/assignments/:id/payment[/reopen]`;
+    `GET /api/vendor/payments` is the vendor's own record across rosters, with
+    days to payment and no one else's row.
+  - **Not built:** an email when a payment is recorded and the vendor-confirmed
+    statement (issue #158). The owner's pay-run screen and the vendor's record
+    screen are `#113` below.
+
+- **#113 · Payables screens: the owner's pay run and the vendor's payment record · M** · [issue #167]
+  — the routes from `#112` have no screens. The owner's pay run (filters, a
+  total per currency, mark paid and reopen, the CSV link) and the vendor's own
+  record, on `@cat-tool/web`, verified in a browser.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

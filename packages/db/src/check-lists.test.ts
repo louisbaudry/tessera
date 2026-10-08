@@ -27,6 +27,7 @@ import {
   ASSIGNMENT_CHANNELS,
   ASSIGNMENT_STATUSES,
   CAPACITY_STATUSES,
+  PAYMENT_KINDS,
   RATE_TIERS,
 } from '@cat-tool/vendor-core';
 import { describe, expect, it } from 'vitest';
@@ -93,6 +94,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'assignment_event.to_status': ASSIGNMENT_STATUSES,
       'assignment_analysis.tier': RATE_TIERS,
       'assignment_payable_line.tier': RATE_TIERS,
+      'assignment_payment_event.kind': PAYMENT_KINDS,
     },
   },
   tm: {

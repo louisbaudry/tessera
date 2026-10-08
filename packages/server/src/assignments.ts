@@ -15,6 +15,7 @@
  * that does not exist.
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -35,6 +36,7 @@ import {
   getAssignmentAnalysis,
   getAssignmentPayable,
   getCapacity,
+  getPaymentState,
   getProfile,
   getVendor,
   getProject,
@@ -43,6 +45,8 @@ import {
   listAssignmentEvents,
   listAssignments,
   listAssignmentsFor,
+  listLedger,
+  listPaymentEvents,
   listPoolMembers,
   listRosterOwners,
   listVendors,
@@ -50,7 +54,12 @@ import {
   type openPlatformDb,
   openProjectDb,
   openVendorFile,
+  NoPayableError,
+  PaymentConflictError,
   postToPool,
+  recordLedgerExport,
+  recordPayment,
+  reopenPayment,
   ReviewBlockedError,
   reconcileAssignmentGrants,
   reconcileMemberships,
@@ -67,11 +76,17 @@ import {
   type Account,
   type Assignment,
   type Capacity,
+  type LedgerEntry,
+  type LedgerFilter,
 } from '@cat-tool/db';
 import {
   AssignmentPartyError,
+  daysToPay,
   isCapacityStatus,
   InvalidAssignmentTransitionError,
+  ledgerCsv,
+  totalsByCurrency,
+  type PaymentStatus,
   type RateTier,
   type TierWords,
 } from '@cat-tool/vendor-core';
@@ -187,6 +202,7 @@ export function registerAssignmentRoutes(
       ...vendorView(a),
       analysis: getAssignmentAnalysis(roster, a.id),
       payable: getAssignmentPayable(roster, a.id),
+      payment: getPaymentState(roster, a.id),
       vendorAccountId: a.vendorId === null ? null : accountOf(a.vendorId),
       eligible: listPoolMembers(roster, a.id).map(accountOf),
       events: listAssignmentEvents(roster, a.id).map((e) => ({
@@ -221,7 +237,12 @@ export function registerAssignmentRoutes(
   }
 
   function mapError(err: unknown, reply: FastifyReply) {
-    if (err instanceof AssignmentAccessError) return noSuch(reply);
+    if (err instanceof AssignmentAccessError || err instanceof NoPayableError) {
+      return noSuch(reply);
+    }
+    if (err instanceof PaymentConflictError) {
+      return reply.code(409).send({ error: err.message });
+    }
     if (err instanceof ReviewBlockedError) {
       return reply.code(409).send({ error: err.message, blocking: err.blocking });
     }
@@ -640,10 +661,225 @@ export function registerAssignmentRoutes(
     },
   );
 
-  // --- the owner's roster (backlog #51): who they engage, and what they pay ---
-
   const accountParam = (raw: string): number =>
     /^[1-9]\d{0,14}$/.test(raw) ? Number(raw) : 0;
+
+  // --- payments against locked payables (backlog #112, vendor-spec.md) ---
+  // Every route here opens the caller's own roster, so a vendor reaches
+  // nothing of the owner's side, and a stranger gets the identical 404.
+
+  /** A ledger row as the owner sees it: the vendor by account id and the label they chose. */
+  const ledgerView = (r: LedgerEntry) => ({
+    assignment: r.assignmentId,
+    project: r.project,
+    vendorAccountId: r.vendorAccountId,
+    vendor: r.vendorLabel,
+    currency: r.currency,
+    words: r.words,
+    totalMicros: r.totalMicros,
+    complete: r.complete,
+    lockedAt: r.lockedAt,
+    status: r.status,
+    paidOn: r.paidOn,
+    daysToPay: r.paidOn === null ? null : daysToPay(r.lockedAt, r.paidOn),
+  });
+
+  /** `?vendor=<account id>&from=&to=&status=` as a ledger filter, or the reply that refuses it. */
+  function ledgerFilter(
+    roster: Roster,
+    query: Record<string, unknown>,
+  ): LedgerFilter | { reject: 'no_such_vendor' | string } {
+    const filter: { -readonly [K in keyof LedgerFilter]: LedgerFilter[K] } = {};
+    for (const key of ['vendor', 'from', 'to', 'status'] as const) {
+      const v = query[key];
+      if (v !== undefined && typeof v !== 'string')
+        return { reject: `${key} must be text` };
+    }
+    if (typeof query.vendor === 'string') {
+      const account = accountParam(query.vendor);
+      const vendor = account === 0 ? null : getVendorByAccount(roster, account);
+      if (!vendor) return { reject: 'no_such_vendor' };
+      filter.vendorId = vendor.id;
+    }
+    if (typeof query.from === 'string') filter.from = query.from;
+    if (typeof query.to === 'string') filter.to = query.to;
+    if (typeof query.status === 'string') {
+      if (query.status !== 'paid' && query.status !== 'unpaid') {
+        return { reject: 'status is paid or unpaid' };
+      }
+      filter.status = query.status as PaymentStatus;
+    }
+    return filter;
+  }
+
+  // The pay run: every locked payable that matches, with a total per currency
+  // (never converted) split into unpaid and paid.
+  app.get('/api/payables', async (req, reply) => {
+    const roster = openRoster(deps.owner(req));
+    if (!roster) return { payables: [], totals: [] };
+    try {
+      const filter = ledgerFilter(roster, req.query as Record<string, unknown>);
+      if ('reject' in filter) {
+        return filter.reject === 'no_such_vendor'
+          ? noSuch(reply)
+          : reply.code(400).send({ error: filter.reject });
+      }
+      const rows = listLedger(roster, filter);
+      return { payables: rows.map(ledgerView), totals: totalsByCurrency(rows) };
+    } catch (err) {
+      return mapError(err, reply);
+    } finally {
+      roster.close();
+    }
+  });
+
+  // The same list as a CSV, and a record that it left: a count and the digest
+  // of the bytes, never a name or an amount (`payables.exported`).
+  app.get('/api/payables.csv', async (req, reply) => {
+    const me = deps.owner(req);
+    const roster = openRoster(me);
+    if (!roster) return noSuch(reply);
+    try {
+      const filter = ledgerFilter(roster, req.query as Record<string, unknown>);
+      if ('reject' in filter) {
+        return filter.reject === 'no_such_vendor'
+          ? noSuch(reply)
+          : reply.code(400).send({ error: filter.reject });
+      }
+      const rows = listLedger(roster, filter);
+      const csv = ledgerCsv(rows);
+      recordLedgerExport(roster, {
+        rows: rows.length,
+        sha256: createHash('sha256').update(csv).digest('hex'),
+        actor: deps.sessionActor(req),
+      });
+      return reply
+        .header('content-type', 'text/csv; charset=utf-8')
+        .header('content-disposition', 'attachment; filename="payables.csv"')
+        .send(csv);
+    } catch (err) {
+      return mapError(err, reply);
+    } finally {
+      roster.close();
+    }
+  });
+
+  const paymentView = (roster: Roster, id: number) => ({
+    ...getPaymentState(roster, id),
+    events: listPaymentEvents(roster, id).map((e) => ({
+      kind: e.kind,
+      paidOn: e.paidOn,
+      by: e.actorLabel ?? e.actor,
+      note: e.note,
+      at: e.at,
+    })),
+  });
+
+  // The owner records that a locked payable was paid, on the day the money
+  // moved. A payable already paid is a 409: reopen it to correct the record.
+  app.post<{
+    Params: { id: string };
+    Body: { paidOn?: unknown; note?: unknown } | undefined;
+  }>('/api/assignments/:id/payment', async (req, reply) => {
+    const id = accountParam(req.params.id);
+    if (id === 0) return noSuch(reply);
+    const { paidOn, note } = req.body ?? {};
+    if (typeof paidOn !== 'string') {
+      return reply.code(400).send({ error: 'paidOn is a date: YYYY-MM-DD' });
+    }
+    if (note !== undefined && note !== null && typeof note !== 'string') {
+      return reply.code(400).send({ error: 'note must be text' });
+    }
+    const roster = openRoster(deps.owner(req));
+    if (!roster) return noSuch(reply);
+    try {
+      recordPayment(roster, {
+        assignmentId: id,
+        paidOn,
+        note: (note as string | null | undefined) ?? null,
+        actor: deps.sessionActor(req),
+      });
+      return { payment: paymentView(roster, id) };
+    } catch (err) {
+      return mapError(err, reply);
+    } finally {
+      roster.close();
+    }
+  });
+
+  // Withdraws a payment record to correct it; the log keeps both events.
+  app.post<{ Params: { id: string }; Body: { note?: unknown } | undefined }>(
+    '/api/assignments/:id/payment/reopen',
+    async (req, reply) => {
+      const id = accountParam(req.params.id);
+      if (id === 0) return noSuch(reply);
+      const note = req.body?.note;
+      if (note !== undefined && note !== null && typeof note !== 'string') {
+        return reply.code(400).send({ error: 'note must be text' });
+      }
+      const roster = openRoster(deps.owner(req));
+      if (!roster) return noSuch(reply);
+      try {
+        reopenPayment(roster, {
+          assignmentId: id,
+          note: (note as string | null | undefined) ?? null,
+          actor: deps.sessionActor(req),
+        });
+        return { payment: paymentView(roster, id) };
+      } catch (err) {
+        return mapError(err, reply);
+      } finally {
+        roster.close();
+      }
+    },
+  );
+
+  // A vendor's own record across every roster that lists them, the feed's
+  // shape: what each job locked at, whether it is paid, and how long it took.
+  // Their rows only (`vendorId`), and no owner total.
+  app.get('/api/vendor/payments', async (req) => {
+    const me = deps.owner(req);
+    const items: Array<ReturnType<typeof vendorPaymentView>> = [];
+    const rows: LedgerEntry[] = [];
+    for (const ownerId of listRosterOwners(platform, me.id)) {
+      const ownerAccount = getAccountById(platform, ownerId);
+      if (!ownerAccount) continue;
+      const roster = openRoster(ownerAccount);
+      if (!roster) continue;
+      try {
+        const vendor = getVendorByAccount(roster, me.id);
+        if (!vendor) continue;
+        for (const r of listLedger(roster, { vendorId: vendor.id })) {
+          rows.push(r);
+          items.push(vendorPaymentView(ownerId, r));
+        }
+      } finally {
+        roster.close();
+      }
+    }
+    items.sort(
+      (a, b) => b.lockedAt.localeCompare(a.lockedAt) || b.assignment - a.assignment,
+    );
+    return { payments: items, totals: totalsByCurrency(rows) };
+  });
+
+  function vendorPaymentView(ownerId: number, r: LedgerEntry) {
+    return {
+      owner: ownerId,
+      assignment: r.assignmentId,
+      project: r.project,
+      currency: r.currency,
+      words: r.words,
+      totalMicros: r.totalMicros,
+      complete: r.complete,
+      lockedAt: r.lockedAt,
+      status: r.status,
+      paidOn: r.paidOn,
+      daysToPay: r.paidOn === null ? null : daysToPay(r.lockedAt, r.paidOn),
+    };
+  }
+
+  // --- the owner's roster (backlog #51): who they engage, and what they pay ---
 
   const rateView = (r: ReturnType<typeof vendorRateHistory>[number]) => ({
     src: r.pair.src,
