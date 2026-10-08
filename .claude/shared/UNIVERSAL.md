@@ -2,9 +2,9 @@
 
 > Shared instructions for Claude Code in **every** repository Louis works in.
 > This file is the universal rulebook, not a repo `CLAUDE.md`. Each repo's own
-> `CLAUDE.md` imports it (a synced copy in `.claude/shared/`, see
-> [`SYNC.md`](https://github.com/louisbaudry/claude-shared/blob/main/SYNC.md)),
-> then the one set that matches the repo, then adds only what is specific to
+> `CLAUDE.md` imports it (a synced copy in `.claude/shared/`; how the sync
+> works is in `SYNC.md` in the private `claude-shared` repo), then the one
+> set that matches the repo, then adds only what is specific to
 > that repo. Never edit the synced copies in a repo; edit them in
 > `shared/` of `louisbaudry/claude-shared`:
 >
@@ -18,8 +18,9 @@
 > loaded alongside this file when the session can reach it; this file is
 > about how to work with him in a codebase.
 >
-> This repository is public. Keep it to working rules: nothing personal,
-> no client names, no credentials.
+> `claude-shared` is private, but this file is copied into other repos,
+> some of them public. Keep it to working rules: nothing personal, no
+> client names, no credentials.
 >
 > Precedence: a repo's own `CLAUDE.md` may narrow or extend these rules for
 > that repo. It should not silently contradict them; where it does, the
@@ -271,10 +272,18 @@ modelled the same way in every repo, by the public
 ## Prompt suggestions
 
 Louis wants the greyed-out prompt suggestions (Tab to accept) in every repo.
-A rule here cannot switch a client setting, so each repo merges
-[`settings/prompt-suggestions.json`](https://github.com/louisbaudry/claude-shared/blob/main/settings/prompt-suggestions.json) into
-its own `.claude/settings.json`. For his local client, the same key can go in
-`~/.claude/settings.json` once, which covers every repo without copying.
+A rule here cannot switch a client setting, so each repo merges this key
+(kept as `settings/prompt-suggestions.json` in `claude-shared`) into its own
+`.claude/settings.json`:
+
+```json
+{
+  "promptSuggestionEnabled": true
+}
+```
+
+For his local client, the same key can go in `~/.claude/settings.json` once,
+which covers every repo without copying.
 
 ## Fetching web sources
 
