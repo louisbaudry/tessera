@@ -97,7 +97,8 @@ question or a one-line task still gets the report first.
    when the change looks obviously safe.
 2. **One task, one branch, one PR.** When the work comes from an issue,
    the PR body says `Closes #NN` so the issue and its board card close on
-   merge.
+   merge. Every PR body also carries the `Docs:` line from "Before calling
+   work done".
    - **Branch names:** `<type>/<issue-number>-<short-slug>`, lowercase,
      hyphens only, e.g. `feat/42-glossary-export`. Types: `feat`, `fix`,
      `docs`, `chore`. No issue yet: `<type>/<short-slug>`. Where the
@@ -144,8 +145,9 @@ In a `true` repo:
 
 - **Merge your own PR when it is ready; don't wait to be asked.** Ready
   means CI green on the current head, no merge conflict, no open review
-  thread, and nothing in it that needs Louis (below). Never merge a PR
-  another session or person opened unless Louis asks.
+  thread, the `Docs:` line filled in, and nothing in it that needs Louis
+  (below). Never merge a PR another session or person opened unless Louis
+  asks.
 - **No draft stop in a `true` repo.** Cloud sessions open PRs as drafts
   by default, and a draft cannot be merged. `Continuous mode: true` is
   Louis's standing instruction to override that default: open the PR
@@ -269,9 +271,27 @@ modelled the same way in every repo, by the public
 - **Say what was verified and what was not.** Where something could not be
   checked from this session (no network to a host, no real sample), say so
   plainly. "Looks fine" is not reviewable.
-- **At the end of the session, before creating the PR, update all relevant
-  markdown files** (backlog, specs, `CLAUDE.md`, `docs/`, README) so the
-  record lands in the same PR as the change.
+- **Docs gate: no PR without it.** After the last code or content change and
+  before the push that opens the PR (and again before any later push that
+  changes behavior), walk this list against the diff and update what it
+  touches, in the same PR:
+  1. The repo's backlog or record: rewrite the entry for this work as
+     the record (see "Where work is tracked").
+  2. Specs and `docs/` pages that describe what changed.
+  3. `README` and any setup or usage text the change makes wrong.
+  4. `CLAUDE.md` (and `AGENTS.md`, kept in sync): commands, conventions,
+     invariants, decisions.
+  5. `INFRASTRUCTURE.md` where the change is an infrastructure change
+     (rule in `CODING.md`).
+  6. Other markdown the change makes stale: grep the repo for the old
+     name, flag, path or behavior.
+
+  The PR body carries one line, either "Docs: updated, <files>" or
+  "Docs: no change, <why>". A bare "no change" does not pass: say what
+  was checked. A PR without this line is not ready, and in a
+  `Continuous mode: true` repo it is not merged. A draft opened early may
+  lack it, but the line is filled in before the PR is marked ready.
+
 - The kind-specific checks are in `CODING.md` or `NON-CODING.md`.
 
 ## Design decisions go on the record

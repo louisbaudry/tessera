@@ -6,6 +6,10 @@
 
 ## Before calling work done
 
+- **Pass the docs gate in `UNIVERSAL.md`** before the PR: the `Docs:` line
+  in the PR body, next to the `Infrastructure:` line below. Code changes
+  most often leave stale README text, `CLAUDE.md` commands, specs and the
+  backlog entry.
 - Run the repo's full set of checks (format, lint, typecheck, build,
   tests, whatever it defines) and report the result honestly.
 - **If a check fails, the change is presumed wrong, not the check.** Don't
