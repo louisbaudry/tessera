@@ -981,3 +981,21 @@ scorecard of decision 6's deferred "scoring" is, in its first slice:
   an optional note, which needs a frozen `CHECK` and a migration, and a note that stays out of
   the hashed audit `detail`). A sort or filter "when offering" waits on there being an owner-side
   offer screen at all: offers are made by the API today.
+
+**Implementation note (#124, issue #190 part 2), written before the code (2026-10-09).** Whether a
+vendor editing a project sees the editor's Resources panel (backlog #114), decided by Louis:
+
+- **Yes, without names.** A translator who is matched against attached memories and a glossary
+  should be able to see that they exist, in what order they are consulted and which one new work
+  is written to. The owner's names for them are a different matter: a client's name is often in a
+  memory's or glossary's, and a vendor may not be told who the client is, so the panel never
+  shows one.
+- **A new read-level route, not wider old ones.** `GET /api/projects/:name/resources` (`read`, so
+  an `edit` grant reaches it too) returns two lists in consultation order,
+  `{ memories: [{ writeTarget, enabled }], glossaries: [...] }`. It carries **no slug, no id and no
+  path**, and the names are not stripped on the client: they are never sent. The owner's
+  `/tms` and `/glossaries` stay `manage`, because they also return what only an owner may change.
+- **The panel names the rows by position** ("Memory 1", "Glossary 2"), keeps the `writes here` and
+  `off` badges, and drops the link to the project page, which a grantee cannot manage. The pure
+  row builder is `resources.ts`'s, next to the owner's.
+- **Not built here:** reference files (issue #190 part 1), which stay their own card.

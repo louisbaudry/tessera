@@ -1429,6 +1429,38 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     },
   );
 
+  // What a project consults, for someone who may edit it but does not own it
+  // (backlog #124, vendor-spec.md): memories and glossaries in consultation
+  // order with only their write-target and on/off flags. No slug, id or path,
+  // because an owner's names often carry a client's name; the names are never
+  // sent rather than hidden by the client. `read`, so any grant reaches it.
+  app.get<{ Params: { name: string } }>(
+    '/api/projects/:name/resources',
+    async (req, reply) => {
+      const opened = openProject(req, reply, req.params.name, 'read');
+      if (!opened) return reply;
+      try {
+        const anonymous = (
+          refs: ReadonlyArray<{
+            id: number;
+            priority: number;
+            isWriteTarget: boolean;
+            enabled: boolean;
+          }>,
+        ) =>
+          [...refs]
+            .sort((a, b) => a.priority - b.priority || a.id - b.id)
+            .map((ref) => ({ writeTarget: ref.isWriteTarget, enabled: ref.enabled }));
+        return {
+          memories: anonymous(listTmRefs(opened.db)),
+          glossaries: anonymous(listGlossaryRefs(opened.db)),
+        };
+      } finally {
+        opened.db.close();
+      }
+    },
+  );
+
   // Attaches one of the account's glossaries after every one already
   // there, optionally as the write target (`addGlossaryRef`).
   app.post<{

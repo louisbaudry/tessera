@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { GlossaryRefView, TmRefView } from './api.js';
-import { glossaryRows, memoryRows, OUTSIDE_NAME, resourceSummary } from './resources.js';
+import {
+  anonymousRows,
+  glossaryRows,
+  memoryRows,
+  OUTSIDE_NAME,
+  resourceSummary,
+} from './resources.js';
 
 const tm = (over: Partial<TmRefView> & { id: number }): TmRefView => ({
   tm: `tm-${over.id}`,
@@ -61,5 +67,28 @@ describe('resourceSummary', () => {
   it('counts, in the singular where it is one', () => {
     expect(resourceSummary(1, 1)).toBe('1 memory, 1 glossary');
     expect(resourceSummary(0, 2)).toBe('0 memories, 2 glossaries');
+  });
+});
+
+describe('anonymousRows', () => {
+  it('names rows by position and never by anything about the file', () => {
+    const rows = anonymousRows(
+      [
+        { writeTarget: false, enabled: true },
+        { writeTarget: true, enabled: false },
+      ],
+      'Memory',
+    );
+    expect(rows.map((r) => r.name)).toEqual(['Memory 1', 'Memory 2']);
+    expect(rows[1]).toMatchObject({ badges: ['writes here', 'off'], enabled: false });
+    expect(rows[0]).toMatchObject({ badges: [], enabled: true });
+  });
+
+  it('keeps the order the server gave and numbers glossaries on their own', () => {
+    const rows = anonymousRows([{ writeTarget: true, enabled: true }], 'Glossary');
+    expect(rows).toEqual([
+      { id: 1, name: 'Glossary 1', badges: ['writes here'], enabled: true },
+    ]);
+    expect(anonymousRows([], 'Memory')).toEqual([]);
   });
 });

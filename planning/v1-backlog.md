@@ -3550,7 +3550,7 @@ rest of that range:
   own rules (a minted file name, size limits, the #148 style guide), filed as their own issue.
   - **Read-only, and the owner's.** Attaching, ordering and switching stay on the
     project page (`manage`); the panel links there. It is not shown on another
-    account's project, as the Glossary toggle is not: the two routes it reads
+    account's project (a vendor's view without names came later, #124), as the Glossary toggle is not: the two routes it reads
     (`GET /api/projects/:name/tms` and `/glossaries`) are `manage`, and widening them
     to a grantee would show a vendor the names of the owner's client memories, which
     is a confidentiality decision and not a UI one (follow-up issue, with the reference files).
@@ -3650,6 +3650,27 @@ rest of that range:
   - Verified: the counting rules (boundary, offset, no deadline, unanswered, unclaimed pool)
     in node; the route through Fastify's `inject` with three real offers (on time, late, declined);
     the screen in Chromium against a real server. Not verified: a roster with hundreds of vendors.
+
+- **#124 · ~~The Resources panel for a vendor, without names~~ · DONE — `GET /api/projects/:name/resources` in `server/src/app.ts`, `anonymousRows` in `web/src/resources.ts`, a grantee branch in `web/src/ResourcesPanel.tsx`.**
+  Part 2 of issue #190 (follow-up to #114): a vendor editing another account's project sees the
+  Resources panel, with Louis's decision (2026-10-09) that it **never carries the owner's names**.
+  Design note: `vendor-spec.md`, the #124 note, written before the code. Reference files (part 1)
+  remain their own issue.
+  - **A new `read` route, not wider old ones.** `/tms` and `/glossaries` stay `manage`: they also
+    return what only an owner may change. The new route returns two lists in consultation order,
+    `[{ writeTarget, enabled }]`, with **no slug, id or path**: the names are not hidden by the
+    client, they are never sent. `authorization.test.ts` seeds a memory and a glossary with
+    client-like names, asserts the body equals the flags and matches none of the names, and fails
+    when a field is added (a deliberate `path` made it red); a stranger gets the same 404 as a
+    missing project.
+  - **Rows named by position** ("Memory 1", "Glossary 2"), keeping the `writes here` and `off`
+    badges (pure, tested next to the owner's rows); the link to the project page is dropped, which
+    a grantee cannot manage. The Resources toggle and palette command are no longer owner-only; the
+    Glossary panel's still are.
+  - Verified in Chromium against a real server: as the vendor, `Memory 1 (writes here)`, `Memory 2`,
+    `Glossary 1 (writes here)`, no link, and neither seeded name anywhere in the panel's HTML; as the
+    owner, the same panel with names and the link. Not verified: a project with a switched-off
+    memory in a vendor's view (only the unit test covers the `off` badge).
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 

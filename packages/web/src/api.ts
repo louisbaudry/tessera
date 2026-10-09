@@ -315,6 +315,12 @@ export interface Restructured {
 }
 
 /** A glossary attached to a project: its slug, never its path. */
+/** A project's attached memories and glossaries without names, for a grantee (backlog #124). */
+export interface ProjectResourcesView {
+  readonly memories: ReadonlyArray<{ writeTarget: boolean; enabled: boolean }>;
+  readonly glossaries: ReadonlyArray<{ writeTarget: boolean; enabled: boolean }>;
+}
+
 export interface GlossaryRefView {
   readonly id: number;
   readonly glossary: string | null;
@@ -528,6 +534,9 @@ export const api = {
     call<ImportJob>(`/api/jobs/${id}`, token, { method: 'DELETE' }),
   projectMemories: (token: string, name: string, signal?: AbortSignal) =>
     call<{ refs: TmRefView[] }>(projectUrl(name, `/tms`), token, { signal }),
+  /** What the project consults, without names: the one a grantee may read (backlog #124). */
+  projectResources: (token: string, name: string, signal?: AbortSignal) =>
+    call<ProjectResourcesView>(projectUrl(name, `/resources`), token, { signal }),
   attachMemory: (token: string, name: string, tm: string, writeTarget: boolean) =>
     call<{ refs: TmRefView[] }>(projectUrl(name, `/tms`), token, {
       method: 'POST',
