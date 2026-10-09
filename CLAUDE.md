@@ -344,6 +344,14 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   vendor, so a row nothing backs shows its account nothing, and the index
   is written before the roster entry. Use `ON CONFLICT DO NOTHING` for it,
   never `INSERT OR IGNORE`, which also swallows a CHECK violation.
+- **A vendor's record is two counts over the log, never a score** (backlog #123,
+  `vendor-core/src/record.ts`, `db/src/vendor/record.ts`): of the offers answered how
+  many were accepted, of the deliveries with a deadline how many were on time, each
+  shown "N of M" and never a lone percentage or one merged number. It is read when
+  asked and never stored, so it cannot disagree with `assignment_event`, and it is
+  advisory: nothing sorts, filters or excludes a vendor by it. Silence on a direct
+  offer is not a decline; don't count it as one without settling §4's auto-repost
+  question first.
 - **A grant is mended against the roster, never by repeating a step**
   (backlog #51c, `reconcileAssignmentGrants`): accept and review each
   change two files, and a failed revoke after a review cannot be retried
@@ -623,7 +631,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts` and `commands.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts` and `commands.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

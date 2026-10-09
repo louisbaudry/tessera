@@ -3620,6 +3620,37 @@ rest of that range:
     Not verified: a memory over a million units; a glossary with thousands of entries (the matcher is
     built once per scan, so it is the per-unit cost that scales).
 
+- **#123 · ~~Vendor record on the roster~~ · DONE — `vendor-core/src/record.ts` (`vendorRecord`), `db/src/vendor/record.ts` (`vendorRecords`), `record` on `GET /api/vendors`, `web/src/vendor-record.ts` and the Vendors screen's roster.**
+  First slice of the scorecard in the 2026-10-08 competitor sweep (issue #157,
+  `competitive-research.md`): beside each vendor on the roster, how many of the offers they
+  answered they accepted and how many of their deliveries came in by the deadline, each
+  "N of M". Design note: `vendor-spec.md`, the #123 note, written before the code.
+  - **A record, not a score.** Two counts, each shown with its sample size, never a lone
+    percentage and never merged into one number (`acceptanceLabel`/`onTimeLabel` print "4 of 5",
+    and a test asserts no `%`). The card's own warning is that small samples and hard files
+    punish good vendors, so the Roster carries a sentence saying so and nothing sorts, filters
+    or excludes by it. It is also profiling of a person: a human reads it and decides.
+  - **A count over the log, never stored**: the inputs are an assignment's status and deadline
+    and the time of its first `delivered` event, read in one query for the whole roster
+    (`EXPLAIN` is one scan of `assignment` and an `assignment_event_assignment` seek per job). No
+    table, no migration, so it cannot disagree with the history.
+  - **What is deliberately not counted.** A direct offer a vendor ignored stays `offered`, so
+    silence is not a "no" (counting it needs §4's open auto-repost question and a clock); a pool
+    job nobody claimed is no one's; a claimed-then-declined pool job is the decliner's one
+    decline, its repost belonging to the others. On time is the first `delivered` event at or
+    before the deadline, compared as instants (an offset deadline reads as the time it names,
+    tested), and a job with no deadline is delivered but out of that sample, which the label says.
+  - **Owner-only, in this slice**: the figures ride on the owner's `GET /api/vendors`; a vendor
+    does not see their own.
+  - Remainder of the issue, filed as its own card: the record per language pair and specialty
+    (an assignment names a project, and the pair is in the project file), blocking-QA findings
+    per thousand words, rework rounds, decline reasons (an enum behind a frozen `CHECK`, and a
+    note kept out of the hashed audit `detail`), and a sort or filter when offering (the owner has
+    no offer screen yet: offers are made through the API).
+  - Verified: the counting rules (boundary, offset, no deadline, unanswered, unclaimed pool)
+    in node; the route through Fastify's `inject` with three real offers (on time, late, declined);
+    the screen in Chromium against a real server. Not verified: a roster with hundreds of vendors.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

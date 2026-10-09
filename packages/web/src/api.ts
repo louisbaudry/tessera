@@ -18,6 +18,7 @@ import type {
   InvitationStatus,
   PaymentStatus,
   RateTier,
+  VendorRecord,
 } from '@cat-tool/vendor-core';
 
 import type {
@@ -171,6 +172,11 @@ export interface InvitationView {
 export interface RosterVendor {
   readonly accountId: number;
   readonly displayName: string;
+}
+
+/** A roster entry with the vendor's record: counts with their sample sizes, never a score (#123). */
+export interface RosterEntry extends RosterVendor {
+  readonly record: VendorRecord;
 }
 
 export interface ProjectSummary {
@@ -377,7 +383,7 @@ export const api = {
     ),
   /** The owner's roster, for the pay run's vendor filter (backlog #113). */
   rosterVendors: (token: string, signal?: AbortSignal) =>
-    call<{ vendors: RosterVendor[] }>('/api/vendors', token, { signal }),
+    call<{ vendors: RosterEntry[] }>('/api/vendors', token, { signal }),
   /** The owner's invitations, newest first (backlog #111). */
   invitations: (token: string, signal?: AbortSignal) =>
     call<{ invitations: InvitationView[] }>('/api/invitations', token, { signal }),
