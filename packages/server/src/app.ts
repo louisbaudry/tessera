@@ -1074,7 +1074,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return reply.code(202).header('location', `/api/jobs/${job.id}`).send({ job });
   });
 
-  // Stale work in a memory (smart-glossary-spec.md §6.2, backlog #116): the
+  // Stale work in a memory (smart-glossary-spec.md §6.2, backlog #122): the
   // units whose target uses an old or forbidden rendering of a glossary term.
   // A pass over every unit of the pair, so a job and not a request (§1.1): 202
   // with the job, and the client polls `/api/jobs/:id`, whose `result` is the

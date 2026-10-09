@@ -1,5 +1,5 @@
 /**
- * What the stale-work check says on the Memories screen (backlog #116;
+ * What the stale-work check says on the Memories screen (backlog #122;
  * `smart-glossary-spec.md` §6.2): the job as the API describes it, one line for
  * each state, the report's summary and a row's words. Pure, so it is tested in
  * node; the component only polls and draws. The matcher and the rule of what

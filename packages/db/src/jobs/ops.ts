@@ -92,7 +92,7 @@ export interface OpTable {
     result: TierWords;
   };
   /**
-   * Stale work in a memory (`smart-glossary-spec.md` §6.2, backlog #116): the units
+   * Stale work in a memory (`smart-glossary-spec.md` §6.2, backlog #122): the units
    * whose target uses an old rendering of a glossary term. A pass over every unit
    * of the pair, so it runs off the request thread. Reports; writes nothing.
    */

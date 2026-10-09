@@ -499,7 +499,7 @@ export const api = {
     call<{ jobs: Array<ImportJob | ScanJob> }>('/api/jobs', token, { signal }),
   /**
    * Starts the stale-work check of a memory against one of the account's glossaries
-   * (backlog #116): answers at once with the job, which `scanJob` follows and
+   * (backlog #122): answers at once with the job, which `scanJob` follows and
    * `cancelScan` stops.
    */
   startStaleScan: (

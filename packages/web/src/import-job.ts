@@ -68,7 +68,7 @@ export function describeJob(job: ImportJob): string {
 export function findRunning(
   jobs: ReadonlyArray<ImportJob | { readonly kind: string; readonly state: string }>,
 ): ImportJob | null {
-  // A scan (backlog #116) shares the list and is not an import: only an import is resumed here.
+  // A scan (backlog #122) shares the list and is not an import: only an import is resumed here.
   const running = jobs.find((j) => j.kind === 'import' && j.state === 'running');
   return (running as ImportJob | undefined) ?? null;
 }

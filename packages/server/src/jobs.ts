@@ -26,7 +26,7 @@ export type Settled =
   | { readonly state: 'failed'; readonly error: string }
   | { readonly state: 'cancelled' };
 
-/** What a job does: an `import` makes a memory, a `scan` reads one (backlog #116). */
+/** What a job does: an `import` makes a memory, a `scan` reads one (backlog #122). */
 export type JobKind = 'import' | 'scan';
 
 /** A job as the API shows it: a slug, never a path. */
