@@ -71,7 +71,7 @@ still follows it.
 - **In flight:** open PRs (draft or ready, CI state), unmerged branches,
   how far the branch is behind `main` (`git fetch origin main` first).
 - **Local state:** uncommitted changes; `CLAUDE.md` and `AGENTS.md` in
-  sync (where both exist).
+  sync (where both exist); `GLOSSARY.md` present or missing.
 - **Loaded:** which of `CODING.md` / `NON-CODING.md` and `ai_profile.md`
   were loaded; whether `settings/prompt-suggestions.json` is merged.
 - **Tools:** GitHub access and its repo scope; whether
@@ -277,7 +277,8 @@ modelled the same way in every repo, by the public
   touches, in the same PR:
   1. The repo's backlog or record: rewrite the entry for this work as
      the record (see "Where work is tracked").
-  2. Specs and `docs/` pages that describe what changed.
+  2. Specs and `docs/` pages that describe what changed, and
+     `GLOSSARY.md` for any term the change adds or redefines.
   3. `README` and any setup or usage text the change makes wrong.
   4. `CLAUDE.md` (and `AGENTS.md`, kept in sync): commands, conventions,
      invariants, decisions.
@@ -293,6 +294,91 @@ modelled the same way in every repo, by the public
   lack it, but the line is filled in before the PR is marked ready.
 
 - The kind-specific checks are in `CODING.md` or `NON-CODING.md`.
+
+## Glossary
+
+Every repo has a `GLOSSARY.md` at its root. Terms drift between sessions
+(the same thing under two names, one name for two things); the glossary
+is where each is fixed once.
+
+- **Format:** a Markdown table, alphabetical, one row per term: _Term_,
+  _Definition_ (one sentence), _Avoid_ (aliases and near-misses not to
+  use). Add _Source_ (spec, issue, standard) where the term is not ours.
+- **What goes in:** the repo's domain words, statuses, identifiers and
+  anything a new reader would guess wrong. Not general vocabulary.
+- **Use it:** read it before naming anything (code, docs, UI text, PR
+  titles) and use its terms exactly. Where two terms collide, or a term
+  is missing, follow "Adding or changing a term" below; don't pick
+  silently.
+- **Keep it current:** a change that adds or redefines a term updates the
+  glossary in the same PR (docs gate).
+- **No glossary yet:** the session start report says so (Local state).
+  Before the task, create `GLOSSARY.md` in its own small PR, not mixed
+  into the task's PR. Seed it from what the code, specs and docs already
+  say (the repo's domain words, statuses and identifiers; usually 10 to 30
+  rows), mark unconfirmed terms `unconfirmed`, and ask nothing: Louis
+  reviews the draft.
+- **Translation repos:** this is the repo's own working vocabulary, not
+  the client termbase. Client glossaries stay in their own files and
+  follow `NON-CODING.md` (originals are never edited).
+- **Public repos:** the public-repo rules apply to it too: no client,
+  person or private-repo term.
+- **Per repo, not synced:** the rule is copied everywhere, the content
+  never is.
+
+### Adding or changing a term
+
+**When to add one** (any of these):
+
+- You are about to name something new that stands for a domain concept
+  (a type, table, status, flag, command, heading, UI label).
+- One concept appears under two names, or one name under two concepts.
+- Louis uses a word with a specific meaning that is not written down.
+- A reader would have to ask "what does X mean here?".
+
+Not for general vocabulary, local variable names, or anything that names
+a client or person (see public-repo rules).
+
+**How to add one:**
+
+1. **Search first.** Look in `GLOSSARY.md` and grep the repo for the term
+   and its likely aliases. If it exists, reuse it; never add a second row
+   for the same concept.
+2. **Take the definition from evidence:** the code, specs, issues, or
+   Louis's own words. Never invent one. If you cannot confirm it, write
+   your best reading, mark the row `unconfirmed`, and say so in the PR.
+3. **Write the row:**
+   - _Term_: singular, lower case unless it is a proper noun; an
+     identifier that appears in code goes in backticks.
+   - _Definition_: one sentence saying what it is, not how it is used.
+     Don't use the term itself or an undefined term in it.
+   - _Avoid_: the aliases and near-misses actually found in the repo or
+     in Louis's wording.
+   - _Source_: only for a term taken from a spec, standard or issue.
+4. **Insert it alphabetically** and keep the table Prettier-clean.
+5. **Align what you touch.** If an _Avoid_ alias appears in files this
+   change already edits, replace it in the same change. Elsewhere, don't
+   sweep: file an issue, since mechanical renames go in their own PR.
+6. **Say so in the PR:** the `Docs:` line names the glossary and the
+   terms, e.g. "Docs: updated, GLOSSARY.md (added X; changed Y)".
+
+**Two terms for one concept:** keep the one already used most in the
+code, docs and user-facing text, and put the other in its _Avoid_ cell.
+If it is close, or the term is user-facing, ask Louis with options and a
+recommendation (see Communication); don't pick silently.
+
+**Changing a term:**
+
+- _Rename:_ the new name takes the row; the old name moves to _Avoid_.
+- _Meaning change:_ this is a design decision. Record the reasoning where
+  the repo keeps decisions (see "Design decisions go on the record"), and
+  ask Louis first if other terms depend on it.
+- _Retire:_ delete the row. If another term replaces it, the old name goes
+  in that term's _Avoid_ cell.
+
+**Language:** write each term in the language the repo uses for it. Code
+identifiers stay in English. Add a column for another language only where
+the repo already works in several.
 
 ## Design decisions go on the record
 
