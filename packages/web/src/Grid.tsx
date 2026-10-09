@@ -593,13 +593,13 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
               keywords: 'terms terminology',
               run: () => toggle(glossaryOpen, setGlossaryOpen, saveGlossaryPanel),
             },
-            {
-              id: 'toggle-resources',
-              title: 'Toggle resources panel',
-              keywords: 'memories glossaries attached',
-              run: () => toggle(resourcesOpen, setResourcesOpen, saveResourcesPanel),
-            },
           ]),
+      {
+        id: 'toggle-resources',
+        title: 'Toggle resources panel',
+        keywords: 'memories glossaries attached',
+        run: () => toggle(resourcesOpen, setResourcesOpen, saveResourcesPanel),
+      },
       {
         id: 'focus-filter',
         title: 'Focus the filter',
@@ -741,19 +741,17 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
               Glossary
             </label>
           )}
-          {!foreign && (
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={resourcesOpen}
-                onChange={(e) => {
-                  setResourcesOpen(e.target.checked);
-                  saveResourcesPanel(e.target.checked);
-                }}
-              />{' '}
-              Resources
-            </label>
-          )}
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={resourcesOpen}
+              onChange={(e) => {
+                setResourcesOpen(e.target.checked);
+                saveResourcesPanel(e.target.checked);
+              }}
+            />{' '}
+            Resources
+          </label>
           <span className="restructure">
             <button
               type="button"
@@ -851,7 +849,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
       {paletteOpen && (
         <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
       )}
-      {resourcesOpen && !foreign && <ResourcesPanel project={project} />}
+      {resourcesOpen && <ResourcesPanel project={project} />}
       {glossaryOpen && !foreign && (
         <GlossaryPanel
           project={project}

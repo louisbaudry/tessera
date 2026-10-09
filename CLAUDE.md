@@ -603,7 +603,10 @@ action)`, and names the action** (`read`, `edit` or `manage`,
   uses `opened.owner`, never the session's account**: a grantee's storage
   root holds none of the owner's files. Only `read`/`edit` routes may be
   reached by a grantee; a route that builds a memory or glossary path from
-  the session stays `manage`.
+  the session stays `manage`. What a grantee may see of the memories and
+  glossaries is `GET /api/projects/:name/resources` (backlog #124): order and
+  write/on-off flags, never a slug, id or path, because the owner's names
+  often carry a client's.
 - **A route's actor is `sessionActor(req)`, never built in the
   handler** (`audit-spec.md` §2.5). A write in the project goes to the
   project's log; one about the platform (login, a project's creation or

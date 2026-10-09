@@ -52,6 +52,35 @@ export const memoryRows = (refs: readonly TmRefView[]): ResourceRow[] =>
 export const glossaryRows = (refs: readonly GlossaryRefView[]): ResourceRow[] =>
   rows(refs, (ref) => ref.glossary);
 
+/**
+ * What the server tells someone who may edit a project but does not own it
+ * (`GET /api/projects/:name/resources`, backlog #124): consultation order and two
+ * flags, with no name, slug or id, because an owner's names often carry a client's.
+ */
+export interface AnonymousRef {
+  readonly writeTarget: boolean;
+  readonly enabled: boolean;
+}
+
+/**
+ * Rows for a grantee, in the order given (the server sorts by consultation order),
+ * named by position: "Memory 1", "Glossary 2". Nothing about which file it is.
+ */
+export function anonymousRows(
+  refs: readonly AnonymousRef[],
+  noun: 'Memory' | 'Glossary',
+): ResourceRow[] {
+  return refs.map((ref, i) => ({
+    id: i + 1,
+    name: `${noun} ${i + 1}`,
+    badges: [
+      ...(ref.writeTarget ? ['writes here'] : []),
+      ...(ref.enabled ? [] : ['off']),
+    ],
+    enabled: ref.enabled,
+  }));
+}
+
 /** The panel's one-line summary, e.g. `2 memories, 1 glossary`. */
 export function resourceSummary(memories: number, glossaries: number): string {
   const part = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

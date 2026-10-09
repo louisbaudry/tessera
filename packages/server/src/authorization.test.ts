@@ -299,6 +299,45 @@ describe('an assigned translator', () => {
     expect((await get(a, '/api/projects/job')).statusCode).toBe(200);
   });
 
+  it('sees what the project consults in order, with write and on/off flags and no names', async () => {
+    const a = await login('alice');
+    await projectWithFile(a); // attaches the write-target memory `mem`
+    const made = await app.inject({
+      method: 'POST',
+      url: '/api/glossaries',
+      headers: as(a),
+      payload: { name: 'acme-client-terms' },
+    });
+    expect(made.statusCode, made.body).toBe(201);
+    const attached = await app.inject({
+      method: 'POST',
+      url: '/api/projects/job/glossaries',
+      headers: as(a),
+      payload: { glossary: 'acme-client-terms', writeTarget: true },
+    });
+    expect(attached.statusCode, attached.body).toBe(201);
+    grant(bob.id);
+    const b = await login('bob');
+    const res = await get(b, `/api/projects/job/resources?owner=${alice.id}`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toEqual({
+      memories: [{ writeTarget: true, enabled: true }],
+      glossaries: [{ writeTarget: true, enabled: true }],
+    });
+    // The names are never sent, not merely hidden by the client.
+    expect(res.body).not.toMatch(/"mem"|acme|client-terms|path|slug|\.ctm|\.ctg/);
+  });
+
+  it('is not shown to a stranger: the same 404 as a project that does not exist', async () => {
+    const a = await login('alice');
+    await projectWithFile(a);
+    const c = await login('carol');
+    const real = await get(c, `/api/projects/job/resources?owner=${alice.id}`);
+    const missing = await get(c, `/api/projects/nope/resources?owner=${alice.id}`);
+    expect(real.statusCode).toBe(404);
+    expect(real.body).toBe(missing.body.replace('nope', 'job'));
+  });
+
   it('loses access when the grant is revoked', async () => {
     const a = await login('alice');
     await projectWithFile(a);
