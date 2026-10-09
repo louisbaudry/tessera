@@ -1,5 +1,5 @@
 /**
- * Stale work in a memory (`smart-glossary-spec.md` §6.2; backlog #116): which of
+ * Stale work in a memory (`smart-glossary-spec.md` §6.2; backlog #122): which of
  * the matcher's mismatches say a stored translation uses an **old** rendering.
  * Pure, so the rule is provable from strings, and the one place it lives: the
  * scan in `db` and anything that later reads its rows ask here.

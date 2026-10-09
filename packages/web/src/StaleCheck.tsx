@@ -1,5 +1,5 @@
 /**
- * "Check against a glossary" on a memory (backlog #116; `smart-glossary-spec.md`
+ * "Check against a glossary" on a memory (backlog #122; `smart-glossary-spec.md`
  * §6.2): which of its units use a rendering the glossary now prefers against or
  * forbids, so a client's ruling becomes a rework list. The scan is a job on the
  * server; this starts it, follows it and can cancel it, then shows what it found.

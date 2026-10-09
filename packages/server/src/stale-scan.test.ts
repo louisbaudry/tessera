@@ -1,6 +1,6 @@
 /**
  * The stale-work scan through Fastify's `inject` (smart-glossary-spec.md §6.2,
- * backlog #116): a job over the account's own memory and glossary, whose result
+ * backlog #122): a job over the account's own memory and glossary, whose result
  * is a report. Real files, a real worker thread, no browser.
  */
 

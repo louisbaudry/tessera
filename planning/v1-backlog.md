@@ -3593,7 +3593,7 @@ rest of that range:
     filter), no-match message, Escape and backdrop close, arrow-up wraps, Cmd+K opens. Not verified: a
     screen reader; a Mac keyboard.
 
-- **#116 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
+- **#122 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
   From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,
   a memory is the place old renderings live on and get reused. "Check against a glossary" on a memory
   lists the units whose target uses a rendering the glossary now forbids or no longer prefers, so a

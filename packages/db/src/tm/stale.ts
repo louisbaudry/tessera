@@ -1,5 +1,5 @@
 /**
- * The stale-work scan over a memory (`smart-glossary-spec.md` §6.2; backlog #116):
+ * The stale-work scan over a memory (`smart-glossary-spec.md` §6.2; backlog #122):
  * which stored units use a rendering the glossary now prefers against or forbids.
  * It reads and reports; nothing is written, and the memory is opened by the
  * caller. The matcher and the rule of what counts as stale are `core`'s

@@ -584,7 +584,7 @@ log, never translation data) and the storage volume, with `core` and
   nothing by design (§10: only an open that uses a memory verifies it) and is
   an ordinary handle under `query_only`, never `readonly: true`, which leaves
   `-wal`/`-shm` files beside every memory. A new bulk operation is an entry in
-  `db/src/jobs/ops.ts`; a read-only scan of a memory (`glossary.scanTm`, backlog #116) is
+  `db/src/jobs/ops.ts`; a read-only scan of a memory (`glossary.scanTm`, backlog #122) is
   one too, and `JobRegistry` keeps it apart from an import by `kind`.
 - **A project route opens its project with `openProject(req, reply, name,
 action)`, and names the action** (`read`, `edit` or `manage`,

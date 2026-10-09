@@ -1317,7 +1317,7 @@ button.chip-button:hover {
   color: var(--muted);
 }
 
-/* The stale-work check on a memory (backlog #116). */
+/* The stale-work check on a memory (backlog #122). */
 .list li.memory-row {
   flex-wrap: wrap;
 }

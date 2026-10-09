@@ -725,7 +725,7 @@ did (backlog `#64`).
   re-run it over every segment. The panel's list, computed on request, is the
   live view; the QA row is the one that survives in the QA panel.
 
-### 6.2 Stale work in a memory (backlog #116; issue #182) — design
+### 6.2 Stale work in a memory (backlog #122; issue #182) — design
 
 Written 2026-10-09, before the code. A client changes a preferred rendering
 (an `override`, or a new forbidden form), and a memory already holds units
