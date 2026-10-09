@@ -227,9 +227,8 @@ is additive later (a follow-up issue).
   owner's invitation and for a missing one.
 - **An address that already has an account is refused at acceptance, never at
   invitation.** Refusing at invitation would let an owner ask which addresses have
-  accounts. The invitee is told to sign in; the link stays pending. (An existing
-  vendor joining a *second* owner's roster is a different act, proof of who they are
-  plus a membership, and is not built here: a follow-up issue.)
+  accounts. The invitee is told to sign in; the link stays pending, and what then
+  happens is the #187 note below.
 - **One transaction makes the account.** `acceptInvitation` creates the `vendor`
   account, writes the `roster_membership` index row and marks the link used together.
   The roster file's own entry is a second file no transaction covers, so it is written
@@ -257,6 +256,33 @@ is additive later (a follow-up issue).
 - **Screens:** `#/vendors` for an owner (the invite form, the link shown once, the
   invitations with Withdraw, the roster) and `#/invite/<token>`, the one screen reached
   without a session.
+
+**Implementation note (#187), written with the code (2026-10-09).**
+A vendor who works for one owner is invited by another: the address already has an
+account, so acceptance cannot make one (the #111 note). They **sign in as themselves and
+join**, which is a membership and no new account.
+
+- **The link alone never attaches anyone to an account.** `POST /api/invitations/join`
+  is behind the login gate, not in `PUBLIC_PATHS`, and the signed-in session is what
+  proves who is joining: a vendor who knows the password of the account at the invited
+  address. If the page only needed the link, anyone holding it, or an owner who guessed
+  an address, could put a stranger's account on a roster.
+- **Both must hold:** the session's account has the invited address **and** is a vendor.
+  A link tried by a session at any other address is the same `InvitationUnusableError`
+  (the identical 404) as a link that never existed, so holding a link and trying it from
+  an account of one's own teaches nothing. An owner's account is refused with a 409
+  (`InvitationRoleError`) and the link stays pending: the roster decides who is a vendor,
+  and an owner is not one.
+- **Same single transaction, same mend.** `joinInvitation` marks the link used and writes
+  the `roster_membership` row together; the roster file's entry is written after by
+  `bringRosterLevel`, which already handles a vendor the roster lacks. Joining twice, or a
+  vendor the owner had already added by hand, is idempotent at the roster.
+- **Audit:** the same `invitation.accepted`, the vendor as actor, its detail marked
+  `existing: true`; no `account.created`, because no account was created.
+- **The page** keeps one entry point: the invitee types a password for a new account, the
+  server answers 409 for an address that has one, and the page turns into a sign-in for that
+  address (the address is shown, never typed) which logs in and joins. A failed join signs
+  that session out again, so a refused link leaves no session behind.
 
 **Implementation note (#45), written before the code (2026-10-03).**
 What `#45` settled that decision 2 left open:

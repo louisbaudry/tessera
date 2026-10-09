@@ -1,8 +1,10 @@
 /**
  * An owner invites a vendor (backlog #111; `vendor-spec.md` §3, the #111 note).
- * Four routes: the owner lists, creates and withdraws invitations behind the login
- * gate, and the invitee opens and accepts a link **without a session**, which is
- * why those two are the only public paths besides login (`PUBLIC_PATHS`, app.ts).
+ * The owner lists, creates and withdraws invitations behind the login gate, and the
+ * invitee opens and accepts a link **without a session**, which is why those two are
+ * the only public paths besides login (`PUBLIC_PATHS`, app.ts). A vendor who already
+ * has an account joins by signing in and posting the link to `/api/invitations/join`
+ * (backlog #187), behind the gate: the session is what proves who is joining.
  *
  * The link is shown to the owner to pass on, not mailed: this server has no mail
  * sender (the SMTP service is `portal-server`'s), and sending would be a new outbound
@@ -29,8 +31,10 @@ import {
   EmailTakenError,
   getAccountById,
   getVendorByAccount,
+  joinInvitation,
   InvalidInvitationError,
   InvitationNotPendingError,
+  InvitationRoleError,
   InvitationUnusableError,
   listAcceptedInvitations,
   listInvitations,
@@ -184,6 +188,32 @@ export function registerInvitationRoutes(
     const opened = token === null ? null : openInvitation(platform, token);
     return opened ?? reply.code(404).send(NOT_VALID);
   });
+
+  // A vendor who already has an account joins the roster of the owner who invited
+  // them (backlog #187). Behind the login gate on purpose: the session is the proof
+  // of who is joining, so a link alone never attaches anyone to an account. The
+  // session's account must be the one whose address the owner invited, and a vendor's.
+  app.post<{ Body: { token?: unknown } | undefined }>(
+    '/api/invitations/join',
+    async (req, reply) => {
+      const token = tokenOf(req.body);
+      if (token === null) return reply.code(404).send(NOT_VALID);
+      const me = deps.owner(req);
+      try {
+        const { invitation } = joinInvitation(platform, { token, accountId: me.id });
+        const owner = getAccountById(platform, invitation.ownerId);
+        if (owner) bringRosterLevel(owner);
+        return reply.code(201).send({ ok: true });
+      } catch (err) {
+        if (err instanceof InvitationUnusableError)
+          return reply.code(404).send(NOT_VALID);
+        if (err instanceof InvitationRoleError) {
+          return reply.code(409).send({ error: err.message });
+        }
+        throw err;
+      }
+    },
+  );
 
   // Sets the password once. On success the invitee is signed in: they land on the
   // vendor feed with the owner's roster entry already in place.

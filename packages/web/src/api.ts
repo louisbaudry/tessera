@@ -405,6 +405,15 @@ export const api = {
       null,
       { method: 'POST', body: { token: inviteToken, password } },
     ),
+  /**
+   * A vendor who already has an account joins the owner's roster from a link,
+   * signed in as themselves (backlog #187): the session is the proof of who joins.
+   */
+  joinInvitation: (token: string, inviteToken: string) =>
+    call<{ ok: true }>('/api/invitations/join', token, {
+      method: 'POST',
+      body: { token: inviteToken },
+    }),
   /** The owner's pay run (backlog #112/#113); `query` is `payablesQuery` of the filters. */
   payables: (token: string, query: string, signal?: AbortSignal) =>
     call<PayablesList>(`/api/payables${query}`, token, { signal }),

@@ -22,8 +22,10 @@ import {
   EmailTakenError,
   InvalidInvitationError,
   InvitationNotPendingError,
+  InvitationRoleError,
   InvitationUnusableError,
   listAcceptedInvitations,
+  joinInvitation,
   listInvitations,
   NoSuchInvitationError,
   openInvitation,
@@ -317,6 +319,136 @@ describe('opening and revoking', () => {
     expect(() =>
       revokeInvitation(db, { ownerId: alice.id, id: invitation.id, actor: aliceActor }),
     ).toThrow(InvitationNotPendingError);
+  });
+});
+
+describe('an existing vendor joins a second roster (backlog #187)', () => {
+  const vera = () =>
+    createAccount(db, {
+      email: 'vera@example.com',
+      passwordHash: PASSWORD_HASH,
+      role: 'vendor',
+      actor: TEST_ACTOR,
+    });
+
+  it('puts the signed-in vendor on the owner’s roster index without making an account', () => {
+    const v = vera();
+    const { token } = invite('vera@example.com', 'Vera');
+    const before = db.prepare('SELECT COUNT(*) AS n FROM account').get();
+    const done = joinInvitation(db, { token, accountId: v.id, now: later(1) });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual(before);
+    expect(done.account.id).toBe(v.id);
+    expect(done.invitation).toMatchObject({
+      status: 'accepted',
+      acceptedAccountId: v.id,
+    });
+    expect(listRosterOwners(db, v.id)).toEqual([alice.id]);
+    expect(listAcceptedInvitations(db, alice.id)).toEqual([
+      { accountId: v.id, displayName: 'Vera' },
+    ]);
+  });
+
+  it('keeps a vendor on both rosters when a second owner invites them', () => {
+    const v = vera();
+    const first = invite('vera@example.com');
+    joinInvitation(db, { token: first.token, accountId: v.id, now: later(1) });
+    const second = createInvitation(db, {
+      ownerId: dave.id,
+      email: 'vera@example.com',
+      actor: { actor: { kind: 'account', id: dave.id }, label: null },
+      now: T0,
+    });
+    joinInvitation(db, { token: second.token, accountId: v.id, now: later(2) });
+    expect(listRosterOwners(db, v.id)).toEqual([alice.id, dave.id]);
+  });
+
+  it('is single-use, like any link', () => {
+    const v = vera();
+    const { token } = invite('vera@example.com');
+    joinInvitation(db, { token, accountId: v.id, now: later(1) });
+    expect(() => joinInvitation(db, { token, accountId: v.id, now: later(2) })).toThrow(
+      InvitationUnusableError,
+    );
+  });
+
+  it('refuses an account that is not the invited address, with the unusable-link error', () => {
+    vera();
+    const stranger = createAccount(db, {
+      email: 'sam@example.com',
+      passwordHash: PASSWORD_HASH,
+      role: 'vendor',
+      actor: TEST_ACTOR,
+    });
+    const { token } = invite('vera@example.com');
+    expect(() =>
+      joinInvitation(db, { token, accountId: stranger.id, now: later(1) }),
+    ).toThrow(InvitationUnusableError);
+    expect(() => joinInvitation(db, { token, accountId: 9999, now: later(1) })).toThrow(
+      InvitationUnusableError,
+    );
+    expect(listRosterOwners(db, stranger.id)).toEqual([]);
+    expect(openInvitation(db, token, later(2))).toEqual({ email: 'vera@example.com' }); // still pending
+  });
+
+  it('refuses an owner’s account, and leaves the link pending', () => {
+    const { token } = invite('dave@example.com');
+    expect(() =>
+      joinInvitation(db, { token, accountId: dave.id, now: later(1) }),
+    ).toThrow(InvitationRoleError);
+    expect(listRosterOwners(db, dave.id)).toEqual([]);
+    expect(openInvitation(db, token, later(2))).toEqual({ email: 'dave@example.com' });
+  });
+
+  it('refuses an unknown, withdrawn or expired link', () => {
+    const v = vera();
+    const withdrawn = invite('vera@example.com');
+    revokeInvitation(db, {
+      ownerId: alice.id,
+      id: withdrawn.invitation.id,
+      actor: aliceActor,
+      now: later(1),
+    });
+    const expired = createInvitation(db, {
+      ownerId: dave.id,
+      email: 'vera@example.com',
+      actor: TEST_ACTOR,
+      now: T0,
+    });
+    const join = (token: string, now: Date) => () =>
+      joinInvitation(db, { token, accountId: v.id, now });
+    expect(join(withdrawn.token, later(2))).toThrow(InvitationUnusableError);
+    expect(join(expired.token, later(INVITATION_TTL_MS))).toThrow(
+      InvitationUnusableError,
+    );
+    expect(join('never-issued', later(2))).toThrow(InvitationUnusableError);
+    expect(listRosterOwners(db, v.id)).toEqual([]);
+  });
+
+  it('logs invitation.accepted with the vendor as actor and marks it as an existing account', () => {
+    const v = vera();
+    const { invitation, token } = invite('vera@example.com');
+    joinInvitation(db, { token, accountId: v.id, now: later(1) });
+    const events = listEvents(db, {
+      subjectType: 'invitation',
+      subjectId: String(invitation.id),
+    });
+    expect(events.map((e) => e.action)).toEqual([
+      'invitation.created',
+      'invitation.accepted',
+    ]);
+    expect(events[1]).toMatchObject({ actor: `account:${v.id}` });
+    expect(JSON.parse(events[1]!.detail ?? 'null')).toEqual({
+      owner_id: alice.id,
+      account_id: v.id,
+      existing: true,
+    });
+    // no account was created by this invitation
+    expect(
+      listEvents(db, { subjectType: 'account', subjectId: String(v.id) }).map(
+        (e) => e.actor,
+      ),
+    ).toEqual(['cli:test']);
+    expect(verifyAudit(db).brokenAt).toBeNull();
   });
 });
 

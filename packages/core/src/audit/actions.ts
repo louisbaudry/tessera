@@ -183,10 +183,14 @@ export interface AuditDetail {
   // subject. The invitee's email is in `vendor_invitation` and `account`, never
   // here: a detail is hashed, so erasure could not reach it.
   'invitation.created': null;
-  /** Both ids are installation-local and not personal. The actor is the new account. */
+  /**
+   * Both ids are installation-local and not personal. The actor is the new account,
+   * or, with `existing`, a vendor who already had one and signed in to join (#187).
+   */
   'invitation.accepted': {
     readonly owner_id: number;
     readonly account_id: number;
+    readonly existing?: true;
   };
   /** `superseded` when a newer invitation to the same address replaced it. */
   'invitation.revoked': { readonly superseded: true } | null;
