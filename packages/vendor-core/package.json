@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./webhook": {
+      "types": "./dist/webhook.d.ts",
+      "default": "./dist/webhook.js"
     }
   },
   "files": [

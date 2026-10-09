@@ -18,16 +18,12 @@
  * roster lacks, after an accept and whenever the owner lists their invitations.
  */
 
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-
 import { generateSessionToken, hashPassword, type AuditActor } from '@cat-tool/core';
 import {
   acceptInvitation,
   addVendor,
   createAccountSession,
   createInvitation,
-  createVendorFile,
   EmailTakenError,
   getAccountById,
   getVendorByAccount,
@@ -40,7 +36,6 @@ import {
   listInvitations,
   NoSuchInvitationError,
   openInvitation,
-  openVendorFile,
   revokeInvitation,
   type Account,
   type Invitation,
@@ -49,7 +44,7 @@ import {
 import { passwordProblem } from '@cat-tool/vendor-core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
-import { vendorsPath } from './storage.js';
+import { openOrCreateRoster } from './roster.js';
 
 type Platform = ReturnType<typeof openPlatformDb>;
 
@@ -64,8 +59,6 @@ export interface InvitationRouteDeps {
   readonly owner: (req: FastifyRequest) => Account;
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
 }
-
-const GENERATOR = 'cat-tool/server';
 
 /** What the owner sees of an invitation: never the token, which only the creating response carries. */
 const invitationView = (i: Invitation) => ({
@@ -89,11 +82,7 @@ export function registerInvitationRoutes(
   function bringRosterLevel(ownerAccount: Account): void {
     const accepted = listAcceptedInvitations(platform, ownerAccount.id);
     if (accepted.length === 0) return;
-    const path = vendorsPath(storageRoot, ownerAccount);
-    if (!existsSync(path)) mkdirSync(dirname(path), { recursive: true });
-    const roster = existsSync(path)
-      ? openVendorFile(path)
-      : createVendorFile(path, { generator: GENERATOR });
+    const roster = openOrCreateRoster(storageRoot, ownerAccount);
     try {
       // The owner vouched for these accounts, so the owner is who added them.
       const actor: AuditActor = {

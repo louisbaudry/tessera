@@ -1360,3 +1360,14 @@ button.chip-button:hover {
 .stale-rows td {
   overflow-wrap: anywhere;
 }
+
+/* The owner's webhook endpoints (backlog #125). */
+.webhooks .row-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.webhooks .chip.warn {
+  color: var(--error, #b42318);
+}

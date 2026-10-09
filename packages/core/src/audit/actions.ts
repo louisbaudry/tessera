@@ -64,6 +64,8 @@ export const VENDOR_AUDIT_ACTIONS = [
   'vendor.profile_changed',
   'vendor.rate_set',
   'payables.exported',
+  'webhook.created',
+  'webhook.deleted',
 ] as const;
 
 export type ProjectAuditAction = (typeof PROJECT_AUDIT_ACTIONS)[number];
@@ -233,6 +235,12 @@ export interface AuditDetail {
    * was about: a row count and the digest of the bytes, no name or amount.
    */
   'payables.exported': { readonly rows: number; readonly sha256: string };
+  /**
+   * A webhook endpoint was registered or removed (backlog #125). The host only:
+   * the path and query may carry a token, and the secret is never logged.
+   */
+  'webhook.created': { readonly host: string };
+  'webhook.deleted': { readonly host: string };
 }
 
 /** An order's price and the word count it was computed from (spec §2.6). */

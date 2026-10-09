@@ -124,6 +124,12 @@ import {
   type HeldSession,
 } from './glossary-session.js';
 import { registerAssignmentRoutes } from './assignments.js';
+import type { Resolver, WebhookSender } from './webhook-send.js';
+import {
+  defaultWebhookSender,
+  registerWebhookRoutes,
+  WebhookDispatcher,
+} from './webhooks.js';
 import {
   ACCEPT_INVITATION_PATH,
   OPEN_INVITATION_PATH,
@@ -159,6 +165,17 @@ export interface BuildAppOptions {
    * (audit-spec.md §5; a test pins it).
    */
   readonly logger?: FastifyServerOptions['logger'];
+  /**
+   * The webhook dispatcher's seams (backlog #125). A deployment passes nothing: the
+   * real sender, the real resolver and a 15 s timer. Tests inject a fake sender and
+   * resolver and set `tickMs` to 0 so they drive each pass themselves.
+   */
+  readonly webhooks?: {
+    readonly send?: WebhookSender;
+    readonly resolve?: Resolver;
+    readonly isPublic?: (address: string) => boolean;
+    readonly tickMs?: number;
+  };
 }
 
 /**
@@ -1879,6 +1896,38 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     owner,
     sessionActor,
   });
+
+  // --- signed webhooks for the vendor events (backlog #125) ---------------
+  // The queue is in each owner's roster, written with the event it reports; this
+  // drains it. A route that moves an assignment nudges its roster's owner.
+  const webhookOptions = options.webhooks ?? {};
+  const dispatcher = new WebhookDispatcher({
+    storageRoot: config.storageRoot,
+    platform,
+    send: webhookOptions.send ?? defaultWebhookSender(),
+    ...(webhookOptions.tickMs !== undefined ? { tickMs: webhookOptions.tickMs } : {}),
+  });
+  app.addHook('onClose', async () => {
+    await dispatcher.stop();
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    if (req.method === 'GET' || reply.statusCode >= 400) return;
+    if (!req.url.startsWith('/api/assignments')) return;
+    const asked = (req.query as { owner?: unknown } | undefined)?.owner;
+    const named =
+      typeof asked === 'string' && /^[1-9]\d{0,14}$/.test(asked) ? Number(asked) : null;
+    dispatcher.nudge(named ?? owner(req).id);
+  });
+  registerWebhookRoutes(app, {
+    storageRoot: config.storageRoot,
+    platform,
+    owner,
+    sessionActor,
+    dispatcher,
+    ...(webhookOptions.resolve ? { resolve: webhookOptions.resolve } : {}),
+    ...(webhookOptions.isPublic ? { isPublic: webhookOptions.isPublic } : {}),
+  });
+  dispatcher.start();
 
   // --- an owner invites a vendor (backlog #111) -------------------------
   registerInvitationRoutes(app, {

@@ -87,7 +87,7 @@ any decision that is Louis's to make.
 | #173 | Real-time presence and per-segment locks | Editor |
 | #174 | AI quality checks in the QA panel, off by default, with a precision record | Editor |
 | #175 | Command palette, assignable shortcuts and an accessibility pass (built: backlog `#115`, the palette; the rest is #193) | Editor |
-| #176 | Outbound signed webhooks | LSP |
+| #176 | Outbound signed webhooks (built: backlog `#125`, vendor events only; the portal's order events are not) | LSP |
 | #177 | A client review round inside the portal | Client |
 | #178 | Pay-after-delivery terms, then card or bank checkout | Client |
 | #179 | Solo-translator mode | Client |
