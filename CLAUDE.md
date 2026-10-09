@@ -350,8 +350,8 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   shown "N of M" and never a lone percentage or one merged number. It is read when
   asked and never stored, so it cannot disagree with `assignment_event`, and it is
   advisory: nothing sorts, filters or excludes a vendor by it. Silence on a direct
-  offer is not a decline; don't count it as one without settling §4's auto-repost
-  question first.
+  offer is not a decline, and §4 is settled (2026-10-09): a declined or missed direct offer
+  is never converted to a pool post by itself, the owner re-offers.
 - **A grant is mended against the roster, never by repeating a step**
   (backlog #51c, `reconcileAssignmentGrants`): accept and review each
   change two files, and a failed revoke after a review cannot be retried
