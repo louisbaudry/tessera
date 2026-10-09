@@ -584,7 +584,8 @@ log, never translation data) and the storage volume, with `core` and
   nothing by design (§10: only an open that uses a memory verifies it) and is
   an ordinary handle under `query_only`, never `readonly: true`, which leaves
   `-wal`/`-shm` files beside every memory. A new bulk operation is an entry in
-  `db/src/jobs/ops.ts`.
+  `db/src/jobs/ops.ts`; a read-only scan of a memory (`glossary.scanTm`, backlog #116) is
+  one too, and `JobRegistry` keeps it apart from an import by `kind`.
 - **A project route opens its project with `openProject(req, reply, name,
 action)`, and names the action** (`read`, `edit` or `manage`,
   `core/auth/authorization.ts`; backlog #45). A project is the session's own
@@ -622,7 +623,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts` and `commands.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts` and `commands.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

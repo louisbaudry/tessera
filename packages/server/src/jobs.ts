@@ -26,11 +26,14 @@ export type Settled =
   | { readonly state: 'failed'; readonly error: string }
   | { readonly state: 'cancelled' };
 
+/** What a job does: an `import` makes a memory, a `scan` reads one (backlog #116). */
+export type JobKind = 'import' | 'scan';
+
 /** A job as the API shows it: a slug, never a path. */
 export interface JobView {
   readonly id: string;
-  readonly kind: 'import';
-  /** The memory being made. */
+  readonly kind: JobKind;
+  /** The memory being made (an import) or read (a scan). */
   readonly tm: string;
   readonly state: JobState;
   readonly progress: JobProgress | null;
@@ -41,6 +44,7 @@ export interface JobView {
 interface Entry {
   readonly id: string;
   readonly accountId: number;
+  readonly kind: JobKind;
   readonly tm: string;
   readonly handle: JobHandle<unknown>;
   state: JobState;
@@ -57,10 +61,13 @@ export const MAX_RUNNING_JOBS = 4;
 export class JobRegistry {
   private readonly entries = new Map<string, Entry>();
 
-  /** How many of this account's jobs are running; imports allow one. */
-  runningFor(accountId: number): number {
+  /**
+   * How many of this account's jobs of a kind are running; imports allow one and
+   * scans allow one, counted apart, so a scan never blocks an import.
+   */
+  runningFor(accountId: number, kind: JobKind): number {
     return [...this.entries.values()].filter(
-      (e) => e.accountId === accountId && e.state === 'running',
+      (e) => e.accountId === accountId && e.kind === kind && e.state === 'running',
     ).length;
   }
 
@@ -75,6 +82,7 @@ export class JobRegistry {
    */
   start(params: {
     accountId: number;
+    kind: JobKind;
     tm: string;
     handle: JobHandle<unknown>;
     onSettled: (result: JobOutcome<unknown> | { failure: Error }) => Settled;
@@ -83,6 +91,7 @@ export class JobRegistry {
     const entry: Entry = {
       id: randomBytes(16).toString('hex'),
       accountId: params.accountId,
+      kind: params.kind,
       tm: params.tm,
       handle: params.handle,
       state: 'running',
@@ -150,7 +159,7 @@ export class JobRegistry {
   private view(e: Entry): JobView {
     return {
       id: e.id,
-      kind: 'import',
+      kind: e.kind,
       tm: e.tm,
       state: e.state,
       progress: e.handle.progress(),

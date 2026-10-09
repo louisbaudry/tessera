@@ -65,6 +65,10 @@ export function describeJob(job: ImportJob): string {
  * import, so the first running job is it. A finished job is not one to
  * resume — its memory is in the list already.
  */
-export function findRunning(jobs: readonly ImportJob[]): ImportJob | null {
-  return jobs.find((j) => j.state === 'running') ?? null;
+export function findRunning(
+  jobs: ReadonlyArray<ImportJob | { readonly kind: string; readonly state: string }>,
+): ImportJob | null {
+  // A scan (backlog #116) shares the list and is not an import: only an import is resumed here.
+  const running = jobs.find((j) => j.kind === 'import' && j.state === 'running');
+  return (running as ImportJob | undefined) ?? null;
 }
