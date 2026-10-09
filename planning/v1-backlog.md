@@ -3564,6 +3564,35 @@ rest of that range:
     reaches the project page. Not verified: a project with a memory attached from outside the
     account (the CLI's `add-tm`), which only the unit test covers.
 
+- **#115 · ~~A command palette in the editor~~ · DONE — `web/src/{CommandPalette.tsx,commands.ts}`, the commands in `Grid.tsx`.**
+  From the 2026-10-08 competitor sweep (issue #175, `competitive-research.md`):
+  `Ctrl+K` (Cmd+K on a Mac) opens a box that finds any editor command by name, so
+  a translator neither hunts the toolbar nor has to remember a key. Built as the
+  palette only; assignable shortcuts and an accessibility audit are issue #193.
+  - **Commands are the editor's own handlers, not a second implementation**: next
+    unconfirmed segment (`nextUnconfirmed`, the one confirm-and-advance uses) and next
+    segment with a QA finding (`nextMarked`, forward only, no wrap, like it), merge and
+    split (`restructure`, the same call Ctrl+M makes), the four panel toggles and Show
+    full tags (each saves its per-browser preference as the toolbar's checkbox does), focus
+    the filter, one "show only <status>" per status (read from `STATUS_BADGE`, so a new
+    status appears with no edit here), and clear the filter. The owner-only toggles (glossary,
+    resources) are absent on another account's project, as on the toolbar.
+  - **A query is words in any order, all required, accent- and case-folded**; a title that
+    starts with a word ranks above one that only contains it, and within a rank the list keeps
+    its order, so the palette is the same list every time it opens. The ranking is pure
+    (`filterCommands`), tested with the highlight's wrap/clamp and the key test.
+  - **The key is `Ctrl+K` or `Cmd+K` on the physical `K`**, nothing else held. It is taken at
+    `window`, so it works from inside the segment editor (ProseMirror binds no `K`), and the
+    same key closes it. This is the first editor key that accepts Cmd as well as literal Ctrl
+    (the others are literal Ctrl on every platform, §7.2): a palette key is expected there on a Mac.
+  - **Accessible by construction**: a modal dialog with a combobox over a listbox
+    (`aria-activedescendant`, `aria-selected`), focus into the box on open and back to where it
+    was on close, Escape and a click on the backdrop close it. Not audited with a screen reader.
+  - Verified in Chromium against a real server: opens from the grid and from inside an open editor,
+    finds and runs commands (next unconfirmed opens an editor, "only new"/"only locked"/"clear" move the
+    filter), no-match message, Escape and backdrop close, arrow-up wraps, Cmd+K opens. Not verified: a
+    screen reader; a Mac keyboard.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

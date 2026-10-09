@@ -8,7 +8,7 @@
  * them (backlog #33). The filter bar above it narrows the rows shown, and
  * the progress line counts segments and words confirmed (backlog #34).
  */
-import type { FormatEntry, QaIssue, Segment, Token } from '@cat-tool/core';
+import type { FormatEntry, QaIssue, Segment, SegmentStatus, Token } from '@cat-tool/core';
 import { isBlankTarget } from '@cat-tool/core/model';
 import {
   defaultRangeExtractor,
@@ -35,7 +35,9 @@ import {
   type QaMark,
 } from './gutter.js';
 import { nextUnconfirmed } from './advance.js';
+import { isPaletteKey, nextMarked } from './commands.js';
 import { FilterBar } from './FilterBar.js';
+import { CommandPalette, type PaletteCommand } from './CommandPalette.js';
 import { GlossaryPanel } from './GlossaryPanel.js';
 import { ResourcesPanel } from './ResourcesPanel.js';
 import { JobPayable } from './JobPayable.js';
@@ -514,6 +516,124 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // The command palette (backlog #115): Ctrl+K or Cmd+K opens it, and again closes it.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isPaletteKey(e)) return;
+      e.preventDefault();
+      setPaletteOpen((open) => !open);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const commands = useMemo<PaletteCommand[]>(() => {
+    const from = () => segmentsNow.current.findIndex((s) => s.id === activeNow.current);
+    const goTo = (index: number | null, none: string) => {
+      const target = index === null ? undefined : segmentsNow.current[index];
+      if (target) jumpTo(target.id);
+      else setNote(none);
+    };
+    const toggle = (
+      on: boolean,
+      set: (value: boolean) => void,
+      save: (value: boolean) => void,
+    ) => {
+      set(!on);
+      save(!on);
+    };
+    const list: PaletteCommand[] = [
+      {
+        id: 'next-unconfirmed',
+        title: 'Go to next unconfirmed segment',
+        keywords: 'todo open next',
+        run: () =>
+          goTo(
+            nextUnconfirmed(segmentsNow.current, from()),
+            'No unconfirmed segment below.',
+          ),
+      },
+      {
+        id: 'next-qa',
+        title: 'Go to next segment with a QA finding',
+        keywords: 'issue problem warning error',
+        run: () =>
+          goTo(nextMarked(segmentsNow.current, marks, from()), 'No QA finding below.'),
+      },
+      {
+        id: 'merge',
+        title: 'Merge with next segment',
+        hint: 'Ctrl+M',
+        run: () => void restructure('merge'),
+      },
+      {
+        id: 'split',
+        title: 'Split at source caret',
+        hint: 'Ctrl+Shift+M',
+        run: () => void restructure('split'),
+      },
+      {
+        id: 'toggle-full-tags',
+        title: 'Toggle full tags',
+        keywords: 'show formatting',
+        run: () => toggle(fullTags, setFullTags, saveFullTags),
+      },
+      {
+        id: 'toggle-qa',
+        title: 'Toggle QA panel',
+        keywords: 'quality',
+        run: () => toggle(qaOpen, setQaOpen, saveQaPanel),
+      },
+      ...(foreign
+        ? []
+        : [
+            {
+              id: 'toggle-glossary',
+              title: 'Toggle glossary panel',
+              keywords: 'terms terminology',
+              run: () => toggle(glossaryOpen, setGlossaryOpen, saveGlossaryPanel),
+            },
+            {
+              id: 'toggle-resources',
+              title: 'Toggle resources panel',
+              keywords: 'memories glossaries attached',
+              run: () => toggle(resourcesOpen, setResourcesOpen, saveResourcesPanel),
+            },
+          ]),
+      {
+        id: 'focus-filter',
+        title: 'Focus the filter',
+        keywords: 'search find',
+        hint: 'Ctrl+Shift+F',
+        run: () => {
+          filterRef.current?.focus();
+          filterRef.current?.select();
+        },
+      },
+      ...(Object.keys(STATUS_BADGE) as SegmentStatus[]).map((status) => ({
+        id: `only-${status}`,
+        title: `Show only ${STATUS_BADGE[status].title.toLocaleLowerCase()} segments`,
+        keywords: 'filter status',
+        run: () => setFilter((f) => ({ ...f, statuses: new Set([status]) })),
+      })),
+      {
+        id: 'clear-filter',
+        title: 'Clear the filter',
+        keywords: 'show all reset',
+        run: () => setFilter(NO_FILTER),
+      },
+    ];
+    return list;
+  }, [
+    jumpTo,
+    marks,
+    restructure,
+    foreign,
+    fullTags,
+    qaOpen,
+    glossaryOpen,
+    resourcesOpen,
+  ]);
   // A dismissal waits for the segment's writes already asked for: their
   // answers carry its findings as QA left them, and one landing after the
   // dismissal's would put back the finding as it was before.
@@ -728,6 +848,9 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           />
         )}
       </div>
+      {paletteOpen && (
+        <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
+      )}
       {resourcesOpen && !foreign && <ResourcesPanel project={project} />}
       {glossaryOpen && !foreign && (
         <GlossaryPanel
