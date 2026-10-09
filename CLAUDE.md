@@ -622,7 +622,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts` and `resources.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts` and `commands.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

@@ -1255,3 +1255,64 @@ button.chip-button:hover {
   color: var(--muted);
   text-decoration: line-through;
 }
+
+/* The editor's command palette (backlog #115). */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: rgb(0 0 0 / 0.35);
+}
+.palette {
+  width: min(34rem, calc(100vw - 2rem));
+  display: grid;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+  overflow: hidden;
+}
+.palette input {
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.8rem 1rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  outline: none;
+}
+.palette ul {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.palette li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.palette li.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.palette li kbd {
+  font: inherit;
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+.palette li.palette-empty {
+  cursor: default;
+  color: var(--muted);
+}
