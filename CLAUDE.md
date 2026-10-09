@@ -26,6 +26,10 @@ implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
 
+Before filing an `Idea:` issue from competitor research, read
+`planning/competitive-research.md` (the method, what the first sweep
+found, and which issue each idea became), so nothing is filed twice.
+
 ## Shared rules
 
 How to work with Louis is shared across all his repos and lives once, in
