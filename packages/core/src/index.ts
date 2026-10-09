@@ -37,6 +37,7 @@ export * from './glossary/align.js';
 export * from './glossary/flag.js';
 export * from './glossary/inflection.js';
 export * from './glossary/mismatch.js';
+export * from './glossary/stale.js';
 export * from './project/assemble.js';
 export * from './project/parts.js';
 export * from './project/export.js';

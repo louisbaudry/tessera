@@ -93,7 +93,7 @@ any decision that is Louis's to make.
 | #179 | Solo-translator mode | Client |
 | #180 | Large-document mode: a tested segment ceiling, QA in batch | Editor |
 | #181 | A Resources side tab (built, backlog `#114`: memories and glossaries; reference files and a style guide are #190) | Editor |
-| #182 | Stale-translation advisor after a glossary change | Editor |
+| #182 | Stale-translation advisor after a glossary change (built: backlog `#116`, the memory scan; editing a unit from the report is not) | Editor |
 | #183 | Review by exception for AI drafts | Client |
 
 `#171` (a segment review step with MQM-style scoring) came from another

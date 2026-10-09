@@ -725,6 +725,47 @@ did (backlog `#64`).
   re-run it over every segment. The panel's list, computed on request, is the
   live view; the QA row is the one that survives in the QA panel.
 
+### 6.2 Stale work in a memory (backlog #116; issue #182) — design
+
+Written 2026-10-09, before the code. A client changes a preferred rendering
+(an `override`, or a new forbidden form), and a memory already holds units
+translated the old way. §6.1's list answers this for a project's segments, live;
+nothing answered it for a **memory**, which grows with the customer. This is the
+scan that does, and it reports; it never rewrites a stored target.
+
+- **What counts as stale: evidence of another rendering, not absence of the
+  preferred one.** A unit is reported for a term when its target uses a
+  `forbidden` rendering, or uses an acceptable rendering that is not the preferred
+  one (`missing_preferred` **with** `found`, the case where a ruling moved the
+  preference off what the translator used). A unit that merely lacks the preferred
+  rendering and uses none of the others (a paraphrase, a pronoun, a rewording)
+  is **not** reported: nothing says it is old, and listing it would bury the
+  real rework under guesses. The project's QA rule and Mismatches tab still flag
+  those, as §6.1 says. One row per unit per term, like every other list here.
+- **One matcher.** The scan runs `mismatchFinder` (§6.1), so it agrees with the
+  panel and the QA rule on what a mismatch is, by construction. The only new
+  rule is the filter above, `isStaleUse` in `core/glossary/stale.ts`.
+- **A memory unit is its two plain texts.** The stored `plain` of the unit's
+  source and target variants in the asked pair (languages by primary subtag,
+  `matchingLangs`, so `de` finds `de-DE`), wrapped as a text token. Formatting
+  never matters to a term match, and `plain` is already the text.
+- **A job, never a request** (tm-format-spec.md §1.1). A scan reads every unit of
+  the pair, so it runs as `glossary.scanTm` on a worker, in keyset pages by unit
+  id (a cancel is seen between pages, a progress fraction is the id reached over
+  the highest id). `EXPLAIN QUERY PLAN` is asserted in a test: the unit walk is a
+  seek on the primary key and each variant a seek on `(tu_id, lang)`.
+- **The result is bounded.** At most 500 rows come back, with the total counted
+  (`stale`) and `truncated` set, so a memory with a hundred thousand old units
+  returns a page and a number, not a hundred thousand rows over one response.
+  The rows carry the memory's own source and target text, to its owner, in
+  their own browser; a log line never does (the job's failure message is fixed).
+- **Only the account's own memory and glossary**, named by slug and opened
+  through `tmPath`/`glossaryPath`, as every route is. Any glossary of the
+  account, not only a project's write target: a memory belongs to no project.
+- **Left out here, on purpose:** the project half (delivered segments) is §6.1's
+  existing list; a bulk re-check that writes is a write path of its own with an
+  actor and a batch, and the idea says to report first.
+
 ---
 
 ## 7. Confidentiality

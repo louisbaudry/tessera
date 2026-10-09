@@ -79,4 +79,11 @@ describe('findRunning', () => {
     expect(findRunning([done, job({ id: 'c', state: 'failed' })])).toBeNull();
     expect(findRunning([])).toBeNull();
   });
+
+  it('does not take a running scan for an import (backlog #116)', () => {
+    const scan = { kind: 'scan', state: 'running' };
+    const running = job({ id: 'b' });
+    expect(findRunning([scan])).toBeNull();
+    expect(findRunning([scan, running])).toBe(running);
+  });
 });

@@ -27,6 +27,7 @@ import type {
 } from './glossary-panel.js';
 import type { FuzzyThresholdView } from './fuzzy-threshold.js';
 import type { ImportJob } from './import-job.js';
+import type { ScanJob } from './stale-scan.js';
 import type { RateEntry } from './jobs.js';
 import { parseProjectKey } from './project-key.js';
 
@@ -495,7 +496,25 @@ export const api = {
   },
   /** The account's jobs, running first: how an import still going is found again. */
   jobs: (token: string, signal?: AbortSignal) =>
-    call<{ jobs: ImportJob[] }>('/api/jobs', token, { signal }),
+    call<{ jobs: Array<ImportJob | ScanJob> }>('/api/jobs', token, { signal }),
+  /**
+   * Starts the stale-work check of a memory against one of the account's glossaries
+   * (backlog #116): answers at once with the job, which `scanJob` follows and
+   * `cancelScan` stops.
+   */
+  startStaleScan: (
+    token: string,
+    tm: string,
+    body: { glossary: string; srcLang: string; tgtLang: string },
+  ) =>
+    call<{ job: ScanJob }>(`/api/tms/${encodeURIComponent(tm)}/stale-scan`, token, {
+      method: 'POST',
+      body,
+    }),
+  scanJob: (token: string, id: string, signal?: AbortSignal) =>
+    call<ScanJob>(`/api/jobs/${id}`, token, { signal }),
+  cancelScan: (token: string, id: string) =>
+    call<ScanJob>(`/api/jobs/${id}`, token, { method: 'DELETE' }),
   importJob: (token: string, id: string, signal?: AbortSignal) =>
     call<ImportJob>(`/api/jobs/${id}`, token, { signal }),
   /** Asks the server to stop it; the job is `running` until it has. */

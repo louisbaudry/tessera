@@ -980,7 +980,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     // each is a thread and a connection. Checked again once the upload has
     // landed (below), which is what actually decides; this saves the wait.
     const busy = (): { code: number; error: string } | null =>
-      jobs.runningFor(account.id) >= 1
+      jobs.runningFor(account.id, 'import') >= 1
         ? { code: 409, error: 'an import is already running — wait for it, or cancel it' }
         : jobs.running() >= MAX_RUNNING_JOBS
           ? {
@@ -1031,6 +1031,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const filename = part.filename;
     const job = jobs.start({
       accountId: account.id,
+      kind: 'import',
       tm: slug,
       handle,
       onSettled: (outcome) => {
@@ -1068,6 +1069,82 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           summary: TmSummary;
         };
         return { state: 'done', result: { slug, ...summary, warnings } };
+      },
+    });
+    return reply.code(202).header('location', `/api/jobs/${job.id}`).send({ job });
+  });
+
+  // Stale work in a memory (smart-glossary-spec.md §6.2, backlog #116): the
+  // units whose target uses an old or forbidden rendering of a glossary term.
+  // A pass over every unit of the pair, so a job and not a request (§1.1): 202
+  // with the job, and the client polls `/api/jobs/:id`, whose `result` is the
+  // report. It reads the account's own memory and glossary, by slug, and writes
+  // nothing. One at a time per account.
+  const LANG = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,3}$/;
+  app.post<{
+    Params: { slug: string };
+    Body: { glossary?: unknown; srcLang?: unknown; tgtLang?: unknown } | undefined;
+  }>('/api/tms/:slug/stale-scan', async (req, reply) => {
+    const account = owner(req);
+    const { glossary, srcLang, tgtLang } = req.body ?? {};
+    if (typeof glossary !== 'string') {
+      return reply.code(400).send({ error: 'glossary must be a glossary name' });
+    }
+    if (
+      typeof srcLang !== 'string' ||
+      typeof tgtLang !== 'string' ||
+      !LANG.test(srcLang) ||
+      !LANG.test(tgtLang)
+    ) {
+      return reply
+        .code(400)
+        .send({ error: 'srcLang and tgtLang must be language codes, like en and de-DE' });
+    }
+    let tmFile: string;
+    let glossaryFile: string;
+    try {
+      tmFile = tmPath(config.storageRoot, account, req.params.slug);
+      glossaryFile = glossaryPath(config.storageRoot, account, glossary);
+    } catch (err) {
+      if (err instanceof InvalidNameError)
+        return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+    if (!existsSync(tmFile)) {
+      return reply.code(404).send({ error: `no memory named "${req.params.slug}"` });
+    }
+    if (!existsSync(glossaryFile)) {
+      return reply.code(404).send({ error: `no glossary named "${glossary}"` });
+    }
+    if (jobs.runningFor(account.id, 'scan') >= 1) {
+      return reply
+        .code(409)
+        .send({ error: 'a scan is already running — wait for it, or cancel it' });
+    }
+    if (jobs.running() >= MAX_RUNNING_JOBS) {
+      return reply
+        .code(503)
+        .send({ error: 'the server is busy with other jobs — try again shortly' });
+    }
+    const handle = startJob('glossary.scanTm', {
+      tmPath: tmFile,
+      glossaryPath: glossaryFile,
+      srcLang,
+      tgtLang,
+    });
+    const job = jobs.start({
+      accountId: account.id,
+      kind: 'scan',
+      tm: req.params.slug,
+      handle,
+      onSettled: (outcome) => {
+        if ('failure' in outcome) {
+          // A message may name a file on this server: the client gets a fixed one (§2.5).
+          app.log.error({ err: outcome.failure }, 'stale scan failed');
+          return { state: 'failed', error: 'the scan failed' };
+        }
+        if (outcome.status === 'cancelled') return { state: 'cancelled' };
+        return { state: 'done', result: outcome.value };
       },
     });
     return reply.code(202).header('location', `/api/jobs/${job.id}`).send({ job });

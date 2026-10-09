@@ -3593,6 +3593,33 @@ rest of that range:
     filter), no-match message, Escape and backdrop close, arrow-up wraps, Cmd+K opens. Not verified: a
     screen reader; a Mac keyboard.
 
+- **#116 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
+  From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,
+  a memory is the place old renderings live on and get reused. "Check against a glossary" on a memory
+  lists the units whose target uses a rendering the glossary now forbids or no longer prefers, so a
+  ruling becomes a rework list. Design note: `smart-glossary-spec.md` §6.2. The project half already
+  exists as the `term.glossary_mismatch` rule (§6.1); this is the memory half, and it writes nothing.
+  - **One matcher, not a second one**: `isStaleUse` reads a `mismatchFinder` result (forbidden, or a
+    non-preferred acceptable rendering that was `found`), over the memory unit's `plain` texts turned
+    into text tokens (`asTextTokens`). A memory holds no hidden tags worth reading, and a unit with a
+    tag pair around a term is matched on its text, as the QA rule does.
+  - **A job, never a request** (the §1.1 rule again): `scanTmForStale` walks the units in keyset pages
+    of 2,000 (`tu.id > @after`), so a cancel lands between pages and a million-unit memory holds no
+    result set in memory. The result is bounded to 500 rows and says the total, so the screen never
+    renders an unbounded table. The server's `JobRegistry` is now kind-aware (`import`/`scan`), so a
+    scan neither blocks an import nor is taken for one on a reload (`findRunning` matches imports only).
+  - **The query forces its join order.** The first plan was `SEARCH s USING INDEX tuv_ctx` plus a
+    `TEMP B-TREE` sort: quadratic at scale and invisible at test size. `CROSS JOIN` keeps SQLite
+    walking `tu` in id order; `stale.test.ts` asserts the plan and fails if the keyword is removed.
+  - **Own-account slugs only**, the memory and glossary both: the route builds both paths from the
+    session (`tmPath`/`glossaryPath`), never from the request; the language pair is validated and
+    matched region-insensitively (`matchingLangs`).
+  - Verified in Chromium against a real server: a 60,003-unit memory and a glossary with one
+    override, "Check against a glossary" → run → progress → one finding in 60,003 units with the term,
+    the used rendering and the preferred one → run again and cancel (the scan is reported cancelled).
+    Not verified: a memory over a million units; a glossary with thousands of entries (the matcher is
+    built once per scan, so it is the per-unit cost that scales).
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

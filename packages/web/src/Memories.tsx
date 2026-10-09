@@ -18,6 +18,7 @@ import {
   type ImportJob,
 } from './import-job.js';
 import { useSession } from './session-context.js';
+import { StaleCheck } from './StaleCheck.js';
 import { useAction } from './use-action.js';
 import { useLoad } from './use-load.js';
 
@@ -42,12 +43,13 @@ export function Memories() {
           ) : (
             <ul>
               {memories.data.map((m) => (
-                <li key={m.slug}>
+                <li key={m.slug} className="memory-row">
                   <span>{m.slug}</span>
                   <span className="muted">
                     {m.units.toLocaleString()} {m.units === 1 ? 'unit' : 'units'}
                     {m.langs.length > 0 ? ` \u00B7 ${m.langs.join(' ')}` : ''}
                   </span>
+                  <StaleCheck memory={m} />
                 </li>
               ))}
             </ul>

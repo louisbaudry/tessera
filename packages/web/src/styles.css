@@ -1316,3 +1316,42 @@ button.chip-button:hover {
   cursor: default;
   color: var(--muted);
 }
+
+/* The stale-work check on a memory (backlog #116). */
+.list li.memory-row {
+  flex-wrap: wrap;
+}
+.stale-check {
+  flex: 1 1 100%;
+}
+.stale-body {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+}
+.stale-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.stale-form label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.stale-form select {
+  font: inherit;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+}
+.stale-rows {
+  max-width: none;
+}
+.stale-rows td {
+  overflow-wrap: anywhere;
+}

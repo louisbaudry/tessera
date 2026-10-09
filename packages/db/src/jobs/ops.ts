@@ -21,8 +21,11 @@ import { Cancelled } from '../cancelled.js';
 import { importSdltm, type ImportSdltmResult } from '../tm/import-sdltm.js';
 import { importTmxFile, type ImportTmxResult } from '../tm/import-tmx.js';
 import { mergeTm, type MergeTmResult } from '../tm/merge.js';
+import { listTermEntries } from '../glossary/terms.js';
+import { openGlossary } from '../glossary/index.js';
 import { openProjectDb } from '../project/index.js';
 import { describeTm, openTm, type TmSummary } from '../tm/index.js';
+import { scanTmForStale, type StaleScan } from '../tm/stale.js';
 import { analyseTierWords } from '../vendor/payable.js';
 
 /** What a running operation tells the world. `fraction` is null when it cannot say. */
@@ -87,6 +90,21 @@ export interface OpTable {
   'project.analyseTiers': {
     args: { readonly projectPath: string; readonly fileId?: number };
     result: TierWords;
+  };
+  /**
+   * Stale work in a memory (`smart-glossary-spec.md` §6.2, backlog #116): the units
+   * whose target uses an old rendering of a glossary term. A pass over every unit
+   * of the pair, so it runs off the request thread. Reports; writes nothing.
+   */
+  'glossary.scanTm': {
+    args: {
+      readonly tmPath: string;
+      readonly glossaryPath: string;
+      readonly srcLang: string;
+      readonly tgtLang: string;
+      readonly limit?: number;
+    };
+    result: StaleScan;
   };
   'tm.vacuum': {
     args: { readonly tmPath: string };
@@ -193,6 +211,27 @@ export const OPS: Ops = {
         cancelled: false,
       };
     }),
+
+  'glossary.scanTm': (args, ctx) => {
+    const langs = { srcLang: args.srcLang, tgtLang: args.tgtLang };
+    const glossary = openGlossary(args.glossaryPath);
+    let entries;
+    try {
+      entries = listTermEntries(glossary, langs);
+    } finally {
+      glossary.close();
+    }
+    return withTm(args.tmPath, (db) => {
+      ctx.progress({ stage: 'scanning', fraction: 0, units: 0 });
+      const value = scanTmForStale(db, entries, langs, {
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
+        onProgress: (p) =>
+          ctx.progress({ stage: 'scanning', fraction: p.fraction, units: p.scanned }),
+        shouldStop: () => ctx.stopRequested(),
+      });
+      return { value, cancelled: !value.complete };
+    });
+  },
 
   'project.analyseTiers': (args) => {
     const db = openProjectDb(args.projectPath);
