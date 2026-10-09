@@ -942,6 +942,41 @@ describe('the owner’s roster', () => {
     expect((await vendorsOf(await login('dave'))).json()).toEqual({ vendors: [] });
   });
 
+  it('shows each vendor’s record as counts with their sample, and never a score', async () => {
+    const a = await aliceWithProject();
+    const b = await login('bob');
+    // Three offers to bob: one delivered by its deadline, one past it, one declined.
+    for (const deadline of ['2099-01-01T00:00:00Z', '2026-03-10T17:00:00Z', null]) {
+      expect((await post(a, offerBody({ deadline }))).statusCode).toBe(201);
+    }
+    for (const id of [1, 2]) {
+      for (const verb of ['accept', 'start', 'deliver']) {
+        expect((await act(b, id, verb)).statusCode, `${id} ${verb}`).toBe(200);
+      }
+    }
+    expect((await act(b, 3, 'decline')).statusCode).toBe(200);
+
+    const { vendors } = (await vendorsOf(a)).json<{
+      vendors: Array<{ accountId: number; record: Record<string, number> }>;
+    }>();
+    expect(vendors.find((v) => v.accountId === bob.id)!.record).toEqual({
+      answered: 3,
+      accepted: 2,
+      timed: 2,
+      onTime: 1,
+      delivered: 2,
+    });
+    // A vendor nobody has offered anything has the empty record, not a missing one.
+    expect(vendors.find((v) => v.accountId === carol.id)!.record).toEqual({
+      answered: 0,
+      accepted: 0,
+      timed: 0,
+      onTime: 0,
+      delivered: 0,
+    });
+    for (const v of vendors) expect(Object.keys(v.record)).not.toContain('score');
+  });
+
   it('adds a vendor account, with languages and specialties, once', async () => {
     const a = await login('alice');
     const eve = addVendorAccount('eve');

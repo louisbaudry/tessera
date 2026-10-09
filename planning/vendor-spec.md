@@ -947,3 +947,37 @@ the decisions worth keeping are in the backlog entry: the CSV is fetched with th
 token and saved from a `Blob`, "today" is the UTC date the server counts, an
 unpriced payable is "Not priced" and never `0.00`, and the list is read again after
 every write so the totals stay the server's.
+
+**Implementation note (#123, issue #157), written before the code (2026-10-09).** What the
+scorecard of decision 6's deferred "scoring" is, in its first slice:
+
+- **A record, not a score.** Per vendor, two counts the roster already holds: of the offers a
+  vendor answered, how many they accepted (`accepted`, `in_progress`, `delivered`, `reviewed`
+  against `declined`); of the jobs they delivered that had a deadline, how many were delivered
+  by it. Each is shown as "4 of 5", never as a lone percentage and never merged into one number:
+  a rate without its sample size is the thing the card warns against, and a combined score is a
+  ranking that nothing here has earned. `vendorRecord` is pure (`vendor-core`) and returns
+  `null` rates for an empty sample.
+- **Advisory by construction.** Nothing reads the record to filter, rank or exclude a vendor, and
+  no screen sorts by it: a small sample, a hard file or a tight deadline set by the owner punishes
+  a good vendor, and automated profiling of a person has a GDPR angle (a human decides). The
+  Roster says so beside the numbers.
+- **A count over the log, never stored** (as an override proposal is, §3 of the glossary spec).
+  The inputs are the assignment's status and deadline and the time of its first `delivered`
+  event, so the record can never disagree with the history; there is no table and no migration.
+  `vendorRecords` reads them in one query for the whole roster.
+- **What counts, exactly.** An offer is *answered* once its vendor has accepted or declined it;
+  a pending offer, and a pool job nobody claimed, are in no one's sample. A pool job claimed and
+  then declined is that vendor's decline, and its repost goes to the rest, so the decliner is
+  counted once. *On time* is the first `delivered` event at or before the deadline (both parsed
+  as instants); a job with no deadline is not in that sample. A direct offer a vendor ignored
+  stays `offered` until someone moves it, so silence is not counted as a decline: recording a
+  missed offer waits on §4's open question (auto-repost) and on a clock the roster does not have.
+- **Owner-only**: the figures ride on `GET /api/vendors` (the owner's own roster); a vendor sees
+  none of them, not even their own, in this slice.
+- **Not built here, filed as the remainder of #157:** the record per language pair and specialty
+  (an assignment names a project, and its pair lives in the project file, not the roster),
+  blocking-QA findings per thousand words, rework rounds, and decline reasons (a short enum plus
+  an optional note, which needs a frozen `CHECK` and a migration, and a note that stays out of
+  the hashed audit `detail`). A sort or filter "when offering" waits on there being an owner-side
+  offer screen at all: offers are made by the API today.

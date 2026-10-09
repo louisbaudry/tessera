@@ -50,6 +50,7 @@ import {
   listPoolMembers,
   listRosterOwners,
   listVendors,
+  vendorRecords,
   previewSource,
   type openPlatformDb,
   openProjectDb,
@@ -86,6 +87,7 @@ import {
   InvalidAssignmentTransitionError,
   ledgerCsv,
   totalsByCurrency,
+  vendorRecord,
   type PaymentStatus,
   type RateTier,
   type TierWords,
@@ -895,6 +897,7 @@ export function registerAssignmentRoutes(
     const roster = openRoster(deps.owner(req));
     if (!roster) return { vendors: [] };
     try {
+      const records = vendorRecords(roster);
       return {
         vendors: listVendors(roster).map((v) => {
           const p = getProfile(roster, v.id)!;
@@ -903,6 +906,8 @@ export function registerAssignmentRoutes(
             displayName: p.displayName,
             languages: p.languages,
             specialties: p.specialties,
+            // Counts with their sample sizes, never a score (vendor-spec.md, #123 note).
+            record: records.get(v.id) ?? vendorRecord([]),
           };
         }),
       };

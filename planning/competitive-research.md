@@ -76,7 +76,7 @@ any decision that is Louis's to make.
 | #154 | Margin report: portal order price minus locked payable | LSP |
 | #155 | Offer timing: cascading offers, auto-repost, deadline reminders | LSP |
 | #156 | Eligibility pre-filter with time off, and restricted pools per client | LSP |
-| #157 | Vendor scorecard from data already held, with decline reasons | LSP |
+| #157 | Vendor scorecard from data already held, with decline reasons (built: backlog `#123`, acceptance and on-time counts on the roster; the rest is the follow-up) | LSP |
 | #158 | Vendor-confirmed payable statement, then self-billing and e-invoice | LSP |
 | #159 | Portal quote reflecting the client's TM, and a no-login price calculator | Client |
 | #160 | Delivery date, rush tier and an on-time promise | Client |

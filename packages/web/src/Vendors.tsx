@@ -17,6 +17,7 @@ import {
   INVITATION_TTL_DAYS,
 } from './invitations.js';
 import { useAction } from './use-action.js';
+import { acceptanceLabel, onTimeLabel, RECORD_CAVEAT } from './vendor-record.js';
 import { useLoad } from './use-load.js';
 
 export function Vendors() {
@@ -226,10 +227,14 @@ function Roster() {
           {vendors.map((v) => (
             <li key={v.accountId}>
               <span>{v.displayName ?? `Vendor #${v.accountId}`}</span>
+              <span className="muted record">
+                {acceptanceLabel(v.record)} {'·'} {onTimeLabel(v.record)}
+              </span>
             </li>
           ))}
         </ul>
       )}
+      {vendors.length > 0 && <p className="muted">{RECORD_CAVEAT}</p>}
     </section>
   );
 }
