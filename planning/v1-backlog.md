@@ -3442,7 +3442,7 @@ rest of that range:
   From the 2026-10-08 competitor sweep (issue #153, which this closes). The
   owner's side of "the payable locks at delivery": which locked payables are
   unpaid, marking one paid, and a CSV to pay from. Tessera moves no money. The
-  design is in `vendor-spec.md` (the #112 note); the screens are not built.
+  design is in `vendor-spec.md` (the #112 note); the screens are `#113`.
   - **A payment is an event beside the payable, never an edit of it.**
     `assignment_payment_event` is append-only (kind `paid` with a date, or
     `reopened`); a payable's state is its latest event, so a wrong date is
@@ -3470,10 +3470,42 @@ rest of that range:
     statement (issue #158). The owner's pay-run screen and the vendor's record
     screen are `#113` below.
 
-- **#113 · Payables screens: the owner's pay run and the vendor's payment record · M** · [issue #167]
-  — the routes from `#112` have no screens. The owner's pay run (filters, a
-  total per currency, mark paid and reopen, the CSV link) and the vendor's own
-  record, on `@cat-tool/web`, verified in a browser.
+- **#113 · ~~Payables screens: the owner's pay run and the vendor's payment record~~ · DONE — `web/src/{Payables,Payments}.tsx`, `web/src/payables.ts`, routes `#/payables` (owner) and `#/payments` (vendor).**
+  The routes from `#112` had no screens; this card is the screens and nothing on
+  the server. The owner's pay run filters by vendor (from `GET /api/vendors`),
+  period and paid state, shows one total per currency, marks a payable paid
+  (a date, default today, and a note) or reopens it, and downloads the CSV. A
+  vendor's record lists their own jobs with the locked amount, paid or not, the
+  paid date and the days it took, and a total per currency.
+  - **The CSV link is a `fetch`, not an `<a href>`**: a link cannot carry the
+    session's bearer token. The text is saved from a `Blob`, and the query is the
+    one `payablesQuery` builds for the list, so the file is always the list on
+    screen (and the export is logged by the route, as before).
+  - **"Today" is the UTC date**, `todayUtc`, because `recordPayment` refuses a date
+    after the server's UTC today. A default or `max` taken from the browser's own
+    day would be refused for anyone east of Greenwich in the first hours of theirs.
+    `paidOnProblem` only repeats the two rules a person can see (future, before it
+    locked); the server keeps the last word.
+  - **A payable with no currency is "Not priced", never `0.00`**, and its totals
+    line shows dashes, not zeros (`amountLabel`, `totalLines`): a zero reads as
+    "nothing owed" for a job that simply had no rate. An incomplete one carries a
+    flag and its reason beneath it.
+  - **Totals come back from the server after every write**: the list is read
+    again (the results component's key carries a version) instead of patched,
+    so the per-currency sums stay the server's to compute, never a second copy
+    in the browser.
+  - **Reopen takes a second click**, as declining a job does: it withdraws a
+    record, and the log keeps both events.
+  - Pure parts (query, filter check, labels, totals lines, date rules) in
+    `payables.ts`, 14 tests; the two routes are in `route.test.ts`.
+  - Verified in Chromium against a seeded server (4 delivered jobs, two
+    vendors in EUR and USD and one with no rate): filter by vendor, mark paid
+    with a note, totals move (€25.44 unpaid → €12.72 / €12.72), the unpaid
+    filter, a reversed period refused, the CSV downloaded and read, reopen,
+    the vendor's own two rows and nothing else's, and dark theme. Not
+    measured: a pay run of thousands of rows (the list is unpaginated, as the
+    route is). A vendor who types `#/payables` gets a blank page, as `#/tms`
+    does for a vendor: the server is the gate.
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 

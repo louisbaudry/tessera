@@ -11,6 +11,8 @@ import { Grid } from './Grid.js';
 import { JobScreen } from './Job.js';
 import { Login } from './Login.js';
 import { Memories } from './Memories.js';
+import { Payables } from './Payables.js';
+import { Payments } from './Payments.js';
 import { ProjectFiles, Projects } from './Projects.js';
 import { parseProjectKey } from './project-key.js';
 import { loadTheme, saveTheme } from './prefs.js';
@@ -91,6 +93,10 @@ export function App() {
           </a>
           <Breadcrumbs route={route} role={role} />
           {role === 'owner' && <a href={formatRoute({ screen: 'tms' })}>Memories</a>}
+          {role === 'owner' && <a href={formatRoute({ screen: 'payables' })}>Pay run</a>}
+          {role === 'vendor' && (
+            <a href={formatRoute({ screen: 'payments' })}>Payments</a>
+          )}
           <ThemeToggle />
           <button type="button" className="link" onClick={() => void logOut()}>
             Sign out
@@ -103,6 +109,8 @@ export function App() {
             (role === 'vendor' ? <VendorFeed /> : <Projects />)}
           {route.screen === 'job' && <JobScreen owner={route.owner} id={route.id} />}
           {route.screen === 'tms' && role === 'owner' && <Memories />}
+          {route.screen === 'payables' && role === 'owner' && <Payables />}
+          {route.screen === 'payments' && role === 'vendor' && <Payments />}
           {route.screen === 'project' && <ProjectFiles name={route.project} />}
           {route.screen === 'grid' && (
             <Grid
@@ -129,12 +137,19 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       </nav>
     );
   }
-  if (route.screen === 'tms') {
+  if (
+    route.screen === 'tms' ||
+    route.screen === 'payables' ||
+    route.screen === 'payments'
+  ) {
+    const here = { tms: 'Memories', payables: 'Pay run', payments: 'Payments' }[
+      route.screen
+    ];
     return (
       <nav className="crumbs">
         <a href={formatRoute({ screen: 'projects' })}>{home}</a>
         <span aria-hidden="true">/</span>
-        <span>Memories</span>
+        <span>{here}</span>
       </nav>
     );
   }

@@ -14,6 +14,8 @@ import type {
   AssignmentChannel,
   AssignmentStatus,
   CapacityStatus,
+  CurrencyTotal,
+  PaymentStatus,
   RateTier,
 } from '@cat-tool/vendor-core';
 
@@ -111,6 +113,52 @@ export interface OfferDetail {
   };
 }
 
+/** One locked payable in the owner's pay run (`GET /api/payables`; backlog #112). */
+export interface PayableRow {
+  readonly assignment: number;
+  readonly project: string;
+  readonly vendorAccountId: number;
+  /** What the owner calls the vendor; never an email address. */
+  readonly vendor: string;
+  /** Null when no tier had a rate. */
+  readonly currency: string | null;
+  readonly words: number;
+  readonly totalMicros: number;
+  /** False when a tier had words and no rate: the total leaves them out. */
+  readonly complete: boolean;
+  readonly lockedAt: string;
+  readonly status: PaymentStatus;
+  readonly paidOn: string | null;
+  readonly daysToPay: number | null;
+}
+
+export interface PayablesList {
+  readonly payables: readonly PayableRow[];
+  /** One per currency, never converted. */
+  readonly totals: readonly CurrencyTotal[];
+}
+
+/** A vendor's own row in their payment record (`GET /api/vendor/payments`). */
+export interface VendorPaymentRow {
+  readonly owner: number;
+  readonly assignment: number;
+  readonly project: string;
+  readonly currency: string | null;
+  readonly words: number;
+  readonly totalMicros: number;
+  readonly complete: boolean;
+  readonly lockedAt: string;
+  readonly status: PaymentStatus;
+  readonly paidOn: string | null;
+  readonly daysToPay: number | null;
+}
+
+/** The roster entry a pay-run filter picks from: an account id and a name, never an email. */
+export interface RosterVendor {
+  readonly accountId: number;
+  readonly displayName: string;
+}
+
 export interface ProjectSummary {
   readonly name: string;
   readonly project: Project | null;
@@ -174,6 +222,33 @@ async function call<T>(
     throw new ApiError(res.status, message);
   }
   return (await res.json()) as T;
+}
+
+/**
+ * A file the server answers with as text, saved by the browser under the name
+ * the server gave it: the CSV link needs the session's token, which a plain
+ * `<a href>` cannot carry.
+ */
+async function callText(
+  path: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await fetch(path, {
+    headers: { authorization: `Bearer ${token}` },
+    signal,
+  });
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // Not JSON; the status line will do.
+    }
+    throw new ApiError(res.status, message);
+  }
+  return res.text();
 }
 
 /** One of the account's memories (`v1-spec.md` §7.5): its slug, never its path. */
@@ -285,6 +360,40 @@ export const api = {
       {
         method: 'POST',
       },
+    ),
+  /** The owner's roster, for the pay run's vendor filter (backlog #113). */
+  rosterVendors: (token: string, signal?: AbortSignal) =>
+    call<{ vendors: RosterVendor[] }>('/api/vendors', token, { signal }),
+  /** The owner's pay run (backlog #112/#113); `query` is `payablesQuery` of the filters. */
+  payables: (token: string, query: string, signal?: AbortSignal) =>
+    call<PayablesList>(`/api/payables${query}`, token, { signal }),
+  /** The same list as CSV text; the server records the export. */
+  payablesCsv: (token: string, query: string, signal?: AbortSignal) =>
+    callText(`/api/payables.csv${query}`, token, signal),
+  /** Records that a locked payable was paid on `paidOn` (the day the money moved). */
+  markPaid: (
+    token: string,
+    assignment: number,
+    body: { paidOn: string; note?: string },
+  ) =>
+    call<{ payment: { status: PaymentStatus; paidOn: string | null } }>(
+      `/api/assignments/${assignment}/payment`,
+      token,
+      { method: 'POST', body },
+    ),
+  /** Withdraws a payment record to correct it; the log keeps both events. */
+  reopenPayment: (token: string, assignment: number) =>
+    call<{ payment: { status: PaymentStatus } }>(
+      `/api/assignments/${assignment}/payment/reopen`,
+      token,
+      { method: 'POST', body: {} },
+    ),
+  /** The signed-in vendor's payment record across every roster that lists them. */
+  vendorPayments: (token: string, signal?: AbortSignal) =>
+    call<{ payments: VendorPaymentRow[]; totals: CurrencyTotal[] }>(
+      '/api/vendor/payments',
+      token,
+      { signal },
     ),
   me: (token: string, signal?: AbortSignal) =>
     call<Account>('/api/me', token, { signal }),
