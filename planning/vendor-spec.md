@@ -399,11 +399,18 @@ offered -----------------------
   the likely dependency, same "one definition of must-not-ship" rule
   the CLI's `qa` command already follows.
 
-Not yet decided: whether a `declined` or missed-deadline `offered` job
-auto-converts to `pool_open` (so a direct offer that falls through
-doesn't require the PM to manually re-post it), or whether that's a
-deliberate PM decision every time. Revisit once real usage shows which
-is more common.
+**Decided (2026-10-09, Louis): a direct offer never converts to `pool_open`
+by itself.** A `declined` direct offer stays declined, and a missed deadline
+leaves the job `offered`; the owner chooses the next vendor, or posts the job
+to a pool, by a new offer. Reasons, kept with the decision: a named vendor
+was a deliberate choice (decision 6), and an automatic repost would put a
+client's work in front of vendors the owner never picked, which is a
+confidentiality call the owner makes each time, not a default. It is also the
+cheapest option to reverse: a per-offer "post to the pool if declined" flag
+can be added later without changing what a decline means. What this settles
+downstream: a missed deadline is not a decline (it stays `offered`, so the
+vendor record counts only answered offers), and a time-driven widening of
+offers (issue #155's cascade) is a separate decision, not implied here.
 
 **Implementation note (#47), written before the code (2026-10-03).** The
 diagram above leaves four edges to be read off its prose; reading them
@@ -780,7 +787,7 @@ owner's side of the lifecycle, and the decision `#47` left to it.
 - **Not here:** a vendor's `start` and `deliver` routes (nothing in `#50` or
   `#51` asks for them; they belong with the running payable and the delivery
   lock, `#53`), withdrawing an offer, and a missed deadline or declined offer
-  becoming a pool post (§4's open question).
+  becoming a pool post (settled in §4: neither does, the owner re-offers).
 
 **Implementation note (#120), written before the code (2026-10-04).** The
 vendor's last two moves and what "the payable locks at delivery" (decision
@@ -972,7 +979,9 @@ scorecard of decision 6's deferred "scoring" is, in its first slice:
   counted once. *On time* is the first `delivered` event at or before the deadline (both parsed
   as instants); a job with no deadline is not in that sample. A direct offer a vendor ignored
   stays `offered` until someone moves it, so silence is not counted as a decline: recording a
-  missed offer waits on §4's open question (auto-repost) and on a clock the roster does not have.
+  missed offer is out by design (§4 is settled: a direct offer is never converted by itself, so a
+  missed deadline stays `offered`), and would need the owner to mark an offer lapsed, which nothing
+  models yet.
 - **Owner-only**: the figures ride on `GET /api/vendors` (the owner's own roster); a vendor sees
   none of them, not even their own, in this slice.
 - **Not built here, filed as the remainder of #157:** the record per language pair and specialty

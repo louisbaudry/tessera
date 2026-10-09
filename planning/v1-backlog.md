@@ -3635,7 +3635,7 @@ rest of that range:
     (`EXPLAIN` is one scan of `assignment` and an `assignment_event_assignment` seek per job). No
     table, no migration, so it cannot disagree with the history.
   - **What is deliberately not counted.** A direct offer a vendor ignored stays `offered`, so
-    silence is not a "no" (counting it needs §4's open auto-repost question and a clock); a pool
+    silence is not a "no" (§4 is settled: a direct offer is never converted by itself, so a missed deadline stays `offered`); a pool
     job nobody claimed is no one's; a claimed-then-declined pool job is the decliner's one
     decline, its repost belonging to the others. On time is the first `delivered` event at or
     before the deadline, compared as instants (an offset deadline reads as the time it names,
