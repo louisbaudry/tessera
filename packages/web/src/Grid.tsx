@@ -37,6 +37,7 @@ import {
 import { nextUnconfirmed } from './advance.js';
 import { FilterBar } from './FilterBar.js';
 import { GlossaryPanel } from './GlossaryPanel.js';
+import { ResourcesPanel } from './ResourcesPanel.js';
 import { JobPayable } from './JobPayable.js';
 import { parseProjectKey } from './project-key.js';
 import { NO_FILTER, progress, visibleSegments, type SegmentFilter } from './filter.js';
@@ -52,9 +53,11 @@ import { toPieces } from './pieces.js';
 import {
   loadFullTags,
   loadGlossaryPanel,
+  loadResourcesPanel,
   loadQaPanel,
   saveFullTags,
   saveGlossaryPanel,
+  saveResourcesPanel,
   saveQaPanel,
 } from './prefs.js';
 import { withIssue } from './qa-panel.js';
@@ -111,6 +114,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   const [note, setNote] = useState<string | null>(null);
   const [qaOpen, setQaOpen] = useState(loadQaPanel);
   const [glossaryOpen, setGlossaryOpen] = useState(loadGlossaryPanel);
+  const [resourcesOpen, setResourcesOpen] = useState(loadResourcesPanel);
   // The glossary is the owner's to manage (backlog #45): another account's project has none.
   const { name: projectName, owner: projectOwner } = parseProjectKey(project);
   const foreign = projectOwner !== null;
@@ -617,6 +621,19 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
               Glossary
             </label>
           )}
+          {!foreign && (
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={resourcesOpen}
+                onChange={(e) => {
+                  setResourcesOpen(e.target.checked);
+                  saveResourcesPanel(e.target.checked);
+                }}
+              />{' '}
+              Resources
+            </label>
+          )}
           <span className="restructure">
             <button
               type="button"
@@ -711,6 +728,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           />
         )}
       </div>
+      {resourcesOpen && !foreign && <ResourcesPanel project={project} />}
       {glossaryOpen && !foreign && (
         <GlossaryPanel
           project={project}

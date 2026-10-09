@@ -66,6 +66,26 @@ export function saveGlossaryPanel(open: boolean): void {
   }
 }
 
+const RESOURCES_PANEL = 'cat-tool.resourcesPanel';
+
+/** Whether the grid's Resources panel is open (backlog #114). */
+export function loadResourcesPanel(): boolean {
+  try {
+    return localStorage.getItem(RESOURCES_PANEL) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveResourcesPanel(open: boolean): void {
+  try {
+    if (open) localStorage.setItem(RESOURCES_PANEL, '1');
+    else localStorage.removeItem(RESOURCES_PANEL);
+  } catch {
+    // Not persisted; the panel still opens for this page.
+  }
+}
+
 const THEME = 'cat-tool.theme';
 
 /** The colour theme choice (backlog #35); `system` when none is stored. */
