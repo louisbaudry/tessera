@@ -15,6 +15,7 @@ import type {
   AssignmentStatus,
   CapacityStatus,
   CurrencyTotal,
+  InvitationStatus,
   PaymentStatus,
   RateTier,
 } from '@cat-tool/vendor-core';
@@ -151,6 +152,18 @@ export interface VendorPaymentRow {
   readonly status: PaymentStatus;
   readonly paidOn: string | null;
   readonly daysToPay: number | null;
+}
+
+/** An owner's invitation as they see it: never the token, which only its creation returns. */
+export interface InvitationView {
+  readonly id: number;
+  readonly email: string;
+  readonly displayName: string | null;
+  readonly status: InvitationStatus;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly acceptedAt: string | null;
+  readonly revokedAt: string | null;
 }
 
 /** The roster entry a pay-run filter picks from: an account id and a name, never an email. */
@@ -364,6 +377,34 @@ export const api = {
   /** The owner's roster, for the pay run's vendor filter (backlog #113). */
   rosterVendors: (token: string, signal?: AbortSignal) =>
     call<{ vendors: RosterVendor[] }>('/api/vendors', token, { signal }),
+  /** The owner's invitations, newest first (backlog #111). */
+  invitations: (token: string, signal?: AbortSignal) =>
+    call<{ invitations: InvitationView[] }>('/api/invitations', token, { signal }),
+  /** Invites an address; the one-time link token is in this response and no other. */
+  invite: (token: string, body: { email: string; displayName?: string }) =>
+    call<{ invitation: InvitationView; token: string }>('/api/invitations', token, {
+      method: 'POST',
+      body,
+    }),
+  revokeInvitation: (token: string, id: number) =>
+    call<{ invitation: InvitationView }>(`/api/invitations/${id}/revoke`, token, {
+      method: 'POST',
+      body: {},
+    }),
+  /** The address a link was made for (no session needed); a 404 for any link that cannot be used. */
+  openInvitation: (inviteToken: string, signal?: AbortSignal) =>
+    call<{ email: string }>('/api/invitations/open', null, {
+      method: 'POST',
+      body: { token: inviteToken },
+      signal,
+    }),
+  /** Uses a link: sets the password once and returns the new vendor's session. */
+  acceptInvitation: (inviteToken: string, password: string) =>
+    call<{ token: string; expiresAt: string; account: Account }>(
+      '/api/invitations/accept',
+      null,
+      { method: 'POST', body: { token: inviteToken, password } },
+    ),
   /** The owner's pay run (backlog #112/#113); `query` is `payablesQuery` of the filters. */
   payables: (token: string, query: string, signal?: AbortSignal) =>
     call<PayablesList>(`/api/payables${query}`, token, { signal }),

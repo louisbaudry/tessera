@@ -326,6 +326,16 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   never converted**, and an incomplete payable is listed with its flag, never
   hidden. The CSV (`ledgerCsv`) neutralises formula-injection cells, writes money
   from integer micros, and logs `payables.exported` with a count and a digest.
+- **An owner's invitation makes a vendor account** (backlog #111,
+  `db/platform/invitations.ts`, `server/src/invitations.ts`): a one-time link,
+  stored only as its hash, **shown to the owner and never mailed**, whose state is
+  derived from three timestamps and frozen by trigger once used or withdrawn. Every
+  unusable link is one identical 404, and an address that already has an account is
+  refused at acceptance, never at invitation, so the form cannot be used to ask which
+  addresses exist. The account and its `roster_membership` row are one transaction; the
+  roster file is a second step, mended by `bringRosterLevel`, never repeated. The two
+  public paths are named in `PUBLIC_PATHS` (app.ts); the token travels in a body and a
+  `#` fragment, never a path or query.
 - **A vendor finds their owners through `roster_membership`, a derived
   index** (backlog #52a, platform schema v5): the roster decides who is a
   vendor, so a row nothing backs shows its account nothing, and the index

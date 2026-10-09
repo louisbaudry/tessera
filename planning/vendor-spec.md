@@ -203,6 +203,61 @@ The pilot has no vendor the operator would not create by hand. Cheap to
 reverse: the invitation is additive to `create-account`, which stays as the
 operator's path, and nothing in the roster or the index changes.
 
+**Implementation note (#111, issue #145), written with the code (2026-10-09).**
+The invitation the decision above chose, and the second decision it left to this
+card: **the link is shown to the owner to pass on; the server sends no mail.**
+`@cat-tool/server` has no mail sender, and sending would be a new outbound data
+flow that nothing in the pilot asks for. The cost is that the owner copies a link
+into their own mail or chat; nothing else in the design depends on it, so a sender
+is additive later (a follow-up issue).
+
+- **A token is a 256-bit random secret kept only as its SHA-256 hash**
+  (`generateSessionToken`/`hashSessionToken`, the sessions' way), in
+  `vendor_invitation` (platform schema v6). It is returned once, in the response
+  that creates it; a lost link is replaced by inviting the address again, which
+  withdraws the earlier pending one (logged `invitation.revoked`, `superseded`).
+- **The state is derived, not stored.** `invitationStatus` (`vendor-core`) reads
+  `accepted_at`, `revoked_at` and `expires_at`: an act outranks the clock, so a used
+  link stays `accepted` after its date and a withdrawn one stays `revoked`. A trigger
+  makes those columns final once a row is accepted or revoked, so single use is the
+  table's property and not a route's habit. A link lives seven days.
+- **One refusal for every link that cannot be used**, unknown, used, withdrawn or
+  expired: a 404 with one message, so a stranger learns nothing about which tokens
+  were ever real. Likewise `POST /api/invitations/:id/revoke` is a 404 for another
+  owner's invitation and for a missing one.
+- **An address that already has an account is refused at acceptance, never at
+  invitation.** Refusing at invitation would let an owner ask which addresses have
+  accounts. The invitee is told to sign in; the link stays pending. (An existing
+  vendor joining a *second* owner's roster is a different act, proof of who they are
+  plus a membership, and is not built here: a follow-up issue.)
+- **One transaction makes the account.** `acceptInvitation` creates the `vendor`
+  account, writes the `roster_membership` index row and marks the link used together.
+  The roster file's own entry is a second file no transaction covers, so it is written
+  after, and **mended against the invitations rather than repeated**:
+  `bringRosterLevel` adds the vendor of any accepted invitation the roster lacks, after
+  an accept and whenever the owner lists their invitations. The index row comes first,
+  as `#52a` requires: a failure between leaves a row that shows its account nothing.
+- **The invitee is signed in on acceptance** and lands on the vendor feed with the
+  owner's roster entry in place (the owner's name for them becomes its display name).
+  A password is 10 to 200 characters (`passwordProblem`); the operator script has no rule.
+- **Two `/api/` paths answer without a session**, besides login: `POST
+  /api/invitations/open` (the address the link was made for) and `.../accept`. They are
+  exact paths in one `PUBLIC_PATHS` set, so a route added later is behind the gate
+  unless named there. The token travels in the request body and in the link's `#`
+  fragment (`#/invite/<token>`), never a path or a query, so no access log, proxy or
+  `Referer` header holds it; a test pins that the log holds neither the token nor the
+  password.
+- **Audit** (`audit-spec.md` §2.5): `invitation.created`, `.accepted` and `.revoked`,
+  subject the invitation, in the transaction of the change. `created` and `revoked` have
+  the owner as actor. `account.created` names the owner as actor too, because they
+  vouched for the account; `invitation.accepted` names the **new account**, because they
+  are the one who did it. The invitee's email is in `vendor_invitation` and `account`,
+  never in a hashed `detail`. Expiry writes no event: nothing happens when a link's date
+  passes, and the status is read from the date.
+- **Screens:** `#/vendors` for an owner (the invite form, the link shown once, the
+  invitations with Withdraw, the roster) and `#/invite/<token>`, the one screen reached
+  without a session.
+
 **Implementation note (#45), written before the code (2026-10-03).**
 What `#45` settled that decision 2 left open:
 

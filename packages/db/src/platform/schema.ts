@@ -13,7 +13,7 @@
 import type { PlatformAuditAction } from '@cat-tool/core';
 
 import { auditEventDdl } from '../audit/events.js';
-import type { Migration } from '../migrate.js';
+import { rebuildTable, type Migration } from '../migrate.js';
 
 /** "CATL" — platform bookkeeping, distinct from project ("CATP") and TM ("CATM"). */
 export const PLATFORM_APPLICATION_ID = 0x4341544c;
@@ -146,4 +146,61 @@ const v5: Migration = {
   },
 };
 
-export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];
+/**
+ * `audit_event.action` since v6: `PLATFORM_AUDIT_ACTIONS` as of backlog #111 (the
+ * v3 list and the three invitation events). Frozen, never the live constant.
+ */
+const V6_AUDIT_ACTIONS = [
+  ...V3_AUDIT_ACTIONS,
+  'invitation.created',
+  'invitation.accepted',
+  'invitation.revoked',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * An owner's invitation to become a vendor (backlog #111, vendor-spec.md's #111
+ * note). The link's token is stored only as its SHA-256 hash, like a session's,
+ * so a copy of this file holds no way to set a password. The state is derived
+ * from the three timestamps (`invitationStatus`), not stored, so it cannot
+ * disagree with them; once a row is accepted or revoked its state columns can
+ * never change, which is what makes a link single-use and a withdrawn one
+ * final rather than something a route has to remember. The audit log gains the
+ * three invitation actions, so `audit_event` is rebuilt (`rebuildTable`).
+ */
+const v6: Migration = {
+  version: 6,
+  description: 'vendor_invitation and the invitation audit actions (backlog #111)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE vendor_invitation (
+        id                  INTEGER PRIMARY KEY,
+        owner_id            INTEGER NOT NULL REFERENCES account(id),
+        email               TEXT    NOT NULL,
+        display_name        TEXT,
+        token_hash          TEXT    NOT NULL UNIQUE,
+        created_at          TEXT    NOT NULL,
+        expires_at          TEXT    NOT NULL,
+        accepted_at         TEXT,
+        accepted_account_id INTEGER REFERENCES account(id),
+        revoked_at          TEXT,
+        CHECK ((accepted_at IS NULL) = (accepted_account_id IS NULL)),
+        CHECK (accepted_at IS NULL OR revoked_at IS NULL)
+      );
+      CREATE INDEX vendor_invitation_owner ON vendor_invitation(owner_id, id);
+      CREATE INDEX vendor_invitation_email ON vendor_invitation(owner_id, email);
+
+      CREATE TRIGGER vendor_invitation_final
+      BEFORE UPDATE ON vendor_invitation
+      WHEN (OLD.accepted_at IS NOT NULL OR OLD.revoked_at IS NOT NULL)
+        AND (NEW.accepted_at IS NOT OLD.accepted_at
+          OR NEW.accepted_account_id IS NOT OLD.accepted_account_id
+          OR NEW.revoked_at IS NOT OLD.revoked_at
+          OR NEW.token_hash IS NOT OLD.token_hash
+          OR NEW.expires_at IS NOT OLD.expires_at)
+      BEGIN SELECT RAISE(ABORT, 'a used or withdrawn invitation is final'); END;
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V6_AUDIT_ACTIONS));
+  },
+};
+
+export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];

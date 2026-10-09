@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AccountRole } from '@cat-tool/core';
 
 import { api, ApiError } from './api.js';
+import { Accept } from './Accept.js';
 import { Grid } from './Grid.js';
 import { JobScreen } from './Job.js';
 import { Login } from './Login.js';
@@ -21,6 +22,7 @@ import { SessionContext, type SessionValue } from './session-context.js';
 import { clearToken, loadToken, saveToken } from './session.js';
 import { applyTheme, followSystem, nextThemeChoice, type ThemeChoice } from './theme.js';
 import { VendorFeed } from './VendorFeed.js';
+import { Vendors } from './Vendors.js';
 
 function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
@@ -62,6 +64,23 @@ export function App() {
     };
   }, [token, signOut]);
 
+  // An invitation link is the one screen reached without a session (backlog #111).
+  // Accepting it signs the new vendor in; whoever was signed in before is replaced,
+  // and the role is read again from the new session.
+  if (route.screen === 'invite') {
+    return (
+      <Accept
+        token={route.token}
+        onToken={(t) => {
+          saveToken(t);
+          setRole(null);
+          setToken(t);
+          window.location.hash = formatRoute({ screen: 'projects' });
+        }}
+      />
+    );
+  }
+
   if (session === null) {
     return (
       <Login
@@ -93,6 +112,7 @@ export function App() {
           </a>
           <Breadcrumbs route={route} role={role} />
           {role === 'owner' && <a href={formatRoute({ screen: 'tms' })}>Memories</a>}
+          {role === 'owner' && <a href={formatRoute({ screen: 'vendors' })}>Vendors</a>}
           {role === 'owner' && <a href={formatRoute({ screen: 'payables' })}>Pay run</a>}
           {role === 'vendor' && (
             <a href={formatRoute({ screen: 'payments' })}>Payments</a>
@@ -109,6 +129,7 @@ export function App() {
             (role === 'vendor' ? <VendorFeed /> : <Projects />)}
           {route.screen === 'job' && <JobScreen owner={route.owner} id={route.id} />}
           {route.screen === 'tms' && role === 'owner' && <Memories />}
+          {route.screen === 'vendors' && role === 'owner' && <Vendors />}
           {route.screen === 'payables' && role === 'owner' && <Payables />}
           {route.screen === 'payments' && role === 'vendor' && <Payments />}
           {route.screen === 'project' && <ProjectFiles name={route.project} />}
@@ -140,11 +161,15 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
   if (
     route.screen === 'tms' ||
     route.screen === 'payables' ||
-    route.screen === 'payments'
+    route.screen === 'payments' ||
+    route.screen === 'vendors'
   ) {
-    const here = { tms: 'Memories', payables: 'Pay run', payments: 'Payments' }[
-      route.screen
-    ];
+    const here = {
+      tms: 'Memories',
+      payables: 'Pay run',
+      payments: 'Payments',
+      vendors: 'Vendors',
+    }[route.screen];
     return (
       <nav className="crumbs">
         <a href={formatRoute({ screen: 'projects' })}>{home}</a>
@@ -153,6 +178,8 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       </nav>
     );
   }
+  // The invitation page is shown without the shell, so it has no crumbs.
+  if (route.screen === 'invite') return <nav className="crumbs" />;
   // Another account's project (a vendor's job) is a key; the crumb shows its name.
   const shown = parseProjectKey(route.project).name;
   return (
