@@ -3540,6 +3540,30 @@ rest of that range:
     route is). A vendor who types `#/payables` gets a blank page, as `#/tms`
     does for a vendor: the server is the gate.
 
+- **#114 · ~~A Resources panel in the editor~~ · DONE — `web/src/{ResourcesPanel.tsx,resources.ts}`, a toggle in `Grid.tsx`.**
+  From the 2026-10-08 competitor sweep (issue #181, `competitive-research.md`):
+  one panel beside the grid listing what the project consults, so a translator
+  does not leave the editor to find out which memories and glossaries are attached,
+  in what order, and which one is written to. Built as the part of the idea that
+  needed no new data: **memories and glossaries only**. Reference files (PDF, image)
+  and a style guide are not built: they are uploads and a new object, each with its
+  own rules (a minted file name, size limits, the #148 style guide), filed as their own issue.
+  - **Read-only, and the owner's.** Attaching, ordering and switching stay on the
+    project page (`manage`); the panel links there. It is not shown on another
+    account's project, as the Glossary toggle is not: the two routes it reads
+    (`GET /api/projects/:name/tms` and `/glossaries`) are `manage`, and widening them
+    to a grantee would show a vendor the names of the owner's client memories, which
+    is a confidentiality decision and not a UI one (follow-up issue, with the reference files).
+  - **No new route, no new rule.** It reuses the two lists the project page loads, and
+    the pure `memoryRows`/`glossaryRows` (order by priority then id, so a tie never
+    shuffles between loads; `writes here` and `off` badges; a memory attached from outside
+    the account is named plainly, never by its path) are tested in node.
+  - Whether it is open is a per-browser preference, like the QA and Glossary panels.
+  - Verified in Chromium against a real server: two memories (the second the write target)
+    and a glossary, in order with their badges; the panel stays open across a reload; the link
+    reaches the project page. Not verified: a project with a memory attached from outside the
+    account (the CLI's `add-tm`), which only the unit test covers.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

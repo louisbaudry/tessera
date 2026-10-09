@@ -92,7 +92,7 @@ any decision that is Louis's to make.
 | #178 | Pay-after-delivery terms, then card or bank checkout | Client |
 | #179 | Solo-translator mode | Client |
 | #180 | Large-document mode: a tested segment ceiling, QA in batch | Editor |
-| #181 | A Resources side tab | Editor |
+| #181 | A Resources side tab (built, backlog `#114`: memories and glossaries; reference files and a style guide are #190) | Editor |
 | #182 | Stale-translation advisor after a glossary change | Editor |
 | #183 | Review by exception for AI drafts | Client |
 

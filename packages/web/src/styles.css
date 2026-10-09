@@ -1220,3 +1220,38 @@ button.chip-button:hover {
   gap: 0.75rem;
   max-width: 24rem;
 }
+
+/* The editor's Resources panel (backlog #114). */
+.resources-panel {
+  flex: 0 0 16rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.rp-pad {
+  padding: 0.6rem 0.75rem;
+}
+.rp-pad p {
+  margin: 0 0 0.6rem;
+}
+.rp-group h3 {
+  font-size: 0.9rem;
+  margin: 0 0 0.35rem;
+}
+.rp-group ol {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.3rem;
+}
+.rp-name {
+  margin-right: 0.4rem;
+  overflow-wrap: anywhere;
+}
+.rp-off .rp-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
