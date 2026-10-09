@@ -119,10 +119,11 @@ question or a one-line task still gets the report first.
 7. Commit messages say what changed and why, what was verified and what
    was not, and any security implication (e.g. "no new outbound data").
    Preserve history: don't rewrite published history.
-8. **After a merge, say whether the session can be safely archived**, and
+8. **When the session stops, say whether it can be safely archived**, and
    why: everything pushed and merged with nothing in flight (safe), or
    unpushed work, an open PR, a running job or a pending question (not
-   safe).
+   safe). In a `Continuous mode: true` repo this is the final report only,
+   never a message between cards: a merge there is not a stop.
 
 ## Continuous mode (a per-repo setting)
 
@@ -153,9 +154,30 @@ In a `true` repo:
   pushed. Never leave a draft for Louis to promote; he does not
   validate PRs one by one in this mode. In a `false` repo, leave the PR
   as a draft.
-- **Do not end the turn on a ready PR.** Waiting for CI is not a reason
-  to stop: check CI on the current head, then un-draft and merge in the
-  same run, then take the next card.
+- **Ending a turn to wait for CI is not stopping.** A cloud session cannot
+  poll or `sleep`; the CI result wakes it. So: open the PR ready,
+  subscribe to it, end the turn. That wait is expected. Never end the
+  turn on a PR that is already mergeable (CI green on the current head):
+  merge it.
+- **A merge is not the end of the task.** The next action after the merge
+  is the next card, in the same run, with no closing summary and no
+  archive report (Git rule 8). One line for the merged PR, then:
+  1. `git fetch origin main`, then restart the session's designated
+     branch from it (`git checkout -B <branch> origin/main`). The merged
+     PR is finished and never takes new commits.
+  2. Pick the next card (below), rename the session to it, claim it
+     (`in-progress`), and start.
+- **Picking the next card is a routine call, not a question.** Use the
+  order the repo's `CLAUDE.md` gives. Where it gives none: the top Todo
+  card on the board with no `in-progress` label, no open PR or unmerged
+  branch on it, no overlap with the files of an open PR and no epic
+  another session holds. Where the board cannot be read, use open issues
+  by label and say so in the PR. A draft PR that the repo marks as for
+  Louis's review is not a card to pick up.
+- **The only stops:** a case under "When to stop and ask Louis", or no
+  eligible card left (then give the final report, archive line included).
+  A CI failure, a review comment, an unclear card or a finished PR is
+  work, an issue or the next card, never a reason to stop.
 - Questions that don't require Louis become issues, not stops.
 
 The setting changes only whether work pauses between cards. The cases
