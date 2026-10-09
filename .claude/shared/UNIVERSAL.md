@@ -101,8 +101,13 @@ question or a one-line task still gets the report first.
    work done".
    - **Branch names:** `<type>/<issue-number>-<short-slug>`, lowercase,
      hyphens only, e.g. `feat/42-glossary-export`. Types: `feat`, `fix`,
-     `docs`, `chore`. No issue yet: `<type>/<short-slug>`. Where the
-     session's tooling assigns the branch name, keep it; don't fight it.
+     `docs`, `chore`. No issue yet: `<type>/<short-slug>`. The slug names
+     the task, never a random word pair. Where the session's tooling
+     assigns a generic name (e.g. `claude/festive-lovelace-ab12cd`), once
+     the task is known create the conventional branch from it, push that
+     one instead, and open the PR from it. A branch Louis names in his
+     prompt is used as given. An assigned name is kept only when the
+     tooling cannot push anywhere else; then say so in the PR.
 3. **Branch from `main`, merge back to `main`, promptly.** Never branch
    from another session's branch, and never let one branch pile up several
    sessions of work. Otherwise `main` quietly stops being trunk.
