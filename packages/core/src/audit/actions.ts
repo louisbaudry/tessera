@@ -41,6 +41,9 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'project.created',
   'project.deleted',
   'file.downloaded',
+  'invitation.created',
+  'invitation.accepted',
+  'invitation.revoked',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -176,6 +179,17 @@ export interface AuditDetail {
   };
   'project.created': null;
   'project.deleted': null;
+  // An owner's invitation to a vendor (backlog #111). The invitation is the
+  // subject. The invitee's email is in `vendor_invitation` and `account`, never
+  // here: a detail is hashed, so erasure could not reach it.
+  'invitation.created': null;
+  /** Both ids are installation-local and not personal. The actor is the new account. */
+  'invitation.accepted': {
+    readonly owner_id: number;
+    readonly account_id: number;
+  };
+  /** `superseded` when a newer invitation to the same address replaced it. */
+  'invitation.revoked': { readonly superseded: true } | null;
   /** The file's id and name where it lives, and the digest of the bytes sent. */
   'file.downloaded': {
     readonly file_id: number;

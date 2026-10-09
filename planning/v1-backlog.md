@@ -3428,15 +3428,40 @@ rest of that range:
     route test asserted the status and not the shape the client reuses.
   - Not audited, per the schema's own reasoning; a mistyped owner is the identical 404.
 
-- **#111 · An owner's invitation creates a vendor account · M** · [issue #145]
-  — the decision from issue #125 (`vendor-spec.md` §3, 2026-10-08): an
-  owner adds an email to their roster, the invitee follows a one-time link,
-  sets a password and becomes a vendor account and a roster member in one
-  step. A hashed, expiring, single-use token store; audit events with the
-  owner as actor; and the card settles whether `@cat-tool/server` gets a mail
-  sender (only `portal-server` has one) or shows the link to the owner. Not
-  before the pilot has a vendor the operator would not create by hand;
-  until then `create-account --vendor` is the only path.
+- **#111 · ~~An owner's invitation creates a vendor account~~ · DONE — `db/src/platform/invitations.ts` (platform schema v6), `vendor-core/src/invitation.ts`, routes in `server/src/invitations.ts`, `web/src/{Vendors,Accept}.tsx`.**
+  The decision from issue #125 (`vendor-spec.md` §3), built: an owner enters an
+  address, gets a one-time link, and whoever opens it sets a password and becomes a
+  `vendor` account on that owner's roster in one step. The card's second decision,
+  settled in the #111 note: **the link is shown to the owner, not mailed**, because
+  this server has no mail sender and sending would be a new outbound data flow.
+  - **The token is a hashed secret and the state is derived.** Only the SHA-256 of the
+    token is stored; `invitationStatus` reads the three timestamps (an act outranks the
+    clock), and a trigger makes an accepted or withdrawn row final, so single use is the
+    table's property. Every unusable link (unknown, used, withdrawn, expired) is one
+    identical 404.
+  - **The account and the roster index row are one transaction; the roster file is a
+    second, mended not repeated** (`bringRosterLevel`, run after an accept and on every
+    owner listing), the shape `#51c`'s grants already had. A test leaves the file behind
+    and shows the next listing bring it level exactly once.
+  - **An address that already has an account is refused at acceptance, never at
+    invitation**, so an owner cannot use the form to learn which addresses have
+    accounts. The vendor-already-on-another-roster case is not built (follow-up issue).
+  - **Two public paths, named in one set** (`PUBLIC_PATHS`, app.ts), with the token in the
+    body and the link's `#` fragment: a test shows the application log holds neither the
+    token nor the password. Taking `accept` out of the set was seen to fail seven of
+    the route tests.
+  - **Audit, with who did it kept honest**: `account.created` and `invitation.created` /
+    `.revoked` name the owner; `invitation.accepted` names the new account, who did it.
+    Expiry writes no event.
+  - Found by driving the browser, not by a test: the new "Vendors" link was missing from
+    the top bar, because a scripted edit matched text Prettier had already reflowed and
+    said nothing. Every unit and route test was green.
+  - Verified in Chromium against a real server: invite (a bad address blocked), the link
+    shown once, a second invitation withdrawn and its link refused, the invitee on a
+    fresh browser with no session (mismatched passwords blocked), landing signed in on the
+    vendor feed, the spent link refused, and the owner's list showing Joined and the
+    roster entry. Not verified: delivery of the link by any channel; clipboard copy
+    (the box can be selected by hand).
 
 - **#112 · ~~Payables ledger: pay-run view, paid state, vendor payment record, CSV~~ · DONE — `db/src/vendor/payments.ts` (vendor schema v5), `vendor-core/src/payment.ts`, routes in `server/src/assignments.ts`.**
   From the 2026-10-08 competitor sweep (issue #153, which this closes). The

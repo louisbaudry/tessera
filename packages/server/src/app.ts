@@ -124,6 +124,11 @@ import {
   type HeldSession,
 } from './glossary-session.js';
 import { registerAssignmentRoutes } from './assignments.js';
+import {
+  ACCEPT_INVITATION_PATH,
+  OPEN_INVITATION_PATH,
+  registerInvitationRoutes,
+} from './invitations.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
 import {
   glossaryPath,
@@ -166,8 +171,14 @@ function owner(req: FastifyRequest): Account {
   return req.account;
 }
 
-/** The login route is the one `/api/` path the gate lets through. */
 const LOGIN_PATH = '/api/login';
+
+/**
+ * The only `/api/` paths answered without a session: logging in, and the two steps
+ * an invitee takes before they have an account (backlog #111). Exact paths, so a
+ * route added later is behind the gate unless it is named here.
+ */
+const PUBLIC_PATHS = new Set([LOGIN_PATH, OPEN_INVITATION_PATH, ACCEPT_INVITATION_PATH]);
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -253,7 +264,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.addHook('onRequest', async (req, reply) => {
     const path = req.url.split('?')[0] ?? req.url;
-    if (!path.startsWith('/api/') || path === LOGIN_PATH) return;
+    if (!path.startsWith('/api/') || PUBLIC_PATHS.has(path)) return;
     const token = bearerToken(req);
     const account = token === null ? null : getAccountBySessionToken(platform, token);
     if (!account) {
@@ -1754,6 +1765,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   // --- assignments (vendor-spec.md §4, §6; backlog #48) ---------------
   registerAssignmentRoutes(app, {
+    storageRoot: config.storageRoot,
+    platform,
+    owner,
+    sessionActor,
+  });
+
+  // --- an owner invites a vendor (backlog #111) -------------------------
+  registerInvitationRoutes(app, {
     storageRoot: config.storageRoot,
     platform,
     owner,

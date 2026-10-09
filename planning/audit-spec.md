@@ -235,7 +235,9 @@ their `*_by` columns have always been free text; writers pass the
 `platform.sqlite`: `auth.login`, `auth.login_failed`, `auth.logout`,
 `account.created`, `authorization.granted` / `authorization.revoked`
 (`vendor-spec.md`'s `project_authorization`), `project.created`,
-`project.deleted`, `file.downloaded`.
+`project.deleted`, `file.downloaded`, and since backlog #111 `invitation.created`,
+`invitation.accepted` and `invitation.revoked` (an owner's invitation to a vendor,
+`vendor-spec.md` §3; the invitation is the subject and no email is in a detail).
 
 `vendors.ctv` (backlog #46, `vendor-spec.md` §5): `vendor.added`,
 `vendor.profile_changed` and `vendor.rate_set`, with the shared table and
