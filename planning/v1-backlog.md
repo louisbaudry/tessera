@@ -3445,7 +3445,15 @@ rest of that range:
     and shows the next listing bring it level exactly once.
   - **An address that already has an account is refused at acceptance, never at
     invitation**, so an owner cannot use the form to learn which addresses have
-    accounts. The vendor-already-on-another-roster case is not built (follow-up issue).
+    accounts. The case that leaves open, a vendor who already works for another owner,
+    is built as #187 (next bullet).
+  - **An existing vendor joins by signing in** (issue #187, `joinInvitation`, `POST
+    /api/invitations/join`): behind the login gate, so a link alone attaches no one; the
+    session must be a vendor at the invited address, anything else is the identical
+    404 (an owner's account a 409). No account is made, the audit event is marked
+    `existing`, and the roster file is mended as for a new account. Verified in Chromium
+    with one vendor on two owners' rosters: the page switches to a sign-in, a wrong
+    password is refused, and the vendor's home shows both rosters' availability rows.
   - **Two public paths, named in one set** (`PUBLIC_PATHS`, app.ts), with the token in the
     body and the link's `#` fragment: a test shows the application log holds neither the
     token nor the password. Taking `accept` out of the set was seen to fail seven of

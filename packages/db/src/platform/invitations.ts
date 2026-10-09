@@ -90,6 +90,12 @@ export class InvitationUnusableError extends Error {
     super('this invitation link is not valid');
   }
 }
+/** The signed-in account cannot join as a vendor: it is an owner's account (backlog #187). */
+export class InvitationRoleError extends Error {
+  constructor() {
+    super('only a vendor account can join a roster');
+  }
+}
 /** The invited address already has an account here; the invitee should sign in instead. */
 export class EmailTakenError extends Error {
   constructor() {
@@ -318,6 +324,63 @@ export function acceptInvitation(
         subjectType: 'invitation',
         subjectId: String(row.id),
         detail: { owner_id: row.owner_id, account_id: account.id },
+      });
+      return {
+        account,
+        invitation: fromRow(
+          db.prepare('SELECT * FROM vendor_invitation WHERE id = ?').get(row.id) as Row,
+          now,
+        ),
+      };
+    })
+    .immediate();
+}
+
+export interface JoinInvitationOptions {
+  readonly token: string;
+  /** The signed-in account that holds the link: its session is the proof of who it is. */
+  readonly accountId: number;
+  readonly now?: Date;
+}
+
+/**
+ * Uses a link as an account that **already exists** (backlog #187, `vendor-spec.md`'s
+ * #187 note): a vendor who works for one owner is invited by another. No account is
+ * made; the signed-in vendor is put on the owner's roster index and the link is marked
+ * used, in one transaction. The link alone never attaches anyone to an account: the
+ * caller must be signed in, as the account whose address the owner invited. A link
+ * made for another address, or one that cannot be used, is the same
+ * `InvitationUnusableError` as ever, so a stranger holding a link learns nothing from
+ * trying it on an account of theirs. An owner's account is refused
+ * (`InvitationRoleError`): the roster decides who is a vendor, and an owner is not one.
+ */
+export function joinInvitation(
+  db: Database.Database,
+  options: JoinInvitationOptions,
+): { account: Account; invitation: Invitation } {
+  const now = options.now ?? new Date();
+  return db
+    .transaction((): { account: Account; invitation: Invitation } => {
+      const row = rowByToken(db, options.token);
+      if (!row || fromRow(row, now).status !== 'pending')
+        throw new InvitationUnusableError();
+      const account = getAccountById(db, options.accountId);
+      if (!account || account.email !== row.email) throw new InvitationUnusableError();
+      if (account.role !== 'vendor') throw new InvitationRoleError();
+      const changed = db
+        .prepare(
+          `UPDATE vendor_invitation SET accepted_at = ?, accepted_account_id = ?
+            WHERE id = ? AND accepted_at IS NULL AND revoked_at IS NULL`,
+        )
+        .run(now.toISOString(), account.id, row.id).changes;
+      if (changed !== 1) throw new InvitationUnusableError();
+      addRosterMembership(db, { ownerId: row.owner_id, accountId: account.id, now });
+      appendAuditEvent(db, {
+        actor: { actor: { kind: 'account', id: account.id }, label: account.email },
+        action: 'invitation.accepted',
+        subjectType: 'invitation',
+        subjectId: String(row.id),
+        detail: { owner_id: row.owner_id, account_id: account.id, existing: true },
       });
       return {
         account,

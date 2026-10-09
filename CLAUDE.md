@@ -335,7 +335,10 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   addresses exist. The account and its `roster_membership` row are one transaction; the
   roster file is a second step, mended by `bringRosterLevel`, never repeated. The two
   public paths are named in `PUBLIC_PATHS` (app.ts); the token travels in a body and a
-  `#` fragment, never a path or query.
+  `#` fragment, never a path or query. A vendor who already has an account joins a
+  second owner's roster through `joinInvitation` (#187), **behind the login gate**:
+  the link alone never attaches anyone, the session must be a vendor at the invited
+  address.
 - **A vendor finds their owners through `roster_membership`, a derived
   index** (backlog #52a, platform schema v5): the roster decides who is a
   vendor, so a row nothing backs shows its account nothing, and the index

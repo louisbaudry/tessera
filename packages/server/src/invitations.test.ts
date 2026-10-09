@@ -275,6 +275,97 @@ describe('the invitee follows the link', () => {
   });
 });
 
+describe('an existing vendor joins a second owner’s roster (backlog #187)', () => {
+  const join = (session: string | null, token: string) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/invitations/join',
+      headers: session === null ? {} : as(session),
+      payload: { token },
+    });
+
+  /** Alice invites vera, who already has a vendor account. */
+  async function aliceInvitesVera(): Promise<string> {
+    const res = await invite(await login('alice'), {
+      email: 'vera@example.com',
+      displayName: 'Vera V.',
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return (res.json() as { token: string }).token;
+  }
+
+  it('is told to sign in when the address has an account, and then joins signed in', async () => {
+    const token = await aliceInvitesVera();
+    const refused = await accept(token);
+    expect(refused.statusCode).toBe(409);
+    expect((await open(token)).statusCode).toBe(200); // still pending
+
+    const vera = await login('vera');
+    const joined = await join(vera, token);
+    expect(joined.statusCode, joined.body).toBe(201);
+
+    // vera now lists alice's roster, with the name alice gave her, and the link is spent
+    const capacity = await app.inject({
+      method: 'GET',
+      url: '/api/vendor/capacity',
+      headers: as(vera),
+    });
+    expect(capacity.json()).toMatchObject({ rosters: [{ owner: alice.id }] });
+    const roster = await app.inject({
+      method: 'GET',
+      url: '/api/vendors',
+      headers: as(await login('alice')),
+    });
+    expect(roster.json()).toMatchObject({
+      vendors: [{ displayName: 'Vera V.' }],
+    });
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/invitations',
+      headers: as(await login('alice')),
+    });
+    expect(list.json()).toMatchObject({ invitations: [{ status: 'accepted' }] });
+    expect((await join(vera, token)).statusCode).toBe(404);
+    expect((await open(token)).statusCode).toBe(404);
+  });
+
+  it('never attaches anyone from the link alone', async () => {
+    const token = await aliceInvitesVera();
+    expect((await join(null, token)).statusCode).toBe(401);
+    expect((await open(token)).statusCode).toBe(200);
+  });
+
+  it('refuses a session that is not the invited address, as an unusable link', async () => {
+    const token = await aliceInvitesVera();
+    const stranger = await join(await login('dave'), token);
+    expect(stranger.statusCode).toBe(404);
+    expect(stranger.body).toBe((await join(await login('dave'), 'never-issued')).body);
+    expect((await open(token)).statusCode).toBe(200); // still pending, for vera
+  });
+
+  it('refuses an owner’s account with a 409 and leaves the link pending', async () => {
+    const created = await invite(await login('alice'), { email: 'dave@example.com' });
+    const token = (created.json() as { token: string }).token;
+    const res = await join(await login('dave'), token);
+    expect(res.statusCode).toBe(409);
+    expect((await open(token)).statusCode).toBe(200);
+  });
+
+  it('refuses a bad body', async () => {
+    expect((await join(await login('vera'), '')).statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/invitations/join',
+          headers: as(await login('vera')),
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+});
+
 describe('the log', () => {
   it('never holds the link’s token or the password chosen with it (backlog #111)', async () => {
     const lines: string[] = [];
