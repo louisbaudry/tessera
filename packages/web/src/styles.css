@@ -1078,3 +1078,93 @@ button.chip-button:hover {
   justify-content: space-between;
   margin-bottom: 0.4rem;
 }
+
+/* The money screens (backlog #113): the owner's pay run, a vendor's record. */
+.payables,
+.payments {
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+.payables h2,
+.payments h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+.ledger-filters,
+.pay-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.ledger-filters label,
+.pay-form label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.ledger-filters input,
+.ledger-filters select,
+.pay-form input {
+  font: inherit;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+}
+.pay-form .grow {
+  flex: 1 1 14rem;
+}
+.ledger-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.ledger {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 60rem;
+}
+.ledger th,
+.ledger td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-weight: 400;
+  vertical-align: baseline;
+}
+.ledger thead th {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.ledger .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ledger.totals {
+  max-width: 44rem;
+}
+.ledger .ledger-note td {
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.ledger .flag {
+  color: var(--qa-error);
+  font-size: 0.8rem;
+}
+.reopen-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ledger td button {
+  white-space: nowrap;
+}
+.ledger .when {
+  white-space: nowrap;
+}

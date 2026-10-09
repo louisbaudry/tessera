@@ -7,6 +7,8 @@ describe('parseRoute / formatRoute', () => {
     const routes: Route[] = [
       { screen: 'projects' },
       { screen: 'tms' },
+      { screen: 'payables' },
+      { screen: 'payments' },
       { screen: 'project', project: 'job-2026' },
       { screen: 'grid', project: 'job-2026', fileId: 12 },
       { screen: 'job', owner: 7, id: 3 },
@@ -23,6 +25,8 @@ describe('parseRoute / formatRoute', () => {
       '#',
       '#/x',
       '#/tms/x',
+      '#/payables/x',
+      '#/payments/1',
       '#/p',
       '#/p/job/f',
       '#/p/job/f/0',

@@ -856,7 +856,13 @@ the record of it.
   id>&from=&to=&status=paid|unpaid`), `POST /api/assignments/:id/payment`
   (`{ paidOn, note? }`) and `.../payment/reopen`. A vendor and a stranger get
   the identical 404.
-- **Not built here:** the screens (the owner's pay-run view and the vendor's
-  record), a payment note shown to the vendor, an email when a payment is
+- **Not built here:** a payment note shown to the vendor, an email when a payment is
   recorded, and the vendor-confirmed statement of issue #158. The routes are
-  the contract the screens will use.
+  the contract the screens use.
+
+**The screens (#113, issue #167).** `#/payables` for an owner (a "Pay run" link
+in the top bar) and `#/payments` for a vendor. They add no route and no rule;
+the decisions worth keeping are in the backlog entry: the CSV is fetched with the
+token and saved from a `Blob`, "today" is the UTC date the server counts, an
+unpriced payable is "Not priced" and never `0.00`, and the list is read again after
+every write so the totals stay the server's.
