@@ -44,6 +44,14 @@
     tool is unavailable, fall back to a text list with the same options and
     recommendation.
   - Ask one question at a time, and wait for the answer before the next.
+  - **A rule alone did not hold, so a hook enforces it.** Each repo merges
+    `question-gate.json` from `settings/` in `claude-shared` into its
+    `.claude/settings.json` (with `require-ask-options.sh` and
+    `stop-prose-question.sh` copied to `.claude/hooks/`). It blocks an
+    `AskUserQuestion` call with more than one question or without the
+    recommended option first, labelled "(Recommended)", and blocks (once)
+    a reply that ends in a prose question. It checks the shape, not the
+    quality of the options; that is still the session's job.
   - Make each question answerable without scrolling back: give what each
     option means and what it costs.
   - Routine calls inside work already directed (naming, file layout, test
