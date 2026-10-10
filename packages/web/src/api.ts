@@ -789,6 +789,16 @@ export const api = {
       method: 'POST',
       body: { segmentId, termId },
     }),
+  /** Adds a term typed or selected in the editor to the project's glossary (backlog #129). */
+  addTerm: (token: string, name: string, body: { source: string; target: string }) =>
+    call<{ termId: number; created: boolean }>(
+      projectUrl(name, '/glossary/terms'),
+      token,
+      {
+        method: 'POST',
+        body,
+      },
+    ),
   glossaryProposals: (token: string, name: string, signal?: AbortSignal) =>
     call<{ glossary: string | null; proposals: ExceptionProposalView[] }>(
       projectUrl(name, '/glossary/proposals'),

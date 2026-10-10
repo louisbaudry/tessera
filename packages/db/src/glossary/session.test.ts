@@ -7,6 +7,7 @@ import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  addTermFromText,
   addVariant,
   commitGlossarySession,
   createGlossary,
@@ -14,6 +15,7 @@ import {
   listDecisions,
   listVariants,
   preferredVariant,
+  TermError,
 } from './index.js';
 
 let dir: string;
@@ -198,6 +200,70 @@ describe('commitGlossarySession', () => {
     commitGlossarySession(db, s, { actor: ALICE });
     expect(() => commitGlossarySession(db, s, { actor: ALICE })).toThrow(/committed/);
     expect(count(db, 'term_decision')).toBe(1);
+    db.close();
+  });
+});
+
+describe('addTermFromText (backlog #129)', () => {
+  const add = (db: Database.Database, source: string, target: string) =>
+    addTermFromText(db, { ...LANGS, source, target, actor: ALICE, sourceProject: 'job' });
+
+  it('creates the term, both variants and a custom decision, naming who and where', () => {
+    const db = open();
+    const { termId, created } = add(db, '  Invoice ', ' facture ');
+    expect(created).toBe(true);
+    expect(listVariants(db, termId).map((v) => [v.lang, v.text])).toEqual([
+      ['en', 'Invoice'],
+      ['fr', 'facture'],
+    ]);
+    const [decision] = listDecisions(db, termId, 'fr');
+    expect(decision).toMatchObject({
+      chosen: 'facture',
+      kind: 'custom',
+      sourceProject: 'job',
+      decidedBy: 'alice@example.com',
+    });
+    expect(preferredVariant(db, termId, 'fr')?.text).toBe('facture');
+    db.close();
+  });
+
+  it('adds to the term a source form already has, case-folded, instead of a second one', () => {
+    const db = open();
+    const first = add(db, 'invoice', 'facture');
+    const second = add(db, 'INVOICE', 'note de frais');
+    expect(second).toEqual({ termId: first.termId, created: false });
+    expect(listVariants(db, first.termId).filter((v) => v.lang === 'fr')).toHaveLength(2);
+    // The latest decision settles the preferred rendering.
+    expect(preferredVariant(db, first.termId, 'fr')?.text).toBe('note de frais');
+    db.close();
+  });
+
+  it('clears a forbidden mark on a rendering the translator now chooses, and logs the decision', () => {
+    const db = open();
+    const term = insertTerm(db);
+    addVariant(db, { termId: term.id, lang: 'en', text: 'invoice' });
+    addVariant(db, { termId: term.id, lang: 'fr', text: 'facture', forbidden: true });
+    add(db, 'invoice', 'facture');
+    expect(listVariants(db, term.id).find((v) => v.lang === 'fr')?.forbidden).toBe(false);
+    expect(listDecisions(db, term.id, 'fr')).toHaveLength(1);
+    db.close();
+  });
+
+  it('refuses a blank source or rendering and writes nothing', () => {
+    const db = open();
+    expect(() => add(db, '   ', 'facture')).toThrow(TermError);
+    expect(() => add(db, 'invoice', ' ')).toThrow(TermError);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM term').get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  it('is all or nothing: a failure after the term exists leaves no term behind', () => {
+    const db = open();
+    db.exec(
+      `CREATE TRIGGER boom BEFORE INSERT ON term_decision BEGIN SELECT RAISE(ABORT, 'boom'); END;`,
+    );
+    expect(() => add(db, 'invoice', 'facture')).toThrow(/boom/);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM term').get()).toEqual({ n: 0 });
     db.close();
   });
 });

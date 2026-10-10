@@ -70,7 +70,7 @@ any decision that is Louis's to make.
 | #148 | Document-level context and a versioned style guide for AI pre-translate | Editor |
 | #149 | Propose glossary rulings from edits to AI output (builds on `segment_exception`) | Editor |
 | #150 | Show where each draft came from, and log AI spend (metadata only) | Editor |
-| #151 | Fix or retire a TM unit, and add a term, without leaving the editor | Editor |
+| #151 | Fix or retire a TM unit, and add a term, without leaving the editor (half built: backlog `#129`, add a term from a selection; editing or retiring a unit needs a match panel the editor does not have) | Editor |
 | #152 | An MCP/agent endpoint over the headless core | All |
 | #153 | Payables ledger (built: backlog `#112`, screens `#113`) | LSP |
 | #154 | Margin report: portal order price minus locked payable | LSP |

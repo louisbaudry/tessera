@@ -3068,6 +3068,30 @@ Split so the headless part does not wait on the editor:
       (`authorization.test.ts`) caught it, which is what it is for.
     - Driven in Chromium: three records, the proposal, accepting it, the mismatch rows gone
       (the alternative is now preferred). The one console 404 is #43b's "no session yet".
+  - **#129 · ~~Add a term from the editor~~ · DONE — `db/glossary/session.ts` (`addTermFromText`), `POST /api/projects/:name/glossary/terms` in `server/src/app.ts`, `web/src/{AddTermDialog.tsx,add-term.ts}`, a key and a palette command in `Grid.tsx`.** (2026-10-10; half 2 of card #151)
+    Select a source (or rendering) in the grid, press `Ctrl+Shift+D`, type the other side, and the
+    term goes into the project's write-target glossary as a `custom` decision. Half 1 of #151
+    (edit or retire a TM unit from the lookup) stays open: the editor has no match panel to host it.
+    - **One write, shared with the session commit.** `applyEntry`'s tail (the variant, found or added or
+      cleared of `forbidden`, then the `term_decision`) became `writeRendering`, which both the panel's
+      commit and `addTermFromText` call, so a term typed here and one decided in the panel are the same
+      kind of row. The existing commit tests passed unchanged through the refactor. The whole add is one
+      transaction (a test with a failing trigger leaves no term behind), and a source form a term
+      already has (case-folded, as detection matches) gains a rendering instead of a second term.
+    - **The DOM keeps one selection, so one side is selected and the other typed.** The issue said
+      "select source and target"; that cannot be read from two ranges. The selected text fills its side
+      and focus goes to the other. The key reads the selection *as the box opens* (a box that took focus
+      first would lose it), which is why the palette's version opens empty. A selection across cells, or
+      over 120 characters, is not read (a term is on one side of one segment; the box says so).
+    - **Owner-only (`manage`), like every other glossary write**, hidden for a grantee. `actor` is the
+      session's, `source_project` the project's; a client never sends either. No glossary to record into
+      is a 409, as for an exception. The audit trail is the `.ctg`'s own append-only decision log.
+    - Verified: 5 repository tests, 3 route tests, 8 pure tests for the box's logic. Driven in Chromium
+      against the built SPA: a double-click selection prefills the source and focuses the rendering,
+      Add is disabled until it is typed, the row lands in the `.ctg` (`custom`, the account as
+      `decided_by`), a target selection fills the other side, Escape closes, the palette opens it empty.
+      Not verified: a two-regions selection on a split segment's chips (the chip text is in the
+      selection string and the box lets it be edited).
 - **#44 · ~~`term.glossary_mismatch` QA rule~~ · DONE — `core/qa/rules.ts`
   (`checkGlossaryMismatch`), `core/glossary/mismatch.ts` (`mismatchFinder`),
   `db/project/glossary-qa.ts`, project migration v11.** A `warning`, one finding
