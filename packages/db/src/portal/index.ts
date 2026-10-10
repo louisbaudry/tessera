@@ -18,3 +18,4 @@ export * from './rates.js';
 export * from './orders.js';
 export * from './files.js';
 export * from './audit.js';
+export * from './client-resources.js';

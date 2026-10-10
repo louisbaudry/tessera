@@ -22,7 +22,7 @@ import {
   SEGMENT_STATUSES,
   VENDOR_AUDIT_ACTIONS,
 } from '@cat-tool/core';
-import { ORDER_STATUSES } from '@cat-tool/portal-core';
+import { CLIENT_RESOURCE_KINDS, ORDER_STATUSES } from '@cat-tool/portal-core';
 import {
   ASSIGNMENT_CHANNELS,
   ASSIGNMENT_STATUSES,
@@ -74,6 +74,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
     migrations: PORTAL_MIGRATIONS,
     lists: {
       'translation_order.status': ORDER_STATUSES,
+      'client_resource.kind': CLIENT_RESOURCE_KINDS,
       'audit_event.action': PORTAL_AUDIT_ACTIONS,
     },
   },

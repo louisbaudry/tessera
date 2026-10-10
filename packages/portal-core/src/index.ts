@@ -10,3 +10,4 @@ export { attachmentDisposition } from '@cat-tool/core';
 // The audit actor every portal write takes (audit-spec.md §2.1), from
 // the same one definition.
 export type { AuditActor } from '@cat-tool/core';
+export * from './resources.js';

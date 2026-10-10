@@ -293,3 +293,33 @@ lighter path §4 describes and not through `assembleFile`/the segmenter.
 What a CAT project would add is a count of the *segmented* file (matches
 and repetitions), which is a different number from this one and belongs
 to analysis and pay (`#49`), not to the quote.
+
+## 9. A client's own memory and glossary (backlog #127, 2026-10-10)
+
+A client's translation memory and glossary are theirs: they can download
+them whenever they like, as TMX and CSV, from their page. Decided
+2026-10-10 (Louis chose the dedicated-file model over a filter):
+
+- **A link names a whole file.** `client_resource (client_id, kind, path,
+  name)`, one `.ctm` and one `.ctg` per client at most, set by the operator
+  with `pnpm --filter @cat-tool/portal-server run link-client-resource --
+  link <client-id> tm|glossary <absolute-path>` (also `unlink`, `list`).
+  Never an HTTP endpoint: the path is typed by the person who owns the
+  file. The operator links only a file that is that client's alone, since a
+  client takes all of it; a base memory shared with other clients is never
+  linked. A client sees a name and a download name, never the path.
+- **Read, not opened.** The file belongs to the CAT server's owner. The
+  portal reads it through `openReadOnly` (`query_only`, no migration, no
+  backup, no integrity check) and only at the newest format version.
+- **What leaves.** The memory's text, languages, dates, quality and unit
+  identity; not who created or changed a unit, notes, neighbour hashes, usage
+  counts or properties outside `client`/`domain`/`subject`/`register`. The
+  glossary's live renderings with `preferred`/`allowed`/`forbidden`; not
+  notes, authors or the decision log.
+- **Routes.** `GET /api/client/resources` (kind, name, download name) and
+  `GET /api/client/resources/:kind/export`, scoped by the client's token and
+  the kind alone: another client's link, a kind never linked and an unknown
+  kind are one identical 404; an unreadable file is a 503 and a memory above
+  100,000 units a 413. Each download is logged as `resource.exported` before
+  the first byte goes out.
+

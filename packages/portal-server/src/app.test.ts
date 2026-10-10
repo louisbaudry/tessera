@@ -12,13 +12,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  addVariant,
   createAdminUser,
   createClient,
+  createGlossary,
+  createTm,
+  insertTerm,
+  linkClientResource,
   listEvents,
   listOrderEvents,
   openPortalDb,
   setRate,
   verifyAudit,
+  writeBack,
   type Client,
 } from '@cat-tool/db';
 import { writeDocx } from '@cat-tool/core';
@@ -744,5 +750,142 @@ describe('the advisory word count (backlog #62)', () => {
     const seen = await adminOrder(await adminLogin(), order.id);
     expect(seen.sourceFiles.map((f) => f.wordCount)).toEqual([2, null]);
     expect(seen.suggestedWordCount).toBeNull();
+  });
+});
+
+describe('a client takes their own memory and glossary (backlog #162)', () => {
+  const OPERATOR = { actor: { kind: 'system', name: 'test' }, label: null } as const;
+
+  /** A memory file holding one unit, linked to `client` through a second handle on the portal file. */
+  function linkMemory(
+    client: Client,
+    name: string,
+    source: string,
+    target: string,
+  ): string {
+    const path = join(dir, `${name}.ctm`);
+    const tm = createTm(path, { name, generator: 'test' });
+    writeBack(tm, {
+      source: { lang: 'en', tokens: [{ t: 'text', v: source }] },
+      target: { lang: 'es', tokens: [{ t: 'text', v: target }] },
+    });
+    tm.close();
+    const portal = openPortalDb(config.dbPath);
+    linkClientResource(portal, {
+      actor: OPERATOR,
+      clientId: client.id,
+      kind: 'tm',
+      path,
+    });
+    portal.close();
+    return path;
+  }
+
+  function linkGlossary(client: Client, name: string, term: string): void {
+    const path = join(dir, `${name}.ctg`);
+    const g = createGlossary(path, { name, generator: 'test' });
+    addVariant(g, { termId: insertTerm(g).id, lang: 'en', text: term });
+    g.close();
+    const portal = openPortalDb(config.dbPath);
+    linkClientResource(portal, {
+      actor: OPERATOR,
+      clientId: client.id,
+      kind: 'glossary',
+      path,
+    });
+    portal.close();
+  }
+
+  const list = (token: string) =>
+    app.inject({ method: 'GET', url: '/api/client/resources', headers: auth(token) });
+  const take = (token: string, kind: string) =>
+    app.inject({
+      method: 'GET',
+      url: `/api/client/resources/${kind}/export`,
+      headers: auth(token),
+    });
+
+  it('needs the client link, and shows nothing until something is linked', async () => {
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/client/resources' })).statusCode,
+    ).toBe(401);
+    expect((await list('ada-token')).json()).toEqual([]);
+    expect((await take('ada-token', 'tm')).statusCode).toBe(404);
+  });
+
+  it('lists names without paths, and downloads the memory as TMX with an audit event', async () => {
+    const path = linkMemory(ada, 'ada-memory', 'Save', 'Guardar');
+    linkGlossary(ada, 'ada-terms', 'invoice');
+
+    const seen = await list('ada-token');
+    expect(seen.json()).toEqual([
+      { kind: 'tm', name: 'ada-memory', filename: 'ada-memory.tmx' },
+      { kind: 'glossary', name: 'ada-terms', filename: 'ada-terms.csv' },
+    ]);
+    expect(seen.body).not.toContain(path);
+
+    const tmx = await take('ada-token', 'tm');
+    expect(tmx.statusCode, tmx.body).toBe(200);
+    expect(tmx.headers['content-type']).toContain('application/xml');
+    expect(tmx.headers['content-disposition']).toContain('attachment');
+    expect(tmx.headers['x-content-type-options']).toBe('nosniff');
+    expect(tmx.body).toContain('Guardar');
+
+    const csv = await take('ada-token', 'glossary');
+    expect(csv.headers['content-type']).toContain('text/csv');
+    expect(csv.body).toContain('1,en,invoice,preferred');
+
+    const db = openPortalDb(config.dbPath);
+    const events = listEvents(db, { subjectType: 'client_resource' }).filter(
+      (e) => e.action === 'resource.exported',
+    );
+    expect(events.map((e) => e.actor)).toEqual([`client:${ada.id}`, `client:${ada.id}`]);
+    expect(events[0]!.actorLabel).toBeNull();
+    expect(JSON.parse(events[0]!.detail as string)).toEqual({
+      client_id: ada.id,
+      kind: 'tm',
+      count: 1,
+      sha256: createHash('sha256').update(tmx.rawPayload).digest('hex'),
+    });
+    expect(verifyAudit(db).brokenAt).toBeNull();
+    db.close();
+  });
+
+  it("never gives one client another's file, or the memory it was not linked to", async () => {
+    linkMemory(ada, 'ada-memory', 'ADA-SOURCE', 'ADA-TARGET');
+    linkMemory(other, 'other-memory', 'OTHER-SOURCE', 'OTHER-TARGET');
+    // A base memory that nobody linked.
+    const base = createTm(join(dir, 'base.ctm'), { name: 'base', generator: 'test' });
+    writeBack(base, {
+      source: { lang: 'en', tokens: [{ t: 'text', v: 'BASE-SOURCE' }] },
+      target: { lang: 'es', tokens: [{ t: 'text', v: 'BASE-TARGET' }] },
+    });
+    base.close();
+
+    const mine = (await take('ada-token', 'tm')).body;
+    const theirs = (await take('other-token', 'tm')).body;
+    expect(mine).toContain('ADA-TARGET');
+    expect(mine).not.toMatch(/OTHER-|BASE-/);
+    expect(theirs).toContain('OTHER-TARGET');
+    expect(theirs).not.toMatch(/ADA-|BASE-/);
+    // Ada has no glossary linked: Other's is not hers, and an unknown kind is the same answer.
+    linkGlossary(other, 'other-terms', 'OTHER-TERM');
+    expect((await take('ada-token', 'glossary')).statusCode).toBe(404);
+    expect((await take('ada-token', 'passwd')).statusCode).toBe(404);
+  });
+
+  it('says so, and logs nothing, when the linked file cannot be read', async () => {
+    const path = linkMemory(ada, 'ada-memory', 'Save', 'Guardar');
+    rmSync(path);
+    const res = await take('ada-token', 'tm');
+    expect(res.statusCode).toBe(503);
+    expect(res.body).not.toContain(path);
+    const db = openPortalDb(config.dbPath);
+    expect(
+      listEvents(db, { subjectType: 'client_resource' }).filter(
+        (e) => e.action === 'resource.exported',
+      ),
+    ).toEqual([]);
+    db.close();
   });
 });

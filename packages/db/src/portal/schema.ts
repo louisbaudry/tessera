@@ -7,7 +7,7 @@
  */
 
 import type { PortalAuditAction } from '@cat-tool/core';
-import type { OrderStatus } from '@cat-tool/portal-core';
+import type { ClientResourceKind, OrderStatus } from '@cat-tool/portal-core';
 
 import { appendAuditEvent, auditEventDdl } from '../audit/events.js';
 import { rebuildTable, sqlList, type Migration } from '../migrate.js';
@@ -252,4 +252,51 @@ const v5: Migration = {
   },
 };
 
-export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];
+/** `audit_event.action` since v6: v4's list plus a client's linked files (backlog #162). */
+const V6_AUDIT_ACTIONS = [
+  'auth.login',
+  'auth.login_failed',
+  'file.downloaded',
+  'file.delivered',
+  'order.priced',
+  'order.price_baseline',
+  'resource.linked',
+  'resource.unlinked',
+  'resource.exported',
+] as const satisfies readonly PortalAuditAction[];
+
+/** `client_resource.kind` since v6: `CLIENT_RESOURCE_KINDS` as of backlog #162. */
+const V6_RESOURCE_KINDS = [
+  'tm',
+  'glossary',
+] as const satisfies readonly ClientResourceKind[];
+
+/**
+ * A client's own translation memory and glossary (backlog #162,
+ * portal-v0-spec.md §9): one `.ctm` and one `.ctg` at most per client, each a
+ * file the operator linked to that client by path from the command line
+ * (`link-client-resource`), never from a request. A client can only ever
+ * take what is linked to them, whole, so another memory cannot leak into
+ * their export by a filter that missed a unit. `name` is shown to the client;
+ * it was read from the file when linked.
+ */
+const v6: Migration = {
+  version: 6,
+  description: "client_resource: a client's linked memory and glossary (backlog #162)",
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE client_resource (
+        id        INTEGER PRIMARY KEY,
+        client_id INTEGER NOT NULL REFERENCES client(id),
+        kind      TEXT NOT NULL CHECK (kind IN (${sqlList(V6_RESOURCE_KINDS)})),
+        path      TEXT NOT NULL,
+        name      TEXT NOT NULL,
+        linked_at TEXT NOT NULL,
+        UNIQUE (client_id, kind)
+      );
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V6_AUDIT_ACTIONS));
+  },
+};
+
+export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];

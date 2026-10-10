@@ -24,6 +24,12 @@ import {
   getAdminUserByEmail,
   getAdminUserBySessionToken,
   getClientByToken,
+  ClientResourceError,
+  clientExportFilename,
+  exportClientResource,
+  getClientResource,
+  listClientResources,
+  recordClientExport,
   getDeliveredFile,
   getOrder,
   getSourceFile,
@@ -56,6 +62,7 @@ import {
   estimateWordCount,
   generateSessionToken,
   InvalidTransitionError,
+  isClientResourceKind,
   OrderPricingError,
   RateNotFoundError,
   verifyPassword,
@@ -289,6 +296,62 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (!client)
       return reply.code(401).send({ error: 'invalid or missing access token' });
     return listOrdersForClient(db, client.id).map(serializeOrder);
+  });
+
+  // The client's own memory and glossary, when the operator has linked them
+  // (backlog #162). Name and download name only: never the path, and nothing
+  // of what is in the file until it is downloaded.
+  app.get('/api/client/resources', async (req, reply) => {
+    const client = requireClient(req);
+    if (!client)
+      return reply.code(401).send({ error: 'invalid or missing access token' });
+    return listClientResources(db, client.id).map((r) => ({
+      kind: r.kind,
+      name: r.name,
+      filename: clientExportFilename(r),
+    }));
+  });
+
+  // The download: the linked file, read now, as TMX or CSV. The link is
+  // looked up by this client's id and the kind alone, so another client's
+  // link, a kind never linked and an unknown kind are the same 404. Logged
+  // as `resource.exported` before the first byte is sent.
+  app.get('/api/client/resources/:kind/export', async (req, reply) => {
+    const client = requireClient(req);
+    if (!client)
+      return reply.code(401).send({ error: 'invalid or missing access token' });
+    const { kind } = req.params as { kind: string };
+    const resource = isClientResourceKind(kind)
+      ? getClientResource(db, client.id, kind)
+      : null;
+    if (!resource) return reply.code(404).send({ error: 'nothing is linked to you' });
+    let exported;
+    try {
+      exported = exportClientResource(resource);
+    } catch (err) {
+      if (err instanceof ClientResourceError) {
+        if (err.reason === 'too_large') {
+          return reply.code(413).send({
+            error: 'this file is too large to download here; ask us to send it to you',
+          });
+        }
+        app.log.error(
+          { clientId: client.id, kind, err: err.message },
+          'client export failed',
+        );
+        return reply
+          .code(503)
+          .send({ error: 'this file cannot be read right now; please try again later' });
+      }
+      throw err;
+    }
+    recordClientExport(db, { actor: clientActor(client), resource, exported });
+    return reply
+      .header('content-type', exported.contentType)
+      .header('content-length', exported.bytes.byteLength)
+      .header('x-content-type-options', 'nosniff')
+      .header('content-disposition', attachmentDisposition(exported.filename))
+      .send(exported.bytes);
   });
 
   app.get('/api/client/rates', async (req, reply) => {

@@ -77,3 +77,4 @@ export { GLOSSARY_APPLICATION_ID, GLOSSARY_MIGRATIONS } from './schema.js';
 export * from './exceptions.js';
 export * from './terms.js';
 export * from './session.js';
+export * from './export.js';
