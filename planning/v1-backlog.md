@@ -3798,6 +3798,19 @@ rest of that range:
     (reminder then overdue once each, lead off, a deadline that passed while the server was down, the
     owner-only routes). Two existing tests changed on purpose: the `.ctv` `user_version` is now 7.
     Not verified: a real receiver; the Webhooks field in a browser.
+- **#128 · ~~The eligibility read: who fits a project, and why the others do not~~ · DONE — `vendor-core/src/eligibility.ts`, `db/src/vendor/eligibility.ts`, `GET /api/vendors/eligibility` (`server/src/assignments.ts`).** (2026-10-10; the buildable part of card #156)
+  Design note: `vendor-spec.md`, the #156 note. For a project's pair, and an optional specialty the owner
+  types, the owner's roster comes back split into eligible and excluded, each exclusion with its reasons
+  (`language_pair`, `specialty`, `busy`, `away`). **Advisory, by decision:** nothing is filtered or
+  refused; an offer to an excluded vendor still goes through, a test asserts it. The first reason to
+  keep it advisory is that every input is something a person set by hand and can leave stale.
+  - A vendor with no declared pair fits no job (two existing test vendors have none, which the server
+    test now uses); a never-set capacity is unknown, not busy; the specialty is asked only when named.
+  - It is a read of the caller's own project and roster, so a vendor asking gets their own (empty)
+    roster and a 404 for a project they do not have, never the owner's. No email is in the response.
+  - Verified: 6 pure rule tests, 4 repository tests, 4 server tests; removing the `busy` reason turns
+    two red. Not built, still open on #156: vendor time off and a per-client pool (a project is not
+    tied to a portal client). No screen: the offer screens do not exist yet.
   - Not built: cascading offers, reminders to vendors (no channel), a per-event filter (issue #206), a
     badge on the owner's list for a late job.
 

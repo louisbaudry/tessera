@@ -344,6 +344,13 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   vendor, so a row nothing backs shows its account nothing, and the index
   is written before the roster entry. Use `ON CONFLICT DO NOTHING` for it,
   never `INSERT OR IGNORE`, which also swallows a CHECK violation.
+- **Eligibility is advice and filters nothing** (backlog #128,
+  `vendor-core/src/eligibility.ts`, `GET /api/vendors/eligibility`): who fits a
+  project's pair, an optional specialty and the capacity toggle, with every
+  exclusion named. The excluded list is always returned and an offer to an
+  excluded vendor still goes through, because each input is a hand-set value that
+  goes stale. Don't make it a gate without a decision (enforcing at offer time
+  is still open on #156).
 - **A vendor's record is two counts over the log, never a score** (backlog #123,
   `vendor-core/src/record.ts`, `db/src/vendor/record.ts`): of the offers answered how
   many were accepted, of the deliveries with a deadline how many were on time, each

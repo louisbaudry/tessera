@@ -47,6 +47,7 @@ import {
   listPaymentEvents,
   listPoolMembers,
   listRosterOwners,
+  assessRoster,
   listVendors,
   vendorRecords,
   previewSource,
@@ -902,6 +903,39 @@ export function registerAssignmentRoutes(
       roster.close();
     }
   });
+
+  // Who on the roster fits a project, and why the others do not (backlog #128). Advisory
+  // (vendor-spec.md, the #156 note): it filters nothing and an offer or a pool post still
+  // goes to anyone on the roster. The caller's own project and roster only; the pair is the
+  // project's, the specialty is what the owner types.
+  app.get<{ Querystring: { project?: string; specialty?: string } }>(
+    '/api/vendors/eligibility',
+    async (req, reply) => {
+      const me = deps.owner(req);
+      const { project, specialty } = req.query;
+      if (!isSlug(project ?? ''))
+        return reply.code(400).send({ error: 'name a project' });
+      if (specialty !== undefined && typeof specialty !== 'string') {
+        return reply.code(400).send({ error: 'specialty must be text' });
+      }
+      const pair = readPair(projectPath(deps.storageRoot, me, project!));
+      if (!pair) return reply.code(404).send({ error: 'no such project' });
+      const roster = openRoster(me);
+      const fits = roster ? assessRoster(roster, { ...pair, specialty }) : [];
+      roster?.close();
+      const view = (f: (typeof fits)[number]) => ({
+        accountId: f.accountId,
+        displayName: f.displayName,
+      });
+      return {
+        pair,
+        eligible: fits.filter((f) => f.reasons.length === 0).map(view),
+        excluded: fits
+          .filter((f) => f.reasons.length > 0)
+          .map((f) => ({ ...view(f), reasons: f.reasons })),
+      };
+    },
+  );
 
   app.post<{
     Body: {
