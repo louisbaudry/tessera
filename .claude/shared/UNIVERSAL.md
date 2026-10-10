@@ -296,7 +296,15 @@ modelled the same way in every repo, by the public
   "Docs: no change, <why>". A bare "no change" does not pass: say what
   was checked. A PR without this line is not ready, and in a
   `Continuous mode: true` repo it is not merged. A draft opened early may
-  lack it, but the line is filled in before the PR is marked ready.
+  say "Docs: pending", but never omit the line, and "pending" is replaced
+  before the PR is marked ready.
+
+  A rule alone did not hold, so each repo also merges the `docs-gate.json`
+  hook from `settings/` in `claude-shared` into its `.claude/settings.json`
+  (with `require-docs-line.sh` copied to `.claude/hooks/`). It blocks a PR
+  tool call whose body has no valid `Docs:` line. It checks the line, not
+  whether the docs were really updated; that is still the session's job
+  and the reviewer's check.
 
 - The kind-specific checks are in `CODING.md` or `NON-CODING.md`.
 
