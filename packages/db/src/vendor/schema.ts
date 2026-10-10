@@ -18,6 +18,7 @@ import type {
   AssignmentChannel,
   AssignmentStatus,
   CapacityStatus,
+  DeadlineNoticeKind,
   PaymentKind,
   RateTier,
 } from '@cat-tool/vendor-core';
@@ -447,4 +448,85 @@ const v6: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];
+/** `webhook_delivery.event_type` since v7: v6's list plus the two deadline notices (issue #155). */
+const V7_WEBHOOK_EVENT_TYPES = [
+  'assignment.offered',
+  'assignment.pool_open',
+  'assignment.claimed',
+  'assignment.accepted',
+  'assignment.declined',
+  'assignment.in_progress',
+  'assignment.delivered',
+  'assignment.reviewed',
+  'assignment.deadline_soon',
+  'assignment.overdue',
+  'payable.locked',
+  'ping',
+] as const satisfies readonly WebhookEventType[];
+
+/** `assignment_notice.kind` since v7: `DEADLINE_NOTICE_KINDS` as of issue #155. */
+const V7_NOTICE_KINDS = [
+  'deadline_soon',
+  'overdue',
+] as const satisfies readonly DeadlineNoticeKind[];
+
+/** `audit_event.action` since v7: `VENDOR_AUDIT_ACTIONS` as of issue #155. */
+const V7_AUDIT_ACTIONS = [
+  ...V6_AUDIT_ACTIONS,
+  'webhook.reminder_changed',
+] as const satisfies readonly VendorAuditAction[];
+
+/**
+ * The deadline clock (vendor-spec.md, its #155 note). `assignment_notice` is
+ * one row per (assignment, kind), unique, so a notice fires once and a restart
+ * cannot repeat it; `notice_setting` is the owner's reminder lead, **absence-
+ * based** like `qa_rule_setting` (no row is 24 hours, so an existing roster
+ * changes nothing; 0 is off). `webhook_delivery` is rebuilt to widen its
+ * `event_type` CHECK (nothing references it) and `audit_event` for the new
+ * `webhook.reminder_changed` (`rebuildTable`, backlog #64).
+ */
+const v7: Migration = {
+  version: 7,
+  description:
+    'assignment_notice, notice_setting and the deadline webhook events (issue #155)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE assignment_notice (
+        assignment_id INTEGER NOT NULL REFERENCES assignment(id),
+        kind          TEXT    NOT NULL CHECK (kind IN (${sqlList(V7_NOTICE_KINDS)})),
+        fired_at      TEXT    NOT NULL,
+        PRIMARY KEY (assignment_id, kind)
+      );
+
+      CREATE TABLE notice_setting (
+        id                  INTEGER PRIMARY KEY CHECK (id = 1),
+        -- 0 is off; the ceiling is 30 days (MAX_REMINDER_LEAD_HOURS as of v7).
+        reminder_lead_hours INTEGER NOT NULL CHECK (reminder_lead_hours BETWEEN 0 AND 720)
+      );
+    `);
+    rebuildTable(
+      db,
+      'webhook_delivery',
+      `CREATE TABLE webhook_delivery (
+        id              TEXT    PRIMARY KEY,
+        endpoint_id     INTEGER NOT NULL REFERENCES webhook_endpoint(id),
+        event_type      TEXT    NOT NULL CHECK (event_type IN (${sqlList(V7_WEBHOOK_EVENT_TYPES)})),
+        body            TEXT    NOT NULL,
+        status          TEXT    NOT NULL CHECK (status IN (${sqlList(V6_WEBHOOK_DELIVERY_STATUSES)})),
+        attempts        INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        next_attempt_at TEXT    NOT NULL,
+        last_status     INTEGER,
+        last_error      TEXT,
+        created_at      TEXT    NOT NULL,
+        settled_at      TEXT
+      );
+      CREATE INDEX webhook_delivery_due
+        ON webhook_delivery(next_attempt_at) WHERE status = 'pending';
+      CREATE INDEX webhook_delivery_endpoint
+        ON webhook_delivery(endpoint_id, status);`,
+    );
+    rebuildTable(db, 'audit_event', auditEventDdl(V7_AUDIT_ACTIONS));
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];

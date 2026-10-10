@@ -12,17 +12,22 @@ import {
   deleteWebhookEndpoint,
   dueWebhooks,
   enqueueWebhookPing,
+  fireDeadlineNotices,
   getAccountById,
+  getReminderLead,
   listAccounts,
   listWebhookEndpoints,
+  nextNoticeAt,
   nextWebhookDue,
   pruneWebhooks,
+  setReminderLead,
   settleWebhook,
   VendorError,
   type Account,
   type openPlatformDb,
 } from '@cat-tool/db';
 import type { AuditActor } from '@cat-tool/core';
+import { DEFAULT_REMINDER_LEAD_HOURS, isReminderLead } from '@cat-tool/vendor-core';
 import { validateWebhookUrl } from '@cat-tool/vendor-core/webhook';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
@@ -51,14 +56,28 @@ export interface WebhookDispatcherOptions {
   readonly tickMs?: number;
 }
 
+/** What the dispatcher remembers about an owner between passes. */
+interface OwnerState {
+  /** True while the roster may hold deliveries that are pending. */
+  deliveries: boolean;
+  /**
+   * When the next deadline notice falls (epoch ms), null when none is ahead, or
+   * undefined when it must be recomputed (after a route moved an assignment).
+   */
+  notice: number | null | undefined;
+}
+
 /**
- * Drains each owner's webhook outbox. Owners with work are remembered, found at
+ * Drains each owner's webhook outbox and runs the deadline clock
+ * (vendor-spec.md, its #155 note). Owners with work are remembered, found at
  * boot by one pass over the accounts that have a roster and added when a route
- * moves an assignment; an owner whose queue is empty drops out until it is
- * nudged again. Owners are served in parallel, each one's deliveries in order.
+ * moves an assignment; an owner with nothing pending and no deadline ahead drops
+ * out until it is nudged again, and one with only a deadline ahead is left
+ * closed until that moment, so a roster is not opened every tick for nothing.
+ * Owners are served in parallel, each one's deliveries in order.
  */
 export class WebhookDispatcher {
-  private readonly owners = new Set<number>();
+  private readonly owners = new Map<number, OwnerState>();
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<number> | null = null;
   private again = false;
@@ -74,7 +93,15 @@ export class WebhookDispatcher {
       if (!existsSync(vendorsPath(this.options.storageRoot, account))) continue;
       const roster = openRoster(this.options.storageRoot, account);
       try {
-        if (roster && nextWebhookDue(roster) !== null) this.owners.add(account.id);
+        if (roster) {
+          const state: OwnerState = {
+            deliveries: nextWebhookDue(roster) !== null,
+            notice: nextNoticeAt(roster),
+          };
+          if (state.deliveries || state.notice !== null) {
+            this.owners.set(account.id, state);
+          }
+        }
       } finally {
         roster?.close();
       }
@@ -89,7 +116,7 @@ export class WebhookDispatcher {
 
   /** Something may be due for this owner: look soon, without waiting for the timer. */
   nudge(ownerId: number): void {
-    this.owners.add(ownerId);
+    this.owners.set(ownerId, { deliveries: true, notice: undefined });
     if (this.options.tickMs === 0) return; // tests call runOnce themselves
     setImmediate(() => void this.runOnce());
   }
@@ -116,7 +143,16 @@ export class WebhookDispatcher {
       let tried = 0;
       do {
         this.again = false;
-        const results = await Promise.all([...this.owners].map((id) => this.serve(id)));
+        const now = this.now().getTime();
+        const ready = [...this.owners]
+          .filter(
+            ([, s]) =>
+              s.deliveries ||
+              s.notice === undefined ||
+              (s.notice !== null && s.notice <= now),
+          )
+          .map(([id]) => id);
+        const results = await Promise.all(ready.map((id) => this.serve(id)));
         tried += results.reduce((a, b) => a + b, 0);
       } while (this.again);
       return tried;
@@ -129,20 +165,39 @@ export class WebhookDispatcher {
     }
   }
 
-  /** One owner's due deliveries, tried in order; returns how many. */
+  private now(): Date {
+    return (this.options.now ?? (() => new Date()))();
+  }
+
+  /**
+   * One owner's pass: fire the deadline notices that have come due, then try the
+   * deliveries that are due, in order. Returns how many deliveries were tried.
+   */
   private async serve(ownerId: number): Promise<number> {
+    const state = this.owners.get(ownerId);
     const account = getAccountById(this.options.platform, ownerId);
-    if (!account) {
+    if (!state || !account) {
       this.owners.delete(ownerId);
       return 0;
     }
-    const now = (this.options.now ?? (() => new Date()))();
+    const now = this.now();
     const roster = openRoster(this.options.storageRoot, account);
     if (!roster) {
       this.owners.delete(ownerId);
       return 0;
     }
     try {
+      if (
+        state.notice === undefined ||
+        (state.notice !== null && state.notice <= now.getTime())
+      ) {
+        if (fireDeadlineNotices(roster, now).queued > 0) state.deliveries = true;
+        state.notice = nextNoticeAt(roster);
+      }
+      if (!state.deliveries) {
+        if (state.notice === null) this.owners.delete(ownerId);
+        return 0;
+      }
       pruneWebhooks(roster, now);
       const due = dueWebhooks(roster, now, BATCH);
       for (const delivery of due) {
@@ -157,7 +212,8 @@ export class WebhookDispatcher {
           (this.options.now ?? (() => new Date()))(),
         );
       }
-      if (nextWebhookDue(roster) === null) this.owners.delete(ownerId);
+      state.deliveries = nextWebhookDue(roster) !== null;
+      if (!state.deliveries && state.notice === null) this.owners.delete(ownerId);
       return due.length;
     } finally {
       roster.close();
@@ -234,6 +290,45 @@ export function registerWebhookRoutes(
         if (err instanceof VendorError)
           return reply.code(400).send({ error: err.message });
         throw err;
+      } finally {
+        roster.close();
+      }
+    },
+  );
+
+  // How many hours before a deadline the reminder goes (issue #155); 0 is off.
+  app.get('/api/webhooks/reminders', async (req, reply) => {
+    const me = deps.owner(req);
+    if (me.role !== 'owner') return reply.code(403).send(forbidden);
+    const roster = openRoster(storageRoot, me);
+    if (!roster) return { leadHours: DEFAULT_REMINDER_LEAD_HOURS };
+    try {
+      return { leadHours: getReminderLead(roster) };
+    } finally {
+      roster.close();
+    }
+  });
+
+  app.put<{ Body: { leadHours?: unknown } | undefined }>(
+    '/api/webhooks/reminders',
+    async (req, reply) => {
+      const me = deps.owner(req);
+      if (me.role !== 'owner') return reply.code(403).send(forbidden);
+      const hours = req.body?.leadHours;
+      if (!isReminderLead(hours)) {
+        return reply
+          .code(400)
+          .send({ error: 'leadHours is a whole number of hours from 0 to 720' });
+      }
+      const roster = openOrCreateRoster(storageRoot, me);
+      try {
+        const leadHours = setReminderLead(roster, {
+          hours,
+          actor: deps.sessionActor(req),
+        });
+        // The next notice moves with the lead: have the dispatcher work it out again.
+        deps.dispatcher.nudge(me.id);
+        return { leadHours };
       } finally {
         roster.close();
       }

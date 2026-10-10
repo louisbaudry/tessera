@@ -14,8 +14,12 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
 
 import type { AssignmentStatus } from './assignment.js';
+import type { DeadlineNoticeKind } from './deadline.js';
 
-/** Every event an endpoint receives: a status entered, the payable locking, and a test. */
+/**
+ * Every event an endpoint receives: a status entered, a deadline coming up or
+ * passed (#155), the payable locking, and a test.
+ */
 export const WEBHOOK_EVENT_TYPES = [
   'assignment.offered',
   'assignment.pool_open',
@@ -25,6 +29,8 @@ export const WEBHOOK_EVENT_TYPES = [
   'assignment.in_progress',
   'assignment.delivered',
   'assignment.reviewed',
+  'assignment.deadline_soon',
+  'assignment.overdue',
   'payable.locked',
   'ping',
 ] as const;
@@ -51,6 +57,11 @@ export const WEBHOOK_KEEP_FAILED_DAYS = 30;
 /** The event an assignment entering `status` is reported as. */
 export function eventForStatus(status: AssignmentStatus): WebhookEventType {
   return `assignment.${status}`;
+}
+
+/** The event a deadline notice is reported as. */
+export function eventForNotice(kind: DeadlineNoticeKind): WebhookEventType {
+  return `assignment.${kind}`;
 }
 
 /** What the receiver reads: ids and states, never a name, note, rate or amount. */

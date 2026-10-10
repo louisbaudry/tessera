@@ -12,6 +12,8 @@ import { useLoad } from './use-load.js';
 import {
   deliverySummary,
   lastAnswer,
+  leadProblem,
+  leadSummary,
   needsAttention,
   SIGNATURE_HELP,
   urlProblem,
@@ -39,6 +41,7 @@ export function Webhooks() {
         payable locks. The message carries ids and states only, never a name, a note or an
         amount: read the details from the API.
       </p>
+      <ReminderLead />
       <Add
         existing={endpoints.length}
         onAdded={(host, secret) => {
@@ -195,5 +198,59 @@ function Endpoint({
         </button>
       </span>
     </li>
+  );
+}
+
+/**
+ * How long before a job's deadline the reminder goes (issue #155). A job that is
+ * past its deadline unfinished is always reported; only the reminder can be
+ * turned off.
+ */
+function ReminderLead() {
+  const action = useAction();
+  const [version, setVersion] = useState(0);
+  const [text, setText] = useState<string | null>(null);
+  const current = useLoad(
+    useCallback(
+      (token, signal) => {
+        void version;
+        return api.reminderLead(token, signal);
+      },
+      [version],
+    ),
+  );
+  const stored = current.state === 'done' ? current.data.leadHours : null;
+  const shown = text ?? (stored === null ? '' : String(stored));
+  const problem = text === null ? null : leadProblem(text);
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (text === null || problem !== null) return;
+    const done = await action.run((token) => api.setReminderLead(token, Number(text)));
+    if (done) {
+      setText(null);
+      setVersion((v) => v + 1);
+    }
+  };
+  return (
+    <form className="panel form" onSubmit={(e) => void save(e)}>
+      <label>
+        Hours before a deadline to send a reminder
+        <input
+          type="text"
+          inputMode="numeric"
+          value={shown}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </label>
+      <div className="actions">
+        <button type="submit" disabled={action.busy || text === null || problem !== null}>
+          Save
+        </button>
+        <span className="muted">
+          {problem ?? (stored === null ? '' : leadSummary(stored))}
+        </span>
+        {action.error && <span className="error">{action.error}</span>}
+      </div>
+    </form>
   );
 }

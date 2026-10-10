@@ -64,12 +64,21 @@ const resolve = async (host: string): Promise<string[]> => {
   return [PUBLIC];
 };
 
+// The dispatcher's clock: tests move it to make a deadline approach or pass.
+let clock: Date | null = null;
+const clockNow = () => clock ?? new Date();
+
 async function open(tickMs = 10): Promise<FastifyInstance> {
-  return buildApp({ config, logger: false, webhooks: { send, resolve, tickMs } });
+  return buildApp({
+    config,
+    logger: false,
+    webhooks: { send, resolve, tickMs, now: clockNow },
+  });
 }
 
 beforeEach(async () => {
   sent.length = 0;
+  clock = null;
   answer = () => ({ ok: true, httpStatus: 200, error: null });
   dir = mkdtempSync(join(tmpdir(), 'cat-webhooks-srv-'));
   config = {
@@ -384,6 +393,115 @@ describe('delivery', () => {
     await settled(1);
     expect(sent.every((s) => s.delivery.url === URL1)).toBe(true);
     expect(erin.id).not.toBe(alice.id);
+  });
+});
+
+describe('the deadline clock', () => {
+  const DAY = 86_400_000;
+  /** Offers a job due in two days and returns the deadline's instant. */
+  async function offerDue(token: string): Promise<number> {
+    const due = Date.now() + 2 * DAY;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/assignments',
+      headers: as(token),
+      payload: {
+        project: 'client-acme-brochure',
+        channel: 'direct',
+        vendors: [bob.id],
+        deadline: new Date(due).toISOString(),
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    return due;
+  }
+  const types = () => sent.map((s) => s.delivery.eventType);
+
+  it('sends a reminder inside the lead window and overdue after the deadline, once each', async () => {
+    const a = await aliceWithProject();
+    await register(a, URL1);
+    const due = await offerDue(a);
+    await settled(1);
+    expect(types()).toEqual(['assignment.offered']);
+
+    clock = new Date(due - 12 * 3_600_000);
+    await settled(2);
+    expect(types()).toEqual(['assignment.offered', 'assignment.deadline_soon']);
+    const soon = JSON.parse(sent[1]!.delivery.body);
+    expect(soon).toMatchObject({
+      type: 'assignment.deadline_soon',
+      from: null,
+      to: 'offered',
+      vendorAccountId: bob.id,
+    });
+    // the body names the job by id and state, never by project or deadline
+    expect(sent[1]!.delivery.body).not.toMatch(/acme|brochure|deadline"/i);
+
+    clock = new Date(due + 60_000);
+    await settled(3);
+    expect(types().at(-1)).toBe('assignment.overdue');
+    await new Promise((r) => setTimeout(r, 80));
+    expect(types()).toHaveLength(3); // nothing repeats on later ticks
+  });
+
+  it('reminds nobody when the owner turns the lead off, but still reports overdue', async () => {
+    const a = await aliceWithProject();
+    await register(a, URL1);
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/webhooks/reminders',
+      headers: as(a),
+      payload: { leadHours: 0 },
+    });
+    expect(put.json()).toEqual({ leadHours: 0 });
+    const due = await offerDue(a);
+    await settled(1);
+
+    clock = new Date(due - 12 * 3_600_000);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(types()).toEqual(['assignment.offered']);
+
+    clock = new Date(due + 60_000);
+    await settled(2);
+    expect(types()).toEqual(['assignment.offered', 'assignment.overdue']);
+  });
+
+  it('picks up a deadline that came due while the server was down', async () => {
+    const a = await aliceWithProject();
+    await register(a, URL1);
+    const due = await offerDue(a);
+    await settled(1);
+    await app.close();
+    sent.length = 0;
+
+    clock = new Date(due + DAY); // started again a day after the deadline
+    app = await open(10);
+    await settled(1);
+    // the reminder is superseded: only the overdue notice goes out
+    expect(types()).toEqual(['assignment.overdue']);
+  });
+
+  it('reads and sets the lead for an owner only, refusing anything but whole hours 0 to 720', async () => {
+    const a = await login('alice');
+    const get = (t: string) =>
+      app.inject({ method: 'GET', url: '/api/webhooks/reminders', headers: as(t) });
+    const put = (t: string, leadHours: unknown) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/webhooks/reminders',
+        headers: as(t),
+        payload: { leadHours },
+      });
+    expect((await get(a)).json()).toEqual({ leadHours: 24 });
+    expect((await put(a, 48)).json()).toEqual({ leadHours: 48 });
+    expect((await get(a)).json()).toEqual({ leadHours: 48 });
+    for (const bad of [-1, 721, 1.5, '24', null]) {
+      expect((await put(a, bad)).statusCode).toBe(400);
+    }
+    const b = await login('bob');
+    expect((await get(b)).statusCode).toBe(403);
+    expect((await put(b, 1)).statusCode).toBe(403);
+    expect((await get(a)).json()).toEqual({ leadHours: 48 });
   });
 });
 

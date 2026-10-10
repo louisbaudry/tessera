@@ -1021,9 +1021,8 @@ rules below are the design, not the detail.
   show it. `type` is `assignment.<status>` for each status an assignment can enter
   (`offered`, `pool_open`, `claimed`, `accepted`, `declined`, `in_progress`, `delivered`,
   `reviewed`), plus `payable.locked` and `ping` (the test event). A closed list in `vendor-core`,
-  a frozen literal in the migration. **Not sent: `overdue`**, which needs a clock watching
-  deadlines and a decision on what late means (§4); and no per-event filter yet, an endpoint gets
-  all of them.
+  a frozen literal in the migration. **`overdue` and `deadline_soon` came after,
+  with their clock (the #155 note below)**; there is no per-event filter yet, an endpoint gets all of them.
 - **One roster, one outbox.** An endpoint belongs to the owner's roster (`.ctv`, schema v6): `url`,
   a `secret`, `created_at`. At most three per owner. A delivery is a row in `webhook_delivery`
   inserted **in the same transaction as the `assignment_event`** it reports (`appendEvent` is the
@@ -1072,5 +1071,45 @@ rules below are the design, not the detail.
   and `node:net`, which the SPA, a runtime importer of `vendor-core`, must never bundle (a lint rule
   keeps it out of `web`). The outbox is `db/vendor/webhooks.ts`; the request is
   `server/src/webhook-send.ts`, the one place the server calls a URL a person typed.
-- **Not built here:** the portal's order events, the `overdue` event, a per-event filter, a manual
-  redelivery of a failed row, and an allow-list of extra ports.
+- **Not built here:** the portal's order events, a per-event filter, a manual redelivery of a failed
+  row, and an allow-list of extra ports.
+
+**Implementation note (#155 slice: the deadline clock), written before the code (2026-10-10).**
+Louis chose the part of issue #155 that needs no further decision: a reminder before a deadline and
+an `overdue` notice. Cascading offers stay out (a time-driven widening of who sees a job is its own
+confidentiality call, as the 2026-10-09 decision above says), and so does any automatic repost.
+
+- **Two notices, each once per assignment.** `assignment.deadline_soon` fires when the deadline is
+  within the owner's reminder lead; `assignment.overdue` fires when the deadline has passed. Both are
+  webhook events (the only outbound channel the server has; there is no mail sender, issue #188) on
+  the existing outbox, with the same body shape: `from` is null and `to` is the status the job is
+  in, which is how a receiver tells a late `offered` from a late `in_progress`.
+- **What counts as late.** A job with a deadline that is still `offered`, `pool_open`, `claimed`,
+  `accepted` or `in_progress` at that instant. `delivered` and `reviewed` are done and `declined` is
+  the vendor's answer, so none of them is late. An unanswered offer past its deadline is overdue: it
+  stays `offered` (the 2026-10-09 decision), and the notice is how the owner finds out to re-offer.
+  The deadline compared is the one the job carries (a re-offer is a new assignment with its own).
+- **A notice is a row, so it fires once and survives a restart.** `assignment_notice
+  (assignment_id, kind)` is unique; the clock inserts the row and queues the deliveries in one
+  transaction, so a crash between the two can neither lose a notice nor repeat one. Nothing is held
+  in memory that a restart would forget: the next pass derives what is due from the assignments.
+  A notice with no endpoint registered is still recorded, so adding an endpoint later does not
+  replay old lateness.
+- **The reminder is configurable, and off is a value.** `notice_setting` holds one row at most,
+  `reminder_lead_hours`; no row means 24, `0` means no reminders, the ceiling is 720 (30 days). It is
+  absence-based like `qa_rule_setting`, so an existing roster changes nothing. A job offered inside
+  its own lead (a 6-hour job offered with a 24-hour lead) gets no `deadline_soon`: the owner set that
+  deadline knowing it, and a reminder at the moment of offer is noise. `overdue` is not configurable.
+  Changing the lead is an audit event (`webhook.reminder_changed`, from and to).
+- **The clock lives in the dispatcher.** Each pass, for an owner whose next notice time has come
+  (kept per owner in memory, recomputed after a pass and whenever a route moves an assignment), it
+  runs `fireDeadlineNotices`. At boot the same scan finds the owners with a deadline ahead, so no
+  owner's roster is opened every tick for nothing. The pure rules (which notices an assignment is
+  due, and when the next one is) are `vendor-core/src/deadline.ts`.
+- **The vendor is not messaged.** The vendor sees the deadline in their own list; a reminder to the
+  vendor needs a channel the server does not have. **Not built here:** cascading offers, reminders to
+  vendors, per-event filters (still #206), and a badge on the owner's list for a late job.
+- **Where the code lives.** The rules are `vendor-core/src/deadline.ts`; the tables (`.ctv` v7) and
+  `fireDeadlineNotices`/`nextNoticeAt`/`setReminderLead` are `db/vendor/deadlines.ts`; the clock is in
+  `WebhookDispatcher` (`server/src/webhooks.ts`), with `GET/PUT /api/webhooks/reminders` (owner only,
+  `leadHours` a whole number from 0 to 720).

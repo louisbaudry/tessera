@@ -417,6 +417,14 @@ export const api = {
     ),
   removeWebhook: (token: string, id: number) =>
     call<{ removed: true }>(`/api/webhooks/${id}`, token, { method: 'DELETE' }),
+  /** Hours before a deadline that the reminder goes; 0 is off (issue #155). */
+  reminderLead: (token: string, signal?: AbortSignal) =>
+    call<{ leadHours: number }>('/api/webhooks/reminders', token, { signal }),
+  setReminderLead: (token: string, leadHours: number) =>
+    call<{ leadHours: number }>('/api/webhooks/reminders', token, {
+      method: 'PUT',
+      body: { leadHours },
+    }),
   /** Queues a `ping` to the endpoint. */
   testWebhook: (token: string, id: number) =>
     call<{ queued: true }>(`/api/webhooks/${id}/test`, token, {

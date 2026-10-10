@@ -175,6 +175,8 @@ export interface BuildAppOptions {
     readonly resolve?: Resolver;
     readonly isPublic?: (address: string) => boolean;
     readonly tickMs?: number;
+    /** The dispatcher's clock, for the deadline notices (issue #155). */
+    readonly now?: () => Date;
   };
 }
 
@@ -1906,6 +1908,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     platform,
     send: webhookOptions.send ?? defaultWebhookSender(),
     ...(webhookOptions.tickMs !== undefined ? { tickMs: webhookOptions.tickMs } : {}),
+    ...(webhookOptions.now ? { now: webhookOptions.now } : {}),
   });
   app.addHook('onClose', async () => {
     await dispatcher.stop();

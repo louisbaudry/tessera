@@ -4,6 +4,8 @@
  * check a signature. Pure, so it is proved in node. What is sent, signed and
  * retried is the server's and `vendor-core`'s; nothing here re-derives it.
  */
+import { isReminderLead, MAX_REMINDER_LEAD_HOURS } from '@cat-tool/vendor-core';
+
 import type { WebhookView } from './api.js';
 
 /** The most endpoints an owner may register; the server enforces it, this only sets expectations. */
@@ -54,4 +56,24 @@ export function urlProblem(url: string, existing: number): string | null {
   if (text === '') return 'Enter the address that should receive the events.';
   if (!/^https:\/\//i.test(text)) return 'The address must start with https://';
   return null;
+}
+
+/** Why the reminder field cannot be saved, or null. The text is what the owner typed. */
+export function leadProblem(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return 'Enter a number of hours, or 0 for no reminder.';
+  if (!/^\d+$/.test(trimmed) || !isReminderLead(Number(trimmed))) {
+    return `Use a whole number of hours from 0 to ${MAX_REMINDER_LEAD_HOURS}.`;
+  }
+  return null;
+}
+
+/** The reminder setting in words: "No reminder", "1 hour before", "2 days before". */
+export function leadSummary(hours: number): string {
+  if (hours === 0) return 'No reminder before a deadline';
+  if (hours % 24 === 0) {
+    const days = hours / 24;
+    return `Reminder ${days === 1 ? '1 day' : `${days} days`} before a deadline`;
+  }
+  return `Reminder ${hours === 1 ? '1 hour' : `${hours} hours`} before a deadline`;
 }
