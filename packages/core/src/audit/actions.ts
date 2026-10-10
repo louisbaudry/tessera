@@ -66,6 +66,7 @@ export const VENDOR_AUDIT_ACTIONS = [
   'payables.exported',
   'webhook.created',
   'webhook.deleted',
+  'webhook.reminder_changed',
 ] as const;
 
 export type ProjectAuditAction = (typeof PROJECT_AUDIT_ACTIONS)[number];
@@ -241,6 +242,8 @@ export interface AuditDetail {
    */
   'webhook.created': { readonly host: string };
   'webhook.deleted': { readonly host: string };
+  /** The owner's deadline-reminder lead in hours, before and after (backlog #125, issue #155). */
+  'webhook.reminder_changed': { readonly from: number; readonly to: number };
 }
 
 /** An order's price and the word count it was computed from (spec §2.6). */

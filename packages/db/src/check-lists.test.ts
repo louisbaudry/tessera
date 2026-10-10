@@ -27,6 +27,7 @@ import {
   ASSIGNMENT_CHANNELS,
   ASSIGNMENT_STATUSES,
   CAPACITY_STATUSES,
+  DEADLINE_NOTICE_KINDS,
   PAYMENT_KINDS,
   RATE_TIERS,
 } from '@cat-tool/vendor-core';
@@ -101,6 +102,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'assignment_payment_event.kind': PAYMENT_KINDS,
       'webhook_delivery.event_type': WEBHOOK_EVENT_TYPES,
       'webhook_delivery.status': WEBHOOK_DELIVERY_STATUSES,
+      'assignment_notice.kind': DEADLINE_NOTICE_KINDS,
     },
   },
   tm: {

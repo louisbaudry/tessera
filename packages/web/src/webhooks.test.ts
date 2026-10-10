@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   deliverySummary,
   lastAnswer,
+  leadProblem,
+  leadSummary,
   MAX_ENDPOINTS,
   needsAttention,
   urlProblem,
@@ -49,5 +51,27 @@ describe('urlProblem', () => {
   it('stops at the limit and says to remove one', () => {
     expect(urlProblem('https://hooks.example.com/', MAX_ENDPOINTS)).toMatch(/remove one/);
     expect(urlProblem('https://hooks.example.com/', MAX_ENDPOINTS - 1)).toBeNull();
+  });
+});
+
+describe('leadProblem', () => {
+  it('takes whole hours from 0 to 720 and says what is wrong otherwise', () => {
+    for (const ok of ['0', '1', ' 24 ', '720']) expect(leadProblem(ok)).toBeNull();
+    for (const bad of ['', '  ', '-1', '721', '1.5', '2h', 'abc']) {
+      expect(leadProblem(bad)).not.toBeNull();
+    }
+    expect(leadProblem('')).toMatch(/0 for no reminder/);
+    expect(leadProblem('721')).toMatch(/0 to 720/);
+  });
+});
+
+describe('leadSummary', () => {
+  it('reads whole days as days and everything else as hours', () => {
+    expect(leadSummary(0)).toBe('No reminder before a deadline');
+    expect(leadSummary(1)).toBe('Reminder 1 hour before a deadline');
+    expect(leadSummary(6)).toBe('Reminder 6 hours before a deadline');
+    expect(leadSummary(24)).toBe('Reminder 1 day before a deadline');
+    expect(leadSummary(72)).toBe('Reminder 3 days before a deadline');
+    expect(leadSummary(36)).toBe('Reminder 36 hours before a deadline');
   });
 });

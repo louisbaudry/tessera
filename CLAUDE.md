@@ -364,6 +364,13 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   they use `node:crypto` and `node:net`, and the SPA imports `vendor-core` at
   runtime, so a lint rule keeps the subpath out of `web`. A new outbound call
   gets the same checks, never its own.
+- **A deadline notice is a row, fired once, never held in memory** (backlog #126,
+  `db/src/vendor/deadlines.ts`, vendor-spec.md's #155 note): `assignment_notice` is unique per
+  (assignment, kind) and is written in the transaction that queues its webhook, so a restart
+  neither loses nor repeats one, and a notice with no endpoint is still recorded (no replay for an
+  endpoint added later). The clock lives in `WebhookDispatcher`, which keeps each owner's next
+  notice time and leaves a roster closed until then. An unanswered offer past its deadline is
+  overdue and stays `offered`; nothing reposts or reassigns it on a timer.
 - **A grant is mended against the roster, never by repeating a step**
   (backlog #51c, `reconcileAssignmentGrants`): accept and review each
   change two files, and a failed revoke after a review cannot be retried

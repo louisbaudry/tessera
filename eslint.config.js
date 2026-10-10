@@ -112,6 +112,7 @@ export default tseslint.config(
                 'ASSIGNMENT_CHANNELS',
                 'RATE_TIERS',
                 'CAPACITY_STATUSES',
+                'DEADLINE_NOTICE_KINDS',
               ],
               message:
                 'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',

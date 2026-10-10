@@ -3711,8 +3711,41 @@ rest of that range:
     (a private host refused, the secret shown once and absent from the page afterwards, a test
     delivered, a failing receiver left waiting with its status, removal). Not verified: delivery
     to a real third-party endpoint from a deployment, and a roster with many thousands of queued rows.
-  - Not built: the portal's order events, the `overdue` event, a per-event filter, a manual
+  - Not built: the portal's order events, a per-event filter, a manual
     redelivery of a failed row, extra ports.
+
+- **#126 · ~~The deadline clock: reminders and overdue notices~~ · DONE — `vendor-core/src/deadline.ts`, `.ctv` schema v7 and `db/src/vendor/deadlines.ts`, the clock in `WebhookDispatcher` and `GET/PUT /api/webhooks/reminders` (`server/src/webhooks.ts`), a reminder field in `web/src/Webhooks.tsx`.**
+  The part of issue #155 that needed no further decision; cascading offers stayed out (a time-driven
+  widening of who sees a job is its own confidentiality call). Design note, written before the code:
+  `vendor-spec.md`, the #155 note. Two webhook events, `assignment.deadline_soon` and
+  `assignment.overdue`, on the #125 outbox, so the owner learns a job is late through the one
+  outbound channel the server has.
+  - **A notice is a row.** `assignment_notice (assignment_id, kind)` is unique, and
+    `fireDeadlineNotices` inserts it and queues the deliveries in one transaction: a notice fires once
+    and a restart can neither lose nor repeat it. Nothing lives only in memory; the next pass derives
+    what is due from the assignments. A notice with no endpoint is still recorded, so an endpoint
+    added later gets no replay of old lateness.
+  - **What counts as late** is any job with a deadline that is still `offered`, `pool_open`, `claimed`,
+    `accepted` or `in_progress`. An unanswered direct offer past its deadline is overdue and stays
+    `offered` (the 2026-10-09 decision); the notice is how the owner finds out to re-offer.
+  - **Reminders are configurable and off is a value.** `notice_setting` is one absence-based row (no
+    row is 24 hours, 0 is off, 720 the ceiling), changed through an audited `webhook.reminder_changed`.
+    A job offered inside its own lead window gets no reminder: the owner set that deadline knowing it.
+    A reminder that comes due in the same pass as `overdue` (the server was down across the deadline)
+    is recorded but not sent, since "due in a day" after the deadline is false. A deliberate removal of
+    that rule turned two tests red.
+  - **The dispatcher does not open every roster every tick.** It keeps, per owner, when the next notice
+    falls (`nextNoticeAt`), recomputes it after a pass and whenever a route moves an assignment or the
+    lead changes, and leaves a roster closed until then. A bug the first design would have had: an
+    owner with nothing pending and a deadline ahead must stay in the map, so "no deliveries" is not
+    the same as "nothing to do".
+  - Verified: 11 pure rule tests, 14 repository tests (the guard `check-lists.test.ts` ties the new
+    CHECK to `DEADLINE_NOTICE_KINDS`), 4 server tests that drive the dispatcher with a moved clock
+    (reminder then overdue once each, lead off, a deadline that passed while the server was down, the
+    owner-only routes). Two existing tests changed on purpose: the `.ctv` `user_version` is now 7.
+    Not verified: a real receiver; the Webhooks field in a browser.
+  - Not built: cascading offers, reminders to vendors (no channel), a per-event filter (issue #206), a
+    badge on the owner's list for a late job.
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
