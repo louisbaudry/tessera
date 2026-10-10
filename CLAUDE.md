@@ -352,6 +352,18 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   advisory: nothing sorts, filters or excludes a vendor by it. Silence on a direct
   offer is not a decline, and §4 is settled (2026-10-09): a declined or missed direct offer
   is never converted to a pool post by itself, the owner re-offers.
+- **A webhook is the only call the server makes to a URL a person typed, and it
+  trusts none of it** (backlog #125, `server/src/webhook-send.ts`, vendor-spec.md's
+  #125 note). The URL's shape and every address its name resolves to are checked
+  at registration and **again on every attempt** (`validateWebhookUrl`,
+  `isPublicAddress`), the connection goes to the address that was checked, a
+  redirect is never followed, and the body is ids and states only. The outbox row
+  is written in the transaction of the event it reports (`appendEvent`), and the
+  secret is kept (signing needs it), shown once and never logged. These rules
+  live in `@cat-tool/vendor-core/webhook`, a **subpath, not the package index**:
+  they use `node:crypto` and `node:net`, and the SPA imports `vendor-core` at
+  runtime, so a lint rule keeps the subpath out of `web`. A new outbound call
+  gets the same checks, never its own.
 - **A grant is mended against the roster, never by repeating a step**
   (backlog #51c, `reconcileAssignmentGrants`): accept and review each
   change two files, and a failed revoke after a review cannot be retried
@@ -634,7 +646,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts` and `commands.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts` and `commands.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

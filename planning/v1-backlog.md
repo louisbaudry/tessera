@@ -3672,6 +3672,48 @@ rest of that range:
     owner, the same panel with names and the link. Not verified: a project with a switched-off
     memory in a vendor's view (only the unit test covers the `off` badge).
 
+- **#125 · ~~Signed webhooks for the vendor events~~ · DONE — `vendor-core/src/webhook.ts` (subpath `@cat-tool/vendor-core/webhook`), `.ctv` schema v6 and `db/src/vendor/webhooks.ts`, `server/src/{webhook-send,webhooks,roster}.ts`, `web/src/{Webhooks.tsx,webhooks.ts}`.**
+  Part of issue #176, decided by Louis (2026-10-09: yes, vendor events first; the portal's order
+  events are a later card). An owner registers up to three HTTPS addresses and gets a signed POST
+  for every assignment event and for the payable locking. Design note, written before the code:
+  `vendor-spec.md`, the #125 note.
+  - **The first place the server calls a URL a person typed, so the rules are the design.** The
+    shape check (`validateWebhookUrl`: https, no user info or fragment, port 443, a host name and
+    never an IP literal) and the address check (`isPublicAddress`, over **every** address a name
+    resolves to) run at registration and **again on every attempt**, because DNS can change in
+    between. The connection is made to the address that was checked (the `lookup` hook), with the
+    host name still driving the TLS server name and certificate check, so what was vetted is what is
+    dialled. Redirects are never followed, the request times out at 10 s and 2 KiB of the answer is
+    read and none kept. 79 pure tests cover the address corpus (IPv4-mapped, NAT64, 6to4 and
+    compatible forms judged by the IPv4 inside them); a deliberate removal of the address check
+    turned four server tests red.
+  - **At-least-once, in the same transaction.** `appendEvent` is the one writer of
+    `assignment_event`, so it also writes the outbox row (`webhook_delivery`), and the payable lock
+    writes `payable.locked` in the delivery's own transaction: a committed event is sent, a rolled
+    back one never is (tested with a refused move). The body is ids and states only; a test sends
+    an offer whose project and instructions name a client and asserts none of it is in the body.
+  - **Retries, then a visible failure.** 1 min, 5 min, 30 min, 2 h, 12 h, then `failed` and listed;
+    a queue of 500 pending rows refuses more (`failed`, `queue full`); delivered rows are pruned
+    after 14 days, failed ones after 30. The queue is in the roster file, so a restart loses nothing
+    (a test closes the app with rows waiting and a new one drains them).
+  - **The secret is kept, not hashed**, because signing needs it: shown once in the response that
+    creates the endpoint, never listed, never in the audit log (which records `webhook.created` and
+    `webhook.deleted` with the host alone, since a path or query may carry a token).
+  - **A bug the browser build caught**: `vendor-core` is a runtime dependency of the SPA, and its
+    index re-exporting the webhook module pulled `node:crypto` into the bundle. The module is a
+    subpath export, and a lint rule keeps it out of `web`.
+  - **One roster helper**: opening an owner's `.ctv` was written twice (assignments, invitations); a
+    third copy was about to land, so it is now `server/src/roster.ts`.
+  - Verified: the sender against a real local TLS server (a self-signed certificate, the resolver
+    and address check swapped through the test seams): pinned dial, valid signature, a 302 not
+    followed (one request), a 5 MB answer read to 2 KiB, a silent receiver timed out, loopback
+    refused by default, a certificate for another name refused; the Webhooks section in Chromium
+    (a private host refused, the secret shown once and absent from the page afterwards, a test
+    delivered, a failing receiver left waiting with its status, removal). Not verified: delivery
+    to a real third-party endpoint from a deployment, and a roster with many thousands of queued rows.
+  - Not built: the portal's order events, the `overdue` event, a per-event filter, a manual
+    redelivery of a failed row, extra ports.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

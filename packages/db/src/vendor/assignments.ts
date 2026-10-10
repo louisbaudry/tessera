@@ -31,6 +31,7 @@ import type Database from 'better-sqlite3';
 
 import { VendorError } from './error.js';
 import { getVendor } from './vendors.js';
+import { assignmentWebhookEvent, enqueueWebhook } from './webhooks.js';
 
 /** Another move got there first: a route answers 409. */
 export class AssignmentConflictError extends VendorError {
@@ -146,6 +147,9 @@ function appendEvent(
     options.note ?? null,
     options.at,
   );
+  // The outbox row is written in the caller's transaction, beside the event it
+  // reports, so a committed event is sent at least once (vendor-spec.md #125).
+  enqueueWebhook(db, assignmentWebhookEvent(options), options.at);
 }
 
 export interface JobFields {

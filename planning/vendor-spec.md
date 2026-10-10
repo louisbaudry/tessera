@@ -1008,3 +1008,69 @@ vendor editing a project sees the editor's Resources panel (backlog #114), decid
   `off` badges, and drops the link to the project page, which a grantee cannot manage. The pure
   row builder is `resources.ts`'s, next to the owner's.
 - **Not built here:** reference files (issue #190 part 1), which stay their own card.
+
+**Implementation note (#125, issue #176), written before the code (2026-10-09).** Signed webhooks
+for the vendor events, decided by Louis (2026-10-09: yes, vendor events first; the portal's order
+events are a later card). This is the first time the server calls a URL a person typed, so the
+rules below are the design, not the detail.
+
+- **What is sent, and nothing else.** One JSON body per event with ids and states only:
+  `{ id, type, createdAt, assignmentId, from, to, vendorAccountId }` (`payable.locked` carries just
+  the `assignmentId`). No project name, instructions, note, email, rate or amount: the receiver
+  reads those from the API with its own session, so the webhook cannot leak what the API would not
+  show it. `type` is `assignment.<status>` for each status an assignment can enter
+  (`offered`, `pool_open`, `claimed`, `accepted`, `declined`, `in_progress`, `delivered`,
+  `reviewed`), plus `payable.locked` and `ping` (the test event). A closed list in `vendor-core`,
+  a frozen literal in the migration. **Not sent: `overdue`**, which needs a clock watching
+  deadlines and a decision on what late means (§4); and no per-event filter yet, an endpoint gets
+  all of them.
+- **One roster, one outbox.** An endpoint belongs to the owner's roster (`.ctv`, schema v6): `url`,
+  a `secret`, `created_at`. At most three per owner. A delivery is a row in `webhook_delivery`
+  inserted **in the same transaction as the `assignment_event`** it reports (`appendEvent` is the
+  one place that writes one), so an event that committed is delivered at least once and one that
+  rolled back never is. A receiver dedupes on the delivery `id`.
+- **The secret is kept, not hashed**, because signing needs it: 32 random bytes, shown once in the
+  response that creates the endpoint (as an invitation link is) and never listed again. It sits in
+  the roster file beside the rates, which is the same exposure class as the file's other contents.
+  Rotating is deleting the endpoint and creating another.
+- **Signature.** Headers `X-Tessera-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of
+  "<t>.<body>" under the secret>`, `X-Tessera-Event`, `X-Tessera-Delivery`. The timestamp is inside
+  the signed text so a replay outside the receiver's window (we document five minutes) fails.
+- **The server never trusts a URL it was given.** Two checks, both repeated on **every attempt**
+  because DNS can change between registration and delivery (rebinding):
+  1. *Shape* (`validateWebhookUrl`, pure): `https` only, no userinfo, no fragment, the default port
+     only (443), a host name and never an IP literal, at most 2,048 characters. A deployment that
+     needs another port is a later, deliberate change.
+  2. *Address* (`isPublicAddress`, pure, and a resolver): the name is resolved once, **every**
+     address it resolves to must be public, and the connection is made to the address that was
+     checked (the `lookup` hook of the HTTPS request), so what was vetted is what is dialled. Not
+     public means loopback, private, link-local, carrier-grade NAT, multicast, reserved and
+     documentation ranges, IPv4-mapped and 6to4/NAT64 forms judged by the IPv4 inside them.
+  Redirects are never followed (a `3xx` is a failed attempt), TLS is verified against the host
+  name, the request times out at 10 s, and at most 2 KiB of the response is read and none is kept
+  beyond the status code and a short error class.
+- **Retries, then a visible failure.** Any non-`2xx` or error retries after 1 min, 5 min, 30 min,
+  2 h and 12 h (six attempts in all), then the row is `failed` and stays listed. A queue of more
+  than 500 pending rows for an endpoint refuses new ones (`failed`, `queue full`) rather than
+  growing without bound. Delivered rows are pruned after 14 days and failed ones after 30.
+- **The dispatcher lives in the server and the queue in the file**, so a restart loses nothing: at
+  boot it looks for owners with due rows (one pass over the accounts that have a roster), then a
+  timer drains the owners that have work, and a route that moves an assignment nudges its owner
+  at once. The HTTP sender is injected, so tests prove the queue, the signature and the address
+  rules without a network.
+- **Audit.** Creating and deleting an endpoint are `audit_event`s with the session as actor
+  (`webhook.created`, `webhook.deleted`, a widened CHECK through `rebuildTable`); the URL goes in
+  the event's detail only as its host, never the path or query, which may hold a token. A delivery
+  attempt is operational state in `webhook_delivery`, not an audited decision.
+- **Owner only.** `POST/GET /api/webhooks`, `DELETE /api/webhooks/:id`, `POST
+  /api/webhooks/:id/test`, all on the session's own roster; an account that is not an owner gets a
+  403. The list shows the host, the counts of pending, delivered and failed deliveries and the last
+  status code, never the secret. A "Webhooks" section on the owner's Vendors screen registers,
+  tests and removes endpoints and shows the secret once.
+- **Where the code lives.** The wire format, signature, URL and address rules are
+  `@cat-tool/vendor-core/webhook`, **a subpath and not the package index**: they use `node:crypto`
+  and `node:net`, which the SPA, a runtime importer of `vendor-core`, must never bundle (a lint rule
+  keeps it out of `web`). The outbox is `db/vendor/webhooks.ts`; the request is
+  `server/src/webhook-send.ts`, the one place the server calls a URL a person typed.
+- **Not built here:** the portal's order events, the `overdue` event, a per-event filter, a manual
+  redelivery of a failed row, and an allow-list of extra ports.

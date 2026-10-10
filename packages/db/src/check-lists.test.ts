@@ -30,6 +30,10 @@ import {
   PAYMENT_KINDS,
   RATE_TIERS,
 } from '@cat-tool/vendor-core';
+import {
+  WEBHOOK_DELIVERY_STATUSES,
+  WEBHOOK_EVENT_TYPES,
+} from '@cat-tool/vendor-core/webhook';
 import { describe, expect, it } from 'vitest';
 
 import { GLOSSARY_APPLICATION_ID, GLOSSARY_MIGRATIONS } from './glossary/schema.js';
@@ -95,6 +99,8 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'assignment_analysis.tier': RATE_TIERS,
       'assignment_payable_line.tier': RATE_TIERS,
       'assignment_payment_event.kind': PAYMENT_KINDS,
+      'webhook_delivery.event_type': WEBHOOK_EVENT_TYPES,
+      'webhook_delivery.status': WEBHOOK_DELIVERY_STATUSES,
     },
   },
   tm: {

@@ -179,6 +179,18 @@ export interface RosterEntry extends RosterVendor {
   readonly record: VendorRecord;
 }
 
+/** A registered webhook endpoint: its host and what has become of what was sent to it. */
+export interface WebhookView {
+  readonly id: number;
+  readonly host: string;
+  readonly createdAt: string;
+  readonly pending: number;
+  readonly delivered: number;
+  readonly failed: number;
+  readonly lastStatus: number | null;
+  readonly lastAttemptAt: string | null;
+}
+
 export interface ProjectSummary {
   readonly name: string;
   readonly project: Project | null;
@@ -390,6 +402,27 @@ export const api = {
   /** The owner's roster, for the pay run's vendor filter (backlog #113). */
   rosterVendors: (token: string, signal?: AbortSignal) =>
     call<{ vendors: RosterEntry[] }>('/api/vendors', token, { signal }),
+  /** The owner's webhook endpoints with their delivery counts; never the secret (backlog #125). */
+  webhooks: (token: string, signal?: AbortSignal) =>
+    call<{ webhooks: WebhookView[] }>('/api/webhooks', token, { signal }),
+  /** Registers an endpoint; the signing secret is in this response and no other. */
+  addWebhook: (token: string, url: string) =>
+    call<{ webhook: { id: number; host: string }; secret: string }>(
+      '/api/webhooks',
+      token,
+      {
+        method: 'POST',
+        body: { url },
+      },
+    ),
+  removeWebhook: (token: string, id: number) =>
+    call<{ removed: true }>(`/api/webhooks/${id}`, token, { method: 'DELETE' }),
+  /** Queues a `ping` to the endpoint. */
+  testWebhook: (token: string, id: number) =>
+    call<{ queued: true }>(`/api/webhooks/${id}/test`, token, {
+      method: 'POST',
+      body: {},
+    }),
   /** The owner's invitations, newest first (backlog #111). */
   invitations: (token: string, signal?: AbortSignal) =>
     call<{ invitations: InvitationView[] }>('/api/invitations', token, { signal }),

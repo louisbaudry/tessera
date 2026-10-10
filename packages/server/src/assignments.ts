@@ -16,8 +16,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 
 import { isSlug, plainText, type AuditActor } from '@cat-tool/core';
 import {
@@ -28,7 +27,6 @@ import {
   addVendor,
   claimAssignment,
   createDirectOffer,
-  createVendorFile,
   declineAssignment,
   deliverAssignment,
   getAccountById,
@@ -54,7 +52,6 @@ import {
   previewSource,
   type openPlatformDb,
   openProjectDb,
-  openVendorFile,
   NoPayableError,
   PaymentConflictError,
   postToPool,
@@ -94,9 +91,13 @@ import {
 } from '@cat-tool/vendor-core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { projectPath, vendorsPath } from './storage.js';
+import {
+  openOrCreateRoster as openOrCreateRosterFile,
+  openRoster as openRosterFile,
+  type Roster,
+} from './roster.js';
+import { projectPath } from './storage.js';
 
-type Roster = ReturnType<typeof openVendorFile>;
 type Platform = ReturnType<typeof openPlatformDb>;
 
 export interface AssignmentRouteDeps {
@@ -106,8 +107,6 @@ export interface AssignmentRouteDeps {
   readonly owner: (req: FastifyRequest) => Account;
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
 }
-
-const GENERATOR = 'cat-tool/server';
 
 /** What a vendor sees of the source before answering: a few segments, capped (vendor-spec §7, #50). */
 const PREVIEW_SEGMENTS = 5;
@@ -180,21 +179,9 @@ export function registerAssignmentRoutes(
 ): void {
   const { storageRoot, platform } = deps;
 
-  /** Opens an owner's roster, or null if they have none. */
-  function openRoster(ownerAccount: Account): Roster | null {
-    const path = vendorsPath(storageRoot, ownerAccount);
-    return existsSync(path) ? openVendorFile(path) : null;
-  }
-
-  /** Opens the roster, creating the file the first time an owner needs it. */
-  function openOrCreateRoster(ownerAccount: Account): Roster {
-    const path = vendorsPath(storageRoot, ownerAccount);
-    if (!existsSync(path)) {
-      mkdirSync(dirname(path), { recursive: true });
-      return createVendorFile(path, { generator: GENERATOR });
-    }
-    return openVendorFile(path);
-  }
+  const openRoster = (ownerAccount: Account) => openRosterFile(storageRoot, ownerAccount);
+  const openOrCreateRoster = (ownerAccount: Account) =>
+    openOrCreateRosterFile(storageRoot, ownerAccount);
 
   /** What the owner sees: the whole assignment, its pool by account id and its history. */
   function ownerView(roster: Roster, a: Assignment) {

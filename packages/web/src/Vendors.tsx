@@ -17,6 +17,7 @@ import {
   INVITATION_TTL_DAYS,
 } from './invitations.js';
 import { useAction } from './use-action.js';
+import { Webhooks } from './Webhooks.js';
 import { acceptanceLabel, onTimeLabel, RECORD_CAVEAT } from './vendor-record.js';
 import { useLoad } from './use-load.js';
 
@@ -37,6 +38,7 @@ export function Vendors() {
       {fresh && <FreshLink email={fresh.email} link={fresh.link} />}
       <Invitations key={`i${version}`} onChanged={() => setVersion((v) => v + 1)} />
       <Roster key={`r${version}`} />
+      <Webhooks />
     </div>
   );
 }

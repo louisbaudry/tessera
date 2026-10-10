@@ -21,6 +21,10 @@ import type {
   PaymentKind,
   RateTier,
 } from '@cat-tool/vendor-core';
+import type {
+  WebhookDeliveryStatus,
+  WebhookEventType,
+} from '@cat-tool/vendor-core/webhook';
 
 import { auditEventDdl } from '../audit/events.js';
 import { rebuildTable, sqlList, type Migration } from '../migrate.js';
@@ -363,4 +367,84 @@ const v5: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5];
+/** `webhook_delivery.event_type` since v6: `WEBHOOK_EVENT_TYPES` as of backlog #125. */
+const V6_WEBHOOK_EVENT_TYPES = [
+  'assignment.offered',
+  'assignment.pool_open',
+  'assignment.claimed',
+  'assignment.accepted',
+  'assignment.declined',
+  'assignment.in_progress',
+  'assignment.delivered',
+  'assignment.reviewed',
+  'payable.locked',
+  'ping',
+] as const satisfies readonly WebhookEventType[];
+
+/** `webhook_delivery.status` since v6: `WEBHOOK_DELIVERY_STATUSES` as of backlog #125. */
+const V6_WEBHOOK_DELIVERY_STATUSES = [
+  'pending',
+  'delivered',
+  'failed',
+] as const satisfies readonly WebhookDeliveryStatus[];
+
+/** `audit_event.action` since v6: `VENDOR_AUDIT_ACTIONS` as of backlog #125. */
+const V6_AUDIT_ACTIONS = [
+  'vendor.added',
+  'vendor.profile_changed',
+  'vendor.rate_set',
+  'payables.exported',
+  'webhook.created',
+  'webhook.deleted',
+] as const satisfies readonly VendorAuditAction[];
+
+/**
+ * Signed webhooks for the vendor events (vendor-spec.md, its #125 note). An
+ * endpoint is a URL the owner registered with the secret that signs what is
+ * sent to it; a delivery is one queued POST, written in the same transaction
+ * as the `assignment_event` it reports, so a committed event is delivered at
+ * least once and a rolled-back one never is. `body` is the exact JSON sent and
+ * is never edited; only the attempt bookkeeping moves. The audit log gains
+ * `webhook.created` and `webhook.deleted`, so `audit_event` is rebuilt with the
+ * widened CHECK (`rebuildTable`, backlog #64).
+ */
+const v6: Migration = {
+  version: 6,
+  description:
+    'webhook_endpoint, webhook_delivery and the webhook audit actions (backlog #125)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE webhook_endpoint (
+        id         INTEGER PRIMARY KEY,
+        url        TEXT    NOT NULL,
+        -- The host alone, which is all the list and the audit log show: the
+        -- path and query may carry a token.
+        host       TEXT    NOT NULL,
+        -- Kept, not hashed, because signing needs it (vendor-spec.md #125).
+        secret     TEXT    NOT NULL,
+        created_at TEXT    NOT NULL
+      );
+
+      CREATE TABLE webhook_delivery (
+        id              TEXT    PRIMARY KEY,
+        endpoint_id     INTEGER NOT NULL REFERENCES webhook_endpoint(id),
+        event_type      TEXT    NOT NULL CHECK (event_type IN (${sqlList(V6_WEBHOOK_EVENT_TYPES)})),
+        body            TEXT    NOT NULL,
+        status          TEXT    NOT NULL CHECK (status IN (${sqlList(V6_WEBHOOK_DELIVERY_STATUSES)})),
+        attempts        INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        next_attempt_at TEXT    NOT NULL,
+        last_status     INTEGER,
+        last_error      TEXT,
+        created_at      TEXT    NOT NULL,
+        settled_at      TEXT
+      );
+      CREATE INDEX webhook_delivery_due
+        ON webhook_delivery(next_attempt_at) WHERE status = 'pending';
+      CREATE INDEX webhook_delivery_endpoint
+        ON webhook_delivery(endpoint_id, status);
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V6_AUDIT_ACTIONS));
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];

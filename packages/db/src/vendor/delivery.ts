@@ -18,6 +18,7 @@ import {
 import { VendorError } from './error.js';
 import { priceTierWords, type VendorPayable } from './payable.js';
 import type { LanguagePair } from './vendors.js';
+import { enqueueWebhook } from './webhooks.js';
 
 type VendorMove = Omit<MoveOptions, 'to' | 'by' | 'afterMove'>;
 
@@ -94,6 +95,12 @@ function lockPayable(
   for (const l of priced.lines) {
     line.run(assignment.id, l.tier, l.words, l.rateMicros, l.amountMicros);
   }
+  // Reported in the same transaction as the delivery that locked it (vendor-spec.md #125).
+  enqueueWebhook(
+    db,
+    { type: 'payable.locked', at, assignmentId: assignment.id, from: null, to: null },
+    at,
+  );
 }
 
 export interface AssignmentPayable {

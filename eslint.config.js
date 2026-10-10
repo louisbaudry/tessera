@@ -59,6 +59,12 @@ export default tseslint.config(
               message: 'Type imports only: core is not a browser dependency.',
               allowTypeImports: true,
             },
+            {
+              name: '@cat-tool/vendor-core/webhook',
+              message:
+                'Webhook signing and address checks use node:crypto and node:net: server-side only.',
+              allowTypeImports: true,
+            },
           ],
         },
       ],
@@ -107,6 +113,13 @@ export default tseslint.config(
                 'RATE_TIERS',
                 'CAPACITY_STATUSES',
               ],
+              message:
+                'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
+              allowTypeImports: true,
+            },
+            {
+              name: '@cat-tool/vendor-core/webhook',
+              importNames: ['WEBHOOK_EVENT_TYPES', 'WEBHOOK_DELIVERY_STATUSES'],
               message:
                 'A migration writes its closed set as a literal snapshot, never the live list (db/migrate.ts).',
               allowTypeImports: true,
