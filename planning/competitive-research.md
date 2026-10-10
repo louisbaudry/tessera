@@ -75,7 +75,7 @@ any decision that is Louis's to make.
 | #153 | Payables ledger (built: backlog `#112`, screens `#113`) | LSP |
 | #154 | Margin report: portal order price minus locked payable | LSP |
 | #155 | Offer timing: cascading offers, auto-repost, deadline reminders (built: backlog `#126`, reminders and an overdue notice; auto-repost decided against; cascading offers remain) | LSP |
-| #156 | Eligibility pre-filter with time off, and restricted pools per client | LSP |
+| #156 | Eligibility pre-filter with time off, and restricted pools per client (built: backlog `#128`, the advisory read by pair, specialty and capacity; time off and per-client pools remain) | LSP |
 | #157 | Vendor scorecard from data already held, with decline reasons (built: backlog `#123`, acceptance and on-time counts on the roster; the rest is the follow-up) | LSP |
 | #158 | Vendor-confirmed payable statement, then self-billing and e-invoice | LSP |
 | #159 | Portal quote reflecting the client's TM, and a no-login price calculator | Client |

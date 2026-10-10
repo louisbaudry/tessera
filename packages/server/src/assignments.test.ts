@@ -31,6 +31,8 @@ import {
   openProjectDb,
   revokeProjectAuthorization,
   openVendorFile,
+  getVendorByAccount,
+  setCapacity,
   setVendorRate,
   type Account,
 } from '@cat-tool/db';
@@ -1222,6 +1224,114 @@ describe('reconciling grants with the roster', () => {
     });
     expect(
       (await app.inject({ method: 'POST', url: '/api/assignments/reconcile' }))
+        .statusCode,
+    ).toBe(401);
+  });
+});
+
+describe('who fits a project (#128)', () => {
+  const fitsOf = (token: string, query = 'project=job') =>
+    app.inject({
+      method: 'GET',
+      url: `/api/vendors/eligibility?${query}`,
+      headers: as(token),
+    });
+  type Fits = {
+    pair: { src: string; tgt: string };
+    eligible: Array<{ accountId: number }>;
+    excluded: Array<{ accountId: number; reasons: string[] }>;
+  };
+
+  function addVendorAccount(name: string): number {
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      return createAccount(platform, {
+        email: `${name}@example.com`,
+        passwordHash: hashPassword(`${name}-pw`),
+        actor: SETUP,
+        role: 'vendor',
+      }).id;
+    } finally {
+      platform.close();
+    }
+  }
+
+  async function rosterWithFits(a: string): Promise<Record<string, number>> {
+    const ids = {
+      eve: addVendorAccount('eve'),
+      frank: addVendorAccount('frank'),
+      gina: addVendorAccount('gina'),
+    };
+    const add = (account: number, languages: object[]) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/vendors',
+        headers: as(a),
+        payload: { account, languages, specialties: ['Legal'] },
+      });
+    expect((await add(ids.eve, [{ src: 'en', tgt: 'de' }])).statusCode).toBe(201);
+    expect((await add(ids.frank, [{ src: 'en', tgt: 'fr' }])).statusCode).toBe(201);
+    expect((await add(ids.gina, [{ src: 'en', tgt: 'de' }])).statusCode).toBe(201);
+    const roster = openVendorFile(
+      join(config.storageRoot, alice.storageRoot, 'vendors.ctv'),
+    );
+    try {
+      const gina = getVendorByAccount(roster, ids.gina)!;
+      setCapacity(roster, { vendorId: gina.id, status: 'busy' });
+    } finally {
+      roster.close();
+    }
+    return ids;
+  }
+
+  it('says who fits the project’s pair and who does not, and why, never an email', async () => {
+    const a = await aliceWithProject();
+    const ids = await rosterWithFits(a);
+    const res = await fitsOf(a);
+    expect(res.statusCode, res.body).toBe(200);
+    const fits = res.json<Fits>();
+    expect(fits.pair).toEqual({ src: 'en', tgt: 'de' });
+    expect(fits.eligible.map((v) => v.accountId)).toEqual([ids.eve]);
+    const why = Object.fromEntries(fits.excluded.map((v) => [v.accountId, v.reasons]));
+    expect(why).toEqual({
+      // bob and carol were put on the roster with no language at all
+      [bob.id]: ['language_pair'],
+      [carol.id]: ['language_pair'],
+      [ids.frank!]: ['language_pair'],
+      [ids.gina!]: ['busy'],
+    });
+    expect(res.body).not.toContain('@example.com');
+  });
+
+  it('adds a specialty test only when asked', async () => {
+    const a = await aliceWithProject();
+    const ids = await rosterWithFits(a);
+    const legal = (await fitsOf(a, 'project=job&specialty=LEGAL')).json<Fits>();
+    expect(legal.eligible.map((v) => v.accountId)).toEqual([ids.eve]);
+    const medical = (await fitsOf(a, 'project=job&specialty=medical')).json<Fits>();
+    expect(medical.eligible).toEqual([]);
+    expect(medical.excluded.find((v) => v.accountId === ids.eve)!.reasons).toEqual([
+      'specialty',
+    ]);
+  });
+
+  it('is advice: an offer to someone it excluded still goes through', async () => {
+    const a = await aliceWithProject();
+    const ids = await rosterWithFits(a);
+    const res = await post(a, offerBody({ vendors: [ids.frank] }));
+    expect(res.statusCode, res.body).toBe(201);
+    const after = (await fitsOf(a)).json<Fits>();
+    expect(after.excluded.some((v) => v.accountId === ids.frank)).toBe(true);
+  });
+
+  it('is the caller’s own: no project is a 400 or a 404, and a roster-less owner sees nothing', async () => {
+    const a = await aliceWithProject();
+    expect((await fitsOf(a, '')).statusCode).toBe(400);
+    expect((await fitsOf(a, 'project=nope')).statusCode).toBe(404);
+    // Bob has no project called "job": the route reads his own files, never alice's.
+    expect((await fitsOf(await login('bob'))).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/vendors/eligibility?project=job' }))
         .statusCode,
     ).toBe(401);
   });

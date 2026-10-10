@@ -66,3 +66,4 @@ export * from './payments.js';
 export * from './record.js';
 export * from './webhooks.js';
 export * from './deadlines.js';
+export * from './eligibility.js';

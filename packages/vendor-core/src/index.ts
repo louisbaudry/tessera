@@ -5,3 +5,4 @@ export * from './payment.js';
 export * from './invitation.js';
 export * from './record.js';
 export * from './deadline.js';
+export * from './eligibility.js';

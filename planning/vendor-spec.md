@@ -1113,3 +1113,23 @@ confidentiality call, as the 2026-10-09 decision above says), and so does any au
   `fireDeadlineNotices`/`nextNoticeAt`/`setReminderLead` are `db/vendor/deadlines.ts`; the clock is in
   `WebhookDispatcher` (`server/src/webhooks.ts`), with `GET/PUT /api/webhooks/reminders` (owner only,
   `leadHours` a whole number from 0 to 720).
+
+**Implementation note (#156 slice: the eligibility read), 2026-10-10.** Louis chose the part of issue
+#156 buildable from data the roster already holds, and **advisory** over enforced.
+
+- **A read that filters nothing.** `GET /api/vendors/eligibility?project=&specialty=` answers, for the
+  caller's own project and roster, who fits and who does not with the reasons. An offer or a pool post
+  still goes to anyone on the roster. Reason: a stale toggle or a missing tag would otherwise silently
+  exclude the right vendor, and the answer to a wrong exclusion must be "offer anyway", not "edit the
+  profile first". So the excluded list is always in the response, never dropped.
+- **The reasons** are `language_pair` (the project's pair by primary subtag, direction mattering; a
+  vendor with no declared pair fits nothing), `specialty` (asked only when the owner names one, compared
+  as a stored tag is), `busy` and `away` (the capacity toggle, decision 8; "never set" is unknown, not
+  busy). A vendor can have several. The rule is pure, `vendor-core/src/eligibility.ts`; `assessRoster`
+  (`db/vendor/eligibility.ts`) loads each vendor's profile and capacity for it. A project carries no
+  specialty of its own, so the tag is the owner's to type.
+- **Not built, still #156:** vendor time off (a date window needs a table and a decision on who may set
+  it and how it shows), and an allowlist or blocklist per client (a project is not tied to a portal
+  client, the same missing link as the margin report, #154). Enforcing at offer time stays open until a
+  pilot owner asks for it. No screen yet either (the offer screens are not built).
+
