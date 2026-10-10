@@ -34,6 +34,13 @@ import {
   statusOf,
   type QaMark,
 } from './gutter.js';
+import { AddTermDialog } from './AddTermDialog.js';
+import {
+  draftFromSelection,
+  isAddTermKey,
+  type TermDraft,
+  type TermSide,
+} from './add-term.js';
 import { nextUnconfirmed } from './advance.js';
 import { isPaletteKey, nextMarked } from './commands.js';
 import { FilterBar } from './FilterBar.js';
@@ -527,6 +534,29 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // Adding a term (backlog #129): Ctrl+Shift+D reads the selection as the box opens, since
+  // the DOM keeps one selection and a box that took focus first would lose it. The palette
+  // opens the box empty.
+  const [addingTerm, setAddingTerm] = useState<{
+    draft: TermDraft;
+    note: string | null;
+  } | null>(null);
+  const openAddTerm = useCallback((withSelection: boolean) => {
+    const picked = withSelection ? termSelection() : null;
+    const next = draftFromSelection(picked?.side ?? null, picked?.text ?? '');
+    // A box already open keeps what is typed in it.
+    setAddingTerm((open) => open ?? next);
+  }, []);
+  useEffect(() => {
+    if (foreign) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!isAddTermKey(e)) return;
+      e.preventDefault();
+      openAddTerm(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [foreign, openAddTerm]);
   const commands = useMemo<PaletteCommand[]>(() => {
     const from = () => segmentsNow.current.findIndex((s) => s.id === activeNow.current);
     const goTo = (index: number | null, none: string) => {
@@ -588,6 +618,13 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
         ? []
         : [
             {
+              id: 'add-term',
+              title: 'Add a term to the glossary',
+              keywords: 'terminology define rendering',
+              hint: 'Ctrl+Shift+D',
+              run: () => openAddTerm(false),
+            },
+            {
               id: 'toggle-glossary',
               title: 'Toggle glossary panel',
               keywords: 'terms terminology',
@@ -628,6 +665,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     jumpTo,
     marks,
     restructure,
+    openAddTerm,
     foreign,
     fullTags,
     qaOpen,
@@ -849,6 +887,16 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
       {paletteOpen && (
         <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
       )}
+      {addingTerm && !foreign && (
+        <AddTermDialog
+          project={project}
+          srcLang={detail.project.srcLang}
+          tgtLang={detail.project.tgtLang}
+          initial={addingTerm.draft}
+          note={addingTerm.note}
+          onClose={() => setAddingTerm(null)}
+        />
+      )}
       {resourcesOpen && <ResourcesPanel project={project} />}
       {glossaryOpen && !foreign && (
         <GlossaryPanel
@@ -1020,6 +1068,28 @@ function sourceCaret(): { segmentId: number; offset: number } | null {
           : 0;
   }
   return { segmentId, offset: splitOffset(children, index, within) };
+}
+
+/**
+ * The text the translator has selected inside one cell of a segment, and which
+ * side it is on: null when nothing is selected, or the selection runs across
+ * cells (a term is on one side of one segment). The target side is the
+ * ProseMirror editor, whose selection is a DOM selection like any other.
+ */
+function termSelection(): { side: TermSide; text: string } | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) return null;
+  const cellOf = (node: Node | null): HTMLElement | null =>
+    (node instanceof Element
+      ? node
+      : (node?.parentElement ?? null)
+    )?.closest<HTMLElement>('.cell.source, .cell.target') ?? null;
+  const cell = cellOf(selection.anchorNode);
+  if (!cell || cell !== cellOf(selection.focusNode)) return null;
+  return {
+    side: cell.classList.contains('source') ? 'source' : 'target',
+    text: selection.toString(),
+  };
 }
 
 function TokenText({

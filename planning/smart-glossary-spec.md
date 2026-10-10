@@ -615,6 +615,14 @@ left open, and what it left out:
   recomputed server-side), `GET …/glossary/proposals` and
   `POST …/glossary/proposals/accept`, all owner-only.
 
+- **Adding a term outside a session (#129, issue #151).** A term the translator already knows is not
+  a detected flag, so it does not go through a session. `POST /api/projects/:name/glossary/terms`
+  takes a source form and a rendering and writes them into the write target as a `custom` decision
+  (decision 3) through the same write a commit makes (`writeRendering`): the term for that source
+  form, found case-folded or created, and the rendering as a variant. In the editor it is
+  `Ctrl+Shift+D` on a selection; the DOM holds one selection, so the selected side fills its field and
+  the other side is typed. Owner-only, 409 with no write target.
+
 ---
 
 ## 6. Applying an entry (decision 5 — soft)

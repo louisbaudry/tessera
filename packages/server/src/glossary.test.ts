@@ -20,7 +20,9 @@ import {
   addVariant,
   createAccount,
   insertTerm,
+  listDecisions,
   listEvents,
+  listVariants,
   openGlossary,
   openPlatformDb,
   openProjectDb,
@@ -857,3 +859,78 @@ describe(
     });
   },
 );
+
+describe('adding a term typed in the editor (backlog #129)', () => {
+  const addTerm = (token: string, payload: unknown, project = 'ms') =>
+    app.inject({
+      method: 'POST',
+      url: `/api/projects/${project}/glossary/terms`,
+      headers: auth(token),
+      payload: payload as object,
+    });
+  const glossaryFile = () =>
+    openGlossary(join(config.storageRoot, alice.storageRoot, 'glossaries', 'acme.ctg'));
+
+  async function ready() {
+    const token = await login('alice@example.com', 'alice-pw');
+    await projectWithFile(token);
+    await createGlossaryNamed(token, 'acme');
+    await attach(token, 'ms', 'acme', true);
+    return token;
+  }
+
+  it('writes the term into the write target with the project’s pair, and adds to it the second time', async () => {
+    const token = await ready();
+    const first = await addTerm(token, { source: ' parish ', target: ' Gemeinde ' });
+    expect(first.statusCode, first.body).toBe(201);
+    const { termId, created } = first.json<{ termId: number; created: boolean }>();
+    expect(created).toBe(true);
+
+    const second = await addTerm(token, { source: 'PARISH', target: 'Pfarrei' });
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toEqual({ termId, created: false });
+
+    const g = glossaryFile();
+    expect(
+      listVariants(g, termId)
+        .map((v) => `${v.lang}:${v.text}`)
+        .sort(),
+    ).toEqual(['de:Gemeinde', 'de:Pfarrei', 'en:parish']);
+    const decisions = listDecisions(g, termId, 'de');
+    expect(decisions.map((d) => [d.chosen, d.kind, d.sourceProject])).toEqual([
+      ['gemeinde', 'custom', 'ms'],
+      ['pfarrei', 'custom', 'ms'],
+    ]);
+    // Who: the session's account, as a label; never a field the client sent.
+    expect(decisions[0]!.decidedBy).toBe('alice@example.com');
+    g.close();
+  });
+
+  it('refuses text that is missing or blank as a 400, and a project with no glossary as a 409', async () => {
+    const token = await ready();
+    expect((await addTerm(token, {})).statusCode).toBe(400);
+    expect((await addTerm(token, { source: 4, target: 'x' })).statusCode).toBe(400);
+    expect((await addTerm(token, { source: 'parish', target: '  ' })).statusCode).toBe(
+      400,
+    );
+
+    await projectWithFile(token, 'bare');
+    const bare = await addTerm(token, { source: 'parish', target: 'Gemeinde' }, 'bare');
+    expect(bare.statusCode).toBe(409);
+    expect(bare.json()).toMatchObject({ error: expect.stringContaining('no glossary') });
+    const g = glossaryFile();
+    expect(countTerms(g)).toBe(0);
+    g.close();
+  });
+
+  it('is the project owner’s: a stranger gets the answer a missing project gets', async () => {
+    await ready();
+    const bob = await login('bob@example.com', 'bob-pw');
+    expect(
+      (await addTerm(bob, { source: 'parish', target: 'Gemeinde' })).statusCode,
+    ).toBe(404);
+    const g = glossaryFile();
+    expect(countTerms(g)).toBe(0);
+    g.close();
+  });
+});

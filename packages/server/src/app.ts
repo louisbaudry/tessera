@@ -101,6 +101,7 @@ import {
   startJob,
   TargetConflictError,
   TargetStructureError,
+  addTermFromText,
   recordSegmentException,
   TermError,
   TmRefError,
@@ -1656,6 +1657,55 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         throw err;
       }
       return { ok: true };
+    } finally {
+      target?.close();
+      db.close();
+    }
+  });
+
+  // One term typed or selected in the editor (backlog #129, issue #151): its source form
+  // and a rendering, written into the project's write-target glossary as a `custom`
+  // decision. The pair is the project's, never the client's; a project with no glossary
+  // to record into is a 409, as for an exception.
+  app.post<{
+    Params: { name: string };
+    Body: { source?: unknown; target?: unknown } | undefined;
+  }>('/api/projects/:name/glossary/terms', async (req, reply) => {
+    const opened = openProject(req, reply, req.params.name, 'manage');
+    if (!opened) return reply;
+    const { db, project } = opened;
+    let target: ReturnType<typeof openGlossary> | null = null;
+    try {
+      const { source, target: rendering } = req.body ?? {};
+      if (typeof source !== 'string' || typeof rendering !== 'string') {
+        return reply.code(400).send({ error: 'source and target must be text' });
+      }
+      if (source.trim() === '' || rendering.trim() === '') {
+        return reply
+          .code(400)
+          .send({ error: 'a term needs a source form and a rendering' });
+      }
+      const targetPath = glossaryWriteTargetPath(db);
+      if (targetPath === null) {
+        return reply
+          .code(409)
+          .send({ error: 'this project has no glossary to record into' });
+      }
+      target = openGlossary(targetPath);
+      try {
+        const added = addTermFromText(target, {
+          srcLang: project.srcLang,
+          tgtLang: project.tgtLang,
+          source,
+          target: rendering,
+          actor: sessionActor(req),
+          sourceProject: req.params.name,
+        });
+        return reply.code(added.created ? 201 : 200).send(added);
+      } catch (err) {
+        if (err instanceof TermError) return reply.code(409).send({ error: err.message });
+        throw err;
+      }
     } finally {
       target?.close();
       db.close();

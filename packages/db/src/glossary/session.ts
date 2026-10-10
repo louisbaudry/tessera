@@ -92,30 +92,41 @@ function termFor(
   return created.id;
 }
 
-function applyEntry(
-  db: Database.Database,
-  session: { readonly langs: SessionLangs },
-  entry: SessionEntry,
-  options: { decidedBy: string; sourceProject?: string },
-): void {
-  const { langs } = session;
-  const termId = termFor(db, langs, entry, options.decidedBy);
-  const plain = termKey(entry.rendering);
-  const forbid = entry.kind === 'deprecation';
+/** A rendering of a term in the target language, and the decision that settles it. */
+interface RenderingWrite {
+  readonly termId: number;
+  readonly tgtLang: string;
+  readonly rendering: string;
+  readonly rejected: readonly string[];
+  readonly kind: SessionEntry['kind'];
+  readonly decidedBy: string;
+  readonly sourceProject?: string;
+  readonly sourceSegment?: number;
+}
+
+/**
+ * The one write of a settled rendering: its variant (added, or cleared of
+ * `forbidden` unless the decision is a deprecation) and the `term_decision`
+ * row. Shared by a session's commit and by `addTermFromText`, so a term typed
+ * in the editor and one decided in the panel are the same kind of row.
+ */
+function writeRendering(db: Database.Database, write: RenderingWrite): void {
+  const plain = termKey(write.rendering);
+  const forbid = write.kind === 'deprecation';
 
   // The rendering's variant, in whatever regional spelling of the target
   // language the term already holds it — never a second one beside it.
-  const existing = listVariants(db, termId).find(
-    (v) => v.plain === plain && primarySubtag(v.lang) === primarySubtag(langs.tgtLang),
+  const existing = listVariants(db, write.termId).find(
+    (v) => v.plain === plain && primarySubtag(v.lang) === primarySubtag(write.tgtLang),
   );
-  let lang = langs.tgtLang;
+  let lang = write.tgtLang;
   if (!existing) {
     addVariant(db, {
-      termId,
+      termId: write.termId,
       lang,
-      text: entry.rendering,
+      text: write.rendering,
       forbidden: forbid,
-      updatedBy: options.decidedBy,
+      updatedBy: write.decidedBy,
     });
   } else {
     lang = existing.lang;
@@ -124,20 +135,98 @@ function applyEntry(
     // Choosing a forbidden one clears it — the translator is the authority
     // (decision 5), and the decision row is where that is recorded.
     if (existing.forbidden !== forbid) {
-      updateVariant(db, existing.id, { forbidden: forbid, updatedBy: options.decidedBy });
+      updateVariant(db, existing.id, { forbidden: forbid, updatedBy: write.decidedBy });
     }
   }
 
   recordDecision(db, {
-    termId,
+    termId: write.termId,
     lang,
-    chosen: entry.rendering,
+    chosen: write.rendering,
+    rejected: write.rejected,
+    kind: write.kind,
+    sourceProject: write.sourceProject,
+    sourceSegment: write.sourceSegment,
+    decidedBy: write.decidedBy,
+  });
+}
+
+function applyEntry(
+  db: Database.Database,
+  session: { readonly langs: SessionLangs },
+  entry: SessionEntry,
+  options: { decidedBy: string; sourceProject?: string },
+): void {
+  const { langs } = session;
+  writeRendering(db, {
+    termId: termFor(db, langs, entry, options.decidedBy),
+    tgtLang: langs.tgtLang,
+    rendering: entry.rendering,
     rejected: entry.rejected,
     kind: entry.kind,
+    decidedBy: options.decidedBy,
     sourceProject: options.sourceProject,
     sourceSegment: entry.flag.firstOrd ?? undefined,
-    decidedBy: options.decidedBy,
   });
+}
+
+export interface AddTermOptions {
+  readonly srcLang: string;
+  readonly tgtLang: string;
+  /** The source-language form, as the translator typed or selected it. */
+  readonly source: string;
+  /** Its rendering in the target language. */
+  readonly target: string;
+  /** Who added it — required, never defaulted (as {@link CommitGlossaryOptions}). */
+  readonly actor: AuditActor;
+  readonly sourceProject?: string;
+}
+
+export interface AddTermResult {
+  readonly termId: number;
+  /** False when a live term with that source form already existed and was added to. */
+  readonly created: boolean;
+}
+
+/**
+ * Records one term the translator typed or selected in the editor
+ * (backlog #129, issue #151): the term for that source form, found or created,
+ * and the rendering as a `custom` decision (decision 3: a translator may
+ * always type their own). One transaction, the same write a panel session's
+ * commit makes, without a session: the term was not detected, it was known.
+ */
+export function addTermFromText(
+  db: Database.Database,
+  options: AddTermOptions,
+): AddTermResult {
+  const source = options.source.trim();
+  const target = options.target.trim();
+  if (termKey(source) === '') throw new TermError('a term needs a source form');
+  if (termKey(target) === '') throw new TermError('a term needs a rendering');
+  const decidedBy = options.actor.label ?? formatActor(options.actor.actor);
+  return db.transaction((): AddTermResult => {
+    let termId = findTermBySource(db, options.srcLang, source);
+    const created = termId === null;
+    if (termId === null) {
+      termId = insertTerm(db).id;
+      addVariant(db, {
+        termId,
+        lang: options.srcLang,
+        text: source,
+        updatedBy: decidedBy,
+      });
+    }
+    writeRendering(db, {
+      termId,
+      tgtLang: options.tgtLang,
+      rendering: target,
+      rejected: [],
+      kind: 'custom',
+      decidedBy,
+      sourceProject: options.sourceProject,
+    });
+    return { termId, created };
+  })();
 }
 
 /**

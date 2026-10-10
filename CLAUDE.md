@@ -276,6 +276,12 @@ format for glossaries, through the same shared migration runner —
   person accepts. A proposal is a count over the log, never stored. Don't
   record an exception as an `override`: the Terms tab relies on that kind to
   settle an entry.
+- **A term the translator already knows is not a session flag** (backlog #129,
+  `addTermFromText`, `POST /api/projects/:name/glossary/terms`): it is one
+  `custom` decision written through `writeRendering`, the same write a session
+  commit makes, never a second path into the `.ctg`. The editor's `Ctrl+Shift+D`
+  reads the DOM selection as the box opens (one selection exists, so one side is
+  selected and the other typed).
 - **A glossary session is held in server memory, and detection consults
   only the project's write-target `.ctg`** (backlog #43a,
   `smart-glossary-spec.md` §5a.1). A `termId` is a row in one file;
@@ -673,7 +679,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts` and `commands.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts` and `add-term.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
