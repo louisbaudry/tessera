@@ -529,4 +529,32 @@ const v7: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];
+/** `audit_event.action` since v8: `VENDOR_AUDIT_ACTIONS` as of issue #156. */
+const V8_AUDIT_ACTIONS = [
+  ...V7_AUDIT_ACTIONS,
+  'client_pool.changed',
+] as const satisfies readonly VendorAuditAction[];
+
+/**
+ * A portal client's vendor pool (backlog #130, vendor-spec.md's #156 note): the
+ * roster entries an owner has approved for that client's work, **absence-based**
+ * (a client with no rows has no restriction, so no existing roster changes). The
+ * client id is the owner's number for a portal client, never checked against
+ * `portal.sqlite`. `audit_event` is rebuilt for `client_pool.changed`.
+ */
+const v8: Migration = {
+  version: 8,
+  description: 'client_pool_member — a portal client’s vendor pool (issue #156)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE client_pool_member (
+        portal_client_id INTEGER NOT NULL CHECK (portal_client_id >= 1),
+        vendor_id        INTEGER NOT NULL REFERENCES vendor(id),
+        PRIMARY KEY (portal_client_id, vendor_id)
+      ) WITHOUT ROWID;
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V8_AUDIT_ACTIONS));
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7, v8];

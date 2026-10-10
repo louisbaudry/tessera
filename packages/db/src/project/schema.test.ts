@@ -40,6 +40,7 @@ describe('openProjectDb', () => {
       'file',
       'fuzzy_setting',
       'glossary_ref',
+      'portal_client_setting',
       'project',
       'qa_issue',
       'qa_rule_setting',

@@ -3835,6 +3835,21 @@ rest of that range:
   - Verified: 6 pure rule tests, 4 repository tests, 4 server tests; removing the `busy` reason turns
     two red. Not built, still open on #156: vendor time off and a per-client pool (a project is not
     tied to a portal client). No screen: the offer screens do not exist yet.
+- **#130 · ~~The project's portal client, and a client's vendor pool~~ · DONE — `db/src/project/portal-client.ts` (project schema v13), `db/src/vendor/client-pools.ts` (`.ctv` v8), `not_in_client_pool` in `vendor-core/src/eligibility.ts`, `GET/PUT /api/projects/:name/portal-client` and `GET /api/client-pools`, `PUT /api/client-pools/:clientId` in `server`.** (2026-10-10; the rest of card #156 bar time off)
+  Louis chose "link a project to a portal client" as the thing to unblock first; the pool is the first thing
+  that reads it. Design note: `vendor-spec.md`, the #156 note (second part).
+  - **The link is a number the owner types, never checked against `portal.sqlite`.** The CAT server and the
+    portal are separate files and often separate processes; a check would be a cross-process read for
+    little. A wrong id matches no pool, which means no restriction. Per project, not per order: the margin
+    report (#154) needs the order, so it will want its own link.
+  - **A pool is absence-based and an allowlist.** A client with no rows restricts nobody, so no existing
+    roster changes and an emptied pool is "no rule", not "nobody allowed". A blocklist was left out.
+  - **Still advice**, in the eligibility read as `not_in_client_pool`, named after the other reasons. The
+    offer is unchanged; enforcing it is the open question from #128. For a confidentiality-driven pool
+    that is arguably the wrong default, and is written down on #156 for Louis.
+  - Verified: 4 + 7 repository tests, 3 route tests (the pool narrows, lists, refusals, a stranger), the pure
+    rule's cases. Three existing tests changed on purpose: the `.ctv` `user_version` is now 8 (twice) and the
+    project table list gains `portal_client_setting`. Not verified: any screen (none exists).
   - Not built: cascading offers, reminders to vendors (no channel), a per-event filter (issue #206), a
     badge on the owner's list for a late job.
 

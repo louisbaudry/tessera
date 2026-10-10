@@ -70,6 +70,7 @@ export const VENDOR_AUDIT_ACTIONS = [
   'webhook.created',
   'webhook.deleted',
   'webhook.reminder_changed',
+  'client_pool.changed',
 ] as const;
 
 export type ProjectAuditAction = (typeof PROJECT_AUDIT_ACTIONS)[number];
@@ -262,6 +263,15 @@ export interface AuditDetail {
   'webhook.deleted': { readonly host: string };
   /** The owner's deadline-reminder lead in hours, before and after (backlog #125, issue #155). */
   'webhook.reminder_changed': { readonly from: number; readonly to: number };
+  /**
+   * A portal client's vendor pool changed (backlog #130, issue #156): which
+   * roster entries (their vendor ids, never names) joined it and which left.
+   */
+  'client_pool.changed': {
+    readonly client_id: number;
+    readonly added: readonly number[];
+    readonly removed: readonly number[];
+  };
 }
 
 /** An order's price and the word count it was computed from (spec §2.6). */

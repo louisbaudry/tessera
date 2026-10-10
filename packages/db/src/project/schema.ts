@@ -463,6 +463,28 @@ const v12: Migration = {
 };
 
 /**
+ * `portal_client_setting` (backlog #130, issue #156): which portal client this
+ * project is work for, one row at most. **Absence-based**: no row is "not for
+ * a portal client", so no existing project changes. It is a number the owner
+ * set, never checked against `portal.sqlite` (a separate file, often a
+ * separate process); what reads it treats an id nobody has a pool for as no
+ * restriction.
+ */
+const v13: Migration = {
+  version: 13,
+  description:
+    'portal_client_setting — the portal client a project is work for (issue #156)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE portal_client_setting (
+        id        INTEGER PRIMARY KEY CHECK (id = 1),
+        client_id INTEGER NOT NULL CHECK (client_id >= 1)
+      );
+    `);
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -480,4 +502,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v10,
   v11,
   v12,
+  v13,
 ];

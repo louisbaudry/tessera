@@ -357,6 +357,12 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   excluded vendor still goes through, because each input is a hand-set value that
   goes stale. Don't make it a gate without a decision (enforcing at offer time
   is still open on #156).
+- **A project's portal client is a number the owner typed, never checked against
+  `portal.sqlite`** (backlog #130, `portal_client_setting`, project v13): the CAT
+  server must not reach into the portal's file. A client's vendor pool is an
+  absence-based allowlist (`client_pool_member`, `.ctv` v8): no rows is no
+  restriction, and a wrong client id simply matches none. Both are inputs to the
+  advisory eligibility read, not gates.
 - **A vendor's record is two counts over the log, never a score** (backlog #123,
   `vendor-core/src/record.ts`, `db/src/vendor/record.ts`): of the offers answered how
   many were accepted, of the deliveries with a deadline how many were on time, each

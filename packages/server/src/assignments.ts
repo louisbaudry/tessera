@@ -48,6 +48,10 @@ import {
   listPoolMembers,
   listRosterOwners,
   assessRoster,
+  getClientPool,
+  getPortalClient,
+  listClientPools,
+  setClientPool,
   listVendors,
   vendorRecords,
   previewSource,
@@ -140,6 +144,25 @@ function readPair(path: string): { src: string; tgt: string } | null {
   try {
     const meta = getProject(project);
     return meta ? { src: meta.srcLang, tgt: meta.tgtLang } : null;
+  } finally {
+    project.close();
+  }
+}
+
+/** The project's pair and the portal client it is work for, or null if the project is gone. */
+function readJob(
+  path: string,
+): { pair: { src: string; tgt: string }; portalClientId: number | null } | null {
+  if (!existsSync(path)) return null;
+  const project = openProjectDb(path);
+  try {
+    const meta = getProject(project);
+    return meta
+      ? {
+          pair: { src: meta.srcLang, tgt: meta.tgtLang },
+          portalClientId: getPortalClient(project),
+        }
+      : null;
   } finally {
     project.close();
   }
@@ -918,10 +941,13 @@ export function registerAssignmentRoutes(
       if (specialty !== undefined && typeof specialty !== 'string') {
         return reply.code(400).send({ error: 'specialty must be text' });
       }
-      const pair = readPair(projectPath(deps.storageRoot, me, project!));
-      if (!pair) return reply.code(404).send({ error: 'no such project' });
+      const job = readJob(projectPath(deps.storageRoot, me, project!));
+      if (!job) return reply.code(404).send({ error: 'no such project' });
+      const { pair, portalClientId } = job;
       const roster = openRoster(me);
-      const fits = roster ? assessRoster(roster, { ...pair, specialty }) : [];
+      const fits = roster
+        ? assessRoster(roster, { ...pair, specialty }, { portalClientId })
+        : [];
       roster?.close();
       const view = (f: (typeof fits)[number]) => ({
         accountId: f.accountId,
@@ -1009,6 +1035,76 @@ export function registerAssignmentRoutes(
       roster.close();
     }
   });
+
+  // A portal client's vendor pool (backlog #130, issue #156): the roster vendors the owner has
+  // approved for that client, by account id. An empty pool is no restriction. Advice only: it
+  // feeds the eligibility read and nothing refuses an offer. The client id is the owner's
+  // number for a client in the portal, never checked against it.
+  const poolAccounts = (
+    roster: NonNullable<ReturnType<typeof openRoster>>,
+    clientId: number,
+  ) => getClientPool(roster, clientId).map((id) => getVendor(roster, id)!.accountId);
+  app.get('/api/client-pools', async (req) => {
+    const roster = openRoster(deps.owner(req));
+    if (!roster) return { pools: [] };
+    try {
+      return {
+        pools: listClientPools(roster).map((p) => ({
+          clientId: p.portalClientId,
+          vendors: p.vendorIds.map((id) => getVendor(roster, id)!.accountId),
+        })),
+      };
+    } finally {
+      roster.close();
+    }
+  });
+  app.put<{ Params: { clientId: string }; Body: { vendors?: unknown } | undefined }>(
+    '/api/client-pools/:clientId',
+    async (req, reply) => {
+      const clientId = Number(req.params.clientId);
+      if (!Number.isSafeInteger(clientId) || clientId < 1) {
+        return reply
+          .code(400)
+          .send({ error: 'clientId must be a positive whole number' });
+      }
+      const accounts = req.body?.vendors;
+      if (
+        !Array.isArray(accounts) ||
+        !accounts.every((a) => Number.isSafeInteger(a) && (a as number) >= 1)
+      ) {
+        return reply.code(400).send({ error: 'vendors must be a list of account ids' });
+      }
+      const me = deps.owner(req);
+      const roster = openOrCreateRoster(me);
+      try {
+        // One answer for an account that is not on the roster, whatever it is.
+        const ids: number[] = [];
+        for (const account of accounts as number[]) {
+          const vendor = getVendorByAccount(roster, account);
+          if (!vendor) {
+            return reply
+              .code(400)
+              .send({ error: `account #${account} is not on your roster` });
+          }
+          ids.push(vendor.id);
+        }
+        const change = setClientPool(roster, {
+          portalClientId: clientId,
+          vendorIds: ids,
+          actor: deps.sessionActor(req),
+        });
+        return {
+          clientId,
+          vendors: poolAccounts(roster, clientId),
+          changed: change.added.length + change.removed.length > 0,
+        };
+      } catch (err) {
+        return mapError(err, reply);
+      } finally {
+        roster.close();
+      }
+    },
+  );
 
   // A vendor's whole rate history, oldest first: a rate is a row, never an edit.
   app.get<{ Params: { accountId: string } }>(
