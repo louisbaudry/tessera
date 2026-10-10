@@ -2771,6 +2771,60 @@ Two things this fixed on the way, both worth remembering:
 Still manual: confirming the word count (the count itself became an
 advisory, automatic one in `#62`), and a client-side cancel.
 
+**#127 · ~~Client self-serve export of their own memory and glossary~~ · DONE — `db/src/portal/client-resources.ts`, `db/src/read-only.ts`, `db/src/glossary/export.ts`, `core/src/glossary/export.ts`, portal schema v6, `GET /api/client/resources[/:kind/export]` (`portal-server/src/app.ts`), `link-client-resource` (`portal-server/src/link-client-resource.ts`)** (2026-10-10; card #162)
+
+A portal client downloads their own translation memory (TMX) and glossary
+(CSV) at any time, from a section of their page that appears once the
+operator has linked something to them (`portal-v0-spec.md` §9). Four
+decisions worth keeping:
+
+- **"Their own" is a whole file, linked by the operator, not a filter.**
+  The portal had no link between a client and any memory (the two live in
+  different processes, `portal.sqlite` and an owner's storage). The
+  alternative, filtering a shared memory by its `client` attribute, leaks
+  the first unit someone forgot to label; a linked file cannot leak a unit
+  that is not in it. So `client_resource` holds one `.ctm` and one `.ctg`
+  per client, set from the command line (`link-client-resource`), where a
+  path is typed by the person who owns the file. No request ever sends one,
+  which keeps the "no function takes a path from a request" rule. The
+  operator's duty is to link only a file that is that client's alone; the
+  spec and the script's header say so.
+- **The file is read, never opened.** `openAndMigrate` migrates, backs up
+  and checks integrity, all writes, on a file the CAT server may have open.
+  `openReadOnly` (`db/src/read-only.ts`) is a `query_only` connection that
+  refuses any format version but the newest: an older file has not been
+  migrated, so the export refuses it (a 503) instead of guessing at its
+  columns. A test asserts the file's bytes are unchanged and no `-wal`/`-shm`
+  is left beside it.
+- **The export is not the owner's export.** `exportTmx(db, { forClient })`
+  drops who created or changed a unit, notes, the neighbour hashes, usage
+  counts and every property outside `CLIENT_TMX_PROPS` (`client`, `domain`,
+  `subject`, `register`): a `x-sdltm-contexts` blob or an internal project
+  label is not the client's to have. The glossary CSV (`concept,lang,term,
+  status`, status `preferred`/`allowed`/`forbidden`) never reads notes,
+  `updated_by` or the decision log, and `concept` is a position in the
+  export, not a row id. A test per leaked field fails when the stripping is
+  removed.
+- **`csvCell` moved to `core/model/csv.ts`.** The vendor ledger had the
+  formula-injection guard privately; a second CSV with typed text needed it,
+  so the one definition went to the browser-safe base layer and
+  `vendor-core` imports it (a new `vendor-core` → `core` edge, `model` only).
+  The CSV starts with a byte-order mark so Excel reads the accents.
+
+Logged: `resource.linked`/`resource.unlinked` (operator, `system:`) and
+`resource.exported` (the client's `client:<id>`, with a count and the digest
+of the bytes sent, never the text or the file's name), all in the portal's
+`audit_event`, whose CHECK was widened by `rebuildTable` in v6.
+
+**Known limit:** an export is built whole in memory and refused (413) above
+`MAX_CLIENT_EXPORT_UNITS` (100,000), because a TMX of an agency memory can
+pass V8's string cap and would stall the portal's one thread. A client
+memory is one client's; a larger one is sent by hand. A streamed export is
+the fix if a real client needs it.
+
+**Not verified:** the new section in a browser (no browser run this
+session), and a memory a real client owns.
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

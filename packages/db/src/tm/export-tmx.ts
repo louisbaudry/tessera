@@ -23,7 +23,28 @@ export interface ExportTmxOptions {
    * every language in the memory, tm-format-spec.md §8's default.
    */
   readonly langs?: readonly string[];
+  /**
+   * The export a client takes away (backlog #162), not the owner's: the text,
+   * languages, dates and the unit's identity, and nothing about how the
+   * memory was made or by whom. Drops who created or changed a unit
+   * (`creationid`/`changeid`), its note, the neighbour hashes, usage counts
+   * and every property outside {@link CLIENT_TMX_PROPS} (a `x-sdltm-contexts`
+   * blob, an internal project label). Default false.
+   */
+  readonly forClient?: boolean;
 }
+
+/**
+ * The `tu_attr` keys a client export keeps: the reserved descriptive ones
+ * (tm-format-spec.md §2.4) that describe the content, not the shop. `project`,
+ * `note` and anything user-defined stay with the owner.
+ */
+export const CLIENT_TMX_PROPS: ReadonlySet<string> = new Set([
+  'client',
+  'domain',
+  'subject',
+  'register',
+]);
 
 export interface ExportTmxResult {
   readonly xml: string;
@@ -107,8 +128,9 @@ export function exportTmx(
     const props: { type: string; value: string }[] = [];
     for (const a of attrsByTu.get(tu.id) ?? []) {
       if (a.key === 'tuid') tuid = a.value;
-      else if (a.key === 'note') note = a.value;
-      else props.push({ type: a.key, value: a.value });
+      else if (a.key === 'note') note = options.forClient ? undefined : a.value;
+      else if (!options.forClient || CLIENT_TMX_PROPS.has(a.key))
+        props.push({ type: a.key, value: a.value });
     }
 
     units.push({
@@ -116,11 +138,11 @@ export function exportTmx(
       rev: tu.rev,
       createdAt: tu.created_at,
       updatedAt: tu.updated_at,
-      createdBy: tu.created_by,
+      createdBy: options.forClient ? null : tu.created_by,
       tuid,
       note,
       props,
-      variants: variants.map(toExportTuv),
+      variants: variants.map((v) => toExportTuv(v, options.forClient === true)),
     });
     tuCount++;
     tuvCount += variants.length;
@@ -130,7 +152,22 @@ export function exportTmx(
   return { xml, tuCount, tuvCount };
 }
 
-function toExportTuv(row: TuvRow): TmxExportTuv {
+function toExportTuv(row: TuvRow, forClient: boolean): TmxExportTuv {
+  if (forClient) {
+    return {
+      lang: row.lang,
+      tokens: JSON.parse(row.tokens) as TmToken[],
+      quality: row.quality,
+      rev: row.rev,
+      prevHash: null,
+      nextHash: null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      updatedBy: null,
+      usageCount: 0,
+      lastUsedAt: null,
+    };
+  }
   return {
     lang: row.lang,
     tokens: JSON.parse(row.tokens) as TmToken[],

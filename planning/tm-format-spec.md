@@ -848,6 +848,14 @@ whoever writes the exporter next:
   from the export entirely**, never written as a `<tu>` with no
   `<tuv>` — the same rule TMX import already enforces the other
   direction (`parseTu` throws on exactly that shape).
+- **A client's export (`forClient`, backlog #127) is a narrower file, not
+  a different format.** The owner's export round-trips everything above;
+  the one a portal client downloads drops `creationid`/`changeid` (who),
+  `<note>`, `x-catm-prev`/`x-catm-next`, `usagecount`/`lastusagedate` and
+  every `<prop>` whose `tu_attr` key is not `client`, `domain`, `subject`
+  or `register`. It re-imports as the same units without their context
+  hashes (so no ICE match), which is the point: those describe how the
+  owner's file was made, not the client's text.
 
 ---
 

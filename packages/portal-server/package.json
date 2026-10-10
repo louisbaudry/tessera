@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.check.json",
     "start": "node dist/main.js",
     "seed": "node dist/seed/pilot.js",
-    "create-admin": "node dist/create-admin.js"
+    "create-admin": "node dist/create-admin.js",
+    "link-client-resource": "node dist/link-client-resource.js"
   },
   "dependencies": {
     "@cat-tool/db": "workspace:*",

@@ -139,18 +139,40 @@ async function renderOrderDetail(id) {
   wireDownloads(app);
 }
 
+// The client's own memory and glossary (backlog #162): theirs to take at any
+// time, as TMX and CSV. Shown only when something is linked to them.
+function resourcesSection(resources) {
+  if (resources.length === 0) return '';
+  const labels = { tm: 'Translation memory (TMX)', glossary: 'Glossary (CSV)' };
+  return `
+    <h2>Your memory and glossary</h2>
+    <p class="muted">These belong to you. Download them whenever you like.</p>
+    ${resources
+      .map(
+        (r) => `<div class="card">
+          <strong>${escapeHtml(r.name)}</strong>
+          <div class="muted">${labels[r.kind]}</div>
+          <button class="secondary" data-download="/api/client/resources/${r.kind}/export"
+            data-filename="${escapeHtml(r.filename)}">Download</button>
+        </div>`,
+      )
+      .join('')}
+  `;
+}
+
 async function renderHome() {
   if (!token) {
     app.innerHTML = `<p class="error">No access link found. Use the private link Optime sent you.</p>`;
     return;
   }
 
-  let me, orders, rates;
+  let me, orders, rates, resources;
   try {
-    [me, orders, rates] = await Promise.all([
+    [me, orders, rates, resources] = await Promise.all([
       api('/api/client/me'),
       api('/api/client/orders'),
       api('/api/client/rates'),
+      api('/api/client/resources'),
     ]);
   } catch (err) {
     app.innerHTML = `<p class="error">${err.message}</p>`;
@@ -184,7 +206,9 @@ async function renderHome() {
 
     <h2>Your requests</h2>
     <div id="orders"></div>
+    ${resourcesSection(resources)}
   `;
+  wireDownloads(app);
 
   const langs = [...new Set(rates.flatMap((r) => [r.srcLang, r.tgtLang]))].sort();
   const srcSelect = app.querySelector('select[name="srcLang"]');

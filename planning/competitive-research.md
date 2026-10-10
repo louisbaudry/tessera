@@ -81,7 +81,7 @@ any decision that is Louis's to make.
 | #159 | Portal quote reflecting the client's TM, and a no-login price calculator | Client |
 | #160 | Delivery date, rush tier and an on-time promise | Client |
 | #161 | Certified translation as an order type | Client |
-| #162 | Client self-serve export of their own TM and glossary | Client |
+| #162 | Client self-serve export of their own TM and glossary (built: backlog `#127`, a linked memory as TMX and glossary as CSV; the base memory is never linkable by a request) | Client |
 | #163 | Update orders priced only on new or changed segments | Client |
 | #172 | Document preview beside the grid, then a side-by-side review mode | Editor |
 | #173 | Real-time presence and per-segment locks | Editor |

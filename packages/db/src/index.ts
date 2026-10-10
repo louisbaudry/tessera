@@ -10,3 +10,4 @@ export * from './tm/index.js';
 export * from './glossary/index.js';
 export * from './portal/index.js';
 export * from './vendor/index.js';
+export * from './read-only.js';

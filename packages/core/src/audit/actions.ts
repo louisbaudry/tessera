@@ -53,6 +53,9 @@ export const PORTAL_AUDIT_ACTIONS = [
   'file.delivered',
   'order.priced',
   'order.price_baseline',
+  'resource.linked',
+  'resource.unlinked',
+  'resource.exported',
 ] as const;
 
 /**
@@ -106,6 +109,12 @@ export interface SegmentStateDetail {
   readonly target_tokens: readonly Token[] | null;
   /** Present when the target was an accepted AI draft (spec §4). */
   readonly provenance?: AiProvenance;
+}
+
+/** Which client's link, and of what: the whole of a link/unlink event's detail. */
+export interface ClientResourceDetail {
+  readonly client_id: number;
+  readonly kind: 'tm' | 'glossary';
 }
 
 /** Each action's `detail`, stored as JSON in `audit_event.detail`. */
@@ -215,6 +224,15 @@ export interface AuditDetail {
   'order.priced': OrderPrice;
   /** The price as it stood when portal v4 began recording (spec §6). */
   'order.price_baseline': OrderPrice;
+  // A client's linked memory/glossary (backlog #162). The file's name is not
+  // in a detail: it often is the client's name, and a detail is hashed.
+  'resource.linked': ClientResourceDetail;
+  'resource.unlinked': ClientResourceDetail;
+  /** Which client took which kind, how many units or renderings, and the digest of the bytes sent. */
+  'resource.exported': ClientResourceDetail & {
+    readonly count: number;
+    readonly sha256: string;
+  };
   // vendors.ctv (backlog #46). A name or an address is never in a detail:
   // it is hashed, so erasure could not reach it.
   'vendor.added': null;

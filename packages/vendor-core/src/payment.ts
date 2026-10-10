@@ -5,6 +5,8 @@
  * payables exist and what their latest event is, is `db`'s.
  */
 
+import { csvCell } from '@cat-tool/core/model';
+
 /** What a payment event says. A frozen literal in the vendor schema's v5 migration. */
 export const PAYMENT_KINDS = ['paid', 'reopened'] as const;
 export type PaymentKind = (typeof PAYMENT_KINDS)[number];
@@ -108,14 +110,6 @@ export function formatMicros(micros: number): string {
     .padStart(6, '0')
     .replace(/0+$/, '');
   return `${whole}.${frac.padEnd(2, '0')}`;
-}
-
-/** A spreadsheet runs a cell that starts with one of these as a formula. */
-const FORMULA_START = /^[=+\-@\t\r]/;
-
-function csvCell(text: string): string {
-  const safe = FORMULA_START.test(text) ? `'${text}` : text;
-  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 export const LEDGER_CSV_COLUMNS = [
