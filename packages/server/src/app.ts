@@ -102,6 +102,8 @@ import {
   TargetConflictError,
   TargetStructureError,
   addTermFromText,
+  getPortalClient,
+  setPortalClient,
   recordSegmentException,
   TermError,
   TmRefError,
@@ -1388,6 +1390,48 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         }
         setFuzzyThreshold(opened.db, choice, sessionActor(req));
         return fuzzySettingView(opened.db);
+      } finally {
+        opened.db.close();
+      }
+    },
+  );
+
+  // The portal client a project is work for (backlog #130, issue #156): a number the owner
+  // sets, `{ clientId }` a positive whole number or `null` for none. Never checked against
+  // the portal's own file; what reads it treats a client nobody has a pool for as
+  // unrestricted.
+  const portalClientView = (db: Parameters<typeof getPortalClient>[0]) => ({
+    clientId: getPortalClient(db),
+  });
+  app.get<{ Params: { name: string } }>(
+    '/api/projects/:name/portal-client',
+    async (req, reply) => {
+      const opened = openProject(req, reply, req.params.name, 'manage');
+      if (!opened) return reply;
+      try {
+        return portalClientView(opened.db);
+      } finally {
+        opened.db.close();
+      }
+    },
+  );
+  app.put<{ Params: { name: string }; Body: { clientId?: unknown } | undefined }>(
+    '/api/projects/:name/portal-client',
+    async (req, reply) => {
+      const opened = openProject(req, reply, req.params.name, 'manage');
+      if (!opened) return reply;
+      try {
+        const clientId = req.body?.clientId;
+        if (
+          clientId !== null &&
+          (!Number.isSafeInteger(clientId) || (clientId as number) < 1)
+        ) {
+          return reply.code(400).send({
+            error: 'clientId must be a positive whole number, or null for none',
+          });
+        }
+        setPortalClient(opened.db, clientId as number | null, sessionActor(req));
+        return portalClientView(opened.db);
       } finally {
         opened.db.close();
       }

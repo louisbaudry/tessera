@@ -1129,7 +1129,29 @@ confidentiality call, as the 2026-10-09 decision above says), and so does any au
   (`db/vendor/eligibility.ts`) loads each vendor's profile and capacity for it. A project carries no
   specialty of its own, so the tag is the owner's to type.
 - **Not built, still #156:** vendor time off (a date window needs a table and a decision on who may set
-  it and how it shows), and an allowlist or blocklist per client (a project is not tied to a portal
-  client, the same missing link as the margin report, #154). Enforcing at offer time stays open until a
-  pilot owner asks for it. No screen yet either (the offer screens are not built).
+  it and how it shows). Enforcing at offer time stays open until a pilot owner asks for it. No screen
+  yet either (the offer screens are not built). The client allowlist is the next note.
+
+**Implementation note (#156 slice: the project's portal client and a client's pool), 2026-10-10.** Louis
+chose to link a project to a portal client first, which also unblocks the margin report (#154).
+
+- **A project carries an optional portal client id.** `portal_client_setting` (project schema v13), one row
+  at most, **absence-based** like `fuzzy_setting`: no row is "not for a portal client". It is a number the
+  owner types (`GET/PUT /api/projects/:name/portal-client`, `manage`, `{ clientId }` a positive whole
+  number or null), logged as `project.setting_changed` with key `portal_client`. **It is never checked
+  against `portal.sqlite`**: that is another file, often another process, and the CAT server must not
+  reach into it. A wrong id matches no pool, which is no restriction, the safe direction. It is
+  per-project, not per-order, so a margin report that needs the order will want a second link (the
+  order or a project's order id), which is #154's to decide.
+- **A client's pool is an allowlist of roster vendors.** `client_pool_member (portal_client_id, vendor_id)`
+  (`.ctv` v8), **absence-based**: a client with no rows restricts nobody. `GET /api/client-pools` and
+  `PUT /api/client-pools/:clientId` (`{ vendors }`, account ids, the whole set replaced) are the owner's
+  own roster only; an account that is not on it is one 400. One `client_pool.changed` per real change in
+  the roster's own log, the vendor ids that joined and left (a roster number, never a name). A blocklist
+  was not built: an allowlist is what XTRF's restricted pool is, and an empty list already means "no rule".
+- **Still advice.** A project with a client whose pool is non-empty gets `not_in_client_pool` on every
+  vendor outside it, in the same eligibility read. It is not a gate: the offer and the pool post are
+  unchanged, so enforcing the pool at offer time is the same open question as for the other reasons.
+  The reason is pure (`vendor-core/src/eligibility.ts`, `inClientPool`); `assessRoster` takes the project's
+  `portalClientId` and loads the pool.
 

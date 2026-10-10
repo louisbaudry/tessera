@@ -14,7 +14,13 @@ import { primarySubtag } from '@cat-tool/core/model';
 import { normalizeSpecialty, type CapacityStatus } from './profile.js';
 
 /** Why a vendor does not fit a job. A vendor can have several. */
-export const EXCLUSION_REASONS = ['language_pair', 'specialty', 'busy', 'away'] as const;
+export const EXCLUSION_REASONS = [
+  'language_pair',
+  'specialty',
+  'busy',
+  'away',
+  'not_in_client_pool',
+] as const;
 export type ExclusionReason = (typeof EXCLUSION_REASONS)[number];
 
 /** What the job asks of a vendor. `specialty` is optional: no tag, no specialty test. */
@@ -30,6 +36,12 @@ export interface EligibilityProfile {
   readonly specialties: readonly string[];
   /** `null` when they have never set one: unknown is not busy. */
   readonly capacity: CapacityStatus | null;
+  /**
+   * Whether the project's client has approved this vendor: `null` when the
+   * job has no client pool to be in (the project is for no portal client, or
+   * that client has approved nobody yet), so there is nothing to fail.
+   */
+  readonly inClientPool?: boolean | null;
 }
 
 /**
@@ -39,7 +51,9 @@ export interface EligibilityProfile {
  * pair fits no job. A specialty is asked only when the job names one.
  * `available` and a never-set capacity both pass; `busy` and `away` are
  * reasons of their own, since "at full capacity" and "away" are different
- * things to tell an owner.
+ * things to tell an owner. A client's own pool (`not_in_client_pool`) is the
+ * owner's standing rule for that client, so it is named like the rest: advice
+ * the owner can still overrule by offering.
  */
 export function exclusionReasons(
   profile: EligibilityProfile,
@@ -60,5 +74,6 @@ export function exclusionReasons(
   }
   if (profile.capacity === 'busy') reasons.push('busy');
   if (profile.capacity === 'away') reasons.push('away');
+  if (profile.inClientPool === false) reasons.push('not_in_client_pool');
   return reasons;
 }

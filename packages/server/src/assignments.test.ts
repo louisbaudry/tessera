@@ -1324,6 +1324,99 @@ describe('who fits a project (#128)', () => {
     expect(after.excluded.some((v) => v.accountId === ids.frank)).toBe(true);
   });
 
+  describe('with the project’s portal client and its pool (issue #156)', () => {
+    const put = (token: string, url: string, payload: unknown) =>
+      app.inject({ method: 'PUT', url, headers: as(token), payload: payload as object });
+    const setClient = (token: string, clientId: unknown) =>
+      put(token, '/api/projects/job/portal-client', { clientId });
+    const setPool = (token: string, clientId: number | string, vendors: unknown) =>
+      put(token, `/api/client-pools/${clientId}`, { vendors });
+
+    it('adds not_in_client_pool for vendors the client has not approved, and nothing without a pool', async () => {
+      const a = await aliceWithProject();
+      const ids = await rosterWithFits(a);
+      expect((await setClient(a, 7)).json()).toEqual({ clientId: 7 });
+      // A client with no pool restricts nobody.
+      expect((await fitsOf(a)).json<Fits>().eligible.map((v) => v.accountId)).toEqual([
+        ids.eve,
+      ]);
+
+      const pool = await setPool(a, 7, [ids.eve]);
+      expect(pool.statusCode, pool.body).toBe(200);
+      expect(pool.json()).toEqual({ clientId: 7, vendors: [ids.eve], changed: true });
+      const fits = (await fitsOf(a)).json<Fits>();
+      expect(fits.eligible.map((v) => v.accountId)).toEqual([ids.eve]);
+      const why = Object.fromEntries(fits.excluded.map((v) => [v.accountId, v.reasons]));
+      expect(why).toEqual({
+        [bob.id]: ['language_pair', 'not_in_client_pool'],
+        [carol.id]: ['language_pair', 'not_in_client_pool'],
+        [ids.frank!]: ['language_pair', 'not_in_client_pool'],
+        [ids.gina!]: ['busy', 'not_in_client_pool'],
+      });
+
+      // Another client, no client, or an emptied pool: no restriction on the pool's account.
+      await setClient(a, 8);
+      expect(
+        (await fitsOf(a)).json<Fits>().excluded.flatMap((v) => v.reasons),
+      ).not.toContain('not_in_client_pool');
+      await setClient(a, 7);
+      expect((await setPool(a, 7, [])).json()).toMatchObject({
+        vendors: [],
+        changed: true,
+      });
+      expect(
+        (await fitsOf(a)).json<Fits>().excluded.flatMap((v) => v.reasons),
+      ).not.toContain('not_in_client_pool');
+      await setClient(a, null);
+      expect(
+        (
+          await app.inject({
+            method: 'GET',
+            url: '/api/projects/job/portal-client',
+            headers: as(a),
+          })
+        ).json(),
+      ).toEqual({ clientId: null });
+    });
+
+    it('lists the pools by account id, and an unchanged set says so', async () => {
+      const a = await aliceWithProject();
+      const ids = await rosterWithFits(a);
+      await setPool(a, 7, [ids.eve, ids.frank]);
+      expect(
+        (
+          await app.inject({ method: 'GET', url: '/api/client-pools', headers: as(a) })
+        ).json(),
+      ).toEqual({ pools: [{ clientId: 7, vendors: [ids.eve, ids.frank] }] });
+      expect((await setPool(a, 7, [ids.frank, ids.eve])).json()).toMatchObject({
+        changed: false,
+      });
+    });
+
+    it('refuses bad input as a 400, an account off the roster included, and a stranger sees nothing', async () => {
+      const a = await aliceWithProject();
+      await rosterWithFits(a);
+      expect((await setClient(a, 0)).statusCode).toBe(400);
+      expect((await setClient(a, 'x')).statusCode).toBe(400);
+      expect((await setPool(a, 'abc', [])).statusCode).toBe(400);
+      expect((await setPool(a, 7, 'eve')).statusCode).toBe(400);
+      expect((await setPool(a, 7, [dave.id])).statusCode).toBe(400);
+      expect(
+        (
+          await app.inject({ method: 'GET', url: '/api/client-pools', headers: as(a) })
+        ).json(),
+      ).toEqual({ pools: [] });
+      // Bob has no project "job" and no roster: a 404 and an empty list, never alice's.
+      const b = await login('bob');
+      expect((await setClient(b, 7)).statusCode).toBe(404);
+      expect(
+        (
+          await app.inject({ method: 'GET', url: '/api/client-pools', headers: as(b) })
+        ).json(),
+      ).toEqual({ pools: [] });
+    });
+  });
+
   it('is the caller’s own: no project is a 400 or a 404, and a roster-less owner sees nothing', async () => {
     const a = await aliceWithProject();
     expect((await fitsOf(a, '')).statusCode).toBe(400);

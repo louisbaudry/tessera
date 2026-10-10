@@ -45,12 +45,22 @@ describe('exclusionReasons', () => {
     expect(exclusionReasons({ ...fits, capacity: 'away' }, job)).toEqual(['away']);
   });
 
+  it('names a vendor the project’s client has not approved, and nothing when there is no pool to be in', () => {
+    const job = { src: 'en', tgt: 'de' };
+    expect(exclusionReasons({ ...fits, inClientPool: false }, job)).toEqual([
+      'not_in_client_pool',
+    ]);
+    expect(exclusionReasons({ ...fits, inClientPool: true }, job)).toEqual([]);
+    expect(exclusionReasons({ ...fits, inClientPool: null }, job)).toEqual([]);
+    expect(exclusionReasons(fits, job)).toEqual([]);
+  });
+
   it('names every reason a vendor has, in a fixed order', () => {
     expect(
       exclusionReasons(
-        { languages: [], specialties: [], capacity: 'busy' },
+        { languages: [], specialties: [], capacity: 'busy', inClientPool: false },
         { src: 'en', tgt: 'de', specialty: 'legal' },
       ),
-    ).toEqual(['language_pair', 'specialty', 'busy']);
+    ).toEqual(['language_pair', 'specialty', 'busy', 'not_in_client_pool']);
   });
 });
