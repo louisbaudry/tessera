@@ -2627,6 +2627,13 @@ deferred:
 - **Epic 10 — Client-facing** (Ring 2): intake, status, feedback.
 - **Epic 11 — Invoicing/payments integration** (Ring 3): provisionally
   hand off to Zoho Books rather than rebuild accounting.
+- **Epic 13 — E-invoicing** (Rings 1 and 2) · [issue #224]: electronic
+  invoices on the European standard (EN 16931): issue one from a delivered
+  portal order and hand it to an approved platform, and read a vendor's
+  into the payable it settles. Tessera is never the platform itself. Design
+  drafted 2026-10-11 in `planning/e-invoicing-spec.md`; narrows Epic 11
+  (the ledger and payments stay "integrate"), and `#158`, `#178` and `#179`
+  point into it. Unsized; phase 0 is decisions and spikes.
 - **Epic 12 — Website localisation** (Ring 4, v2/v3) · [issue #25]: the
   Weglot slot, with the one thing Weglot cannot do — accept a translation
   memory.
