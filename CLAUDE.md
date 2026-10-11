@@ -66,6 +66,27 @@ document becomes a fixture only through
 scrub has leaked before); a real memory contributes numbers only,
 under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
 
+## Code comments
+
+Code comments rule synced: 2026-10-11
+
+How this repo applies the shared "Code comments" rule
+(`.claude/shared/CODING.md`). The codebase already follows it (all but a
+handful of the non-test source files open with a doc block), so this
+records the convention rather than asking for a rewrite:
+
+- Exported functions, types and modules in `packages/*/src` carry a
+  JSDoc/TSDoc block saying what they do, their parameters, what they
+  return and what they throw. A module opens with a block naming its job
+  and the spec section or backlog entry it implements
+  (`core/tm/fuzzy.ts` is the model).
+- Inline comments say why — a constraint, a trade-off, a trap — not what.
+  The long comments that cite an incident, a spec section or a backlog
+  number are the model.
+- A change to behavior changes its comment in the same commit.
+- Invisible or lookalike Unicode in a comment follows the escape rule
+  under _Gotchas_ below, as it does in code.
+
 ## The working rhythm
 
 1. **Spec before code.** A design decision (a new data model, a new file
