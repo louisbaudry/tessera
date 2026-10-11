@@ -28,6 +28,17 @@ export interface StoredFile {
  */
 export interface SourceFile extends StoredFile {
   readonly wordCount: number | null;
+  /**
+   * Update orders only (spec §4a): the earlier upload this was compared with,
+   * or `null` (not an update, or a name the earlier order did not have).
+   */
+  readonly comparedToFileId: number | null;
+  /**
+   * Update orders only: the words in new or changed sentences, advisory like
+   * `wordCount`. For a file with no earlier version it is the whole count;
+   * `null` when the file could not be compared or counted.
+   */
+  readonly changedWordCount: number | null;
 }
 
 interface FileRow {
@@ -42,6 +53,8 @@ interface FileRow {
 
 interface SourceFileRow extends FileRow {
   word_count: number | null;
+  compared_to_file_id: number | null;
+  changed_word_count: number | null;
 }
 
 const fromRow = (row: FileRow): StoredFile => ({
@@ -57,6 +70,8 @@ const fromRow = (row: FileRow): StoredFile => ({
 const fromSourceRow = (row: SourceFileRow): SourceFile => ({
   ...fromRow(row),
   wordCount: row.word_count,
+  comparedToFileId: row.compared_to_file_id,
+  changedWordCount: row.changed_word_count,
 });
 
 export interface NewFile {
@@ -70,6 +85,9 @@ export interface NewFile {
 export interface NewSourceFile extends NewFile {
   /** The counter's advisory figure, or `null`; never a price input. Required so a caller says which. */
   readonly wordCount: number | null;
+  /** Update orders: the earlier file compared with, and the words new or changed against it. */
+  readonly comparedToFileId?: number | null;
+  readonly changedWordCount?: number | null;
 }
 
 function insertInto(table: 'source_file' | 'delivered_file') {
@@ -127,9 +145,11 @@ export function insertSourceFile(db: Database.Database, file: NewSourceFile): So
   const info = db
     .prepare(
       `INSERT INTO source_file
-         (order_id, filename, content_type, byte_size, storage_path, uploaded_at, word_count)
+         (order_id, filename, content_type, byte_size, storage_path, uploaded_at, word_count,
+          compared_to_file_id, changed_word_count)
        VALUES
-         (@order_id, @filename, @content_type, @byte_size, @storage_path, @uploaded_at, @word_count)`,
+         (@order_id, @filename, @content_type, @byte_size, @storage_path, @uploaded_at, @word_count,
+          @compared_to_file_id, @changed_word_count)`,
     )
     .run({
       order_id: file.orderId,
@@ -139,6 +159,8 @@ export function insertSourceFile(db: Database.Database, file: NewSourceFile): So
       storage_path: file.storagePath,
       uploaded_at: uploadedAt,
       word_count: file.wordCount,
+      compared_to_file_id: file.comparedToFileId ?? null,
+      changed_word_count: file.changedWordCount ?? null,
     });
   return {
     id: info.lastInsertRowid as number,
@@ -149,6 +171,8 @@ export function insertSourceFile(db: Database.Database, file: NewSourceFile): So
     storagePath: file.storagePath,
     uploadedAt,
     wordCount: file.wordCount,
+    comparedToFileId: file.comparedToFileId ?? null,
+    changedWordCount: file.changedWordCount ?? null,
   };
 }
 
@@ -176,12 +200,21 @@ export function getSourceFile(
  * one: a total with a hole in it would be a smaller number passed off as
  * the whole (portal-v0-spec.md §4).
  */
-export function sumSourceWordCounts(files: readonly SourceFile[]): number | null {
+export function sumSourceWordCounts(
+  files: readonly SourceFile[],
+  options: { readonly changedOnly?: boolean } = {},
+): number | null {
   if (files.length === 0) return null;
   let total = 0;
   for (const file of files) {
-    if (file.wordCount === null) return null;
-    total += file.wordCount;
+    // An update order is quoted on what changed (spec §4a). A file that
+    // could not be compared falls back to its whole count: a quote errs
+    // towards the translator, and the admin reads the figure before signing.
+    const words = options.changedOnly
+      ? (file.changedWordCount ?? file.wordCount)
+      : file.wordCount;
+    if (words === null) return null;
+    total += words;
   }
   return total;
 }

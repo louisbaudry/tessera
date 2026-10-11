@@ -299,4 +299,25 @@ const v6: Migration = {
   },
 };
 
-export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];
+/**
+ * Update orders (portal-v0-spec.md §4a; backlog #163): an order may name the
+ * delivered order it is a new version of, and each of its uploads may record
+ * which earlier file it was compared with and how many of its words are new
+ * or changed. All additive and nullable: `NULL` is "not an update" and "not
+ * compared", which is every row written before this version. Nothing here
+ * prices anything; the admin-confirmed `word_count` still does.
+ */
+const v7: Migration = {
+  version: 7,
+  description:
+    'translation_order.previous_order_id, source_file.compared_to_file_id and changed_word_count (backlog #163)',
+  up: (db) => {
+    db.exec(`
+      ALTER TABLE translation_order ADD COLUMN previous_order_id INTEGER REFERENCES translation_order(id);
+      ALTER TABLE source_file ADD COLUMN compared_to_file_id INTEGER REFERENCES source_file(id);
+      ALTER TABLE source_file ADD COLUMN changed_word_count INTEGER;
+    `);
+  },
+};
+
+export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];

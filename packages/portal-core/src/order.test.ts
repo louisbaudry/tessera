@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   assertCanApprove,
   assertCanPrice,
+  assertCanUpdate,
   assertValidTransition,
   canTransition,
   InvalidTransitionError,
   OrderPricingError,
+  OrderUpdateError,
 } from './order.js';
 
 describe('order lifecycle transitions', () => {
@@ -74,5 +76,46 @@ describe('pricing rules (backlog #63)', () => {
     expect(() => assertCanApprove(120)).not.toThrow();
     expect(() => assertCanApprove(120, 120)).not.toThrow();
     expect(() => assertCanApprove(150, 120)).toThrow(/reload/);
+  });
+});
+
+describe('assertCanUpdate', () => {
+  const base = { clientId: 7, srcLang: 'en-GB', status: 'delivered' as const };
+  const update = { clientId: 7, srcLang: 'en-US' };
+
+  it("accepts the same client's delivered order in the same source language", () => {
+    expect(() => assertCanUpdate(base, update)).not.toThrow();
+  });
+
+  it("gives a missing order and another client's the same message", () => {
+    const missing = () => assertCanUpdate(null, update);
+    const foreign = () => assertCanUpdate({ ...base, clientId: 8 }, update);
+    expect(missing).toThrow(OrderUpdateError);
+    expect(foreign).toThrow(OrderUpdateError);
+    let a = '';
+    let b = '';
+    try {
+      missing();
+    } catch (e) {
+      a = (e as Error).message;
+    }
+    try {
+      foreign();
+    } catch (e) {
+      b = (e as Error).message;
+    }
+    expect(a).toBe(b);
+  });
+
+  it('refuses an order that is not delivered, whatever else it is', () => {
+    for (const status of ['submitted', 'approved', 'in_progress', 'cancelled'] as const) {
+      expect(() => assertCanUpdate({ ...base, status }, update)).toThrow(/delivered/);
+    }
+  });
+
+  it('refuses a different source language', () => {
+    expect(() => assertCanUpdate(base, { ...update, srcLang: 'de' })).toThrow(
+      /same source language/,
+    );
   });
 });

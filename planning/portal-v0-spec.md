@@ -165,6 +165,36 @@ How a file is counted (`portal-core`'s `estimateWordCount`, over
   log line. It is synchronous on the request thread (timings in the
   backlog record).
 
+## 4a. Update orders: a new version, quoted on what changed (backlog #131, 2026-10-11)
+
+A client with a **delivered** order may send version 2 of its files as a new
+order that names it (`updateOf`, a field of the multipart `POST
+/api/client/orders`, and a select in the client's form that appears once a
+request is delivered). The order carries `previous_order_id`; its creation
+`order_event` says so. Nothing else about the lifecycle changes.
+
+- **Who may be updated.** The same client's, `delivered`, in the same source
+  language by primary subtag (`assertCanUpdate`, `portal-core`). Anything else
+  is a 400 with one message for a missing order, another client's and a
+  non-number, so the field cannot be used to ask which order numbers exist.
+- **What is compared.** Each upload is matched, by name and ignoring case, to a
+  source file of the order it updates (`matchEarlierFile`). A DOCX against a DOCX
+  is compared sentence by sentence (`core`'s `countChangedDocxWords`): a sentence
+  is unchanged when its normalised hash (`tm-format-spec.md` §4) is among the
+  earlier file's, wherever it moved to. The words in the rest are
+  `source_file.changed_word_count`, with the matched file in
+  `compared_to_file_id`. A name with no earlier file is a new file, all of it
+  changed. A file that cannot be compared (`.txt`, a bad DOCX, an unspaced
+  language) has `NULL`, and counts at its whole word count in the total.
+- **Advice, like §4.** The admin's pre-filled total for an update order is the
+  sum of those figures, and the screen says it is an estimate that reads a
+  reflowed paragraph, or a formatting-only change, as changed (tags are part of
+  the hash). Only the admin's confirmation sets `word_count` and so the price;
+  neither figure is on a client route.
+- **Not built:** leverage from the client's own memory (§9; issue #159's
+  TM-aware quote will take this figure as input), a fuzzy tier for a sentence
+  one word off, `.txt`/`.pptx`/`.xlsx` comparison.
+
 ## 5. Notification
 
 `NotificationService` interface (`packages/portal-core/src/notify.ts`) with
@@ -198,13 +228,16 @@ SMTP provider shouldn't fail the order-submit/deliver API call itself.
 - `translation_order` — id, client_id, src_lang, notes, status, word_count
   (nullable until admin sets it: the admin-confirmed figure the price
   comes from, never a file's advisory count), price (nullable until
-  word_count is set), created_at, updated_at
+  word_count is set), previous_order_id (v7; nullable, the delivered order
+  this one is a new version of, §4a), created_at, updated_at
 - `order_target_lang` — order_id, tgt_lang (an order can request more than
   one target language; one row per requested pair)
 - `source_file` — id, order_id, filename, content_type, byte_size,
   storage_path, uploaded_at, word_count (v5; nullable, **advisory**: §4.
   `NULL` is "not counted". It prices nothing and no client route
-  returns it)
+  returns it), compared_to_file_id and changed_word_count (v7; update
+  orders only, §4a: the earlier file compared with and the words in new or
+  changed sentences, advisory and never on a client route)
 - `delivered_file` — id, order_id, filename, content_type, byte_size,
   storage_path, uploaded_at
 - `order_event` — id, order_id, from_status (nullable, null for the

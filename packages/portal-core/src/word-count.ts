@@ -8,7 +8,13 @@
  * name and its bytes, never from the content type the client declared.
  */
 
-import { countDocxWords, countTextWords, countWords } from '@cat-tool/core';
+import {
+  countChangedDocxWords,
+  countDocxWords,
+  countTextWords,
+  countWords,
+  type ChangedWords,
+} from '@cat-tool/core';
 
 /** One definition of a word, `@cat-tool/core`'s; re-exported, not copied. */
 export { countWords };
@@ -54,4 +60,47 @@ export function estimateWordCount(input: WordCountInput): number | null {
   } catch {
     return null;
   }
+}
+
+export interface ChangedWordsInput {
+  readonly filename: string;
+  readonly bytes: Uint8Array;
+  /** The earlier version of the same file, from the order being updated. */
+  readonly baseFilename: string;
+  readonly baseBytes: Uint8Array;
+  readonly srcLang: string;
+}
+
+/**
+ * The words of a new version that are new or changed against the earlier
+ * one (portal-v0-spec.md §4a; backlog #163), or `null`. Only a DOCX can be
+ * compared with a DOCX, both judged by name and magic bytes as in
+ * {@link estimateWordCount}; `.txt` has no sentence-level segmentation in
+ * `core` and is `null`, which leaves the admin to read the file. Never throws.
+ */
+export function estimateChangedWords(input: ChangedWordsInput): ChangedWords | null {
+  try {
+    const isDocx = (name: string, bytes: Uint8Array) =>
+      extensionOf(name) === 'docx' && isZip(bytes);
+    if (!isDocx(input.filename, input.bytes)) return null;
+    if (!isDocx(input.baseFilename, input.baseBytes)) return null;
+    return countChangedDocxWords(input.bytes, input.baseBytes, input.srcLang);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The earlier file a new upload is a version of: the first candidate with
+ * the same name once case is ignored (Word and macOS disagree about it), in
+ * the order given. A new name is a new file, matched to nothing: the whole of
+ * it is new. Matching on name rather than position means a client who adds a
+ * second document does not shift the comparison of the first.
+ */
+export function matchEarlierFile<T extends { readonly filename: string }>(
+  filename: string,
+  candidates: readonly T[],
+): T | null {
+  const wanted = filename.toLowerCase();
+  return candidates.find((c) => c.filename.toLowerCase() === wanted) ?? null;
 }

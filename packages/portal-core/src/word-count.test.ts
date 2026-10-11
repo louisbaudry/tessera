@@ -1,7 +1,12 @@
 import { writeDocx } from '@cat-tool/core';
 import { describe, expect, it } from 'vitest';
 
-import { countWords, estimateWordCount } from './word-count.js';
+import {
+  countWords,
+  estimateChangedWords,
+  estimateWordCount,
+  matchEarlierFile,
+} from './word-count.js';
 
 const est = (filename: string, bytes: Uint8Array, srcLang = 'en') =>
   estimateWordCount({ filename, bytes, srcLang });
@@ -82,5 +87,58 @@ describe('estimateWordCount', () => {
     it('an empty file is zero words, not unknown', () => {
       expect(est('a.txt', new Uint8Array(0))).toBe(0);
     });
+  });
+});
+
+describe('estimateChangedWords', () => {
+  const docxOf = (text: string) =>
+    writeDocx({
+      parts: [
+        { name: '[Content_Types].xml', data: strToU8('<Types/>') },
+        {
+          name: 'word/document.xml',
+          data: strToU8(
+            `<w:document ${NS}><w:body><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:body></w:document>`,
+          ),
+        },
+      ],
+    });
+  const v1 = docxOf('One old sentence here. Another old sentence stays.');
+  const v2 = docxOf('One old sentence here. A brand new sentence arrives.');
+  const changed = (over: Partial<Parameters<typeof estimateChangedWords>[0]> = {}) =>
+    estimateChangedWords({
+      filename: 'a.docx',
+      bytes: v2,
+      baseFilename: 'a.docx',
+      baseBytes: v1,
+      srcLang: 'en',
+      ...over,
+    });
+
+  it('counts the words of the sentences that are new', () => {
+    expect(changed()).toEqual({ words: 9, changedWords: 5 });
+  });
+
+  it('is null unless both are DOCX by name and by bytes', () => {
+    expect(changed({ filename: 'a.txt' })).toBeNull();
+    expect(changed({ baseFilename: 'a.pdf' })).toBeNull();
+    expect(changed({ bytes: strToU8('not a zip') })).toBeNull();
+    expect(changed({ baseBytes: strToU8('not a zip') })).toBeNull();
+  });
+});
+
+describe('matchEarlierFile', () => {
+  const files = [
+    { id: 1, filename: 'Report.docx' },
+    { id: 2, filename: 'annex.docx' },
+  ];
+
+  it('matches by name, ignoring case', () => {
+    expect(matchEarlierFile('report.DOCX', files)?.id).toBe(1);
+    expect(matchEarlierFile('annex.docx', files)?.id).toBe(2);
+  });
+
+  it('matches nothing for a new name', () => {
+    expect(matchEarlierFile('report v2.docx', files)).toBeNull();
   });
 });

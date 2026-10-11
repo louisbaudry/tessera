@@ -103,6 +103,7 @@ async function renderOrderDetail(id) {
     <button class="secondary" id="back">&larr; All requests</button>
     <h2>Request #${order.id} ${statusBadge(order.status)}</h2>
     <p>${escapeHtml(order.srcLang)} &rarr; ${escapeHtml(order.tgtLangs.join(', '))}</p>
+    ${order.previousOrderId == null ? '' : `<p class="muted">A new version of request #${order.previousOrderId}: only new or changed text is quoted.</p>`}
     <p class="muted">Words: ${order.wordCount ?? 'estimate pending'} · Price: ${money(order.price)}</p>
     ${order.notes ? `<p class="muted">${escapeHtml(order.notes)}</p>` : ''}
 
@@ -190,6 +191,14 @@ async function renderHome() {
       <label>Target language(s) — hold Ctrl/Cmd to select more than one</label>
       <select name="tgtLangs" multiple required style="height: 5rem"></select>
 
+      <div id="update-of-field" hidden>
+        <label>Is this a new version of a request we already delivered? (optional)</label>
+        <select name="updateOf">
+          <option value="">No, a new request</option>
+        </select>
+        <p class="muted">We quote only the text that is new or changed, and confirm the figure before you approve.</p>
+      </div>
+
       <label>Files</label>
       <input type="file" name="files" multiple required
         accept=".docx,.pptx,.xlsx,.pdf,.txt" />
@@ -218,6 +227,26 @@ async function renderHome() {
     tgtSelect.add(new Option(lang, lang));
   }
 
+  // A delivered request can be updated (spec §4a). Choosing one fixes the
+  // languages to its own: the server only accepts the same source language.
+  const delivered = orders.filter((o) => o.status === 'delivered');
+  const updateSelect = app.querySelector('select[name="updateOf"]');
+  if (delivered.length > 0) {
+    app.querySelector('#update-of-field').hidden = false;
+    for (const o of delivered) {
+      updateSelect.add(
+        new Option(`#${o.id} ${o.srcLang} → ${o.tgtLangs.join(', ')}`, o.id),
+      );
+    }
+    updateSelect.addEventListener('change', () => {
+      const picked = delivered.find((o) => String(o.id) === updateSelect.value);
+      if (!picked) return;
+      srcSelect.value = picked.srcLang;
+      for (const opt of tgtSelect.options)
+        opt.selected = picked.tgtLangs.includes(opt.value);
+    });
+  }
+
   const ordersDiv = app.querySelector('#orders');
   if (orders.length === 0) {
     ordersDiv.innerHTML = `<p class="muted">No requests yet.</p>`;
@@ -227,7 +256,7 @@ async function renderHome() {
         (o) => `
       <div class="card">
         <strong>#${o.id}</strong> ${o.srcLang} → ${o.tgtLangs.join(', ')}
-        ${statusBadge(o.status)}
+        ${statusBadge(o.status)}${o.previousOrderId == null ? '' : ` <span class="muted">update of #${o.previousOrderId}</span>`}
         <div class="muted">Words: ${o.wordCount ?? 'estimate pending'} · Price: ${money(o.price)}</div>
         ${
           o.status === 'submitted'
@@ -276,6 +305,7 @@ async function renderHome() {
     data.append('srcLang', form.srcLang.value);
     for (const opt of form.tgtLangs.selectedOptions) data.append('tgtLangs', opt.value);
     data.append('notes', form.notes.value);
+    if (form.updateOf.value) data.append('updateOf', form.updateOf.value);
     for (const file of form.files.files) data.append('files', file, file.name);
 
     try {

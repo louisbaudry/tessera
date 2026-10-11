@@ -37,6 +37,8 @@ export interface TranslationOrder {
   readonly status: OrderStatus;
   readonly wordCount: number | null;
   readonly price: number | null;
+  /** The delivered order this one is a new version of (spec §4a), or `null`. */
+  readonly previousOrderId: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -62,6 +64,7 @@ interface OrderRow {
   status: OrderStatus;
   word_count: number | null;
   price: number | null;
+  previous_order_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +86,7 @@ function withTgtLangs(db: Database.Database, row: OrderRow): TranslationOrder {
     status: row.status,
     wordCount: row.word_count,
     price: row.price,
+    previousOrderId: row.previous_order_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -93,6 +97,8 @@ export interface NewOrder {
   readonly srcLang: string;
   readonly tgtLangs: readonly string[];
   readonly notes?: string | null;
+  /** Makes this an update of that order; the caller has run `assertCanUpdate` on it. */
+  readonly previousOrderId?: number | null;
 }
 
 export interface OrderWriteOptions {
@@ -133,13 +139,16 @@ export function createOrder(
     const info = db
       .prepare(
         `INSERT INTO translation_order
-           (client_id, src_lang, notes, status, word_count, price, created_at, updated_at)
-         VALUES (@client_id, @src_lang, @notes, 'submitted', NULL, NULL, @now, @now)`,
+           (client_id, src_lang, notes, status, word_count, price, previous_order_id,
+            created_at, updated_at)
+         VALUES (@client_id, @src_lang, @notes, 'submitted', NULL, NULL, @previous_order_id,
+                 @now, @now)`,
       )
       .run({
         client_id: order.clientId,
         src_lang: order.srcLang,
         notes: order.notes ?? null,
+        previous_order_id: order.previousOrderId ?? null,
         now,
       });
     const id = info.lastInsertRowid as number;
@@ -155,7 +164,10 @@ export function createOrder(
       orderId: id,
       fromStatus: null,
       toStatus: 'submitted',
-      note: 'order created',
+      note:
+        order.previousOrderId == null
+          ? 'order created'
+          : `order created as an update of order #${order.previousOrderId}`,
       createdAt: now,
       actor: options.actor,
     });
@@ -168,6 +180,7 @@ export function createOrder(
       status: 'submitted',
       word_count: null,
       price: null,
+      previous_order_id: order.previousOrderId ?? null,
       created_at: now,
       updated_at: now,
     });
