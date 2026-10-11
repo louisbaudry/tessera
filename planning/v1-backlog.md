@@ -3121,7 +3121,7 @@ Split so the headless part does not wait on the editor:
     file, or no language pair. Not built: re-running the rule over a
     project when its glossary changes (a QA run does it on demand).
 
-### Epic 9 — Language Provider tools (spec'd 2026-09-22, not started)
+### Epic 9 — Language Provider tools (spec'd 2026-09-22; built through the roster, assignments, payables, webhooks, deadline clock and eligibility, 2026-10-10)
 
 Design in `planning/vendor-spec.md`. A vendor is a translator, not a
 CRM-style record referenced by a job — the spec's central decision, and

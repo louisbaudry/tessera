@@ -211,7 +211,13 @@ SMTP provider shouldn't fail the order-submit/deliver API call itself.
   creation event), to_status, note, created_at, actor, actor_label
   (v3; append-only by trigger)
 - `audit_event` — the shared audit log (v3, `audit-spec.md` §2, §2.6);
-  v4 admits `order.priced` and `order.price_baseline` (backlog `#63`)
+  v4 admits `order.priced` and `order.price_baseline` (backlog `#63`); v6
+  admits `resource.linked`, `resource.unlinked` and `resource.exported`
+  (backlog `#127`)
+- `client_resource` — id, client_id, kind (`tm` or `glossary`), path (the
+  operator's absolute path, never sent to a client), name, linked_at; unique
+  per (client_id, kind) (v6, backlog `#127`, §9). Paths, not translation
+  content: the files stay where their owner keeps them.
 
 Files are stored on local disk under a configurable storage root
 (mirrors the existing `account.storage_root` pattern in
