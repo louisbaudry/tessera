@@ -74,7 +74,8 @@ a price the client never saw. The client reloads and sees the new one.
 ## 3. Pricing
 
 Simple and isolated on purpose (explicitly out of scope for v0: discounts,
-retainers, POs, payment integration):
+retainers (a client plan is designed in §10, not built), POs, payment
+integration):
 
 ```
 lineTotal(pair, wordCount) = max(wordCount * ratePerWord(pair), minimumPrice)
@@ -362,3 +363,97 @@ them whenever they like, as TMX and CSV, from their page. Decided
   100,000 units a 413. Each download is logged as `resource.exported` before
   the first byte goes out.
 
+## 10. A client plan: a monthly word allowance (idea #220, designed, not built)
+
+Decided 2026-10-11 (Louis): this feature is written down now and built when
+the time comes. It is generic on purpose. Nothing in it names a client, and the
+terms of any particular agreement (rate, allowance, term, rollover) are set by
+the operator per client, never shipped as defaults.
+
+**What.** An operator can give a portal client a *plan*: an allowance of words
+per month at a stated per-word rate, for a term, with unused words carried over
+for a stated number of months. An approved order draws its confirmed word count
+from the allowance. The client's page shows the plan and the balance. The portal
+charges nothing: the monthly fee is invoiced outside it (§3 and idea `#178`
+keep payment out of scope), and the portal only says what was drawn.
+
+**Why it is a separate design.** §3 prices one order at a time:
+`max(wordCount * ratePerWord, minimumPrice)`. A plan is a fact about *several*
+orders over time, and the lifecycle in §2 links no two orders. The new thing is
+the balance, so most of the design is about keeping the balance honest.
+
+### Rules
+
+- **A draw is a row, never an edit.** `plan_draw` (append-only by trigger, actor
+  required, the same shape as `order_event` and `assignment_payable`) records
+  `(plan_id, order_id, words, kind, month, created_at, actor)` with `kind` one of
+  `draw` or `release`. The balance is **derived** from the plan and its rows when
+  read and never stored, so it cannot disagree with the history that produced it.
+  A cancelled order writes a `release` row that reverses its draw; nothing is
+  deleted or updated.
+- **A draw is frozen when the client approves.** It is written in the transaction
+  of the approval, from the order's confirmed word count. Recomputing coverage
+  later from a changing set of orders would change what an earlier approval
+  covered after the client agreed to it. This is the §2 rule again: approval is
+  consent to the figure that was shown, so the figure is fixed at that moment.
+- **The price shown to the client does not change meaning.** `translation_order`
+  still carries a price and `assertCanApprove` still compares it with what the
+  client's page showed. A plan adds a second, derived statement beside it ("covered
+  by your plan: N words, M remaining") and changes neither the price nor the
+  transition table.
+- **Carry-over is first in, first out.** A month's unused words stay usable for
+  the plan's carry-over months and then expire. A draw takes from the oldest
+  usable month first. Both rules are pure functions in `portal-core`
+  (`planBalance(plan, draws, at)`), provable with no database, like `pricing.ts`.
+- **Words beyond the allowance** are priced at the plan's rate unless the plan
+  names an overage rate. The balance never goes negative: the part of an order
+  that exceeds it is the order's overage, stated, not hidden.
+- **A plan ends, it is not edited.** Changing terms means ending the plan and
+  creating a new one, so a past month is always read under the terms that held
+  in it. Renewal is a new plan row. Notice periods and exit terms are contractual
+  and are not enforced by the software.
+- **Operator-written only.** Plans are created and ended through admin routes.
+  No client route can write one, and another client's plan is the same 404 as a
+  plan that does not exist.
+- **Audited.** `plan.created`, `plan.ended`, `plan.draw` and `plan.release` are
+  new `audit_event` actions. Each is a migration that widens the `CHECK` with
+  `rebuildTable` as a literal, never an import of a live list (the snapshot
+  invariant in `CLAUDE.md`), and `db/check-lists.test.ts` must pass.
+- **One currency per plan, never converted**, as in the vendor ledger. A monthly
+  statement (orders, words drawn, balance) can be exported as CSV through the
+  shared cell guard in `core/model/csv.ts`, and logs a `resource.exported`-style
+  event with a count and a digest.
+
+### Open questions (settle before building)
+
+- **Several target languages.** Does an order with two target languages draw its
+  word count once or twice? Proposal: once per target language it covers, since
+  the work is done per language, and the plan names the pairs it covers.
+- **Month boundaries.** Calendar months in UTC, or months counted from the plan's
+  start date? Proposal: from the start date, so a term is always whole months.
+- **Money type.** The portal's `rate` table stores `REAL`; the vendor ledger
+  stores integer micros. A plan should store integer micros, which means pricing
+  a plan order needs a conversion at one named place.
+- **The per-file minimum** (`#222`): a file under the minimum counts as the
+  minimum number of words against the allowance. That needs a confirmed count
+  per file, which §4 does not have today.
+- **Rush** (`#160`): is a rush surcharge a charge on top, or extra words drawn?
+- **Orders created by an admin** (`#221`): the draw is written at approval, so
+  the actor on the draw is whoever recorded that approval.
+
+### Tests it will need (test first, per `CODING.md`)
+
+- The balance equals allowance minus draws plus releases, for any order of rows.
+- Cancelling an approved order restores its words exactly once (idempotent).
+- Words expire after the carry-over window and a draw takes the oldest first.
+- Approving the same order twice writes one draw.
+- A client cannot read or write another client's plan, and cannot write its own.
+- The price a client approves is unchanged by the plan.
+- Appending to `plan_draw` works; updating or deleting a row aborts.
+
+### Related
+
+`#160` (delivery date and rush), `#178` (invoicing and payment), `#221` (an admin
+enters an order for a client), `#222` (minimum price per file), `#159` (a quote
+that reflects the client's own memory), `#163` (update orders quoted on what
+changed), `#179` (solo-translator mode).
