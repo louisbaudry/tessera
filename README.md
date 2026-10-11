@@ -27,20 +27,20 @@ there is only ever one copy of this guidance.
 ```
 packages/
   core/        @cat-tool/core   pure TS — no Electron, no DOM, no HTTP
-    model/     tokens, tags, segments, QA types
+    model/     tokens, tags, segments, QA types, the one CSV cell guard (`csvCell`)
     docx/      DOCX filter: package I/O, skeleton, tokenize, render
     segment/   sentence segmentation, custom profiles, SRX, Trados lists, manual split/merge
     tm/        Token<->TmToken mapping; TMX import/export and native .sdltm parsing, normalisation, context; exact matcher + pre-translate
     glossary/  termKey — the one definition of "the same term" across core and db; term candidate detection, the aligner seam, and flagging known terms in a source (smart-glossary-spec.md §4)
     project/   assembleFile — DOCX import -> persistable file + segments; exportProjectFile — the inverse, segments folded back into DOCX
     qa/        QA rule engine — all thirteen v1-spec.md §6.4 rules, locale tables, numeral matching
-  db/          @cat-tool/db     versioned SQLite migration runner; project, platform, portal, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export, .sdltm import, memory merge; the vendor roster (.ctv); worker-thread jobs for bulk operations
+  db/          @cat-tool/db     versioned SQLite migration runner; project, platform, portal, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export, .sdltm import, memory merge; the vendor roster (.ctv, with eligibility and client vendor pools); a read-only open for files another process owns; the client export of a linked memory and glossary; worker-thread jobs for bulk operations
   cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export, history, audit-verify (v1-spec.md §2.4)
   server/      @cat-tool/server Fastify API — login, accounts, projects, file import, memory imports as cancellable jobs, and the built SPA (v1-spec.md §2.5)
-  web/         @cat-tool/web    React SPA — login, project/file picker, the virtualised segment grid (v1-spec.md §7.1) and its tag-aware target editor (§7.2); `pnpm --filter @cat-tool/web dev` against a running server
+  web/         @cat-tool/web    React SPA — login, project/file picker, the virtualised segment grid (v1-spec.md §7.1) and its tag-aware target editor (§7.2), glossary and QA panels, a command palette and an add-a-term key; `pnpm --filter @cat-tool/web dev` against a running server
   portal-core/ @cat-tool/portal-core   pure TS — pricing, order lifecycle, notification/production-adapter interfaces for the client-facing translation portal (planning/portal-v0-spec.md)
-  vendor-core/ @cat-tool/vendor-core   pure TS — the assignment lifecycle state machine, rate tiers and capacity statuses for Language Provider tools (planning/vendor-spec.md)
-  portal-server/ @cat-tool/portal-server Fastify API + minimal static UI for the translation portal (client intake/approval, admin order management, SMTP email notifications)
+  vendor-core/ @cat-tool/vendor-core   pure TS — the assignment lifecycle state machine, rate tiers, capacity statuses, payables, deadline notices, webhook rules and the advisory eligibility rule for Language Provider tools (planning/vendor-spec.md)
+  portal-server/ @cat-tool/portal-server Fastify API + minimal static UI for the translation portal (client intake/approval, admin order management, SMTP email notifications, a client's own memory and glossary download)
 planning/      specs and backlog
 fixtures/      real-world DOCX structure with synthetic content (docx/), used by every gate test; the golden end-to-end job's memory and transcript (golden/)
 site/          public landing page, deployed to GitHub Pages
