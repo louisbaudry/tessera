@@ -142,6 +142,11 @@ today, what's manual about the handoff — is **deliberately deferred to
 when Ring 1 is being designed**, not guessed at now. Recorded as open in
 §7.
 
+**E-invoicing, receiving side (recorded 2026-10-11):** a vendor's
+electronic invoice, read into the European standard (EN 16931) and matched
+to the payable already locked at delivery. Part of Epic 13; design in
+`planning/e-invoicing-spec.md` §6.
+
 ### Ring 2 — Client-facing
 
 Intake beyond a file and a language pair (brief, tone, audience,
@@ -161,6 +166,13 @@ convention. The client-facing surface is not a stripped-down version of
 the translator's editor — it needs its own design pass, written for
 someone who is *not* in the translation business at all.
 
+**E-invoicing, issuing side (recorded 2026-10-11):** Tessera should produce
+electronic invoices compatible with European regulations, or at least send
+them to approved European e-invoicing platforms. A delivered order becomes
+an EN 16931 invoice, validated, numbered, frozen and handed to a certified
+provider; Tessera does not become the platform itself. Part of Epic 13;
+design in `planning/e-invoicing-spec.md` §5.
+
 ### Ring 3 — Invoicing and payments
 
 Provisional lean: **integrate, don't rebuild.** The account already has
@@ -168,6 +180,13 @@ Zoho Books connected; the natural shape is handing off billable totals to
 a tool already in use rather than building accounting software. Revisit
 when Ring 3 is actually next — cheap to change, expensive to build early
 and be wrong.
+
+**Narrowed 2026-10-11:** the lean holds for the ledger (bookkeeping, VAT
+returns, bank reconciliation, payments). The legal invoice *document* and
+its delivery through an approved platform are a different problem, pulled
+forward into Rings 1 and 2 as Epic 13 (`planning/e-invoicing-spec.md` §1).
+Who owns the invoice number, Tessera or the ledger tool, is open there
+(§10.1).
 
 ### Ring 4 — Website localisation *(v2/v3 — "Weglot, but it accepts your TM")*
 
@@ -300,6 +319,8 @@ segmentation-spec.md gave custom segmentation:
 - **Epic 10 — Client-facing** *(Ring 2, unsized)*
 - **Epic 11 — Invoicing/payments integration** *(Ring 3, unsized)*
 - **Epic 12 — Website localisation** *(Ring 4, v2/v3, unsized — see §3)*
+- **Epic 13 — E-invoicing** *(Rings 1 and 2, unsized — design drafted
+  2026-10-11, `planning/e-invoicing-spec.md`)*
 
 ---
 
@@ -321,7 +342,10 @@ Recorded so they aren't lost, not because they're urgent:
 3. **DeepL vs. an alternative MT engine** — provisionally DeepL (§3);
    worth a real comparison once Epic 8 is underway, not before.
 4. **Invoicing: integrate with Zoho vs. build native** — provisional
-   lean toward integration (§3); revisit when Epic 11 is next.
+   lean toward integration (§3); revisit when Epic 11 is next. Narrowed
+   2026-10-11: the legal e-invoice document and who owns its number are
+   Epic 13's question (`e-invoicing-spec.md` §10.1); the ledger question
+   stays here.
 5. **Pricing/licensing model for eventual other-LSP customers** — not
    touched in this document at all. Out of scope until the product
    works for one business first.
