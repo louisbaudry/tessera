@@ -753,6 +753,257 @@ describe('the advisory word count (backlog #62)', () => {
   });
 });
 
+describe('an update order, priced on what changed (backlog #163)', () => {
+  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const bytes = (s: string) => new TextEncoder().encode(s);
+  const docxOf = (...sentences: string[]) =>
+    writeDocx({
+      parts: [
+        { name: '[Content_Types].xml', data: bytes('<Types/>') },
+        {
+          name: 'word/document.xml',
+          data: bytes(
+            `<w:document ${NS}><w:body>${sentences
+              .map((t) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`)
+              .join('')}</w:body></w:document>`,
+          ),
+        },
+      ],
+    });
+
+  const V1 = docxOf(
+    'The first paragraph stays as it is.',
+    'The second paragraph is old.',
+  );
+  // The first paragraph (7 words) is unchanged; the second is rewritten (5 words).
+  const V2 = docxOf('The first paragraph stays as it is.', 'The second one is new.');
+
+  async function submit(
+    token: string,
+    files: Array<{ name: string; body: Uint8Array }>,
+    updateOf?: string,
+  ) {
+    const form = new FormData();
+    form.append('srcLang', 'en');
+    form.append('tgtLangs', 'es');
+    if (updateOf !== undefined) form.append('updateOf', updateOf);
+    for (const f of files) {
+      form.append('files', new Blob([new Uint8Array(f.body)]), f.name);
+    }
+    return app.inject({
+      method: 'POST',
+      url: '/api/client/orders',
+      headers: auth(token),
+      payload: form,
+    });
+  }
+
+  /** An order taken the whole way to `delivered`, as the admin and client would. */
+  async function deliveredOrder(files: Array<{ name: string; body: Uint8Array }>) {
+    const res = await submit(ada.accessToken, files);
+    expect(res.statusCode, res.body).toBe(201);
+    const id = (res.json() as { order: { id: number } }).order.id;
+    const admin = await adminLogin();
+    const patch = (payload: object) =>
+      app.inject({
+        method: 'PATCH',
+        url: `/api/admin/orders/${id}`,
+        headers: auth(admin),
+        payload,
+      });
+    expect((await patch({ wordCount: 11 })).statusCode).toBe(200);
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/client/orders/${id}/approve`,
+      headers: auth(ada.accessToken),
+      payload: { price: 20 },
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect((await patch({ status: 'in_progress' })).statusCode).toBe(200);
+    await deliver(admin, id, [{ name: 'out.txt', body: 'x' }], true);
+    return id;
+  }
+
+  const adminOrder = async (id: number) =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: `/api/admin/orders/${id}`,
+        headers: auth(await adminLogin()),
+      })
+    ).json() as {
+      order: { previousOrderId: number | null };
+      sourceFiles: Array<{
+        filename: string;
+        wordCount: number | null;
+        changedWordCount: number | null;
+        comparedToFileId: number | null;
+      }>;
+      suggestedWordCount: number | null;
+    };
+
+  it('suggests the changed words, from the file with the same name in the delivered order', async () => {
+    const first = await deliveredOrder([{ name: 'Report.docx', body: V1 }]);
+    const res = await submit(
+      ada.accessToken,
+      [{ name: 'report.docx', body: V2 }],
+      String(first),
+    );
+    expect(res.statusCode, res.body).toBe(201);
+    const id = (res.json() as { order: { id: number } }).order.id;
+
+    const seen = await adminOrder(id);
+    expect(seen.order.previousOrderId).toBe(first);
+    expect(seen.sourceFiles[0]).toMatchObject({ wordCount: 12, changedWordCount: 5 });
+    expect(seen.sourceFiles[0]!.comparedToFileId).not.toBeNull();
+    // 5 changed words of 12: the admin is shown the 5, to confirm.
+    expect(seen.suggestedWordCount).toBe(5);
+  });
+
+  it('quotes a file the delivered order did not have in full, and one it cannot compare too', async () => {
+    const first = await deliveredOrder([{ name: 'report.docx', body: V1 }]);
+    const res = await submit(
+      ada.accessToken,
+      [
+        { name: 'report.docx', body: V2 },
+        { name: 'annex.docx', body: docxOf('A brand new annex of six words.') },
+        { name: 'notes.txt', body: bytes('three plain words') },
+      ],
+      String(first),
+    );
+    const id = (res.json() as { order: { id: number } }).order.id;
+    const seen = await adminOrder(id);
+    expect(
+      seen.sourceFiles.map((f) => [f.filename, f.wordCount, f.changedWordCount]),
+    ).toEqual([
+      ['report.docx', 12, 5],
+      ['annex.docx', 7, 7],
+      ['notes.txt', 3, 3],
+    ]);
+    expect(seen.suggestedWordCount).toBe(15);
+  });
+
+  it('is an ordinary order, priced on its whole count, without updateOf', async () => {
+    await deliveredOrder([{ name: 'report.docx', body: V1 }]);
+    const res = await submit(ada.accessToken, [{ name: 'report.docx', body: V2 }]);
+    const id = (res.json() as { order: { id: number } }).order.id;
+    const seen = await adminOrder(id);
+    expect(seen.order.previousOrderId).toBeNull();
+    expect(seen.sourceFiles[0]).toMatchObject({
+      changedWordCount: null,
+      comparedToFileId: null,
+    });
+    expect(seen.suggestedWordCount).toBe(12);
+  });
+
+  it("refuses an order that is missing, someone else's, or not delivered, with one message", async () => {
+    const mine = await deliveredOrder([{ name: 'report.docx', body: V1 }]);
+    const undelivered = (
+      (await submit(ada.accessToken, [{ name: 'draft.docx', body: V1 }])).json() as {
+        order: { id: number };
+      }
+    ).order.id;
+    const theirs = await submit(
+      other.accessToken,
+      [{ name: 'report.docx', body: V1 }],
+      String(mine),
+    );
+    const missing = await submit(
+      ada.accessToken,
+      [{ name: 'report.docx', body: V2 }],
+      '9999',
+    );
+    const junk = await submit(
+      ada.accessToken,
+      [{ name: 'report.docx', body: V2 }],
+      'one',
+    );
+    const early = await submit(
+      ada.accessToken,
+      [{ name: 'report.docx', body: V2 }],
+      String(undelivered),
+    );
+    for (const res of [theirs, missing, junk]) {
+      expect(res.statusCode, res.body).toBe(400);
+    }
+    expect(theirs.json()).toEqual(missing.json());
+    expect(theirs.json()).toEqual(junk.json());
+    expect(early.statusCode).toBe(400);
+    expect(early.body).toMatch(/delivered/);
+    // None of them left an order behind.
+    const count = (
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/client/orders',
+          headers: auth(ada.accessToken),
+        })
+      ).json() as unknown[]
+    ).length;
+    expect(count).toBe(2);
+  });
+
+  it('keeps the comparison off the client API', async () => {
+    const first = await deliveredOrder([{ name: 'report.docx', body: V1 }]);
+    const res = await submit(
+      ada.accessToken,
+      [{ name: 'report.docx', body: V2 }],
+      String(first),
+    );
+    const id = (res.json() as { order: { id: number } }).order.id;
+    expect(res.body).not.toContain('changedWordCount');
+    expect(res.body).not.toContain('comparedToFileId');
+    const seen = await app.inject({
+      method: 'GET',
+      url: `/api/client/orders/${id}`,
+      headers: auth(ada.accessToken),
+    });
+    expect(seen.body).not.toContain('changedWordCount');
+    expect(seen.body).not.toContain('comparedToFileId');
+    expect(seen.body).not.toContain('suggestedWordCount');
+    expect(
+      (seen.json() as { order: { previousOrderId: number } }).order.previousOrderId,
+    ).toBe(first);
+  });
+
+  it('chains: an update of an update compares with the latest version', async () => {
+    const first = await deliveredOrder([{ name: 'report.docx', body: V1 }]);
+    const secondRes = await submit(
+      ada.accessToken,
+      [{ name: 'report.docx', body: V2 }],
+      String(first),
+    );
+    const second = (secondRes.json() as { order: { id: number } }).order.id;
+    // Taken to delivered by hand: the helper above submits a fresh order.
+    const admin = await adminLogin();
+    const patch = (payload: object) =>
+      app.inject({
+        method: 'PATCH',
+        url: `/api/admin/orders/${second}`,
+        headers: auth(admin),
+        payload,
+      });
+    await patch({ wordCount: 5 });
+    await app.inject({
+      method: 'POST',
+      url: `/api/client/orders/${second}/approve`,
+      headers: auth(ada.accessToken),
+      payload: { price: 20 },
+    });
+    await patch({ status: 'in_progress' });
+    await deliver(admin, second, [{ name: 'out.txt', body: 'x' }], true);
+
+    // V2 again is no change against V2, though it is all changed against V1.
+    const third = await submit(
+      ada.accessToken,
+      [{ name: 'report.docx', body: V2 }],
+      String(second),
+    );
+    const id = (third.json() as { order: { id: number } }).order.id;
+    expect((await adminOrder(id)).suggestedWordCount).toBe(0);
+  });
+});
+
 describe('a client takes their own memory and glossary (backlog #162)', () => {
   const OPERATOR = { actor: { kind: 'system', name: 'test' }, label: null } as const;
 

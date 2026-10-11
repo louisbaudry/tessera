@@ -6,6 +6,8 @@
  * `CLAUDE.md` requires for other frozen, cross-cutting facts.
  */
 
+import { primarySubtag } from '@cat-tool/core';
+
 export const ORDER_STATUSES = [
   'submitted',
   'approved',
@@ -86,6 +88,52 @@ export function assertCanApprove(price: number | null, seenPrice?: number): void
   if (seenPrice !== undefined && seenPrice !== price) {
     throw new OrderPricingError(
       `the order's price is now ${price}, not the ${seenPrice} shown: reload and approve again`,
+    );
+  }
+}
+
+/**
+ * Why an order cannot be an update of another (portal-v0-spec.md §4a;
+ * backlog #163). Its own type, mapped to a 400 by the route: a client
+ * naming the wrong order made a mistake in the request, which is not a
+ * conflict with the order's state the way {@link OrderPricingError} is.
+ */
+export class OrderUpdateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OrderUpdateError';
+  }
+}
+
+/** What an update order needs to know about the order it updates. */
+export interface UpdateBase {
+  readonly clientId: number;
+  readonly srcLang: string;
+  readonly status: OrderStatus;
+}
+
+/**
+ * An order may be an update of another only if that one is the same
+ * client's, **delivered** (there is a translation to update), and in the
+ * same source language by primary subtag (`en-GB` to `en-US` is the same
+ * text). A missing order and another client's get one message, so the
+ * answer cannot be used to ask which order numbers exist.
+ */
+export function assertCanUpdate(
+  base: UpdateBase | null,
+  update: { readonly clientId: number; readonly srcLang: string },
+): void {
+  if (base === null || base.clientId !== update.clientId) {
+    throw new OrderUpdateError('updateOf must be one of your own delivered orders');
+  }
+  if (base.status !== 'delivered') {
+    throw new OrderUpdateError(
+      `updateOf must be a delivered order, not one that is ${base.status}`,
+    );
+  }
+  if (primarySubtag(base.srcLang) !== primarySubtag(update.srcLang)) {
+    throw new OrderUpdateError(
+      'an update must have the same source language as the order it updates',
     );
   }
 }

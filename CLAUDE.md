@@ -495,6 +495,15 @@ engine, but follows the same discipline:
   segment through `segmentWords`, which counts a text box's
   `mc:Fallback` copy once (`segment.fallback_copy`, backlog #34) —
   never a splitter of their own.
+- **An update order is quoted on what changed, as advice** (backlog #131,
+  `portal-v0-spec.md` §4a). `previous_order_id` links a new order to the
+  same client's delivered one (`assertCanUpdate`; a missing order, another
+  client's and a non-number are one identical 400). Each upload is matched
+  to an earlier file by name and compared sentence by sentence by hash
+  (`core/project/changed.ts`), tags included, so a reflowed or reformatted
+  paragraph reads as changed. `changed_word_count` pre-fills the admin's
+  total and is never on a client route (`clientFile` drops it by name);
+  `word_count`, confirmed by the admin, still alone prices.
 - **A price is set only while `submitted`, and approval is consent to
   that price** (backlog `#63`, `portal-v0-spec.md` §2–§3). The rules
   are `assertCanPrice`/`assertCanApprove` in `portal-core`, run by

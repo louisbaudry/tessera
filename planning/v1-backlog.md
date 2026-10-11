@@ -2825,6 +2825,66 @@ the fix if a real client needs it.
 **Not verified:** the new section in a browser (no browser run this
 session), and a memory a real client owns.
 
+**#131 · ~~Update orders: quote a new version on what changed~~ · DONE — `core/src/project/changed.ts` (`countChangedDocxWords`), `portal-core/src/{order,word-count}.ts` (`assertCanUpdate`, `estimateChangedWords`, `matchEarlierFile`), portal schema v7, `previous_order_id` on `translation_order`, `compared_to_file_id` and `changed_word_count` on `source_file`, the `updateOf` field of `POST /api/client/orders` (`portal-server/src/app.ts`)** (2026-10-11; card #163)
+
+A client who has a delivered translation sends version 2 of the file and is
+quoted for the sentences that are new or different, not the whole file again
+(`portal-v0-spec.md` §4a). Louis picked the card from a board with no free
+card; the scope below is what was built, and what was not.
+
+- **The unit is a sentence hash, not a paragraph and not a diff.** A sentence
+  of the new file is unchanged when its normalised hash (`tm-format-spec.md`
+  §4, the TM's own) occurs among the sentences of the earlier file. Where it
+  moved to does not matter, and one edited sentence leaves its neighbour in
+  the same paragraph unchanged (a test each). That is why this goes through
+  `assembleFile` and its segmenter, where the plain count (#62) deliberately
+  does not: a hash needs a sentence. The plain counter runs on both files
+  first, so the 32 MiB inflate cap is enforced before the segmenter inflates
+  anything, and the totals agree with `countDocxWords` (a test).
+- **Tags are in the hash, so a formatting-only change counts as changed.** The
+  issue's own risk, "reflowed paragraphs make the diff noisy", shows up as a
+  paragraph rewrapped by Word reading as changed. Left that way on purpose: the
+  quote errs towards the translator, the admin confirms every figure, and the
+  screen says so next to the pre-filled number.
+- **A file is matched by name, ignoring case, never by position** (`matchEarlierFile`).
+  A client who adds a second document must not shift which file the first is
+  compared with. A name the delivered order did not have is a new file, all of
+  it new (`changed_word_count` equals its count, `compared_to_file_id` null);
+  a `.txt` or a file `core` cannot compare has `changed_word_count` null and is
+  quoted at its whole count by `sumSourceWordCounts(files, { changedOnly })`,
+  because a total that silently dropped it would be a smaller number passed off
+  as the whole.
+- **Who may be updated: the same client's delivered order, same source language**
+  (`assertCanUpdate`, `portal-core`, run by the route, never re-encoded there).
+  A missing order, another client's and a non-number are **one identical 400**,
+  so `updateOf` cannot ask which order numbers exist (a test compares the
+  bodies). An update of an update compares with the latest version, not the
+  first (a test). The link is a column on the order and a clause in its
+  creation `order_event`, not a new status: the lifecycle is untouched.
+- **Advice only, as ever.** Nothing here prices. `word_count`, set by the
+  admin's confirmation, still does, and `assertCanPrice`/`assertCanApprove` are
+  unchanged. The client's API never carries `changed_word_count`,
+  `compared_to_file_id` or the admin's suggested total (dropped by name in
+  `clientFile`, a test); it does show the order's own `previousOrderId` and
+  says "only new or changed text is quoted", which the admin's confirmation
+  has to make true.
+- **Not built.** "Through the client's TM": a sentence in the client's linked
+  `.ctm` but not in the earlier file is still counted as changed. That is the
+  TM-aware quote of issue #159 and will want this figure as its input. `.txt`
+  and `.pptx`/`.xlsx` comparison (no sentence-level reader for them in `core`).
+  A fuzzy tier: a sentence one word off is changed in full, as a TM match
+  below the threshold is. A client-visible per-file breakdown.
+- **Verified:** 9 pure tests (core), 8 portal-core tests, 3 repository tests
+  including a v6 file migrating to "not an update, not compared", 6 route tests
+  (the suggested figure, a mixed upload, the ordinary order unchanged, the three
+  refusals with no order left behind, the client API, a chain). Reverting
+  `changedOnly` turns the suggestion test red. Driven in Chromium against the
+  built portal: the "new version of" select appears once a request is
+  delivered and fixes the languages to its own, the admin's order shows the
+  update banner, the Changed column and a pre-filled 5 of 12. Not verified:
+  a real client file pair (the fixtures are synthetic, and §4's reflow noise
+  is the thing a real pair would show).
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

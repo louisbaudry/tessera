@@ -82,9 +82,9 @@ async function downloadFile(path, filename) {
   URL.revokeObjectURL(url);
 }
 
-function fileRows(files, downloadPath, withCounts = false) {
+function fileRows(files, downloadPath, withCounts = false, withChanged = false) {
   if (files.length === 0) {
-    return `<tr><td colspan="${withCounts ? 5 : 4}" class="muted">none</td></tr>`;
+    return `<tr><td colspan="${4 + (withCounts ? 1 : 0) + (withChanged ? 1 : 0)}" class="muted">none</td></tr>`;
   }
   return files
     .map(
@@ -93,10 +93,19 @@ function fileRows(files, downloadPath, withCounts = false) {
         <td>${escapeHtml(f.contentType)}</td>
         <td>${f.byteSize.toLocaleString()}</td>
         ${withCounts ? `<td>${f.wordCount == null ? '—' : f.wordCount.toLocaleString()}</td>` : ''}
+        ${withChanged ? `<td>${changedCell(f)}</td>` : ''}
         <td><button class="secondary" data-download="${downloadPath(f)}" data-filename="${escapeHtml(f.filename)}">Download</button></td>
       </tr>`,
     )
     .join('');
+}
+
+// An update order's per-file figure (portal-v0-spec.md §4a): the words in new
+// or changed sentences, and whether there was an earlier file to compare with.
+function changedCell(f) {
+  if (f.changedWordCount == null) return '—';
+  const n = f.changedWordCount.toLocaleString();
+  return f.comparedToFileId == null ? `${n} <span class="muted">(new file)</span>` : n;
 }
 
 function money(n) {
@@ -120,6 +129,7 @@ async function renderOrderDetail(id) {
     <button class="secondary" id="back">&larr; All orders</button>
     <h2>Order #${order.id} ${statusBadge(order.status)}</h2>
     <p>${order.srcLang} &rarr; ${order.tgtLangs.join(', ')}</p>
+    ${order.previousOrderId == null ? '' : `<p>Update of order <a href="#" id="previous-order">#${order.previousOrderId}</a>: the figure below counts only new or changed sentences.</p>`}
     <p class="muted">${order.notes || ''}</p>
 
     <div class="card">
@@ -130,7 +140,9 @@ async function renderOrderDetail(id) {
       </form>
       <p class="muted">${
         order.wordCount == null && suggestedWordCount != null
-          ? 'Pre-filled from the uploads’ counts. An estimate: check it, then confirm to price.'
+          ? order.previousOrderId == null
+            ? 'Pre-filled from the uploads’ counts. An estimate: check it, then confirm to price.'
+            : 'Pre-filled from the words in new or changed sentences. An estimate: a reflowed paragraph reads as changed, so check it against the files, then confirm to price.'
           : order.wordCount == null
             ? 'No automatic count for these files. Count them and enter it.'
             : ''
@@ -146,8 +158,8 @@ async function renderOrderDetail(id) {
 
     <h2>Source files</h2>
     <table>
-      <tr><th>Filename</th><th>Type</th><th>Size</th><th>Words (est.)</th><th></th></tr>
-      ${fileRows(sourceFiles, (f) => `/api/admin/orders/${order.id}/source-files/${f.id}`, true)}
+      <tr><th>Filename</th><th>Type</th><th>Size</th><th>Words (est.)</th>${order.previousOrderId == null ? '' : '<th>Changed (est.)</th>'}<th></th></tr>
+      ${fileRows(sourceFiles, (f) => `/api/admin/orders/${order.id}/source-files/${f.id}`, true, order.previousOrderId != null)}
     </table>
 
     <h2>Deliver final files</h2>
@@ -170,6 +182,10 @@ async function renderOrderDetail(id) {
   `;
 
   app.querySelector('#back').addEventListener('click', renderOrderList);
+  app.querySelector('#previous-order')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    renderOrderDetail(order.previousOrderId);
+  });
 
   app.querySelectorAll('[data-download]').forEach((btn) => {
     btn.addEventListener('click', async () => {

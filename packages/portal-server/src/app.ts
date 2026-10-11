@@ -57,13 +57,17 @@ import {
   type TranslationOrder,
 } from '@cat-tool/db';
 import {
+  assertCanUpdate,
   ConsoleNotificationService,
+  estimateChangedWords,
   estimateOrder,
   estimateWordCount,
   generateSessionToken,
   InvalidTransitionError,
   isClientResourceKind,
+  matchEarlierFile,
   OrderPricingError,
+  OrderUpdateError,
   RateNotFoundError,
   verifyPassword,
   type AuditActor,
@@ -154,8 +158,9 @@ function serializeFile(file: StoredFile | SourceFile) {
 }
 
 /**
- * A file as the client API shows it: no per-file count either. The count
- * is advice for the admin (portal-v0-spec.md §4); the client sees
+ * A file as the client API shows it: no per-file count either, and no
+ * changed-word count or comparison (§4a). The counts are advice for the
+ * admin (portal-v0-spec.md §4); the client sees
  * "pending" until the admin confirms one, so a wrong estimate is never a
  * quote. Dropped by name, the way `clientOrderEvent` drops `actorLabel`,
  * so a field added to `SourceFile` later is shown to the client only if
@@ -165,6 +170,8 @@ function clientFile(file: StoredFile | SourceFile) {
   const {
     storagePath: _storagePath,
     wordCount: _wordCount,
+    comparedToFileId: _comparedToFileId,
+    changedWordCount: _changedWordCount,
     ...rest
   } = file as SourceFile;
   return rest;
@@ -227,6 +234,43 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     } catch (err) {
       app.log.error({ err, byteSize: file.buffer.byteLength }, 'word count failed');
       return null;
+    }
+  }
+
+  // What an update order's upload is worth against the earlier order's
+  // files (§4a): which earlier file it is a version of, and how many of its
+  // words are new or changed. A name the earlier order lacked is a new file,
+  // all of it new. Advice like the count, and like it never able to fail the
+  // order: any trouble reading the earlier bytes is a file with no figure.
+  function compareUpload(
+    file: UploadedPart,
+    srcLang: string,
+    wordCount: number | null,
+    earlier: readonly SourceFile[],
+  ): { comparedToFileId: number | null; changedWordCount: number | null } {
+    const name = displayFilename(file.filename);
+    const match = matchEarlierFile(name, earlier);
+    if (!match) return { comparedToFileId: null, changedWordCount: wordCount };
+    try {
+      const fullPath = readStoredFilePath(config.storageRoot, match.storagePath);
+      if (!existsSync(fullPath)) {
+        app.log.error({ fileId: match.id }, 'earlier source file missing');
+        return { comparedToFileId: match.id, changedWordCount: null };
+      }
+      const changed = estimateChangedWords({
+        filename: name,
+        bytes: file.buffer,
+        baseFilename: match.filename,
+        baseBytes: readFileSync(fullPath),
+        srcLang,
+      });
+      return {
+        comparedToFileId: match.id,
+        changedWordCount: changed?.changedWords ?? null,
+      };
+    } catch (err) {
+      app.log.error({ err, fileId: match.id }, 'changed-word comparison failed');
+      return { comparedToFileId: match.id, changedWordCount: null };
     }
   }
 
@@ -371,6 +415,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     let srcLang: string | undefined;
     const tgtLangs: string[] = [];
     let notes: string | undefined;
+    let updateOf: string | undefined;
     const files: UploadedPart[] = [];
 
     for await (const part of req.parts()) {
@@ -386,6 +431,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         tgtLangs.push(String(part.value));
       } else if (part.fieldname === 'notes') {
         notes = String(part.value);
+      } else if (part.fieldname === 'updateOf') {
+        updateOf = String(part.value);
       }
     }
 
@@ -403,9 +450,34 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     // advice for the admin (§4): any failure is a file with no number.
     const counts = files.map((file) => countUpload(file, srcLang));
 
+    // An update names the delivered order it is a new version of (§4a). A
+    // bad link is one message whether the order is missing or someone
+    // else's, so the field cannot be used to ask which numbers exist.
+    let earlier: SourceFile[] = [];
+    let previousOrderId: number | null = null;
+    if (updateOf !== undefined && updateOf !== '') {
+      const id = Number(updateOf);
+      const base = Number.isSafeInteger(id) ? getOrder(db, id) : null;
+      try {
+        assertCanUpdate(base, { clientId: client.id, srcLang });
+      } catch (err) {
+        if (err instanceof OrderUpdateError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+      previousOrderId = id;
+      earlier = listSourceFiles(db, id);
+    }
+    const comparisons = files.map((file, i) =>
+      previousOrderId === null
+        ? { comparedToFileId: null, changedWordCount: null }
+        : compareUpload(file, srcLang, counts[i] ?? null, earlier),
+    );
+
     const order = createOrder(
       db,
-      { clientId: client.id, srcLang, tgtLangs, notes },
+      { clientId: client.id, srcLang, tgtLangs, notes, previousOrderId },
       { actor: clientActor(client) },
     );
 
@@ -413,6 +485,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       insertSourceFile(db, {
         ...writeUpload('source', order.id, file),
         wordCount: counts[i] ?? null,
+        ...comparisons[i],
       }),
     );
 
@@ -574,7 +647,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       sourceFiles: sourceFiles.map(serializeFile),
       // The counts' sum when every file has one: what the screen
       // pre-fills, and the admin's confirmation is what prices (§4).
-      suggestedWordCount: sumSourceWordCounts(sourceFiles),
+      suggestedWordCount: sumSourceWordCounts(sourceFiles, {
+        changedOnly: order.previousOrderId !== null,
+      }),
       deliveredFiles: listDeliveredFiles(db, id).map(serializeFile),
       events: listOrderEvents(db, id),
     };
