@@ -125,6 +125,23 @@ records the convention rather than asking for a rewrite:
    the merge to the single open "website update" issue (create it if none
    is open). Publishing the site update itself is outward-facing, so that
    is a stop-and-ask.
+6. **Before building any new feature, discuss with Louis whether it is
+   worth doing in Rust / WebAssembly.** Louis's standing instruction
+   (2026-10-11): the default stack is TypeScript, but the question is
+   asked every time, not assumed away. Ask it with `AskUserQuestion`
+   (options plus a recommendation, per the shared rules) before the
+   first line of the feature, and say what each option costs. The usual
+   options: stay in TypeScript; a Rust/Wasm module for one pure hot
+   kernel behind the same `core` function signature; or a Rust/Wasm
+   component (e.g. a sandboxed plugin). Weigh it with evidence, not
+   fashion: has a profile or `pnpm bench:tm` shown the language, not a
+   query shape or a missing index, to be the bottleneck (every slowdown
+   found so far was the latter)? Would the Wasm module stay headless and
+   be checked by the existing gate and golden tests? Record the decision,
+   including "stay in TypeScript", in the feature's spec section or
+   backlog entry. This is a discussion with Louis, so it is a stop in
+   `Continuous mode: true`; bug fixes and edits to existing code that add
+   no new feature do not need it.
 
 ## Non-negotiable invariants
 
