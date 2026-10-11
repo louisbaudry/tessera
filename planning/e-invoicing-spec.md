@@ -6,7 +6,9 @@ regulations, or at least send them to approved European e-invoicing
 platforms. Placed in **Ring 1** (the vendor side: receiving invoices) and
 **Ring 2** (the client side: issuing them), see §1. Reasoning is kept on the
 record, not just the conclusions. Decisions that are Louis's to make are in
-§10 with a recommendation each; until he settles them, §4 is a proposal.
+§10 with a recommendation each. **§10.1 was settled on 2026-10-11: Tessera
+issues the invoice numbers.** The other decisions are still open, and §4 is a
+proposal until they are settled.
 
 **This is not legal or tax advice.** Invoice content, VAT treatment,
 numbering and retention are set by law per country and change. Every
@@ -196,8 +198,9 @@ processor that sees invoice content, so its owner and hosting matter as
 `worldwide-and-compliance-spec.md` §5.2 says, and a data-processing
 agreement is part of choosing it.
 
-**D11 — Numbering and concurrency.** One sequence per seller and series,
-assigned at issue, inside `BEGIN IMMEDIATE`, in the same transaction that
+**D11 — Numbering and concurrency.** Tessera is the only issuer of a portal
+invoice's number (§10.1, decided 2026-10-11). One sequence per seller and
+series, assigned at issue, inside `BEGIN IMMEDIATE`, in the same transaction that
 stores the bytes and writes `invoice.issued`. A number is never reused or
 skipped by the software; a draft that is abandoned has no number. Format
 (prefix, year, padding) is a pure function; some countries require gapless
@@ -350,19 +353,36 @@ files from the standard's or a network's own repository are used only where
 their licence allows redistribution; otherwise they are fetched in CI and
 not committed.
 
-## 10. Open decisions for Louis
+## 10. Decisions for Louis (§10.1 decided, the rest open)
 
 Each is cheap to leave open now and expensive to reverse once an invoice
 number has been issued, which is why they are listed rather than defaulted.
 
-1. **Who owns the invoice number.** Tessera issues the e-invoice for portal
-   orders and sends booking data to the ledger, or Zoho Books issues it and
-   Tessera only hands over the order. _Recommendation: Tessera issues._ A
-   number sequence has to live in exactly one place, a legal e-invoice is a
-   document this product can build from data it already holds, and whether
-   the ledger tool can issue a compliant e-invoice for every country needed
-   was not checked. Cost: Tessera now carries a legal-document duty; the
-   ledger receives a copy.
+1. **Who owns the invoice number. Decided 2026-10-11 (Louis): Tessera
+   issues the invoice numbers.** The alternative was that the ledger tool
+   (Zoho Books) issues the invoice and Tessera only hands over the order. The
+   reasons, kept on the record: a number sequence has to live in exactly one
+   place; a legal e-invoice is a document this product can build from data it
+   already holds (the order, its confirmed word count, its approved price);
+   and whether the ledger tool can issue a compliant e-invoice for every
+   country needed was never checked. Cost accepted: Tessera now carries a
+   legal-document duty (numbering, immutability, retention, D3, D11, D12).
+   What follows from it:
+   - **The ledger is a consumer.** It receives a copy of each issued invoice
+     as a read-only export (a structured file, with a digest, logged like
+     `payables.exported`); it never issues a number in a portal invoice's
+     series and never edits an issued invoice. Whether a direct push to the
+     ledger is built, or the export only, belongs to Ring 3 and is not decided.
+   - **An invoice created in the ledger by hand is outside Tessera.** It
+     carries the ledger's own numbering and is not a portal invoice; the
+     operator keeps the two series apart, and a seller profile names the
+     series Tessera owns so nothing else can draw from it.
+   - **Phase 1 is unblocked on this question.** Phase 0 still settles §10.2
+     and §10.3, because the provider and the seller's country decide which
+     profile is built first.
+   - **Still to do before the first issued invoice,** and not decided here:
+     the numbering format (prefix, year, padding) and whether the series
+     restarts each year, which depend on the seller's country (§10.3).
 2. **Which provider and which network first.** _Recommendation: a Peppol
    access point first_ (phase 2), because one adapter reaches several
    countries and French platforms are expected to interoperate with it (to
