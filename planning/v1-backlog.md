@@ -2640,7 +2640,9 @@ deferred:
   into the payable it settles. Tessera is never the platform itself. Design
   drafted 2026-10-11 in `planning/e-invoicing-spec.md`; narrows Epic 11
   (the ledger and payments stay "integrate"), and `#158`, `#178` and `#179`
-  point into it. Unsized; phase 0 is decisions and spikes.
+  point into it. Unsized; phase 0 is decisions and spikes. Decided
+  2026-10-11: Tessera issues the invoice numbers and the ledger receives a
+  copy (spec §10.1).
 - **Epic 12 — Website localisation** (Ring 4, v2/v3) · [issue #25]: the
   Weglot slot, with the one thing Weglot cannot do — accept a translation
   memory.

@@ -82,7 +82,7 @@ any decision that is Louis's to make.
 | #160 | Delivery date, rush tier and an on-time promise | Client |
 | #161 | Certified translation as an order type | Client |
 | #162 | Client self-serve export of their own TM and glossary (built: backlog `#127`, a linked memory as TMX and glossary as CSV; the base memory is never linkable by a request) | Client |
-| #163 | Update orders priced only on new or changed segments | Client |
+| #163 | Update orders priced only on new or changed segments (built: backlog `#131`, a new version of a delivered order compared sentence by sentence with the admin's total pre-filled; leverage from the client's own TM is not, that is #159) | Client |
 | #172 | Document preview beside the grid, then a side-by-side review mode | Editor |
 | #173 | Real-time presence and per-segment locks | Editor |
 | #174 | AI quality checks in the QA panel, off by default, with a precision record | Editor |
@@ -106,7 +106,7 @@ capacity toggle (`#52`, `#54`), the running payable total in the editor
 (`#50`), and forbidden-term handling in the glossary (Epic 8a).
 
 Statuses live on the issues, not here. This table is the map from the
-sweep to the issues, as of 2026-10-09.
+sweep to the issues, as of 2026-10-12.
 
 ## 5. Decisions the sweep left for Louis
 

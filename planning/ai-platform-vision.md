@@ -190,8 +190,8 @@ and be wrong.
 returns, bank reconciliation, payments). The legal invoice *document* and
 its delivery through an approved platform are a different problem, pulled
 forward into Rings 1 and 2 as Epic 13 (`planning/e-invoicing-spec.md` §1).
-Who owns the invoice number, Tessera or the ledger tool, is open there
-(§10.1).
+Who owns the invoice number was settled on 2026-10-11: Tessera issues it,
+and the ledger tool receives a copy (`e-invoicing-spec.md` §10.1).
 
 ### Ring 4 — Website localisation *(v2/v3 — "Weglot, but it accepts your TM")*
 
@@ -353,9 +353,9 @@ Recorded so they aren't lost, not because they're urgent:
    (`translation-engine-spec.md` D7).
 4. **Invoicing: integrate with Zoho vs. build native** — provisional
    lean toward integration (§3); revisit when Epic 11 is next. Narrowed
-   2026-10-11: the legal e-invoice document and who owns its number are
-   Epic 13's question (`e-invoicing-spec.md` §10.1); the ledger question
-   stays here.
+   2026-10-11: the legal e-invoice document is Epic 13's, and Tessera
+   issues its number (`e-invoicing-spec.md` §10.1, decided); the ledger
+   question stays here.
 5. **Pricing/licensing model for eventual other-LSP customers** — not
    touched in this document at all. Out of scope until the product
    works for one business first.
