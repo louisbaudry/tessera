@@ -2622,6 +2622,13 @@ deferred:
   fallback, Claude polish + semantic QA. Design constraints already
   fixed by what's failed in every other tool tried (vision doc §3):
   context-aware, inline in the segment flow, never blocking.
+  **Draft engine** · [issue #228]: Tessera's own automated translation,
+  adapted to the client by retrieving its TM matches and glossary into a
+  Claude prompt (no per-client training), invisible to client and
+  translator, off until a client opts in, with DeepL as a second engine
+  the PM can choose. Design drafted 2026-10-12 in
+  `planning/translation-engine-spec.md`; Rust/Wasm asked and declined
+  (stay in TypeScript). Unsized; slice 0 is the open points and a spike.
 - **Epic 9 — Language Provider tools** (Ring 1): vendor/translator
   management, AI-assisted quoting and project setup.
 - **Epic 10 — Client-facing** (Ring 2): intake, status, feedback.
@@ -4279,6 +4286,7 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14
 [issue #15]: https://github.com/louisbaudry/tessera/issues/15
 [issue #25]: https://github.com/louisbaudry/tessera/issues/25
+[issue #228]: https://github.com/louisbaudry/tessera/issues/228
 [issue #62]: https://github.com/louisbaudry/tessera/issues/62
 [issue #66]: https://github.com/louisbaudry/tessera/issues/66
 [issue #17]: https://github.com/louisbaudry/tessera/issues/17

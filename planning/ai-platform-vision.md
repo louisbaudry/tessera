@@ -104,6 +104,11 @@ Architecture, otherwise settled:
   the Romance/Germanic language pairs this business actually uses, and
   EU-based, which sits better with the confidentiality posture in §5.
   Swappable; not a deep architectural commitment.
+  **Amended 2026-10-12:** the first-pass draft can also come from
+  Tessera's own engine — Claude with the client's TM matches and glossary
+  in the prompt, no per-client training — and the Project Manager chooses
+  between it and DeepL, per client with a per-project override. Design in
+  `planning/translation-engine-spec.md`.
 - **AI QA is a second AI surface, not the same as MT drafting.** The
   original complaint — "QA is dumb, catches trivial stuff, misses real
   errors" — is answered by Claude reading a translated segment against
@@ -287,7 +292,9 @@ re-litigated per project:
    enterprise terms mean no training on inputs/outputs and a real data
    processing agreement; consumer tools often make the opposite promise.
 2. **AI processing is opt-in per project or per client**, default on,
-   one click off — because some client contracts explicitly forbid
+   one click off *(reversed for the draft engine 2026-10-12: per-client
+   opt-in, off by default, because it sends the client's own translated
+   history — `translation-engine-spec.md` D4)* — because some client contracts explicitly forbid
    third-party tools or machine translation, and that's a contract
    question the *translator* has to be able to answer per client, not
    something the software should decide for them.
@@ -341,6 +348,9 @@ Recorded so they aren't lost, not because they're urgent:
    Epic 10.
 3. **DeepL vs. an alternative MT engine** — provisionally DeepL (§3);
    worth a real comparison once Epic 8 is underway, not before.
+   The comparison is now specified: a held-out TM benchmark of the
+   Tessera engine, DeepL and Claude without TM context
+   (`translation-engine-spec.md` D7).
 4. **Invoicing: integrate with Zoho vs. build native** — provisional
    lean toward integration (§3); revisit when Epic 11 is next. Narrowed
    2026-10-11: the legal e-invoice document and who owns its number are
