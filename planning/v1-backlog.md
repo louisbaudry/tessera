@@ -2901,6 +2901,70 @@ card; the scope below is what was built, and what was not.
   a real client file pair (the fixtures are synthetic, and §4's reflow noise
   is the thing a real pair would show).
 
+**#132 · ~~A minimum per file in the portal's price~~ · DONE — `portal-core/src/pricing.ts` (`billableWords`, `needsFileWordCounts`, `FileWordCountsRequiredError`, `estimateOrder` over a count per file), portal schema v8, `rate.min_words_per_file` and `source_file.confirmed_word_count`, `setWordCountAndPrice`'s `fileWordCounts` (`db/src/portal/orders.ts`), `fileWordCounts` on `PATCH /api/admin/orders/:id` and `/api/client/estimate` and `minWordsPerFile` on `POST /api/admin/rates` (`portal-server/src/app.ts`), the per-file form in `public/admin.js`** (2026-10-12; card #222)
+
+Where an operator already invoices with a minimum for each file, the portal's
+`max(words x rate, minimum price)` over the whole order quoted less than the
+invoice for any order of several short files (`portal-v0-spec.md` §4b). A rate
+can now say "a file counts as at least N words". Louis chose to stay in
+TypeScript: integer arithmetic in `portal-core` and a migration, nothing a
+Rust/Wasm module would earn its build step on.
+
+- **A number of words, not a price, and per rate.** `min_words_per_file`,
+  `0` = off and the default, so no existing rate changes meaning. It sits beside
+  `minimum_price`, which still applies once per order and target language, after
+  the files are summed. Pairs are independent: one order may name a pair with the
+  minimum and a pair without (a test).
+- **The unit that needs confirming becomes the file.** One `word_count` cannot
+  carry a per-file rule, so for an order a per-file rate applies to, the admin
+  confirms a count for each file (`source_file.confirmed_word_count`, written
+  only by the pricing write). `translation_order.word_count` is their sum, the
+  actual words and never the billed ones, so everything that reads it means what
+  it meant. The admin screen shows one input per file, pre-filled from the same
+  advice as the single total (the uploads' counts, or an update order's changed
+  words), and a blank is refused rather than read as 0.
+- **A file of 0 words bills nothing.** Found while writing the rule down, not
+  from a failure: an unchanged file of an update order (#131) has 0 changed words,
+  and a plain `max(count, N)` would have charged the minimum for work that does
+  not exist. A test pins it.
+- **No silent wrong number.** `estimateOrder` takes a total or a count per file;
+  a total for a pair that needs per-file counts throws
+  `FileWordCountsRequiredError` (422 on the admin route, "pending" on the
+  client's estimate) rather than be read as one file. A per-file call whose
+  counts miss a file, name another order's, are not whole numbers or do not sum
+  to the total is refused before anything is written, in the route (400) and
+  again in the repository (`RangeError`), because the repository is the invariant.
+- **Frozen at approval, like the price.** `assertCanPrice` still lets an order be
+  priced only while `submitted`, so a rate edit applies to new orders only: the
+  approved price and the counts that produced it are stored, nothing recomputes
+  them (a route test raises the minimum after approval and the order is untouched).
+  Pricing a total alone later clears the per-file counts, so none can contradict
+  the new total. A changed split of the same total and price is still a change
+  and is audited.
+- **Audited, no migration of the audit list.** `order.priced` gains `files`
+  (source file id to count) in its detail, only when per-file counts were
+  sent, so every existing detail is byte-identical. No new action, so no `CHECK`
+  to widen.
+- **Not on a client route.** `confirmedWordCount` is dropped from a client's file by
+  name, with a test that fails if it appears; the client sees the setting through
+  the rates they already see and the price as before.
+- **Not built.** A per-file minimum inside a client plan's allowance (#220's
+  design says what is left open), a different minimum by file type, and a
+  client-side per-file estimate screen (the estimate route accepts counts; the
+  client's form does not ask for them). The rates route still passes
+  `srcLang`, `tgtLang`, `ratePerWord` and `minimumPrice` through unvalidated, as
+  before; only the new field is checked.
+- **Verified:** 23 pure tests (`pricing.test.ts`, 13 new), 13 repository tests (a v7
+  file migrating to "off", the round trip, the sum, the file set, whole numbers,
+  the audit detail, a repeat writing nothing, a changed split recorded, an
+  approved order refusing new counts), 11 route tests incl. the three estimate
+  cases. Reverting the zero-word rule turns the pure test red. Driven in Chromium
+  against the built portal: a per-file rate and an en-de order of two
+  5-word files show two inputs pre-filled "5" and no single total, a blank is
+  refused, 90 and 400 price to $65.00 (250 + 400 words at 0.10). Not verified: a
+  real client's invoice against the portal's figure, which is where the rule came
+  from.
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

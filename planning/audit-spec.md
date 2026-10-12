@@ -458,9 +458,12 @@ third file to carry the log settled these points:
   is `translation_order` and the order's row id, the table-name
   convention of `admin_user`, `source_file` and `delivered_file`. The
   detail is `{ word_count, price }`: the count the admin confirmed and
-  the total it priced to. The actor is `admin:<id>`. Pricing is not a
-  transition, so it belongs here, not in `order_event` (decision 7).
-  Pricing again with the same count and price writes nothing (§2.4).
+  the total it priced to; for an order a per-file minimum applies to it
+  also carries `files`, each source file's confirmed count by file id
+  (`portal-v0-spec.md` §4b, idea `#222`). The actor is `admin:<id>`. Pricing
+  is not a transition, so it belongs here, not in `order_event` (decision 7).
+  Pricing again with the same count, price and per-file counts writes
+  nothing (§2.4).
 - **`order.price_baseline`** has the same subject and detail, actor
   `system:migration`, one per order already priced when v4 ran (§6).
 - **Widening the `CHECK` rebuilt the table.** v4 is `rebuildTable`'s

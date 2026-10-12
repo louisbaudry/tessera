@@ -48,6 +48,7 @@ import {
   setRate,
   setStatus,
   setWordCountAndPrice,
+  suggestedFileWordCount,
   sumSourceWordCounts,
   type AdminUser,
   type Client,
@@ -62,15 +63,18 @@ import {
   estimateChangedWords,
   estimateOrder,
   estimateWordCount,
+  FileWordCountsRequiredError,
   generateSessionToken,
   InvalidTransitionError,
   isClientResourceKind,
   matchEarlierFile,
+  needsFileWordCounts,
   OrderPricingError,
   OrderUpdateError,
   RateNotFoundError,
   verifyPassword,
   type AuditActor,
+  type LanguagePairRate,
   type NotificationService,
 } from '@cat-tool/portal-core';
 import Fastify, {
@@ -172,9 +176,54 @@ function clientFile(file: StoredFile | SourceFile) {
     wordCount: _wordCount,
     comparedToFileId: _comparedToFileId,
     changedWordCount: _changedWordCount,
+    confirmedWordCount: _confirmedWordCount,
     ...rest
   } = file as SourceFile;
   return rest;
+}
+
+/**
+ * Whether pricing this order needs the admin's confirmed count of each file:
+ * some requested pair has a per-file minimum (portal-v0-spec.md §4b). A pair
+ * with no rate is not counted here; pricing reports it (422) as it always has.
+ */
+function orderNeedsFileWordCounts(
+  rates: readonly LanguagePairRate[],
+  order: TranslationOrder,
+): boolean {
+  return order.tgtLangs.some((tgtLang) => {
+    const rate = rates.find((r) => r.srcLang === order.srcLang && r.tgtLang === tgtLang);
+    return rate !== undefined && needsFileWordCounts(rate);
+  });
+}
+
+/**
+ * Reads an admin's `fileWordCounts` (source file id to confirmed count) for an
+ * order, or says what is wrong with it. It must name every source file of the
+ * order and no other: a count for a file of another order is never written.
+ */
+function parseFileWordCounts(
+  value: unknown,
+  files: readonly SourceFile[],
+): Map<number, number> | string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return 'fileWordCounts must be an object of source file id to word count';
+  }
+  const counts = new Map<number, number>();
+  for (const [key, count] of Object.entries(value)) {
+    if (!/^\d+$/.test(key)) {
+      return `fileWordCounts has "${key}", which is not a source file id`;
+    }
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+      return `the word count of file ${key} must be a non-negative whole number`;
+    }
+    counts.set(Number(key), count);
+  }
+  const ids = new Set(files.map((f) => f.id));
+  if (counts.size !== ids.size || [...counts.keys()].some((id) => !ids.has(id))) {
+    return 'fileWordCounts must name every source file of this order, and only those';
+  }
+  return counts;
 }
 
 interface UploadedPart {
@@ -545,15 +594,38 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const client = requireClient(req);
     if (!client)
       return reply.code(401).send({ error: 'invalid or missing access token' });
-    const body = req.body as { srcLang: string; tgtLangs: string[]; wordCount?: number };
-    if (body.wordCount === undefined) {
+    const body = req.body as {
+      srcLang: string;
+      tgtLangs: string[];
+      wordCount?: number;
+      fileWordCounts?: unknown;
+    };
+    // Counts per file (spec §4b) price a pair with a per-file minimum; a single
+    // total cannot, and is "pending" for it rather than read as one file.
+    const perFile = body.fileWordCounts;
+    if (
+      perFile !== undefined &&
+      !(
+        Array.isArray(perFile) &&
+        perFile.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0)
+      )
+    ) {
+      return reply
+        .code(400)
+        .send({ error: 'fileWordCounts must be a list of non-negative numbers' });
+    }
+    const words = (perFile as number[] | undefined) ?? body.wordCount;
+    if (words === undefined) {
       return { pending: true };
     }
     try {
       const rates = listRates(db);
-      const estimate = estimateOrder(rates, body.srcLang, body.tgtLangs, body.wordCount);
+      const estimate = estimateOrder(rates, body.srcLang, body.tgtLangs, words);
       return { pending: false, ...estimate };
     } catch (err) {
+      if (err instanceof FileWordCountsRequiredError) {
+        return { pending: true };
+      }
       if (err instanceof RateNotFoundError) {
         return reply.code(422).send({ error: err.message });
       }
@@ -650,6 +722,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       suggestedWordCount: sumSourceWordCounts(sourceFiles, {
         changedOnly: order.previousOrderId !== null,
       }),
+      // A per-file minimum on some requested pair (§4b): the admin then
+      // confirms a count for each file, pre-filled from these.
+      needsFileWordCounts: orderNeedsFileWordCounts(listRates(db), order),
+      suggestedFileWordCounts: Object.fromEntries(
+        sourceFiles.map((f) => [
+          f.id,
+          suggestedFileWordCount(f, { changedOnly: order.previousOrderId !== null }),
+        ]),
+      ),
       deliveredFiles: listDeliveredFiles(db, id).map(serializeFile),
       events: listOrderEvents(db, id),
     };
@@ -678,26 +759,50 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       status?: string;
       note?: string;
       wordCount?: number;
+      /** Source file id to confirmed count, for an order a per-file minimum applies to (§4b). */
+      fileWordCounts?: unknown;
     };
     const order = getOrder(db, id);
     if (!order) return reply.code(404).send({ error: 'order not found' });
 
     let updated = order;
 
-    if (body.wordCount !== undefined) {
+    if (body.wordCount !== undefined || body.fileWordCounts !== undefined) {
       try {
         const rates = listRates(db);
-        const estimate = estimateOrder(
-          rates,
-          order.srcLang,
-          order.tgtLangs,
-          body.wordCount,
-        );
-        updated = setWordCountAndPrice(db, id, body.wordCount, estimate.total, {
+        let wordCount = body.wordCount;
+        let estimate;
+        let fileWordCounts: Map<number, number> | undefined;
+        if (body.fileWordCounts !== undefined) {
+          const files = listSourceFiles(db, id);
+          const parsed = parseFileWordCounts(body.fileWordCounts, files);
+          if (typeof parsed === 'string') return reply.code(400).send({ error: parsed });
+          const total = [...parsed.values()].reduce((sum, n) => sum + n, 0);
+          if (wordCount !== undefined && wordCount !== total) {
+            return reply.code(400).send({
+              error: `wordCount ${wordCount} is not the sum of fileWordCounts, ${total}`,
+            });
+          }
+          fileWordCounts = parsed;
+          wordCount = total;
+          estimate = estimateOrder(
+            rates,
+            order.srcLang,
+            order.tgtLangs,
+            files.map((f) => parsed.get(f.id)!),
+          );
+        } else {
+          estimate = estimateOrder(rates, order.srcLang, order.tgtLangs, wordCount!);
+        }
+        updated = setWordCountAndPrice(db, id, wordCount!, estimate.total, {
           actor: adminSessionActor(req),
+          fileWordCounts,
         });
       } catch (err) {
-        if (err instanceof RateNotFoundError) {
+        if (
+          err instanceof RateNotFoundError ||
+          err instanceof FileWordCountsRequiredError
+        ) {
           return reply.code(422).send({ error: err.message });
         }
         if (err instanceof OrderPricingError) {
@@ -795,14 +900,33 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.get('/api/admin/rates', async () => listRates(db));
 
-  app.post('/api/admin/rates', async (req) => {
+  app.post('/api/admin/rates', async (req, reply) => {
     const body = req.body as {
       srcLang: string;
       tgtLang: string;
       ratePerWord: number;
       minimumPrice: number;
+      /** Words a file counts as at least when priced; 0 or absent is off (§4b). */
+      minWordsPerFile?: unknown;
     };
-    setRate(db, body);
+    const { minWordsPerFile } = body;
+    if (
+      minWordsPerFile !== undefined &&
+      (typeof minWordsPerFile !== 'number' ||
+        !Number.isSafeInteger(minWordsPerFile) ||
+        minWordsPerFile < 0)
+    ) {
+      return reply
+        .code(400)
+        .send({ error: 'minWordsPerFile must be a non-negative whole number' });
+    }
+    setRate(db, {
+      srcLang: body.srcLang,
+      tgtLang: body.tgtLang,
+      ratePerWord: body.ratePerWord,
+      minimumPrice: body.minimumPrice,
+      minWordsPerFile,
+    });
     return listRates(db);
   });
 

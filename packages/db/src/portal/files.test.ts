@@ -116,6 +116,7 @@ describe('sumSourceWordCounts', () => {
     wordCount,
     comparedToFileId: null,
     changedWordCount: null,
+    confirmedWordCount: null,
   });
 
   it('adds every file when each has a count', () => {
@@ -143,6 +144,7 @@ describe('sumSourceWordCounts for an update order (backlog #163)', () => {
     wordCount,
     comparedToFileId: null,
     changedWordCount,
+    confirmedWordCount: null,
   });
   const only = { changedOnly: true };
 

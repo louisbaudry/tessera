@@ -39,6 +39,12 @@ export interface SourceFile extends StoredFile {
    * `null` when the file could not be compared or counted.
    */
   readonly changedWordCount: number | null;
+  /**
+   * The admin's confirmed count of this file (spec §4b), written with the price
+   * of an order a per-file minimum applies to; `null` otherwise. The only
+   * per-file figure that prices, and never on a client route.
+   */
+  readonly confirmedWordCount: number | null;
 }
 
 interface FileRow {
@@ -55,6 +61,7 @@ interface SourceFileRow extends FileRow {
   word_count: number | null;
   compared_to_file_id: number | null;
   changed_word_count: number | null;
+  confirmed_word_count: number | null;
 }
 
 const fromRow = (row: FileRow): StoredFile => ({
@@ -72,6 +79,7 @@ const fromSourceRow = (row: SourceFileRow): SourceFile => ({
   wordCount: row.word_count,
   comparedToFileId: row.compared_to_file_id,
   changedWordCount: row.changed_word_count,
+  confirmedWordCount: row.confirmed_word_count,
 });
 
 export interface NewFile {
@@ -173,6 +181,7 @@ export function insertSourceFile(db: Database.Database, file: NewSourceFile): So
     wordCount: file.wordCount,
     comparedToFileId: file.comparedToFileId ?? null,
     changedWordCount: file.changedWordCount ?? null,
+    confirmedWordCount: null,
   };
 }
 
@@ -196,6 +205,21 @@ export function getSourceFile(
 }
 
 /**
+ * What the admin's screen pre-fills for one file: its advisory count, or, for
+ * an update order (spec §4a), the words in new or changed sentences. A file
+ * that could not be compared falls back to its whole count: a quote errs
+ * towards the translator, and the admin reads the figure before signing.
+ * `null` when there is no number to offer (spec §4). One definition for the
+ * order's total and for each file of a per-file order (§4b).
+ */
+export function suggestedFileWordCount(
+  file: SourceFile,
+  options: { readonly changedOnly?: boolean } = {},
+): number | null {
+  return options.changedOnly ? (file.changedWordCount ?? file.wordCount) : file.wordCount;
+}
+
+/**
  * The sum of an order's advisory counts, or `null` unless every file has
  * one: a total with a hole in it would be a smaller number passed off as
  * the whole (portal-v0-spec.md §4).
@@ -207,12 +231,7 @@ export function sumSourceWordCounts(
   if (files.length === 0) return null;
   let total = 0;
   for (const file of files) {
-    // An update order is quoted on what changed (spec §4a). A file that
-    // could not be compared falls back to its whole count: a quote errs
-    // towards the translator, and the admin reads the figure before signing.
-    const words = options.changedOnly
-      ? (file.changedWordCount ?? file.wordCount)
-      : file.wordCount;
+    const words = suggestedFileWordCount(file, options);
     if (words === null) return null;
     total += words;
   }
