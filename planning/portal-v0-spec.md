@@ -86,7 +86,9 @@ orderTotal = sum(lineTotal) over each requested target language
 `rate` table (`packages/db` `portal/schema.ts`); no matching row is an
 error surfaced to the admin, not a silent zero. `minimumPrice` is
 per-rate-row (a language pair can have its own floor), consistent with
-"start simple" — one row of config to look at, not a separate global.
+"start simple" — one row of config to look at, not a separate global. A
+rate may also say a file counts as at least N words (§4b), which changes
+what `wordCount` means for that pair: the sum of the files' billable words.
 
 Pricing logic lives in `packages/portal-core/src/pricing.ts`, pure
 functions, no DB/HTTP — same headless discipline `CLAUDE.md` requires of
@@ -196,6 +198,62 @@ request is delivered). The order carries `previous_order_id`; its creation
   TM-aware quote will take this figure as input), a fuzzy tier for a sentence
   one word off, `.txt`/`.pptx`/`.xlsx` comparison.
 
+## 4b. A minimum per file (idea #222, 2026-10-12)
+
+Decided 2026-10-12 (Louis: stay in TypeScript; the rule is integer arithmetic in
+`portal-core`'s `pricing.ts` plus a portal migration, nothing a Rust/Wasm module
+would earn its build step on). Where an operator already invoices with a minimum
+for **each file**, the portal's `max(words × rate, minimumPrice)` over the whole
+order (§3) quotes less than the invoice for any order of several short files.
+A rate can now say "a file counts as at least N words".
+
+- **One new rate setting, `min_words_per_file`** (integer, `0` = off, the
+  default for every existing rate, so no row changes meaning). It is a number
+  of words, not a price, so it follows the rate when the rate changes. It sits
+  beside `minimum_price`, which still applies once per order and target language,
+  after the files are summed.
+- **The rule.** For a pair with `m = min_words_per_file > 0`, a file of `c`
+  confirmed words is billed as `max(c, m)` words, **except that a file of 0
+  words bills nothing**: an update order (§4a) can carry a file whose words did
+  not change, and a minimum must not charge for work that does not exist.
+  The pair's line is `max(Σ billable words × rate_per_word, minimum_price)`,
+  and the order is the sum of its lines as before (§3). Pairs are independent:
+  one order may name a pair with a per-file minimum and another without.
+- **The unit that needs confirming becomes the file.** The order's one
+  `word_count` cannot carry a per-file rule, so when any requested pair has
+  `m > 0` the admin confirms a count **for each source file**
+  (`source_file.confirmed_word_count`, nullable, written only by the pricing
+  write), pre-filled from the advisory count (§4) or, for an update order, from
+  the changed count (§4a). `translation_order.word_count` is then their sum:
+  the actual words, never the billed ones, so everything that reads it
+  (display, the order list) means what it meant. A file with no advisory count
+  (`.pptx`, `.pdf`…) is a blank the admin fills; nothing is guessed, as in §4.
+  The advisory `word_count` is still never a price input.
+- **No silent wrong number.** `estimateOrder` takes either a single total or a
+  count per file. A single total for a pair that needs per-file counts throws
+  `FileWordCountsRequiredError` (the route answers 422 and names the fix); it is
+  never read as "one file". The client's estimate route answers `pending` in
+  that case, as it does with no count at all. An order that names no such pair
+  is priced exactly as before, from one total.
+- **Frozen at approval, like the price.** `assertCanPrice` still lets an order be
+  priced only while `submitted`, so a rate edit applies to **new orders only**:
+  the approved price and the per-file counts that produced it are stored, and no
+  later read recomputes either. Pricing again with the same counts and price
+  changes nothing and records nothing (§3); a changed per-file count with the
+  same total and price is still a change and is recorded.
+- **Audited.** `order.priced` (`audit-spec.md` §2.6) gains the per-file counts
+  in its `detail` (`files`, an object of source-file id to count). No new
+  action, so no `CHECK` migration; only the schema migration below.
+- **Never on a client route.** `confirmedWordCount` is dropped from a client's
+  file by name, like `wordCount` (§4). The client sees the rate's setting
+  through the rates they already see, and their price as before.
+- **Schema v8**: `rate.min_words_per_file INTEGER NOT NULL DEFAULT 0` and
+  `source_file.confirmed_word_count INTEGER`, both additive.
+- **Not built:** a per-file minimum in a client plan's allowance (§10 states
+  what is left open; the confirmed per-file count it needs now exists), a different
+  minimum per file type, and a client-side per-file estimate screen (the
+  estimate route accepts counts; the screen does not ask for them).
+
 ## 5. Notification
 
 `NotificationService` interface (`packages/portal-core/src/notify.ts`) with
@@ -225,7 +283,9 @@ SMTP provider shouldn't fail the order-submit/deliver API call itself.
 
 - `client` — id, name, email, access_token (unique, bearer for the private
   link), created_at
-- `rate` — id, src_lang, tgt_lang, rate_per_word, minimum_price
+- `rate` — id, src_lang, tgt_lang, rate_per_word, minimum_price,
+  min_words_per_file (v8; a file counts as at least this many words when
+  priced, `0` = off, §4b)
 - `translation_order` — id, client_id, src_lang, notes, status, word_count
   (nullable until admin sets it: the admin-confirmed figure the price
   comes from, never a file's advisory count), price (nullable until
@@ -238,7 +298,10 @@ SMTP provider shouldn't fail the order-submit/deliver API call itself.
   `NULL` is "not counted". It prices nothing and no client route
   returns it), compared_to_file_id and changed_word_count (v7; update
   orders only, §4a: the earlier file compared with and the words in new or
-  changed sentences, advisory and never on a client route)
+  changed sentences, advisory and never on a client route),
+  confirmed_word_count (v8; nullable, the admin's confirmed count of this
+  file, written with the price of an order a per-file minimum applies to,
+  §4b; never on a client route)
 - `delivered_file` — id, order_id, filename, content_type, byte_size,
   storage_path, uploaded_at
 - `order_event` — id, order_id, from_status (nullable, null for the
@@ -434,9 +497,11 @@ the balance, so most of the design is about keeping the balance honest.
 - **Money type.** The portal's `rate` table stores `REAL`; the vendor ledger
   stores integer micros. A plan should store integer micros, which means pricing
   a plan order needs a conversion at one named place.
-- **The per-file minimum** (`#222`): a file under the minimum counts as the
-  minimum number of words against the allowance. That needs a confirmed count
-  per file, which §4 does not have today.
+- **The per-file minimum** (`#222`, built, §4b): the portal now stores a
+  confirmed count per file for an order a per-file rate applies to
+  (`source_file.confirmed_word_count`). Open here: whether a plan draws a file's
+  billed words (the minimum applied) or its actual words, and what an order with
+  no per-file rate draws.
 - **Rush** (`#160`): is a rush surcharge a charge on top, or extra words drawn?
 - **Orders created by an admin** (`#221`): the draw is written at approval, so
   the actor on the draw is whoever recorded that approval.

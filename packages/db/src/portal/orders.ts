@@ -27,6 +27,7 @@ import {
 import type Database from 'better-sqlite3';
 
 import { appendAuditEvent } from '../audit/events.js';
+import { listSourceFiles } from './files.js';
 
 export interface TranslationOrder {
   readonly id: number;
@@ -261,27 +262,58 @@ export function setStatus(
   })();
 }
 
+export interface PriceOrderOptions extends OrderWriteOptions {
+  /**
+   * The admin's confirmed word count of each source file, by file id, for an
+   * order a per-file minimum applies to (portal-v0-spec.md §4b). It must name
+   * every source file of the order and no other, and sum to `wordCount`.
+   * Omitted, any per-file counts the order already holds are cleared.
+   */
+  readonly fileWordCounts?: ReadonlyMap<number, number>;
+}
+
 /**
  * Sets the authoritative word count and, with it, the priced total, and
  * records who did (`order.priced`, audit-spec.md §2.6) in the same
- * transaction. Pricing again with the same count and price changes
- * nothing and records nothing (§2.4). Otherwise `assertCanPrice` decides
- * whether the order may be priced in its status, and throws
+ * transaction. Pricing again with the same count, price and per-file counts
+ * changes nothing and records nothing (§2.4). Otherwise `assertCanPrice`
+ * decides whether the order may be priced in its status, and throws
  * `OrderPricingError` if not (portal-v0-spec.md §3).
+ *
+ * With `options.fileWordCounts` the counts are stored on the source files in
+ * the same transaction and in `order.priced`'s detail, and `wordCount` is their
+ * sum: the actual words, not the billed ones (§4b). Without it, any counts the
+ * order already holds are cleared, so none can contradict the new total.
+ *
+ * @throws RangeError for a count that is not a non-negative integer, counts
+ *   that miss a file of the order or name another order's, or a total that is
+ *   not their sum.
  */
 export function setWordCountAndPrice(
   db: Database.Database,
   orderId: number,
   wordCount: number,
   price: number,
-  options: OrderWriteOptions,
+  options: PriceOrderOptions,
 ): TranslationOrder {
   return db.transaction((): TranslationOrder => {
     const current = getOrder(db, orderId);
     if (!current) {
       throw new Error(`order ${orderId} not found`);
     }
-    if (current.wordCount === wordCount && current.price === price) {
+    const files = listSourceFiles(db, orderId);
+    const counts = options.fileWordCounts;
+    if (counts) {
+      assertFileCounts(
+        files.map((f) => f.id),
+        counts,
+        wordCount,
+      );
+    }
+    const sameCounts = files.every(
+      (f) => f.confirmedWordCount === (counts ? (counts.get(f.id) ?? null) : null),
+    );
+    if (current.wordCount === wordCount && current.price === price && sameCounts) {
       return current;
     }
     assertCanPrice(current.status, current.price);
@@ -290,15 +322,58 @@ export function setWordCountAndPrice(
     db.prepare(
       'UPDATE translation_order SET word_count = ?, price = ?, updated_at = ? WHERE id = ?',
     ).run(wordCount, price, now, orderId);
+    const setConfirmed = db.prepare(
+      'UPDATE source_file SET confirmed_word_count = ? WHERE id = ? AND order_id = ?',
+    );
+    for (const file of files) {
+      setConfirmed.run(counts ? (counts.get(file.id) ?? null) : null, file.id, orderId);
+    }
     appendAuditEvent(db, {
       actor: options.actor,
       action: 'order.priced',
       subjectType: 'translation_order',
       subjectId: String(orderId),
-      detail: { word_count: wordCount, price },
+      detail: counts
+        ? {
+            word_count: wordCount,
+            price,
+            files: Object.fromEntries(files.map((f) => [f.id, counts.get(f.id)!])),
+          }
+        : { word_count: wordCount, price },
     });
     return getOrder(db, orderId)!;
   })();
+}
+
+/**
+ * The checks on a per-file confirmation that no route may skip: whole
+ * non-negative numbers, exactly the order's files, and a total that is their sum.
+ */
+function assertFileCounts(
+  fileIds: readonly number[],
+  counts: ReadonlyMap<number, number>,
+  wordCount: number,
+): void {
+  let sum = 0;
+  for (const [id, count] of counts) {
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new RangeError(
+        `the confirmed count of file ${id} must be a non-negative whole number, got ${count}`,
+      );
+    }
+    sum += count;
+  }
+  const known = new Set(fileIds);
+  if (counts.size !== known.size || [...counts.keys()].some((id) => !known.has(id))) {
+    throw new RangeError(
+      "the confirmed counts must name every source file of the order, and only the order's own",
+    );
+  }
+  if (sum !== wordCount) {
+    throw new RangeError(
+      `the order's word count ${wordCount} is not the sum of its files' confirmed counts, ${sum}`,
+    );
+  }
 }
 
 export function listOrderEvents(db: Database.Database, orderId: number): OrderEvent[] {

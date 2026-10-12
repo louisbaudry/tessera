@@ -221,8 +221,12 @@ export interface AuditDetail {
     readonly name: string;
     readonly sha256: string;
   };
-  /** The count the admin confirmed and the total it priced to (backlog #63). */
-  'order.priced': OrderPrice;
+  /**
+   * The count the admin confirmed and the total it priced to (backlog #63); for
+   * an order a per-file minimum applies to, also each source file's confirmed
+   * count by file id (portal-v0-spec.md §4b).
+   */
+  'order.priced': OrderPrice & { readonly files?: Readonly<Record<string, number>> };
   /** The price as it stood when portal v4 began recording (spec §6). */
   'order.price_baseline': OrderPrice;
   // A client's linked memory/glossary (backlog #162). The file's name is not

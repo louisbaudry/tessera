@@ -320,4 +320,25 @@ const v7: Migration = {
   },
 };
 
-export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];
+/**
+ * A minimum per file (portal-v0-spec.md §4b; idea #222). `min_words_per_file`
+ * is a number of words a file counts as at least when priced, `0` meaning off,
+ * so every rate written before this version keeps its meaning; it is a word
+ * count rather than a price so it follows the rate. `confirmed_word_count` is
+ * the admin's confirmed count of one source file, written only by the pricing
+ * write and only for an order a per-file rate applies to; `NULL` is "not
+ * confirmed per file", which is every file written before this version.
+ * `source_file.word_count` stays the counter's advice and never prices.
+ */
+const v8: Migration = {
+  version: 8,
+  description: 'rate.min_words_per_file and source_file.confirmed_word_count (idea #222)',
+  up: (db) => {
+    db.exec(`
+      ALTER TABLE rate ADD COLUMN min_words_per_file INTEGER NOT NULL DEFAULT 0 CHECK (min_words_per_file >= 0);
+      ALTER TABLE source_file ADD COLUMN confirmed_word_count INTEGER CHECK (confirmed_word_count >= 0);
+    `);
+  },
+};
+
+export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7, v8];

@@ -120,10 +120,45 @@ const NEXT_STATUSES = {
   cancelled: [],
 };
 
+// A rate with a per-file minimum prices each file on its own (portal-v0-spec.md
+// §4b), so the admin confirms a count for every file instead of one total. The
+// pre-fill is the same advice as the single total: the uploads' counts, or the
+// changed words of an update order; a file with none is left blank.
+function perFileForm(order, sourceFiles, suggested) {
+  const rows = sourceFiles
+    .map((f) => {
+      const value = f.confirmedWordCount ?? suggested[f.id] ?? '';
+      return `<tr>
+        <td>${escapeHtml(f.filename)}</td>
+        <td><input type="number" min="0" step="1" data-file-id="${f.id}" value="${value}" style="width:8rem" /></td>
+      </tr>`;
+    })
+    .join('');
+  const hint =
+    order.wordCount != null
+      ? ''
+      : 'Pre-filled from the uploads’ counts where there are any. An estimate: check each, then confirm to price.';
+  return `<form id="wc-form">
+    <p class="muted">A rate on this order counts each file as at least a set number of words, so the price needs the words in each file. The order’s word count is their sum.</p>
+    <table>
+      <tr><th>File</th><th>Words</th></tr>
+      ${rows}
+    </table>
+    <button type="submit">Set &amp; price</button>
+  </form>
+  <p class="muted">${hint}</p>`;
+}
+
 async function renderOrderDetail(id) {
-  const { order, sourceFiles, suggestedWordCount, deliveredFiles, events } = await api(
-    `/api/admin/orders/${id}`,
-  );
+  const {
+    order,
+    sourceFiles,
+    suggestedWordCount,
+    needsFileWordCounts,
+    suggestedFileWordCounts,
+    deliveredFiles,
+    events,
+  } = await api(`/api/admin/orders/${id}`);
 
   app.innerHTML = `
     <button class="secondary" id="back">&larr; All orders</button>
@@ -134,7 +169,10 @@ async function renderOrderDetail(id) {
 
     <div class="card">
       <label>Word count</label>
-      <form id="wc-form" style="display:flex; gap:0.5rem; align-items:end">
+      ${
+        needsFileWordCounts
+          ? perFileForm(order, sourceFiles, suggestedFileWordCounts)
+          : `<form id="wc-form" style="display:flex; gap:0.5rem; align-items:end">
         <input type="number" name="wordCount" min="0" value="${order.wordCount ?? suggestedWordCount ?? ''}" style="width:8rem" />
         <button type="submit" style="margin-top:0">Set &amp; price</button>
       </form>
@@ -146,7 +184,8 @@ async function renderOrderDetail(id) {
           : order.wordCount == null
             ? 'No automatic count for these files. Count them and enter it.'
             : ''
-      }</p>
+      }</p>`
+      }
       <p>Price: <strong>${money(order.price)}</strong></p>
       <p class="error" id="wc-error"></p>
     </div>
@@ -226,14 +265,28 @@ async function renderOrderDetail(id) {
 
   app.querySelector('#wc-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const wordCount = Number(e.target.wordCount.value);
     const errorEl = app.querySelector('#wc-error');
     errorEl.textContent = '';
+    let payload;
+    if (needsFileWordCounts) {
+      // A blank is not a zero: a file nobody counted must stop the price (§4b).
+      const fileWordCounts = {};
+      for (const input of e.target.querySelectorAll('[data-file-id]')) {
+        if (input.value.trim() === '') {
+          errorEl.textContent = 'Enter a word count for every file.';
+          return;
+        }
+        fileWordCounts[input.dataset.fileId] = Number(input.value);
+      }
+      payload = { fileWordCounts };
+    } else {
+      payload = { wordCount: Number(e.target.wordCount.value) };
+    }
     try {
       await api(`/api/admin/orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wordCount }),
+        body: JSON.stringify(payload),
       });
       renderOrderDetail(id);
     } catch (err) {

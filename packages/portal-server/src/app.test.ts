@@ -1140,3 +1140,293 @@ describe('a client takes their own memory and glossary (backlog #162)', () => {
     db.close();
   });
 });
+
+describe('a minimum per file (portal-v0-spec.md §4b; idea #222)', () => {
+  // en -> de: 0.10 a word, no floor, a file counts as at least 250 words.
+  // en -> es (the shared fixture rate) has no per-file minimum.
+  const rate = {
+    srcLang: 'en',
+    tgtLang: 'de',
+    ratePerWord: 0.1,
+    minimumPrice: 0,
+    minWordsPerFile: 250,
+  };
+
+  async function submitTo(tgtLangs: string[], names: string[]) {
+    const form = new FormData();
+    form.append('srcLang', 'en');
+    for (const tgt of tgtLangs) form.append('tgtLangs', tgt);
+    for (const name of names) {
+      form.append('files', new Blob(['one two three'], { type: 'text/plain' }), name);
+    }
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/client/orders',
+      headers: auth(ada.accessToken),
+      payload: form,
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json() as { order: { id: number }; files: FileJson[] };
+  }
+
+  const setPerFileRate = async (admin: string, body: object = rate) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/admin/rates',
+      headers: auth(admin),
+      payload: body,
+    });
+
+  const patch = (admin: string, orderId: number, payload: object) =>
+    app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${orderId}`,
+      headers: auth(admin),
+      payload,
+    });
+
+  const getOrder = async (admin: string, id: number) =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: `/api/admin/orders/${id}`,
+        headers: auth(admin),
+      })
+    ).json() as {
+      order: { wordCount: number | null; price: number | null };
+      sourceFiles: Array<{ id: number; confirmedWordCount: number | null }>;
+      needsFileWordCounts: boolean;
+      suggestedFileWordCounts: Record<string, number | null>;
+    };
+
+  const countsFor = (files: FileJson[], ...words: number[]) =>
+    Object.fromEntries(files.map((f, i) => [String(f.id), words[i]]));
+
+  it('stores and lists the setting, and refuses one that is not a whole number', async () => {
+    const admin = await adminLogin();
+    const saved = await setPerFileRate(admin);
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect(
+      (saved.json() as Array<{ tgtLang: string; minWordsPerFile: number }>).map((r) => [
+        r.tgtLang,
+        r.minWordsPerFile,
+      ]),
+    ).toEqual([
+      ['de', 250],
+      ['es', 0],
+    ]);
+    for (const bad of [-1, 1.5, '250', null]) {
+      const res = await setPerFileRate(admin, { ...rate, minWordsPerFile: bad });
+      expect(res.statusCode, JSON.stringify(bad)).toBe(400);
+    }
+    // The rejected writes left the rate as it was.
+    const rates = (
+      await app.inject({ method: 'GET', url: '/api/admin/rates', headers: auth(admin) })
+    ).json() as Array<{ tgtLang: string; minWordsPerFile: number }>;
+    expect(rates.find((r) => r.tgtLang === 'de')?.minWordsPerFile).toBe(250);
+  });
+
+  it('asks the admin for a count per file, and pre-fills them from the uploads', async () => {
+    const admin = await adminLogin();
+    await setPerFileRate(admin);
+    const { order, files } = await submitTo(['de'], ['a.txt', 'b.txt']);
+    const seen = await getOrder(admin, order.id);
+    expect(seen.needsFileWordCounts).toBe(true);
+    expect(seen.suggestedFileWordCounts).toEqual({
+      [files[0]!.id]: 3,
+      [files[1]!.id]: 3,
+    });
+    // An order that names no such pair keeps the single total.
+    const plain = await submitTo(['es'], ['a.txt']);
+    expect((await getOrder(admin, plain.order.id)).needsFileWordCounts).toBe(false);
+  });
+
+  it('refuses a single total for such an order, and prices nothing', async () => {
+    const admin = await adminLogin();
+    await setPerFileRate(admin);
+    const { order } = await submitTo(['de'], ['a.txt']);
+    const res = await patch(admin, order.id, { wordCount: 90 });
+    expect(res.statusCode, res.body).toBe(422);
+    expect((res.json() as { error: string }).error).toMatch(/for each file/);
+    expect((await getOrder(admin, order.id)).order).toMatchObject({
+      wordCount: null,
+      price: null,
+    });
+  });
+
+  it('prices each file at the minimum, stores the actual words, and tells the client only the price', async () => {
+    const admin = await adminLogin();
+    await setPerFileRate(admin);
+    const { order, files } = await submitTo(['de'], ['a.txt', 'b.txt', 'c.txt']);
+    const res = await patch(admin, order.id, {
+      fileWordCounts: countsFor(files, 90, 90, 90),
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    // Three 90-word files bill 3 x 250 words at 0.10, not 270 words.
+    expect(res.json()).toMatchObject({ wordCount: 270 });
+    expect((res.json() as { price: number }).price).toBeCloseTo(75);
+    const seen = await getOrder(admin, order.id);
+    expect(seen.sourceFiles.map((f) => f.confirmedWordCount)).toEqual([90, 90, 90]);
+
+    // The same files priced as one total would have been far cheaper: this is
+    // the gap the setting closes.
+    expect(270 * 0.1).toBeLessThan(75);
+
+    // The client sees the price and the actual words, never a per-file figure.
+    const client = await app.inject({
+      method: 'GET',
+      url: `/api/client/orders/${order.id}`,
+      headers: auth(ada.accessToken),
+    });
+    const json = client.json() as {
+      order: { price: number };
+      sourceFiles: object[];
+    };
+    expect(json.order.price).toBeCloseTo(75);
+    for (const file of json.sourceFiles) {
+      expect(file).not.toHaveProperty('confirmedWordCount');
+      expect(file).not.toHaveProperty('wordCount');
+    }
+    expect(client.body).not.toContain('confirmedWordCount');
+    expect(client.body).not.toContain('suggestedFileWordCounts');
+  });
+
+  it('prices a mixed order: the per-file pair by file, the other by the total', async () => {
+    const admin = await adminLogin();
+    await setPerFileRate(admin);
+    const { order, files } = await submitTo(['de', 'es'], ['a.txt', 'b.txt']);
+    const res = await patch(admin, order.id, {
+      fileWordCounts: countsFor(files, 90, 400),
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    // de: (250 + 400) x 0.10 = 65. es: 490 x 0.10 = 49, above its floor of 20.
+    expect((res.json() as { price: number }).price).toBeCloseTo(114);
+  });
+
+  it('refuses counts that miss a file, name another order’s, or are not whole numbers', async () => {
+    const admin = await adminLogin();
+    await setPerFileRate(admin);
+    const { order, files } = await submitTo(['de'], ['a.txt', 'b.txt']);
+    const elsewhere = await submitTo(['de'], ['c.txt']);
+    const bad: unknown[] = [
+      { [files[0]!.id]: 90 },
+      { ...countsFor(files, 90, 90), [elsewhere.files[0]!.id]: 10 },
+      { [files[0]!.id]: 90, [elsewhere.files[0]!.id]: 10 },
+      countsFor(files, -1, 90),
+      countsFor(files, 1.5, 90),
+      countsFor(files, 90, '90' as unknown as number),
+      { [files[0]!.id]: 90, [files[1]!.id]: 90, nope: 1 },
+      [90, 90],
+      null,
+      'a',
+    ];
+    for (const fileWordCounts of bad) {
+      const res = await patch(admin, order.id, { fileWordCounts });
+      expect(res.statusCode, JSON.stringify(fileWordCounts)).toBe(400);
+    }
+    expect((await getOrder(admin, order.id)).order).toMatchObject({ price: null });
+    expect((await getOrder(admin, elsewhere.order.id)).sourceFiles[0]).toMatchObject({
+      confirmedWordCount: null,
+    });
+    // A total sent beside the counts must be their sum.
+    const clash = await patch(admin, order.id, {
+      wordCount: 5,
+      fileWordCounts: countsFor(files, 90, 90),
+    });
+    expect(clash.statusCode, clash.body).toBe(400);
+  });
+
+  it('applies a later rate edit to new orders only: an approved price stands', async () => {
+    const admin = await adminLogin();
+    await setPerFileRate(admin);
+    const { order, files } = await submitTo(['de'], ['a.txt']);
+    const priced = await patch(admin, order.id, { fileWordCounts: countsFor(files, 90) });
+    const price = (priced.json() as { price: number }).price;
+    expect(price).toBeCloseTo(25);
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/client/orders/${order.id}/approve`,
+      headers: auth(ada.accessToken),
+      payload: { price },
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+
+    // The minimum is raised, and the same counts are sent again: a 409, and the
+    // stored counts and price are untouched.
+    await setPerFileRate(admin, { ...rate, minWordsPerFile: 1000 });
+    const again = await patch(admin, order.id, { fileWordCounts: countsFor(files, 90) });
+    expect(again.statusCode, again.body).toBe(409);
+    const seen = await getOrder(admin, order.id);
+    expect(seen.order.price).toBeCloseTo(25);
+    expect(seen.sourceFiles[0]).toMatchObject({ confirmedWordCount: 90 });
+
+    // A new order is priced at the new minimum.
+    const next = await submitTo(['de'], ['a.txt']);
+    const res = await patch(admin, next.order.id, {
+      fileWordCounts: countsFor(next.files, 90),
+    });
+    expect((res.json() as { price: number }).price).toBeCloseTo(100);
+  });
+
+  it('records the counts in order.priced', async () => {
+    const admin = await adminLogin();
+    await setPerFileRate(admin);
+    const { order, files } = await submitTo(['de'], ['a.txt', 'b.txt']);
+    await patch(admin, order.id, { fileWordCounts: countsFor(files, 90, 400) });
+    const details = readLogs((db) =>
+      listEvents(db, {
+        subjectType: 'translation_order',
+        subjectId: String(order.id),
+      }).map((e) => [e.action, e.detail]),
+    );
+    expect(details).toEqual([
+      [
+        'order.priced',
+        JSON.stringify({
+          word_count: 490,
+          price: 65,
+          files: { [files[0]!.id]: 90, [files[1]!.id]: 400 },
+        }),
+      ],
+    ]);
+  });
+
+  describe('the client’s estimate', () => {
+    const estimate = (payload: object) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/client/estimate',
+        headers: auth(ada.accessToken),
+        payload,
+      });
+
+    it('stays pending rather than read a total as one file', async () => {
+      await setPerFileRate(await adminLogin());
+      const res = await estimate({ srcLang: 'en', tgtLangs: ['de'], wordCount: 300 });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json()).toEqual({ pending: true });
+    });
+
+    it('prices counts given per file, and a total for a pair without the setting', async () => {
+      await setPerFileRate(await adminLogin());
+      const perFile = await estimate({
+        srcLang: 'en',
+        tgtLangs: ['de'],
+        fileWordCounts: [90, 400],
+      });
+      expect(perFile.statusCode, perFile.body).toBe(200);
+      expect(perFile.json()).toMatchObject({ pending: false });
+      expect((perFile.json() as { total: number }).total).toBeCloseTo(65);
+      const total = await estimate({ srcLang: 'en', tgtLangs: ['es'], wordCount: 300 });
+      expect((total.json() as { total: number }).total).toBeCloseTo(30);
+    });
+
+    it('rejects counts that are not a list of non-negative numbers', async () => {
+      await setPerFileRate(await adminLogin());
+      for (const fileWordCounts of [[-1], ['a'], 5, {}, [null]]) {
+        const res = await estimate({ srcLang: 'en', tgtLangs: ['de'], fileWordCounts });
+        expect(res.statusCode, JSON.stringify(fileWordCounts)).toBe(400);
+      }
+    });
+  });
+});

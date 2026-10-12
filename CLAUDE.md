@@ -542,6 +542,15 @@ engine, but follows the same discipline:
   paragraph reads as changed. `changed_word_count` pre-fills the admin's
   total and is never on a client route (`clientFile` drops it by name);
   `word_count`, confirmed by the admin, still alone prices.
+- **A minimum per file is priced from a confirmed count per file, never from
+  a total** (backlog #132, `portal-v0-spec.md` §4b). A rate's
+  `min_words_per_file` makes a file count as at least that many words, a file
+  of 0 words bills nothing, and `estimateOrder` throws
+  `FileWordCountsRequiredError` for a single total on such a pair rather than
+  read it as one file. The admin confirms each file
+  (`source_file.confirmed_word_count`, dropped from a client's file by name in
+  `clientFile`); `translation_order.word_count` stays their sum, the actual
+  words, so the billed words exist only in the price.
 - **A price is set only while `submitted`, and approval is consent to
   that price** (backlog `#63`, `portal-v0-spec.md` §2–§3). The rules
   are `assertCanPrice`/`assertCanApprove` in `portal-core`, run by
