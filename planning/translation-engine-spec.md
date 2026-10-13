@@ -137,7 +137,7 @@ measured and not assumed. It follows the protocol already binding on
 that tests it, every run gets a results file with the commit, corpus digest,
 model and parameters, failures included, and no client text lands in the
 repo**; a private memory contributes numbers only, under opaque ids. The
-harness lives under `research/translation-engine/` when slice 5 starts
+harness lives under `research/translation-engine/` (opened in slice 0)
 (§7), and its journal and hypotheses files are append-only.
 
 **D8. The engine is a client default, overridable per project.** A client
@@ -283,6 +283,10 @@ filed when a slice is next, not before.
 | 4 | The editor: suggestion in the match panel, accept, prefetch ahead of the cursor. | A translator accepts a draft from the keyboard with no blocking wait; the accept is the audited write. |
 | 5 | `research/translation-engine/` and the D7 benchmark harness: hypotheses first, three arms, a results file per run. | A results file compares the three arms on a synthetic corpus; a private-memory run yields numbers only. |
 | 6 | The DeepL adapter behind the same seam, so the PM's choice (D2) is real. | The same fixture project drafts through either engine; the setting picks. |
+
+Slice 0's spike is recorded in `research/translation-engine/` (experiment
+E-001, hypotheses H1 to H4, written before any run); the folder is the one
+D7's benchmark will use.
 
 Slice 5 can run alongside slice 3 on a separate area; it touches
 `research/`, not the pipeline. The benchmark gates **turning the engine on
