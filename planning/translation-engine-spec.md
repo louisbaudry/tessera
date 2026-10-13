@@ -5,9 +5,9 @@ Tessera gets its own automated translation, built on an analysis of the
 client's translation memory plus Claude, invisible to the client and the
 translator, "something similar to what is proposed by ModernMT". It is
 **Epic 8** (Ring 0.5, `ai-platform-vision.md` §3), tracked in issue #228.
-Seven of the decisions below were taken by Louis on 2026-10-12 in answer to
-questions, each with options and a recommendation; §9 lists what was not
-asked. Reasoning is kept on the record, not just the conclusions.
+Eight decisions (D1 to D8) were taken by Louis on 2026-10-12 and ten more
+(D9 to D18, §9) on 2026-10-13, each in answer to a question with options and
+a recommendation. Two points stay open (§9). Reasoning is kept on the record, not just the conclusions.
 
 **A word on naming.** "Provider" is taken: a _Language Provider_ is the
 translation business and its vendors (Epic 9). This spec calls the thing an
@@ -47,14 +47,14 @@ half and leaves the second:
 
 ## 2. Decisions
 
-D1 to D8 are Louis's, 2026-10-12.
+D1 to D8 are Louis's, 2026-10-12; D9 to D18 are in §9.
 
 **D1. Adaptation by retrieval only.** No per-client model, no fine-tuning, no
 offline client profile. The alternatives were weighed: a per-client trained
 model is what ModernMT sells, but it needs GPUs, retraining and a quality bar
 that is hard to reach against Claude with good context; an offline profile
 (terminology, tone, recurring patterns computed once per client) is a
-possible later layer, and §9 keeps it as a deferred option rather than a
+possible later layer, and D17 keeps it as a deferred option rather than a
 decision. What makes retrieval-only adequate is that the machinery already
 exists: `retrieveFuzzy` (FS-2 scorer behind an FTS5 shortlist,
 `v1-spec.md` §6.1a), `retrievePair`, and the glossary lookup. This epic
@@ -84,7 +84,7 @@ recorded here so nobody discovers them later:
 2. The disclosure to clients that `ai-platform-vision.md` §5.3 asks for
    ("a line in the service agreement naming AI-assisted tools") is the only
    place a client learns of it, which makes that line and D4 the whole of
-   the client's protection. §9 asks whether that is enough.
+   the client's protection. D11 accepts that, on one condition.
 
 **D4. Per-client opt-in, off by default, logged.** A client's memory and
 glossary are sent to Claude only after that client has been switched on, by
@@ -96,7 +96,7 @@ because the text sent here is the client's own translated history, a bigger
 disclosure than a source sentence alone. The consent gate is checked
 **on the server at the moment of the call**, never in the SPA and not once
 per job: a client switched off while a job runs must stop the job's later
-segments (§9, open point on mid-project opt-out). §5 of the vision doc's
+segments (D15). §5 of the vision doc's
 other rules stand: paid/enterprise API tiers only, never a consumer product.
 
 **D5. Batch at pre-translate, plus an editor prefetch.** A pre-translate run
@@ -111,7 +111,7 @@ per-project suggestion store, not written into `segment.target`; accepting
 one is the write (`setSegmentTarget`, hidden tags carried, actor the accepting
 human, origin `mt_draft`). This differs from a placed fuzzy match, which
 pre-translate writes as a `draft` (`v1-spec.md` §6.1a, 3), and is the one
-place this spec departs from the fuzzy path; §9 asks Louis to confirm it.
+place this spec departs from the fuzzy path; D10 confirms it.
 
 **D6. Stay in TypeScript.** The standing question (`CLAUDE.md`, working
 rhythm 6) was asked: stay in TypeScript, a Rust/Wasm kernel for one hot path,
@@ -148,7 +148,7 @@ engine that sends client content: the project override picks among what the
 client allows. The choice is logged (`project.setting_changed`,
 `audit-spec.md` §2.2). "Client" here is the number the owner typed on the
 project (`portal_client_setting`, backlog #130), not a lookup in
-`portal.sqlite`; where the per-client setting lives is open (§9).
+`portal.sqlite`; the per-client setting lives in `platform.sqlite` (D9).
 
 ## 3. How a draft is made
 
@@ -210,7 +210,7 @@ and the benchmark's adversarial cases look for (§6).
   frozen match tier; a segment drafted by an engine and then edited is, for
   analysis, a segment with no TM match, exactly as today. Nothing here
   changes a rate. What a vendor is owed for post-editing a hidden draft is a
-  commercial question and is §9, not defaulted.
+  commercial question and is D16: no change.
 - **Memory.** A confirmed target written back to a memory carries its `origin`
   as it does today; an engine draft is not a human translation, so the TM
   write-back rules (`tm-format-spec.md`) decide whether a confirmed
@@ -276,7 +276,7 @@ filed when a slice is next, not before.
 
 | Slice | What | Done when |
 | ----- | ---- | --------- |
-| 0 | Decisions and spikes: §9 settled; where a client's setting lives; a spike drafts 50 segments from a synthetic memory and records latency and token counts. | The decisions are written here; the spike's result is a results note, failures included. |
+| 0 | Decisions and spikes: the two open points of §9 closed (the language pairs, the agreement wording); a spike drafts 50 segments from a synthetic memory and records latency and token counts. | The decisions are written here; the spike's result is a results note, failures included. |
 | 1 | The client engine setting (`off`/`tessera`/`deepl`), the project override, the consent gate, the audit actions. No engine yet. | A client defaults to `off`; the gate refuses and logs nothing sent; the override cannot widen the client's choice. |
 | 2 | `core/draft/`: the interface, prompt template v1, retrieval wiring, placeholders, validation, with a fake engine. | Fixture segments produce valid, tag-safe suggestions through the fake engine; hidden tags carried. |
 | 3 | The Anthropic adapter, the suggestion store, the pre-translate job and the CLI step, provenance and `ai.requested`. | A batch over a fixture project stores suggestions only for allowed clients; the audit chain verifies. |
@@ -298,47 +298,84 @@ network lives in the server. A TM match still applies the receiving
 document's formatting. A semantic match never gets a percentage, and neither
 does a draft.
 
-## 9. Open points (not asked on 2026-10-12)
+## 9. Settled on 2026-10-13, and what is still open
 
-Each has a recommendation; none is defaulted into code.
+The ten points left open on 2026-10-12 were put to Louis one at a time on
+2026-10-13, each with options and a recommendation. He took the
+recommendation every time (D9 to D18). Two things stay open, and both are
+Louis's, not code's.
 
-1. **Where a client's engine setting lives.** The CAT server must not read
-   `portal.sqlite` (backlog #130), and the owner's `.ctv` is the vendor
-   roster. _Recommendation:_ a small per-owner table in `platform.sqlite`
-   keyed by the client number the owner types on the project, since it holds
-   settings and not translation content, with its changes in that file's
-   audit log. Slice 0 decides.
-2. **Confirm D5's departure from the fuzzy path.** Engine output goes to a
-   suggestion store and is a write only on acceptance
-   (`audit-spec.md` §4), unlike a placed fuzzy match. _Recommendation:_ keep
-   it; the alternative (pre-translate writes drafts into targets) makes the
-   PM who ran the batch the actor of text a translator never saw.
-3. **Is D3 plus the vision doc's §5.3 line enough disclosure?** Louis chose
-   no marker for the translator; the client's only notice is the agreement.
-   _Recommendation:_ confirm the agreement's wording names AI-assisted tools
-   before the first opted-in client.
-4. **Cost caps.** A per-client or per-project budget, and what happens at
-   the limit (stop, ask, fall back to DeepL). _Recommendation:_ a per-job
-   token ceiling in slice 3, a per-client monthly cap later.
-5. **Which Claude model tier**, and whether one tier drafts and a cheaper
-   one prefetches. _Recommendation:_ decided by the D7 results, not by
-   preference; the model id is a setting recorded in the provenance.
-6. **Languages in scope.** The pairs the business actually uses first
-   (`ai-platform-vision.md` §3 names the Romance and Germanic pairs). No
-   pair is excluded by design; CJK and Thai have no word counter
-   (`v1-spec.md` §3.6) and are out of the first benchmark.
-7. **A client opts out in the middle of a project.** Suggestions already
-   stored: keep unaccepted ones, or purge them? _Recommendation:_ purge
-   unaccepted suggestions for that client at the moment of opt-out (they hold
-   text derived from its memory), keep accepted targets (they are the
-   translator's work), and log both.
-8. **Post-editing pay.** A vendor edits a draft they cannot tell from a TM
-   suggestion. Rates today follow match tiers; a post-editing rate is a
-   commercial decision for Louis (`vendor-spec.md`).
-9. **An offline client profile** (terminology, tone, recurring patterns)
-   as a later layer on top of D1. Deferred until the D7 benchmark shows what
-   retrieval alone leaves on the table.
-10. **Personal data in a client's memory.** A memory may contain names. The
-    engine sends what retrieval returns; whether to redact before sending is
-    part of `worldwide-and-compliance-spec.md` §6 and the DPA question in
-    `ai-platform-vision.md` §5.4, not solved here.
+**D9. A client's setting lives in `platform.sqlite`.** A small per-owner
+table keyed by the client number the owner types on the project (backlog
+#130), since it holds settings and not translation content. The CAT server
+still never reads `portal.sqlite`. A wrong client number matches nothing, so
+the engine stays off: the safe failure. Its changes go to that file's audit
+log (`project.setting_changed` in the project, a platform-side action here).
+
+**D10. D5 stands: engine output is a suggestion, not a write.** It sits in a
+per-project suggestion store and becomes a write only when a translator
+accepts it, with that translator as the actor (`audit-spec.md` §4). This is
+the one place the engine departs from a placed fuzzy match, and it is
+confirmed. The alternative made the PM who ran a batch the actor of text a
+translator never saw.
+
+**D11. The service-agreement line is enough, once checked.** D3 plus the
+agreement line of `ai-platform-vision.md` §5.3 is accepted as the client's
+disclosure, on one condition: before the first opted-in client, the
+agreement's wording is confirmed to name AI-assisted tools. That check is
+Louis's, not a build task, and is a stop-and-ask before slice 3 turns the
+engine on for a real client.
+
+**D12. Cost: a per-job token ceiling now, a monthly client cap later.**
+Slice 3 ships with a ceiling on each pre-translate job: it stops, reports,
+and the PM can resume. A per-client monthly cap waits until real spend per
+client is seen. Until it exists, many small jobs can still add up; that is
+accepted. Tokens per job are logged either way.
+
+**D13. The model tier is decided by the D7 benchmark.** The model id is a
+setting recorded in every draft's provenance. The benchmark's first arm is
+the mid tier; the cheaper and the top tier are extra arms. Slice 3 uses a
+placeholder default until the results are in. No separate model for prefetch
+is assumed: two models would give one segment two behaviours depending on
+when it was fetched.
+
+**D14. First languages: the pairs the business actually translates.** The
+Romance and Germanic pairs named in `ai-platform-vision.md` §3, which are
+also where DeepL is strongest, so the comparison is fair. CJK and Thai are
+out of the first benchmark (no word counter, `v1-spec.md` §3.6). The exact
+pairs are **not yet named** (open point 1 below).
+
+**D15. Opt-out mid-project purges unaccepted suggestions and keeps accepted
+targets.** At the moment a client is switched off, every unaccepted
+suggestion for that client is deleted (it holds text derived from its
+memory), accepted targets stay (they are the translator's work), the job's
+remaining segments stop, and both the purge and the stop are logged. A
+translator loses unaccepted look-ahead drafts mid-session; that is accepted.
+
+**D16. Post-editing is paid by match tier, as today.** An engine draft is not
+a TM tier, so the segment is priced as no match and nothing is built. A
+post-editing rate tier is a possible later decision once the benchmark and a
+pilot show how much translators edit drafts; it would be a rate row (never an
+edit), would touch the frozen analysis, and needs Louis's commercial terms.
+
+**D17. No offline client profile for now.** Terminology, tone and recurring
+patterns computed once per client stay a deferred option on top of D1. If
+the D7 benchmark shows retrieval alone leaves a gap a profile would fix, a
+card is opened then; nothing is built before.
+
+**D18. No redaction of personal data now.** A memory may contain names and
+addresses and the engine sends what retrieval returns. Redaction on
+translation text is unreliable and can break a match, so it is not built.
+The protection is the per-client opt-in (D4), enterprise API terms with no
+training on inputs (`ai-platform-vision.md` §5.1), and the compliance work
+already planned (`worldwide-and-compliance-spec.md` §6, `ai-platform-vision.md`
+§5.4). A client who requires more than that, and a regulated sector in
+particular, reopens this.
+
+### Still open
+
+1. **Which language pairs.** D14 says "the pairs the business actually
+   translates" but Louis has not listed them. Slice 0 needs the list; it is
+   not guessed here.
+2. **The agreement wording** (D11), a check on Louis's side before the first
+   opted-in client.
