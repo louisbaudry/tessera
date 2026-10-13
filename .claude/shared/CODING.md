@@ -178,6 +178,10 @@ has that repo in scope; otherwise ask Louis for the file):
   truncate, alter, create, grant, revoke and copy. Any other project, or no
   declared ref, falls back to the normal prompt. The ref goes in the
   consuming repo only if that repo is private.
+  The hook matcher is a regex (`mcp__.*[Ss]upabase.*__execute_sql`), not
+  one tool name: the connector is `mcp__Supabase__` in some clients and
+  `mcp__claude_ai_Supabase__` or `mcp__plugin_supabase_supabase__` in
+  others, and a matcher that misses the name means a prompt on every query.
 - `execute_sql` is deliberately not in the `allow` list: a permission rule
   matches the tool name only, so it cannot tell one project or one statement
   from another. The hook can, which is why write access goes through it.
