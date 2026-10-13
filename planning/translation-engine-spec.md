@@ -343,11 +343,32 @@ placeholder default until the results are in. No separate model for prefetch
 is assumed: two models would give one segment two behaviours depending on
 when it was fetched.
 
-**D14. First languages: the pairs the business actually translates.** The
-Romance and Germanic pairs named in `ai-platform-vision.md` §3, which are
-also where DeepL is strongest, so the comparison is fair. CJK and Thai are
-out of the first benchmark (no word counter, `v1-spec.md` §3.6). The exact
-pairs are **not yet named** (open point 1 below).
+**D14. First languages: EN to ES and EN to VI.** Louis, 2026-10-13: the
+business mostly translates English into Spanish and English into
+Vietnamese. These two pairs are the first benchmark and the first pilot;
+the earlier wording ("the Romance and Germanic pairs of
+`ai-platform-vision.md` §3") is superseded for this engine. Three
+consequences, each a fact about this repo or an open check, not a guess:
+
+- **Vietnamese is not where DeepL was assumed strongest.** The vision doc's
+  case for DeepL rested on Romance and Germanic pairs. Whether DeepL
+  translates into Vietnamese at all, and how well, is **unverified** and is
+  the first thing slice 5's setup checks. If it does not, the EN to VI
+  benchmark has no DeepL arm, and the comparison is the Tessera engine
+  against Claude without TM context.
+- **Vietnamese tokenises into more tokens than Spanish for the same
+  meaning** (diacritics and syllable-per-word spelling; inference, to be
+  measured). The spike therefore tests H1 per pair, not once.
+- **No Vietnamese segmentation or word-count rule is needed for EN to VI:**
+  the source is English. Backlog #13a (segmentation rules for Korean and
+  Vietnamese, still open) blocks a Vietnamese _source_, so a VI to EN pair
+  stays out of scope until that card lands. A Vietnamese text is not in
+  `UNSPACED_LANGUAGES` (`core/model/words.ts`), but its words are syllables
+  separated by spaces, so a word count of Vietnamese is a syllable count;
+  nothing in this engine counts target words.
+
+CJK and Thai stay out of the first benchmark (no word counter,
+`v1-spec.md` §3.6).
 
 **D15. Opt-out mid-project purges unaccepted suggestions and keeps accepted
 targets.** At the moment a client is switched off, every unaccepted
@@ -378,8 +399,8 @@ particular, reopens this.
 
 ### Still open
 
-1. **Which language pairs.** D14 says "the pairs the business actually
-   translates" but Louis has not listed them. Slice 0 needs the list; it is
-   not guessed here.
-2. **The agreement wording** (D11), a check on Louis's side before the first
+1. **The agreement wording** (D11), a check on Louis's side before the first
    opted-in client.
+2. **An API key for the spike**, supplied as an environment secret by Louis
+   (never pasted into a chat or a file). Without it E-001 cannot run
+   (`research/translation-engine/`).

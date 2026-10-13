@@ -40,6 +40,6 @@ benchmark.
 
 ## Experiments
 
-| Id                                  | Question                                                                        | Hypotheses     | Status                            |
-| ----------------------------------- | ------------------------------------------------------------------------------- | -------------- | --------------------------------- |
-| [E-001](experiments/E-001-spike.md) | Is a retrieval-prompted Claude draft feasible at editor latency and token cost? | H1, H2, H3, H4 | Setup written; blocked, see there |
+| Id                                  | Question                                                                        | Hypotheses     | Status                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------- | -------------- | ----------------------------------------- |
+| [E-001](experiments/E-001-spike.md) | Is a retrieval-prompted Claude draft feasible at editor latency and token cost? | H1, H2, H3, H4 | Setup frozen; blocked on a key, see there |
