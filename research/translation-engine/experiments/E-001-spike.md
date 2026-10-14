@@ -13,14 +13,16 @@ cheaply enough to batch, and does the tag round trip hold?
 
 - **Corpus.** Synthetic only. A seeded generator makes a memory of 2,000
   translation units and a test set of 50 segments (45 plain, 5 with a
-  planted instruction for H4; 20 of the 50 carry inline tags). The
+  planted instruction for H4; 20 of the 50 carry inline tags), per pair. The
   generator, its seed and the corpus SHA-256 are recorded in every results
   file. No real text, no text from any client or any real document.
-- **Language pair.** **Not yet named** (spec D14: the pairs the business
-  translates; Louis has not listed them). The spike measures cost and
-  speed, which depend little on the pair, but the pair is a recorded
-  parameter and this setup is **not frozen until it is filled in here**:
-  `pair = ________`.
+- **Language pairs.** EN to ES and EN to VI (Louis, 2026-10-13; spec D14).
+  Each pair is a separate run on its own synthetic corpus, and **every
+  hypothesis is tested per pair**: H1 to H4 must hold for both for the
+  spike to count as passed, and a pair that misses is recorded as a miss
+  with its own results file. Vietnamese is expected to cost more tokens than
+  Spanish (more tokens per word; an inference this run will test).
+  Setup frozen at the commit that fills this in.
 - **Retrieval.** The product path: `retrieveFuzzy` over a `.ctm` built from
   the synthetic memory, at most 3 matches, no threshold floor (a 60% match
   is useful as an example), glossary from a synthetic `.ctg` of 40 terms.
@@ -39,8 +41,8 @@ cheaply enough to batch, and does the tag round trip hold?
 
 ## Status
 
-**Blocked, 2026-10-13.** Waiting on (1) the language pair, (2) an API key
-supplied to the environment by Louis. The harness and the corpus generator
+**Blocked, 2026-10-13.** The pairs are now named (above). Still waiting on
+an API key supplied to the environment by Louis. The harness and the corpus generator
 are written meanwhile and tested offline with a fake engine; no number
 from a fake engine is a result and none is recorded as one.
 
