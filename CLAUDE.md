@@ -443,6 +443,31 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   Its closed sets (`ASSIGNMENT_STATUSES`, `RATE_TIERS`, `CAPACITY_STATUSES`)
   are frozen literals in a migration, never imported into a `schema.ts`.
 
+## The draft engine (Epic 8)
+
+`planning/translation-engine-spec.md` (issue #228): Tessera's own machine
+drafts from a client's TM plus Claude, or DeepL, chosen by the PM. Nothing is
+sent yet; slice 1 (backlog #133) built the consent that must exist first. Keep
+true:
+
+- **A client's content leaves only through `engineFor`** (`server/src/engine.ts`),
+  which reads the project's client and override and the owner's consent and
+  hands them to `resolveEngine` (`core/src/draft/engine.ts`). That function fails
+  closed: no client number, no consent row, an override to an engine the client
+  did not consent to, or a default that outlived its consent is `off`. A new
+  outbound call to an engine goes through the gate, never around it.
+- **Consent is per engine and absence-based** (`platform.sqlite` v7,
+  `client_engine_consent`/`client_engine_default`): no row is no consent. A
+  project's request (`engine_override_setting`, project v14) can narrow what
+  the client allows, never widen it. A client is the owner's number, scoped by
+  owner; the CAT server never reads `portal.sqlite`.
+- **The engine is invisible to whoever does the work.** Its routes are
+  owner-only and `manage`; no route a vendor or grantee can reach returns an
+  engine or an origin that names one (spec D3, D20).
+- **A research record, not a feature, for the numbers.** The spike and the
+  benchmark follow the semantic-matching protocol in `research/translation-engine/`
+  (hypothesis before the run, every run recorded, no client text).
+
 ## Semantic matching is research-tracked
 
 `planning/semantic-matching-spec.md` (embeddings in TM retrieval, and a

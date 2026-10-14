@@ -13,6 +13,8 @@
 import {
   ACCOUNT_ROLES,
   DECISION_KINDS,
+  DRAFT_ENGINES,
+  ENGINE_CHOICES,
   PLATFORM_AUDIT_ACTIONS,
   PORTAL_AUDIT_ACTIONS,
   PROJECT_AUDIT_ACTIONS,
@@ -62,6 +64,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'qa_issue.severity': QA_SEVERITIES,
       'qa_rule_setting.rule': QA_RULES,
       'audit_event.action': PROJECT_AUDIT_ACTIONS,
+      'engine_override_setting.engine': ENGINE_CHOICES,
     },
   },
   glossary: {
@@ -85,6 +88,8 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'audit_event.action': PLATFORM_AUDIT_ACTIONS,
       'account.role': ACCOUNT_ROLES,
       'project_authorization.scope': PROJECT_SCOPES,
+      'client_engine_consent.engine': DRAFT_ENGINES,
+      'client_engine_default.engine': DRAFT_ENGINES,
     },
   },
   vendor: {

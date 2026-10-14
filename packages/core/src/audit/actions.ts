@@ -44,6 +44,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'invitation.created',
   'invitation.accepted',
   'invitation.revoked',
+  'client_engine.changed',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -207,6 +208,18 @@ export interface AuditDetail {
   };
   /** `superseded` when a newer invitation to the same address replaced it. */
   'invitation.revoked': { readonly superseded: true } | null;
+  /**
+   * A client's consent to a draft engine, or its default engine, changed
+   * (backlog #133, translation-engine-spec D4, D19). The subject is the
+   * client, by the number the owner typed; `key` is `consent:<engine>` or
+   * `default`. The client's name is never here: a detail is hashed.
+   */
+  'client_engine.changed': {
+    readonly client_id: number;
+    readonly key: string;
+    readonly from: JsonValue;
+    readonly to: JsonValue;
+  };
   /** The file's id and name where it lives, and the digest of the bytes sent. */
   'file.downloaded': {
     readonly file_id: number;

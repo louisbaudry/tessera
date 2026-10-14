@@ -2974,6 +2974,54 @@ Rust/Wasm module would earn its build step on.
   real client's invoice against the portal's figure, which is where the rule came
   from.
 
+**#133 · ~~Draft engine slice 1: a client's engine consent, the project override and the gate~~ · DONE — `core/src/draft/engine.ts` (`resolveEngine`, `ENGINE_CHOICES`), `db/src/platform/client-engine.ts` + platform schema v7, `db/src/project/engine-override.ts` + project schema v14, `server/src/engine.ts` (`engineFor`, `registerEngineRoutes`)** (2026-10-14; card #236, Epic 8 / issue #228, `translation-engine-spec.md` D19–D20)
+
+The consent that has to exist before any client content can reach a draft
+engine, with no engine and no network call yet. Louis stayed in TypeScript
+(spec D6): it is a rule and three small tables.
+
+- **One function says yes or no, and it fails closed.** `resolveEngine` takes
+  (does the project name a client, what the client consented to, what the
+  project asks for) and returns an engine or `off` with a reason. No client
+  number, no row, an override to an engine nobody consented to, a default that
+  outlived its consent: all `off`. A project can narrow, never widen.
+- **Consent is per engine (D19).** Reading D4 and D8 together needed it: a
+  client that agreed to one engine has not agreed to the other. `platform.sqlite`
+  v7 holds a row per (owner, client, engine) plus at most one default, both
+  absence-based, so every existing client sends nothing and no row is migrated.
+  Withdrawing consent deletes the default that named it in the same transaction
+  and logs both (`client_engine.changed`, key `consent:<engine>` and `default`).
+  The suggestion purge that D15 asks for belongs to the suggestion store, which
+  does not exist; the logged withdrawal is the event it will act on.
+- **A client is the owner's number, scoped by the owner.** Two owners' client #7
+  are two clients, and the CAT server still never reads `portal.sqlite`.
+- **A project's request is its own file (v14).** `engine_override_setting`, one
+  row at most, `off` included, absence meaning inherit. A change is a
+  `project.setting_changed` (key `engine_override`) in the project's log.
+- **Invisible to whoever does the work (D20).** The four routes are owner-only
+  and `manage`; a vendor account and a granted translator are refused, and a
+  test reads the project as a grantee and finds no engine in it.
+- **`engineFor(platform, ownerId, projectDb)` is the one gate.** Slice 3 calls it
+  before anything is sent; it reads both files and hands them to `resolveEngine`.
+- **A request is whole or nothing.** Found re-reading the diff, not by a failing
+  run: the client `PUT` applied each consent in turn, so `{consent: tessera,
+  default: deepl}` recorded the consent, then answered 400 for the default. It
+  now runs in one transaction, audit events included (a test sends exactly that).
+- **What the build corrected.** `ai.requested` was already in the project log's
+  action list (`audit-spec.md` §4), so the spec's "new audit actions" for this
+  slice was one: `client_engine.changed`. Two schema tests pinned version 6 and
+  the old table list and were updated, as meant. The job worker runs the _built_
+  `db` package, so a migration shows up there only after `pnpm build`.
+- **Not built.** Any screen (the client and project screens come with the
+  editor slice), the suggestion store, the purge on withdrawal, the Anthropic
+  call, a spend ceiling (D12).
+- **Verified:** 10 pure tests (`resolveEngine`), 17 platform and 5 project
+  repository tests, 19 route tests; `check-lists.test.ts` covers all three new
+  closed lists. Breaking "withdrawal clears the default" turns two repository
+  tests red, and removing the owner-only check turns the vendor test red; both
+  restored. Not verified: a real browser (there is no screen), and any engine
+  (none exists).
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)
