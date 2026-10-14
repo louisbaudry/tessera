@@ -127,6 +127,7 @@ import {
   type HeldSession,
 } from './glossary-session.js';
 import { registerAssignmentRoutes } from './assignments.js';
+import { registerEngineRoutes } from './engine.js';
 import type { Resolver, WebhookSender } from './webhook-send.js';
 import {
   defaultWebhookSender,
@@ -1437,6 +1438,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }
     },
   );
+
+  // --- draft engine consent and the gate (backlog #133, translation-engine-spec.md) ---
+  registerEngineRoutes(app, { platform, owner, sessionActor, openProject });
 
   // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
 

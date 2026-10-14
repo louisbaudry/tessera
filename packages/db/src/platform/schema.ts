@@ -203,4 +203,47 @@ const v6: Migration = {
   },
 };
 
-export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6];
+/**
+ * `audit_event.action` since v7: `PLATFORM_AUDIT_ACTIONS` as of backlog #133 (the
+ * v6 list and `client_engine.changed`). Frozen, never the live constant.
+ */
+const V7_AUDIT_ACTIONS = [
+  ...V6_AUDIT_ACTIONS,
+  'client_engine.changed',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * What a client has agreed about draft engines (backlog #133,
+ * `planning/translation-engine-spec.md` D4, D9, D19): one row per engine it
+ * consented to, and at most one default engine. A client is the owner's number
+ * for it, never checked against `portal.sqlite` (the CAT server must not read
+ * that file); a wrong number simply matches no project. **Absence-based**: no
+ * row is "no consent" and "default off", so nothing is sent for any existing
+ * client and no migration touches their data. Both closed sets are frozen
+ * literals, and the audit log gains `client_engine.changed`, so `audit_event`
+ * is rebuilt (`rebuildTable`).
+ */
+const v7: Migration = {
+  version: 7,
+  description: 'client_engine_consent, client_engine_default (backlog #133, spec D9)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE client_engine_consent (
+        owner_id     INTEGER NOT NULL REFERENCES account(id),
+        client_id    INTEGER NOT NULL CHECK (client_id >= 1),
+        engine       TEXT    NOT NULL CHECK (engine IN ('tessera', 'deepl')),
+        consented_at TEXT    NOT NULL,
+        PRIMARY KEY (owner_id, client_id, engine)
+      ) WITHOUT ROWID;
+      CREATE TABLE client_engine_default (
+        owner_id  INTEGER NOT NULL REFERENCES account(id),
+        client_id INTEGER NOT NULL CHECK (client_id >= 1),
+        engine    TEXT    NOT NULL CHECK (engine IN ('tessera', 'deepl')),
+        PRIMARY KEY (owner_id, client_id)
+      ) WITHOUT ROWID;
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V7_AUDIT_ACTIONS));
+  },
+};
+
+export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];

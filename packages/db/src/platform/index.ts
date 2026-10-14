@@ -17,3 +17,4 @@ export * from './audit.js';
 export * from './authorization.js';
 export * from './invitations.js';
 export * from './membership.js';
+export * from './client-engine.js';

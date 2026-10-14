@@ -225,10 +225,11 @@ and the benchmark's adversarial cases look for (§6).
   Nothing in it imports a network client, `better-sqlite3`, or a clock.
 - **`@cat-tool/db`:** the per-project suggestion store, the client engine
   setting and the project override, and the consent gate, all through the
-  shared migration runner. Audit actions `ai.requested` and the
-  `project.setting_changed` for the engine are new members of the closed
-  list, a migration that widens the `CHECK` with `rebuildTable` (the snapshot
-  invariant in `CLAUDE.md`).
+  shared migration runner. `platform.sqlite` gains the consent tables and the
+  audit action `client_engine.changed`; the project file gains
+  `engine_override_setting` (an override change is a `project.setting_changed`,
+  and `ai.requested` already existed). A new action is a migration that widens
+  the `CHECK` with `rebuildTable` (the snapshot invariant in `CLAUDE.md`).
 - **`@cat-tool/server`:** the Anthropic and DeepL adapters (the I/O-bearing
   implementations, the `SmtpNotificationService` pattern), the pre-translate
   job (`db/src/jobs/ops.ts`), and the prefetch route. Credentials are read
@@ -401,6 +402,31 @@ training on inputs (`ai-platform-vision.md` §5.1), and the compliance work
 already planned (`worldwide-and-compliance-spec.md` §6, `ai-platform-vision.md`
 §5.4). A client who requires more than that, and a regulated sector in
 particular, reopens this.
+
+### Decided while building slice 1 (backlog #133, 2026-10-14)
+
+Two readings the build forced. Both are cheap to reverse and are flagged for
+Louis in the PR.
+
+**D19. Consent is per engine, not one flag.** D4 says a client is "switched
+on" and D8 says a project override "picks among what the client allows". Read
+together they need the client to allow a _set_ of engines, so consent is a row
+per (client, engine) and the default engine must be one of them. A client that
+consented to the Tessera engine has not consented to DeepL, and a project
+cannot choose DeepL for it. This is the stricter reading; the looser one
+(consent once, any engine) is a one-line change in `resolveEngine` and a
+migration, and would send a client's content to a second company on one yes.
+The same rule covers a default that outlived its consent: it resolves to `off`.
+
+**D20. The engine is invisible to whoever does the work, so its routes are
+owner-only.** `GET`/`PUT /api/clients/:clientId/engine` and
+`GET`/`PUT /api/projects/:name/engine` require an owner account and the
+`manage` action. A vendor or a granted translator is refused (403) and no
+route they can reach names an engine (a test reads a project as a grantee and
+finds neither "tessera" nor "deepl" in it). `ai.requested` already existed in
+the project log's action list (`audit-spec.md` §4), so slice 1 adds only
+`client_engine.changed` to the platform log; an override change is a
+`project.setting_changed` with key `engine_override`.
 
 ### Still open
 

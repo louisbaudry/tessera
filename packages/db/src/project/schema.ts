@@ -485,6 +485,29 @@ const v13: Migration = {
 };
 
 /**
+ * `engine_override_setting` (backlog #133, `planning/translation-engine-spec.md`
+ * D8): which draft engine this project asks for, one row at most, `off`
+ * included. **Absence-based**: no row is "inherit the client's default", so no
+ * existing project changes and none starts sending anything. It is only a
+ * request: what may actually be used is the client's consent
+ * (`platform.sqlite`), and an override to an engine the client did not
+ * consent to resolves to `off` (`resolveEngine`). The closed set is a frozen
+ * literal.
+ */
+const v14: Migration = {
+  version: 14,
+  description: 'engine_override_setting — the draft engine a project asks for (spec D8)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE engine_override_setting (
+        id     INTEGER PRIMARY KEY CHECK (id = 1),
+        engine TEXT NOT NULL CHECK (engine IN ('off', 'tessera', 'deepl'))
+      );
+    `);
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -503,4 +526,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v11,
   v12,
   v13,
+  v14,
 ];
