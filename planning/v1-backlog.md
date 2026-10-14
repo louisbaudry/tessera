@@ -325,6 +325,15 @@ problem (no inter-word spacing to lean on, different final punctuation
 conventions) and deserves the same real-failing-test discipline as EN/
 ES got, not a rushed first pass.
 
+**State of the code, 2026-10-14:** the paragraph above describes the moment
+of discovery. `core/segment/rules.ts` now carries `ko` and `vi` entries, a
+first-pass abbreviation list for each ("further curation will come as real
+jobs reveal patterns"), so `rulesFor('ko')` and `rulesFor('vi')` no longer
+throw and a Korean or Vietnamese source imports. What is still missing is
+the card's real point: no behaviour in either set was earned by a failing
+real-text test, and the real memories that would supply them are not in
+`fixtures/` yet. The card stays open for that.
+
 *Done when:* `rulesFor('ko')` and `rulesFor('vi')` return real rule
 sets, each with at least one behaviour earned by a real failure the way
 §13's ES/DE/NL rules were, and `SUPPORTED_LANGUAGES` includes both.

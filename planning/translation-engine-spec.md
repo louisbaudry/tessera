@@ -359,13 +359,18 @@ consequences, each a fact about this repo or an open check, not a guess:
 - **Vietnamese tokenises into more tokens than Spanish for the same
   meaning** (diacritics and syllable-per-word spelling; inference, to be
   measured). The spike therefore tests H1 per pair, not once.
-- **No Vietnamese segmentation or word-count rule is needed for EN to VI:**
-  the source is English. Backlog #13a (segmentation rules for Korean and
-  Vietnamese, still open) blocks a Vietnamese _source_, so a VI to EN pair
-  stays out of scope until that card lands. A Vietnamese text is not in
-  `UNSPACED_LANGUAGES` (`core/model/words.ts`), but its words are syllables
-  separated by spaces, so a word count of Vietnamese is a syllable count;
-  nothing in this engine counts target words.
+- **No Vietnamese rule is needed for EN to VI as such:** the source is
+  English and nothing in this engine segments or counts target words.
+  `core/segment/rules.ts` does carry a first-pass `vi` (and `ko`) rule set,
+  an initial abbreviation list marked "further curation will come as real
+  jobs reveal patterns" (backlog #13a, whose description of `rulesFor('vi')`
+  throwing is out of date; corrected 2026-10-14). So a Vietnamese source
+  imports today, but its sentence boundaries are not yet earned from real
+  failures, and a VI to EN pair would inherit that. It is out of scope for
+  now for that reason, not because it is blocked. A Vietnamese text is not
+  in `UNSPACED_LANGUAGES` (`core/model/words.ts`), but its words are
+  syllables separated by spaces, so a word count of Vietnamese is a
+  syllable count.
 
 CJK and Thai stay out of the first benchmark (no word counter,
 `v1-spec.md` §3.6).

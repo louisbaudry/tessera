@@ -29,3 +29,14 @@ Whether DeepL translates into Vietnamese is unverified and is checked first
 when the D7 benchmark is set up. Neither changes a hypothesis.
 
 Still blocked: no API key in the environment.
+
+## 2026-10-14 — correction
+
+The 2026-10-13 (later) entry says Vietnamese has no segmentation rules and
+that backlog #13a blocks a Vietnamese source. That was wrong: I read the
+backlog card and a truncated look at `core/segment/rules.ts` and did not see
+that `ko` and `vi` entries exist there (a first-pass abbreviation list).
+Backlog #13a's text, written when they did not, is the stale part. What
+holds: EN to VI needs no Vietnamese segmentation (the source is English), and
+a Vietnamese source's boundaries are not yet earned from real failures.
+Nothing measured is affected; no hypothesis changes. Spec D14 is corrected.
