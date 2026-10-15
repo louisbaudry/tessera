@@ -1178,6 +1178,8 @@ behaviours v1 cannot ship without:
 - `Ctrl+,` insert next unplaced tag; `Ctrl+Shift+,` tag list (bound by
   #29 with the editor itself, §7.2; the other keys here are #30's).
 - `Ctrl+Ins` copy source to target.
+- `Ctrl+.` use the draft suggestion shown above an empty target, when there is
+  one (backlog #138, `translation-engine-spec.md` D33–D36).
 - `Ctrl+M` merge with next segment, `Ctrl+Shift+M` split at cursor
   (both within one paragraph only).
 - Tags render as compact atomic chips; a "show full tags" toggle reveals

@@ -9,6 +9,7 @@
 
 import {
   carryHiddenTags,
+  type AiProvenance,
   type AuditActor,
   type DocPart,
   type FormatEntry,
@@ -128,6 +129,12 @@ export interface SetTargetOptions {
   readonly actor: AuditActor;
   /** The batch-level event this write belongs to (spec §2.3), e.g. a pre-translate run. */
   readonly batchId?: number;
+  /**
+   * Set when the target is an accepted engine draft: goes into the event's detail
+   * (`audit-spec.md` §4), so "was the machine's draft reviewed?" is answerable
+   * from the log. Never the prompt, only its digest.
+   */
+  readonly provenance?: AiProvenance;
 }
 
 /**
@@ -231,6 +238,7 @@ export function setSegmentTarget(
         status: options.status,
         origin: options.origin,
         target_tokens: carried,
+        ...(options.provenance ? { provenance: options.provenance } : {}),
       },
     });
     return true;

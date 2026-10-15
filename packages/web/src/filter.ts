@@ -6,7 +6,7 @@
 import type { Origin, Segment, SegmentStatus } from '@cat-tool/core';
 import { hasSpacedWords, plainText, segmentWords } from '@cat-tool/core/model';
 
-import { statusOf, type QaMark } from './gutter.js';
+import { shownOrigin, statusOf, type QaMark } from './gutter.js';
 
 /** Which QA state a segment must be in to show. */
 export type QaFilter = 'any' | 'flagged' | 'errors' | 'clean';
@@ -53,7 +53,8 @@ export function matches(
   filter: SegmentFilter,
 ): boolean {
   if (filter.statuses.size > 0 && !filter.statuses.has(statusOf(segment))) return false;
-  if (filter.origin !== null && (segment.origin ?? '') !== filter.origin) return false;
+  if (filter.origin !== null && (shownOrigin(segment.origin) ?? '') !== filter.origin)
+    return false;
   if (filter.qa === 'flagged' && !mark) return false;
   if (filter.qa === 'errors' && mark?.severity !== 'error') return false;
   if (filter.qa === 'clean' && mark) return false;
@@ -86,7 +87,7 @@ export function visibleSegments(
 export function originCounts(segments: readonly Segment[]): ReadonlyMap<string, number> {
   const counts = new Map<string, number>();
   for (const s of segments) {
-    const origin = s.origin ?? '';
+    const origin = shownOrigin(s.origin) ?? '';
     counts.set(origin, (counts.get(origin) ?? 0) + 1);
   }
   return new Map([...counts].sort(([a], [b]) => a.localeCompare(b)));

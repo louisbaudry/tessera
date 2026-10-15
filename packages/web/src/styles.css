@@ -608,6 +608,29 @@ button.link {
   white-space: normal;
 }
 
+.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: var(--row-alt);
+  font-size: 0.85rem;
+  white-space: normal;
+}
+
+.suggestion-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.suggestion-text {
+  flex: 1 1 12rem;
+}
+
 .editor-bar .unplaced {
   display: flex;
   flex-wrap: wrap;

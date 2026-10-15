@@ -127,8 +127,9 @@ import {
   type HeldSession,
 } from './glossary-session.js';
 import { registerAssignmentRoutes } from './assignments.js';
-import { registerDraftRoutes, type AdapterFor } from './draft.js';
+import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft.js';
 import { registerEngineRoutes } from './engine.js';
+import { registerSuggestionRoutes } from './suggestions.js';
 import type { Resolver, WebhookSender } from './webhook-send.js';
 import {
   defaultWebhookSender,
@@ -1454,6 +1455,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     sessionActor,
     openProject,
   });
+  const adapterFor = options.draftAdapterFor ?? defaultAdapterFor(config);
   registerDraftRoutes(app, {
     platform,
     config,
@@ -1461,8 +1463,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     owner,
     sessionActor,
     openProject,
-    ...(options.draftAdapterFor ? { adapterFor: options.draftAdapterFor } : {}),
+    adapterFor,
   });
+  registerSuggestionRoutes(app, { platform, sessionActor, openProject, adapterFor });
 
   // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
 

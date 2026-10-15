@@ -100,6 +100,14 @@ describe('originCounts', () => {
       ['tm_fuzzy_85', 1],
     ]);
   });
+
+  it('counts an accepted draft as no origin, so the filter never offers a machine one (D3)', () => {
+    const segments = [seg({ origin: 'mt_draft' }), seg()];
+    expect([...originCounts(segments)]).toEqual([['', 2]]);
+    // And filtering on "no origin" finds it, as it would any segment with none.
+    const none = f({ origin: '' });
+    expect(segments.every((s) => matches(s, undefined, none))).toBe(true);
+  });
 });
 
 describe('progress', () => {

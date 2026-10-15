@@ -22,6 +22,7 @@ function harness() {
   const latest: boolean[] = [];
   const failed: Array<[number, boolean, string]> = [];
   const confirms: Array<{ id: number; base: string | undefined }> = [];
+  const accepts: Array<{ id: number; base: string | undefined }> = [];
   let version = 0;
   const queue = createSaveQueue({
     send: (id, tokens, base, urgent) => {
@@ -52,12 +53,23 @@ function harness() {
         ),
       );
     },
+    accept: (id, base) => {
+      accepts.push({ id, base });
+      const updatedAt = `v${++version}`;
+      return new Promise<SaveResult>((resolve, reject) =>
+        answers.push((ok) =>
+          ok
+            ? resolve({ segment: { id, updatedAt } as Segment, rerun: [id], issues: [] })
+            : reject(new Error('target already there')),
+        ),
+      );
+    },
   });
   const answer = async (ok = true, which = 0) => {
     answers.splice(which, 1)[0]!(ok);
     await new Promise((r) => setTimeout(r, 0));
   };
-  return { queue, sent, confirms, saved, latest, failed, answer };
+  return { queue, sent, confirms, accepts, saved, latest, failed, answer };
 }
 
 describe('createSaveQueue', () => {
@@ -275,6 +287,71 @@ describe('createSaveQueue confirm', () => {
     h.queue.confirm(1);
     await h.answer(false);
     expect(h.failed).toEqual([[1, true, 'confirm']]);
+  });
+});
+
+describe('createSaveQueue accept (a draft taken as the target, #138)', () => {
+  it('accepts at once when the segment has no write on its way', () => {
+    const h = harness();
+    h.queue.accept(1);
+    expect(h.accepts).toEqual([{ id: 1, base: 'v0' }]);
+    expect(h.confirms).toEqual([]);
+  });
+
+  it("waits for the segment's write, then accepts over the version it returned", async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.accept(1);
+    expect(h.accepts).toEqual([]);
+    await h.answer();
+    expect(h.accepts).toEqual([{ id: 1, base: 'v1' }]);
+    await h.answer();
+    expect(h.saved).toEqual(['v1', 'v2']);
+  });
+
+  it('is dropped, not sent, when the translator types before it goes', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.accept(1);
+    h.queue.save(1, text('b'));
+    await h.answer();
+    await h.answer();
+    expect(h.sent.map((s) => s.v)).toEqual(['a', 'b']);
+    expect(h.accepts).toEqual([]);
+  });
+
+  it('never goes after a write that failed', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.accept(1);
+    await h.answer(false);
+    expect(h.accepts).toEqual([]);
+    expect(h.failed).toEqual([[1, true, 'save']]);
+  });
+
+  it('is replaced by a later confirm, and a later accept replaces a confirm', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.accept(1);
+    h.queue.confirm(1);
+    await h.answer();
+    expect(h.accepts).toEqual([]);
+    expect(h.confirms).toEqual([{ id: 1, base: 'v1' }]);
+
+    const g = harness();
+    g.queue.save(2, text('a'));
+    g.queue.confirm(2);
+    g.queue.accept(2);
+    await g.answer();
+    expect(g.confirms).toEqual([]);
+    expect(g.accepts).toEqual([{ id: 2, base: 'v1' }]);
+  });
+
+  it('reports a refused accept as one', async () => {
+    const h = harness();
+    h.queue.accept(1);
+    await h.answer(false);
+    expect(h.failed).toEqual([[1, true, 'accept']]);
   });
 });
 

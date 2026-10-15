@@ -13,7 +13,7 @@ import type {
   Segment,
   SegmentStatus,
 } from '@cat-tool/core';
-import { fuzzyScoreOfOrigin } from '@cat-tool/core/model';
+import { fuzzyScoreOfOrigin, MT_DRAFT_ORIGIN } from '@cat-tool/core/model';
 
 export interface Badge {
   readonly text: string;
@@ -33,6 +33,17 @@ export function statusOf(segment: Pick<Segment, 'status' | 'locked'>): SegmentSt
   return segment.locked ? 'locked' : segment.status;
 }
 
+/**
+ * The origin a translator is shown: an accepted draft's is none (`MT_DRAFT_ORIGIN`),
+ * because the engine is invisible to whoever does the work and a draft carries no
+ * machine marker (`translation-engine-spec.md` D3). Every screen that names an
+ * origin, the badge and the filter, goes through this. The value is still in the
+ * segment JSON the browser receives; masking it there is a separate card (#250).
+ */
+export function shownOrigin(origin: Origin | null): Origin | null {
+  return origin === MT_DRAFT_ORIGIN ? null : origin;
+}
+
 const ORIGIN_BADGE: Readonly<Record<KnownOrigin, Badge>> = {
   tm_exact: { text: 'TM', title: 'Exact TM match' },
   tm_exact_tagdiff: { text: 'TM\u2260', title: 'Exact TM match, tags differ' },
@@ -45,7 +56,8 @@ const ORIGIN_BADGE: Readonly<Record<KnownOrigin, Badge>> = {
  * not look like a segment nobody touched.
  */
 export function originBadge(origin: Origin | null): Badge | null {
-  if (origin === null) return null;
+  if (shownOrigin(origin) === null) return null;
+  origin = origin as Origin;
   const score = fuzzyScoreOfOrigin(origin);
   if (score !== null) {
     return { text: `${score}%`, title: `Fuzzy TM match, ${score}% (a draft to review)` };

@@ -688,6 +688,50 @@ export const api = {
     return write;
   },
   /**
+   * Every draft suggestion the project holds, as segment and tokens (backlog #138,
+   * D34). Nothing says where a draft came from, because nothing the translator
+   * reaches does.
+   */
+  suggestions: (token: string, name: string, signal?: AbortSignal) =>
+    call<{ suggestions: Array<{ segmentId: number; tokens: Token[] }> }>(
+      projectUrl(name, '/suggestions'),
+      token,
+      { signal },
+    ),
+  /**
+   * Asks for one segment's draft now, which the server may or may not have a
+   * way to make: `tokens` is the draft, or null for none, whatever the reason.
+   */
+  askSuggestion: (token: string, name: string, segmentId: number) =>
+    call<{ tokens: Token[] | null }>(
+      projectUrl(name, `/segments/${segmentId}/suggestion`),
+      token,
+      { method: 'POST' },
+    ),
+  /**
+   * Takes the segment's draft as its target, over the version the page last saw
+   * (D35). The answer is a save's: the segment as stored, and the QA that reran.
+   */
+  acceptSuggestion: (
+    token: string,
+    name: string,
+    segmentId: number,
+    body: { baseUpdatedAt: string | undefined },
+  ) => {
+    const write = call<{
+      segment: Segment;
+      changed: boolean;
+      rerun: number[];
+      issues: QaIssue[];
+    }>(projectUrl(name, `/segments/${segmentId}/suggestion/accept`), token, {
+      method: 'POST',
+      body,
+    });
+    writes.add(write);
+    void write.catch(() => undefined).finally(() => writes.delete(write));
+    return write;
+  },
+  /**
    * Splits a segment at a plain-text offset of its source (§7.4). The
    * answer lists the segments now standing and the ones gone.
    */

@@ -1,7 +1,7 @@
 import type { QaIssue } from '@cat-tool/core';
 import { describe, expect, it } from 'vitest';
 
-import { originBadge, qaMarks, replaceIssues, statusOf } from './gutter.js';
+import { originBadge, qaMarks, replaceIssues, shownOrigin, statusOf } from './gutter.js';
 
 let nextId = 1;
 const issue = (
@@ -34,6 +34,15 @@ describe('qaMarks', () => {
 
   it('gives no mark to a segment whose every issue is dismissed', () => {
     expect(qaMarks([issue(3, 'error', true)]).has(3)).toBe(false);
+  });
+});
+
+describe('the machine-draft origin is never shown to a translator (D3)', () => {
+  it('has no badge and no shown origin, whatever the table says of unknown origins', () => {
+    expect(shownOrigin('mt_draft')).toBeNull();
+    expect(originBadge('mt_draft')).toBeNull();
+    // Another unknown origin is still shown verbatim: only this one is hidden.
+    expect(originBadge('x-other')?.text).toBe('x-other');
   });
 });
 

@@ -81,6 +81,13 @@ export interface DraftSuggestionsOptions {
   readonly gate: () => EngineDecision;
   /** Limit candidates to one file; omit for the whole project. */
   readonly fileId?: number;
+  /**
+   * Limit candidates to these segments (the editor asking for the one in front of
+   * the translator, backlog #138). Everything else about a run is unchanged: each
+   * is still skipped when a memory places it, when it has a target, or when it has
+   * a current suggestion.
+   */
+  readonly segmentIds?: readonly number[];
   /** Stops the run when the engine's reported tokens reach it. */
   readonly tokenCeiling?: number;
   /** Asked before each segment; true ends the run cleanly (a cancelled job). */
@@ -203,6 +210,8 @@ export async function draftSuggestions(
     const candidates: Segment[] = [];
     for (const s of all) {
       if (options.fileId !== undefined && s.fileId !== options.fileId) continue;
+      if (options.segmentIds !== undefined && !options.segmentIds.includes(s.id))
+        continue;
       if (isProtectedFromPretranslate(s)) skipped.protected++;
       else if (
         (s.targetTokens && !isBlankTarget(s.targetTokens, s.formatTable)) ||

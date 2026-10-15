@@ -3159,6 +3159,46 @@ D15's second half. Stayed in TypeScript (spec D6).
   opens every project of the owner on the request thread, which is fine for dozens and
   would want a job for thousands), and any real engine.
 
+**#138 · ~~Draft engine slice 4: the suggestion strip, accept from the keyboard, and prefetch~~ · DONE — `db/src/project/draft-accept.ts` (`acceptDraftSuggestion`), `provenance` on `setSegmentTarget`, `segmentIds` on `draftSuggestions`, `server/src/suggestions.ts` (three `edit` routes), `web/src/suggestions.ts` (`planPrefetch`, `createPrefetcher`), `accept` in `web/src/save-queue.ts`, the strip and `Ctrl+.` in `web/src/TargetEditor.tsx`, `shownOrigin` in `web/src/gutter.ts`, `MT_DRAFT_ORIGIN` in `core/src/model/segment.ts`** (2026-10-15; card #249, Epic 8 / issue #228, `translation-engine-spec.md` D33–D38)
+
+The first screen that shows a draft to a translator. Stayed in TypeScript (spec D6).
+
+- **The spec's premise was false, so the form was Louis's call.** Slice 4 said "in the
+  match panel", and the editor has none (backlog #129 says so). He chose a strip above
+  the empty target (D33) over building a panel first.
+- **Accepting is a write the queue orders, not a client-side insert.** The accept route
+  stores the draft as `draft` with the machine origin, the translator as actor and the
+  provenance in the event, and consumes the suggestion. In the browser it is queued
+  behind the segment's pending saves exactly as a confirm is (`confirming` became a map
+  of confirm or accept), is dropped if the translator typed first, and refuses a target
+  that is there. A mutation (letting an accept overwrite a target) turns a test red.
+- **A grantee reaches tokens and nothing else.** The three routes are `edit`; the list
+  and the accept answer carry no engine, model or prompt (a test greps the bodies), and
+  asking for a draft answers `{ tokens: null }` identically whether the engine is off,
+  unconfigured, failing or empty-handed. A mutation that made "unconfigured" a 503, or
+  added `model` to the list, or logged the owner instead of the translator, each fails a
+  test.
+- **A hole found while building, not by a failing run.** The grid's origin badge prints
+  an unknown origin verbatim, so an accepted draft would have shown `mt_draft` in the
+  gutter, against D3. `shownOrigin` makes it no origin in the badge and the filter; the
+  value still reaches the browser in JSON (#250).
+- **Prefetch is quiet by construction.** One request at a time, the next few untranslated
+  segments, never twice, and it gives up after three empty answers in a row because the
+  page cannot tell off from empty (D37).
+- **Seen in a real browser,** not only in tests: Chromium against the built app, a
+  segment opened, the strip shown with no engine word in it, `Ctrl+.` putting the draft
+  under the caret, the gutter showing `D` and no origin, `mt_draft` nowhere in the page,
+  the audit event naming the account with the provenance, typed text never replaced, and
+  three prefetch requests then silence.
+- **Not built.** A match panel and anything showing TM matches (#151), masking the origin
+  in JSON (#250), the CLI step (#246), DeepL (slice 6), a bulk "accept all", and the
+  benchmark (slice 5). Known cost: a one-segment request still reads every segment of the
+  project to decide what a memory places, which is fine at thousands and wants a narrower
+  query at tens of thousands.
+- **Verified:** db 5 accept tests and 1 named-segment test; server 8 route tests;
+  web 12 prefetch tests, 6 queue tests, 2 origin tests, plus the browser run. Not
+  verified: a real model's draft in the strip (no key here), dark mode and a narrow window by eye.
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

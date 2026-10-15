@@ -33,6 +33,21 @@ import { MAX_RUNNING_JOBS, type JobRegistry } from './jobs.js';
 /** Which adapter serves an engine; `null` when none can. A test seam: a deployment passes nothing. */
 export type AdapterFor = (engine: DraftEngine) => DraftEngineAdapter | null;
 
+/**
+ * The deployment's adapters: Anthropic for the Tessera engine when a key is
+ * configured, nothing for DeepL (slice 6). The one place an adapter is built, so
+ * the key is read here and nowhere else.
+ */
+export function defaultAdapterFor(config: ServerConfig): AdapterFor {
+  return (engine) =>
+    engine === 'tessera' && config.anthropicApiKey
+      ? createAnthropicAdapter({
+          apiKey: config.anthropicApiKey,
+          model: config.draftModel ?? DEFAULT_DRAFT_MODEL,
+        })
+      : null;
+}
+
 export interface DraftRouteDeps {
   readonly platform: ReturnType<typeof openPlatformDb>;
   readonly config: ServerConfig;
@@ -52,15 +67,7 @@ export interface DraftRouteDeps {
 export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps): void {
   const { platform, config, jobs } = deps;
 
-  const adapterFor: AdapterFor =
-    deps.adapterFor ??
-    ((engine) =>
-      engine === 'tessera' && config.anthropicApiKey
-        ? createAnthropicAdapter({
-            apiKey: config.anthropicApiKey,
-            model: config.draftModel ?? DEFAULT_DRAFT_MODEL,
-          })
-        : null);
+  const adapterFor = deps.adapterFor ?? defaultAdapterFor(config);
 
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/draft',
