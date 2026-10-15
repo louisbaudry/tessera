@@ -495,7 +495,10 @@ true:
   error never carries a message or a body. A run is an in-process job with the
   registry's own handle (kind `draft`), owner-only and `manage`; do not move it to a
   worker thread, which cannot await a network call, and do not add a second way to
-  call the adapter.
+  call the adapter. The CLI has no drafting step and never will without a card
+  that moves the adapter first (spec D39): it depends on `core` and `db` only and
+  runs synchronously, and a second process able to send client text is a second
+  gate.
 - **A withdrawn consent deletes what its engine drafted, and nothing lands after
   it** (backlog #137). `draftSuggestions` asks the gate again once a reply is back
   and drops it if the gate has closed; `PUT /api/clients/:clientId/engine` purges
