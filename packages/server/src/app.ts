@@ -1447,7 +1447,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   );
 
   // --- draft engine consent and the gate (backlog #133, translation-engine-spec.md) ---
-  registerEngineRoutes(app, { platform, owner, sessionActor, openProject });
+  registerEngineRoutes(app, {
+    platform,
+    storageRoot: config.storageRoot,
+    owner,
+    sessionActor,
+    openProject,
+  });
   registerDraftRoutes(app, {
     platform,
     config,

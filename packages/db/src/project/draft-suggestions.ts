@@ -15,8 +15,10 @@
  * invisible rather than wrong.
  */
 
-import type { DraftEngine, Token } from '@cat-tool/core';
+import type { AuditActor, DraftEngine, Token } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
+
+import { appendAuditEvent } from '../audit/events.js';
 
 /** What a stored suggestion is: the draft, and what accepting it will record. */
 export interface DraftSuggestion {
@@ -120,4 +122,36 @@ export function deleteDraftSuggestion(db: Database.Database, segmentId: number):
     db.prepare('DELETE FROM draft_suggestion WHERE segment_id = ?').run(segmentId)
       .changes > 0
   );
+}
+
+/**
+ * Deletes every unaccepted suggestion an engine made in this project, because
+ * its client withdrew consent to that engine (D15): the rows hold text derived
+ * from the client's memory, and an engine the client no longer allows has no
+ * claim to keep it. Accepted targets are segments, not suggestions, and are
+ * untouched. One `draft.purged` event in the same transaction, with the count;
+ * nothing is logged when nothing was there to delete. Returns the count.
+ *
+ * Stale rows are deleted with the rest (the count is of rows, not of what a
+ * read would show), since a hidden row is still client-derived text.
+ */
+export function purgeDraftSuggestions(
+  db: Database.Database,
+  options: { readonly engine: DraftEngine; readonly actor: AuditActor },
+): number {
+  return db.transaction((): number => {
+    const { changes } = db
+      .prepare('DELETE FROM draft_suggestion WHERE engine = ?')
+      .run(options.engine);
+    if (changes > 0) {
+      appendAuditEvent(db, {
+        actor: options.actor,
+        action: 'draft.purged',
+        subjectType: 'project',
+        subjectId: null,
+        detail: { engine: options.engine, count: changes, reason: 'consent_withdrawn' },
+      });
+    }
+    return changes;
+  })();
 }

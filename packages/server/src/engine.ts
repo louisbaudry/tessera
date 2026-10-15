@@ -31,14 +31,17 @@ import {
   getClientEngine,
   getEngineOverride,
   getPortalClient,
+  openProjectDb,
+  purgeDraftSuggestions,
   setClientEngineConsent,
   setClientEngineDefault,
   setEngineOverride,
   type Account,
   type openPlatformDb,
-  type openProjectDb,
 } from '@cat-tool/db';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+
+import { listProjectNames, projectPath } from './storage.js';
 
 type Platform = ReturnType<typeof openPlatformDb>;
 type ProjectDb = ReturnType<typeof openProjectDb>;
@@ -64,6 +67,8 @@ export function engineFor(
 
 export interface EngineRouteDeps {
   readonly platform: Platform;
+  /** Where the owner's project files live: a withdrawal purges suggestions in them (D15). */
+  readonly storageRoot: string;
   /** The session's account. */
   readonly owner: (req: FastifyRequest) => Account;
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
@@ -150,6 +155,7 @@ export function registerEngineRoutes(app: FastifyInstance, deps: EngineRouteDeps
     if (body.default !== undefined && !isEngineChoice(body.default)) {
       return reply.code(400).send({ error: 'default must be off, tessera or deepl' });
     }
+    const consentedBefore = getClientEngine(platform, me.id, clientId).consented;
     try {
       // One transaction: a default refused for lack of consent must not leave the
       // consents beside it half-applied, nor their audit events behind.
@@ -178,8 +184,50 @@ export function registerEngineRoutes(app: FastifyInstance, deps: EngineRouteDeps
       }
       throw err;
     }
-    return clientView(me.id, clientId);
+    const view = clientView(me.id, clientId);
+    const withdrawn = consentedBefore.filter((e) => !view.consented.includes(e));
+    if (withdrawn.length === 0) return view;
+    // The withdrawal is committed, so no further call can be made for this
+    // client; what is left is the text already derived from its memory (D15).
+    return {
+      ...view,
+      purged: purgeSuggestions(me, clientId, withdrawn, deps.sessionActor(req)),
+    };
   });
+
+  /**
+   * Deletes the unaccepted suggestions `engines` made in every project of
+   * `owner` that is work for `clientId`, each in its own transaction with its own
+   * `draft.purged` event. A project that cannot be opened or purged is counted and
+   * logged without its name (a slug often carries a client's), never skipped
+   * silently: the response says how many, so the owner is not told it is done
+   * when it is not.
+   */
+  function purgeSuggestions(
+    owner: Account,
+    clientId: number,
+    engines: readonly DraftEngine[],
+    actor: AuditActor,
+  ): { removed: number; failed: number } {
+    let removed = 0;
+    let failed = 0;
+    for (const name of listProjectNames(deps.storageRoot, owner)) {
+      let db: ProjectDb | undefined;
+      try {
+        db = openProjectDb(projectPath(deps.storageRoot, owner, name));
+        if (getPortalClient(db) !== clientId) continue;
+        for (const engine of engines) {
+          removed += purgeDraftSuggestions(db, { engine, actor });
+        }
+      } catch (err) {
+        failed++;
+        app.log.error({ err }, 'purging draft suggestions failed');
+      } finally {
+        db?.close();
+      }
+    }
+    return { removed, failed };
+  }
 
   const projectView = (me: Account, db: ProjectDb) => ({
     override: getEngineOverride(db),
