@@ -177,7 +177,10 @@ page showed (`planning/portal-v0-spec.md` §2–§3).
 
 The API server (`v1-spec.md` §2.5) keeps `platform.sqlite` and a storage
 volume under `./data` by default; a deployment overrides `CAT_PORT`,
-`CAT_DB_PATH` and `CAT_STORAGE_ROOT`:
+`CAT_DB_PATH` and `CAT_STORAGE_ROOT`. The draft engine (Epic 8) also reads
+`ANTHROPIC_API_KEY` (a secret: environment only, never a file, and unset means
+the engine is unavailable) and `CAT_DRAFT_MODEL` (default `claude-sonnet-5-5`,
+a placeholder until the benchmark picks the tier):
 
 ```sh
 pnpm --filter @cat-tool/server run create-account -- you@example.com <password>   # once per deployment

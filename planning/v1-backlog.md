@@ -3091,6 +3091,40 @@ Stayed in TypeScript (spec D6).
   check-list tests. Not verified: any real
   memory or glossary beyond synthetic ones, and any real engine.
 
+**#136 · ~~Draft engine slice 3b: the Anthropic adapter, the drafting job and the route that starts it~~ · DONE — `server/src/anthropic-engine.ts` (`createAnthropicAdapter`), `server/src/draft-job.ts` (`startDraftRun`), `server/src/draft.ts` (`POST /api/projects/:name/draft`), `ANTHROPIC_API_KEY` and `CAT_DRAFT_MODEL` in `server/src/config.ts`** (2026-10-15; card #241, Epic 8 / issue #228, `translation-engine-spec.md` D28–D30)
+
+The first code that can send a client's text to Anthropic, built with no key and no
+network: every test runs against a stubbed `fetch` or the fake engine. Stayed in
+TypeScript (spec D6). Two parts of the slice as first written became cards of their
+own: D15's purge (#245) and the CLI step (#246).
+
+- **A run is a job on the server's thread, not a worker's.** `startDraftRun` gives the
+  registry the same `JobHandle` an import has (kind `draft`), so polling and cancel
+  are the existing `/api/jobs/:id` and a job is its account's alone. It asks
+  `engineFor` again before every segment: a test withdraws the client's consent while
+  a call is in flight and the run ends `gate_closed` with one segment stored.
+- **The route is owner-only and refuses with a reason** (409 and the gate's reason, 503
+  no key, 501 DeepL). Removing the early gate or the owner check turns a test red
+  each (tried, restored); a vendor, a grantee and another owner get 403 or 404 and
+  the fake engine records no call.
+- **The adapter cannot leak what it carries.** One fixed host (no base-URL setting),
+  the key in one header, and an error holding the status and Anthropic's error _type_
+  only: a test feeds it a reply that echoes the prompt and the key and checks neither
+  is in the message. A 401 is thrown at once; a 429 or 5xx is retried, honouring
+  `retry-after`.
+- **What the build corrected.** `ai.requested` needed the model before the call, which
+  3a had already moved into the adapter; the route test's first override payload was
+  wrong (`override`, not `engine`), a reminder that the project route takes the
+  setting's own name.
+- **Not built.** The purge on withdrawal (#245), the CLI step (#246), the editor and
+  acceptance (slice 4), DeepL (slice 6), prompt caching and `temperature`, and any
+  real call: no key exists in this environment, so the prompt's tag instructions have
+  still never met Claude.
+- **Verified:** 10 adapter tests against a stubbed `fetch`, 7 route tests through
+  `inject`, 1 config test. Not verified: a real call, the request shape against the live
+  API beyond Anthropic's documented Messages format, and the agreement check D11, which
+  must happen before the engine is switched on for a real client.
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

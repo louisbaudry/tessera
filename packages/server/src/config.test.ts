@@ -2,7 +2,7 @@ import { isAbsolute, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { loadConfig } from './config.js';
+import { DEFAULT_DRAFT_MODEL, loadConfig } from './config.js';
 
 describe('loadConfig', () => {
   it('has local defaults and resolves every path', () => {
@@ -31,6 +31,16 @@ describe('loadConfig', () => {
       port: 8080,
       dbPath: resolve('/srv/cat/platform.sqlite'),
       storageRoot: resolve('/srv/cat/storage'),
+      draftModel: DEFAULT_DRAFT_MODEL,
     });
+  });
+
+  it('reads the engine key and model from the environment, an empty key meaning none', () => {
+    expect(loadConfig({}).anthropicApiKey).toBeUndefined();
+    expect(loadConfig({ ANTHROPIC_API_KEY: '' }).anthropicApiKey).toBeUndefined();
+    const config = loadConfig({ ANTHROPIC_API_KEY: 'k', CAT_DRAFT_MODEL: 'm-9' });
+    expect(config.anthropicApiKey).toBe('k');
+    expect(config.draftModel).toBe('m-9');
+    expect(loadConfig({ CAT_DRAFT_MODEL: '' }).draftModel).toBe(DEFAULT_DRAFT_MODEL);
   });
 });

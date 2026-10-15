@@ -476,6 +476,13 @@ true:
   stores a valid reply in `draft_suggestion`; only acceptance writes a target
   (slice 4). A new run over the same project resumes, because a segment with a
   current suggestion is skipped. Don't make the gate a once-per-run value.
+- **A client's text reaches Anthropic through `startDraftRun` only** (backlog #136,
+  `server/src/{anthropic-engine,draft-job,draft}.ts`). The host is fixed in code
+  (no base-URL setting), the key is `ANTHROPIC_API_KEY` and nothing else, and an
+  error never carries a message or a body. A run is an in-process job with the
+  registry's own handle (kind `draft`), owner-only and `manage`; do not move it to a
+  worker thread, which cannot await a network call, and do not add a second way to
+  call the adapter.
 - **The engine is invisible to whoever does the work.** Its routes are
   owner-only and `manage`; no route a vendor or grantee can reach returns an
   engine or an origin that names one (spec D3, D20).

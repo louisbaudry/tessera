@@ -507,6 +507,46 @@ returns a unit's source as plain text, so a segment that has visible tags sees
 its examples without tags; two identical sources in one run are drafted twice;
 a text box's fallback copy is drafted like any segment.
 
+### Decided while building slice 3b (backlog #136, 2026-10-15)
+
+Slice 3b is the I/O half: the Anthropic adapter, the drafting job and the route
+that starts it. Two parts of the slice as first written are split into cards of
+their own: D15's purge (#245: it needs a new audit action, so a migration) and
+the CLI step (#246: the CLI never opens `platform.sqlite`, so it cannot name the
+consent that applies).
+
+**D28. A drafting run is an in-process job, polled like any other.** `db`'s
+worker-thread jobs run synchronous operations; a run of network calls waits on
+Anthropic nearly all of its time, so it runs on the server's thread in the
+background and only a short SQLite read or write per segment touches the event
+loop. It presents the `JobHandle` the registry already holds (kind `draft`), so
+`/api/jobs/:id` polls and cancels it, a job is its account's alone, and a
+cancelled run ends between segments with what it stored. It opens its own
+connection (the request's is closed) and asks `engineFor` again before every
+segment (D26). A process restart loses the registry, not the suggestions: a rerun
+resumes. `POST /api/projects/:name/draft` is owner-only and `manage` (D20), allows
+one run per account, and refuses with a reason the owner can read: 409 and the
+gate's reason when the client has not consented, 503 when the server has no key,
+501 for DeepL (slice 6).
+
+**D29. One host, one key, one header, no echo.** The adapter's host is fixed in
+code (`api.anthropic.com`); there is deliberately no base-URL setting, so no
+environment value can send a client's text somewhere else. The key comes from
+`ANTHROPIC_API_KEY` only, goes in the `x-api-key` header and nowhere else, and an
+error carries the status and Anthropic's error _type_ (a fixed word) but never the
+message, which may quote the input. Retries (429, 5xx, a dropped connection, up to
+three, honouring `retry-after`) are the adapter's; a 401 is thrown at once, since
+the same key fails the same way a thousand times. A reply cut off at the output
+limit is returned empty, so it is refused as `empty` and never offered. No
+`temperature` is set and no prompt caching is used yet: whether caching pays is
+the D7 benchmark's measurement (§3), and both are one-line changes in
+`anthropic-engine.ts`.
+
+**D30. The model id is a setting with a placeholder default.** `CAT_DRAFT_MODEL`,
+default `claude-sonnet-5-5` (the mid tier, D13). `ai.requested` records it before
+the send (D25) and the reply's own `model` is what an accepted draft's provenance
+will record.
+
 ### Still open
 
 1. **The agreement wording** (D11), a check on Louis's side before the first
