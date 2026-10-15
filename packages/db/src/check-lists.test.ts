@@ -65,6 +65,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'qa_rule_setting.rule': QA_RULES,
       'audit_event.action': PROJECT_AUDIT_ACTIONS,
       'engine_override_setting.engine': ENGINE_CHOICES,
+      'draft_suggestion.engine': DRAFT_ENGINES,
     },
   },
   glossary: {

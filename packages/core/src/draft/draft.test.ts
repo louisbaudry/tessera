@@ -213,6 +213,16 @@ describe('buildPrompt', () => {
     expect(p.user).not.toContain('six');
   });
 
+  it('names a forbidden-only term without a preferred rendering', () => {
+    const p = buildPrompt(
+      input({ terms: [{ source: 'ledger', preferred: null, forbidden: ['libro'] }] }),
+    );
+    expect(p.user).toContain(
+      '<term><source>ledger</source><forbidden>libro</forbidden></term>',
+    );
+    expect(p.user).not.toContain('<preferred>');
+  });
+
   it('refuses a source with nothing to translate', () => {
     expect(() => buildPrompt(input({ source: plain('   ') }))).toThrow(DraftInputError);
   });
@@ -332,6 +342,7 @@ describe('draftSegment (through the fake engine)', () => {
   it('lets an engine failure propagate: it is not a refused draft', async () => {
     const broken: DraftEngineAdapter = {
       engine: 'tessera',
+      model: 'm',
       draft: () => Promise.reject(new Error('network down')),
     };
     await expect(draftSegment(broken, input())).rejects.toThrow('network down');

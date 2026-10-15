@@ -285,7 +285,7 @@ export function pretranslate(
 }
 
 /** Queries each attached TM in priority order; the first non-empty hit wins (v1-spec.md §6.1 step 2). */
-function findExactTmMatch(
+export function findExactTmMatch(
   db: Database.Database,
   refs: readonly TmRef[],
   srcLang: string,
