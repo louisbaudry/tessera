@@ -87,6 +87,19 @@ records the convention rather than asking for a rewrite:
 - Invisible or lookalike Unicode in a comment follows the escape rule
   under _Gotchas_ below, as it does in code.
 
+## Versions and milestones
+
+The roadmap's rings are **versions**, and each version is a GitHub
+**milestone** named `v<n> · <name>` (decided 2026-10-15, table in
+`planning/ai-platform-vision.md` §3): v1 = Ring 0 (the CAT tool), v1.5 =
+Ring 0.5 (AI drafts), v2 = Ring 1 (Language Provider tools), v3 = Ring 2
+(client-facing), v4 = Ring 3 (invoicing and payments), v5 = Ring 4
+(website localisation). The version is the ring plus one. When you take or
+file a card, set its milestone to the version of the work it advances;
+status still lives on the card, never in the docs. Write the version in new
+text (`v2 (Ring 1)` where the ring helps); existing "Ring N" text is not
+wrong and is not swept.
+
 ## The working rhythm
 
 1. **Spec before code.** A design decision (a new data model, a new file
@@ -512,7 +525,7 @@ and the protocol in the spec's §6 binds any session that touches it:
 ## The translation portal (`portal-core`/`portal-server`)
 
 Epic 10a (`planning/portal-v0-spec.md`) pulled a client-facing intake/
-delivery surface forward, ahead of the Ring 0-3 sequence above, for a
+delivery surface forward, ahead of the v1-v4 (Ring 0-3) sequence, for a
 real pilot client. It's a separate product surface from the CAT
 engine, but follows the same discipline:
 

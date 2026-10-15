@@ -11,7 +11,11 @@ import DOCX, segment, apply a translation memory, run QA, export DOCX. See
 that's solid, AI-assisted translation and the rest of the business —
 quoting, vendor management, client communication, invoicing — get built
 outward from it. See [`planning/ai-platform-vision.md`](planning/ai-platform-vision.md)
-for the whole roadmap and why it's sequenced that way.
+for the whole roadmap and why it's sequenced that way. Each stage of it is
+a **version** and a GitHub **milestone**: v1 (Ring 0) the CAT tool, v1.5
+AI-assisted translation, v2 Language Provider tools, v3 client-facing,
+v4 invoicing and payments, v5 website localisation (the version is the ring
+plus one; table in `ai-platform-vision.md` §3).
 
 Ships as a web service (a Node/TypeScript API server plus a React SPA),
 not an installed desktop app — see `v1-spec.md` §2 for the reasoning.
@@ -211,7 +215,7 @@ full row of green checks — see CLAUDE.md's gotcha list.
 | [`planning/tm-format-spec.md`](planning/tm-format-spec.md)                 | The `.ctm` translation memory format — authoritative                                                                                |
 | [`planning/segmentation-spec.md`](planning/segmentation-spec.md)           | Custom segmentation: editable profiles, SRX, Trados resource lists                                                                  |
 | [`planning/ai-platform-vision.md`](planning/ai-platform-vision.md)         | The roadmap beyond v1 — AI-assisted translation, vendor management, client-facing tools, and why they're sequenced the way they are |
-| [`planning/v1-backlog.md`](planning/v1-backlog.md)                         | Sequenced issue list, Ring 0 through Ring 3                                                                                         |
+| [`planning/v1-backlog.md`](planning/v1-backlog.md)                         | Sequenced issue list, v1 (Ring 0) through v4 (Ring 3)                                                                               |
 | [`planning/portal-v0-spec.md`](planning/portal-v0-spec.md)                 | Translation Portal v0 (Epic 10a) — order lifecycle, pricing, notifications, auth                                                    |
 | [`planning/smart-glossary-spec.md`](planning/smart-glossary-spec.md)       | Smart glossary (Epic 8a) — the `.ctg` format, detection/flagging pipeline, session state machine                                    |
 | [`planning/multi-session-workflow.md`](planning/multi-session-workflow.md) | The phased, one-phase-per-session pattern large backlog items (TMX/`.sdltm` import, exact matching) are built with across sessions  |
