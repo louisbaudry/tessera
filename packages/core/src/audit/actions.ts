@@ -28,6 +28,7 @@ export const PROJECT_AUDIT_ACTIONS = [
   'project.setting_changed',
   'qa.dismissed',
   'qa.reinstated',
+  'draft.purged',
   'ai.requested',
 ] as const;
 
@@ -171,6 +172,17 @@ export interface AuditDetail {
    */
   'qa.dismissed': { readonly rule: QaRule };
   'qa.reinstated': { readonly rule: QaRule };
+  /**
+   * A draft engine's unaccepted suggestions deleted because the client withdrew
+   * its consent to that engine (backlog #137, `translation-engine-spec.md` D15).
+   * The subject is the project. Logged only when something was deleted; the
+   * withdrawal itself is `client_engine.changed` in `platform.sqlite`.
+   */
+  'draft.purged': {
+    readonly engine: string;
+    readonly count: number;
+    readonly reason: 'consent_withdrawn';
+  };
   'ai.requested': AiProvenance;
   // platform.sqlite (backlog #57, spec §2.5). Nothing personal in a
   // detail: it is hashed, so erasure could never reach it.

@@ -547,6 +547,36 @@ default `claude-sonnet-5-5` (the mid tier, D13). `ai.requested` records it befor
 the send (D25) and the reply's own `model` is what an accepted draft's provenance
 will record.
 
+### Decided while building the purge (backlog #137, 2026-10-15)
+
+D15 said an opt-out deletes unaccepted suggestions and stops the run, and that
+both are logged. Slice 3 built the stop; this built the purge, and found that the
+stop was not enough on its own.
+
+**D31. A reply that lands after the withdrawal is dropped, not stored.** A run
+asks the gate before each call, so a consent withdrawn while a call is in flight
+let that call's answer be stored afterwards, a suggestion for a client that had
+just opted out and that the purge, already run, would never see. `draftSuggestions`
+now asks the gate again once the reply is back and discards it if it no longer
+names this adapter's engine (`summary.discarded`, `stop: 'gate_closed'`). There is
+no `await` between that check and the write, and the purge is synchronous, so the
+two cannot interleave: the window D15 left is closed, not narrowed.
+
+**D32. The purge is per engine, per client, and logged where the rows were.**
+`PUT /api/clients/:clientId/engine` purges when a consent goes from given to
+withdrawn, for that engine only: a client that still consents to DeepL keeps the
+DeepL drafts. It runs after the withdrawal commits (so no further call can be made),
+over every project of that owner whose client number is that client, each in its
+own transaction with one `draft.purged` event (engine, count, reason) in that
+project's own log; nothing is logged for a project with nothing to delete, and a
+stale row is deleted with the rest, since a hidden row is still derived text.
+Accepted targets are segments and are untouched. A project that cannot be opened is
+counted, logged without its name (a slug often carries a client's) and reported in
+the response (`purged: { removed, failed }`, present only when a consent was
+withdrawn): the owner is never told it is done when it is not. The stop of a running
+job is the gate and is recorded by what is absent (no `ai.requested` after the
+`client_engine.changed`) and by the job's own result, not by a second event.
+
 ### Still open
 
 1. **The agreement wording** (D11), a check on Louis's side before the first

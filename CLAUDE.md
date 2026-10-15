@@ -496,6 +496,12 @@ true:
   registry's own handle (kind `draft`), owner-only and `manage`; do not move it to a
   worker thread, which cannot await a network call, and do not add a second way to
   call the adapter.
+- **A withdrawn consent deletes what its engine drafted, and nothing lands after
+  it** (backlog #137). `draftSuggestions` asks the gate again once a reply is back
+  and drops it if the gate has closed; `PUT /api/clients/:clientId/engine` purges
+  that engine's unaccepted suggestions in the owner's projects for that client
+  (`purgeDraftSuggestions`, one `draft.purged` event each). Keep no `await` between the
+  post-call check and `putDraftSuggestion`: that is what makes the purge airtight.
 - **The engine is invisible to whoever does the work.** Its routes are
   owner-only and `manage`; no route a vendor or grantee can reach returns an
   engine or an origin that names one (spec D3, D20).

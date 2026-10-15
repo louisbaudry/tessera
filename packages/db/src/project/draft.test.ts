@@ -22,7 +22,12 @@ import { createGlossary } from '../glossary/index.js';
 import { addVariant, insertTerm } from '../glossary/terms.js';
 import { createTm, writeBack } from '../tm/index.js';
 import { DEFAULT_DRAFT_TOKEN_CEILING, draftSuggestions } from './draft.js';
-import { getDraftSuggestion, listDraftSuggestions } from './draft-suggestions.js';
+import {
+  getDraftSuggestion,
+  listDraftSuggestions,
+  purgeDraftSuggestions,
+  putDraftSuggestion,
+} from './draft-suggestions.js';
 import { insertFile } from './files.js';
 import { addGlossaryRef } from './glossary-refs.js';
 import { openProjectDb } from './index.js';
@@ -157,20 +162,58 @@ describe('draftSuggestions', () => {
     db.close();
   });
 
-  it('stops the remaining segments when the client is switched off mid-run', async () => {
+  it('stops the remaining segments when the client is switched off between segments', async () => {
     const db = project();
     const engine = createFakeEngine(echo);
-    let asked = 0;
+    let open = true;
     const summary = await draftSuggestions(db, {
       actor: TEST_ACTOR,
       adapter: engine,
-      // The consent is withdrawn after the second segment has been drafted.
       gate: () =>
-        asked++ < 2 ? { engine: 'tessera' } : { engine: 'off', reason: 'not_consented' },
+        open ? { engine: 'tessera' } : { engine: 'off', reason: 'not_consented' },
+      // The consent is withdrawn once the second segment is done.
+      onProgress: (done) => {
+        if (done === 2) open = false;
+      },
     });
-    expect(summary).toMatchObject({ stop: 'gate_closed', requested: 2, stored: 2 });
+    expect(summary).toMatchObject({
+      stop: 'gate_closed',
+      requested: 2,
+      stored: 2,
+      discarded: 0,
+    });
     expect(engine.calls).toHaveLength(2);
     expect(actions(db, 'ai.requested')).toHaveLength(2);
+    db.close();
+  });
+
+  it('drops a reply that lands after the consent was withdrawn, so nothing is stored for an opted-out client (D15)', async () => {
+    const db = project();
+    let open = true;
+    const inFlight: DraftEngineAdapter = {
+      engine: 'tessera',
+      model: 'm-1',
+      // The owner withdraws consent while this very call is out.
+      draft: (request) => {
+        open = false;
+        return Promise.resolve({ text: request.sourceText, model: 'm-1' });
+      },
+    };
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: inFlight,
+      gate: () =>
+        open ? { engine: 'tessera' } : { engine: 'off', reason: 'not_consented' },
+    });
+    expect(summary).toMatchObject({
+      stop: 'gate_closed',
+      requested: 1,
+      stored: 0,
+      discarded: 1,
+    });
+    // The send is on the record, and the reply it earned is nowhere.
+    expect(actions(db, 'ai.requested')).toHaveLength(1);
+    expect(listDraftSuggestions(db)).toHaveLength(0);
     db.close();
   });
 
@@ -405,6 +448,85 @@ describe('the suggestion store', () => {
         .prepare('SELECT 1 FROM draft_suggestion WHERE segment_id = ?')
         .get(one!.segmentId),
     ).toBeUndefined();
+    db.close();
+  });
+});
+
+describe('purging suggestions on a withdrawn consent (D15)', () => {
+  /** Stores a run's suggestions, then makes the first one a `deepl` draft. */
+  async function stored() {
+    const db = project();
+    await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: createFakeEngine(echo),
+      gate: allowed,
+    });
+    const all = listDraftSuggestions(db);
+    putDraftSuggestion(db, { ...all[0]!, engine: 'deepl' });
+    return { db, total: all.length };
+  }
+
+  it('deletes one engine’s suggestions and no other’s, and logs the count once', async () => {
+    const { db, total } = await stored();
+    expect(purgeDraftSuggestions(db, { engine: 'tessera', actor: TEST_ACTOR })).toBe(
+      total - 1,
+    );
+    const left = listDraftSuggestions(db);
+    expect(left).toHaveLength(1);
+    expect(left[0]!.engine).toBe('deepl');
+
+    const events = listEvents(db, { subjectType: 'project' }).filter(
+      (e) => e.action === 'draft.purged',
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.actor).toBe('cli:test');
+    expect(JSON.parse(events[0]!.detail as string)).toEqual({
+      engine: 'tessera',
+      count: total - 1,
+      reason: 'consent_withdrawn',
+    });
+    expect(verifyAudit(db)).toMatchObject({ brokenAt: null });
+    db.close();
+  });
+
+  it('logs nothing when there was nothing to delete', async () => {
+    const { db } = await stored();
+    purgeDraftSuggestions(db, { engine: 'tessera', actor: TEST_ACTOR });
+    expect(purgeDraftSuggestions(db, { engine: 'tessera', actor: TEST_ACTOR })).toBe(0);
+    expect(
+      listEvents(db, { subjectType: 'project' }).filter(
+        (e) => e.action === 'draft.purged',
+      ),
+    ).toHaveLength(1);
+    db.close();
+  });
+
+  it('deletes a stale suggestion too, since a hidden row is still derived text, and leaves accepted targets alone', async () => {
+    const { db, total } = await stored();
+    const [first] = listDraftSuggestions(db);
+    db.prepare("UPDATE segment SET source_hash = 'changed' WHERE id = ?").run(
+      first!.segmentId,
+    );
+    // An accepted target: a segment with a written target, which is not a suggestion.
+    const accepted = listAllSegments(db).find(
+      (s) => s.targetTokens === null && textOf(s) !== '',
+    )!;
+    setSegmentTarget(db, accepted.id, {
+      targetTokens: [{ t: 'text', v: 'Aceptado' }],
+      status: 'draft',
+      origin: 'mt_draft',
+      actor: TEST_ACTOR,
+    });
+
+    purgeDraftSuggestions(db, { engine: 'tessera', actor: TEST_ACTOR });
+    purgeDraftSuggestions(db, { engine: 'deepl', actor: TEST_ACTOR });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM draft_suggestion').get()).toEqual({
+      n: 0,
+    });
+    expect(total).toBeGreaterThan(1);
+    expect(listAllSegments(db).find((s) => s.id === accepted.id)!.targetTokens).toEqual([
+      { t: 'text', v: 'Aceptado' },
+    ]);
     db.close();
   });
 });

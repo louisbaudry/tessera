@@ -3130,6 +3130,35 @@ own: D15's purge (#245) and the CLI step (#246).
   API beyond Anthropic's documented Messages format, and the agreement check D11, which
   must happen before the engine is switched on for a real client.
 
+**#137 · ~~Draft engine: purge a client's unaccepted suggestions when consent is withdrawn~~ · DONE — `db/src/project/draft-suggestions.ts` (`purgeDraftSuggestions`), project schema v16 (`audit_event` widened with `draft.purged`), `core/src/audit/actions.ts`, the post-call gate check in `db/src/project/draft.ts`, `purgeSuggestions` in `server/src/engine.ts`** (2026-10-15; card #245, Epic 8 / issue #228, `translation-engine-spec.md` D31–D32)
+
+D15's second half. Stayed in TypeScript (spec D6).
+
+- **The stop was not enough, and a test found why.** A run asked the gate before a
+  call, so a consent withdrawn while a call was in flight let its answer be stored
+  after the purge had run: a suggestion for a client that had just opted out, which
+  nothing would ever delete. The gate is now asked again once the reply is back and a
+  reply for a closed gate is discarded (`discarded` in the summary). The existing
+  "withdrawn mid-run" server test expected `stored: 1`; it was wrong about D15 and now
+  expects `stored: 0, discarded: 1`. Removing the check turns the db test red.
+- **Per engine, per client, in the project's own log.** Withdrawing one engine's
+  consent deletes only that engine's drafts; the purge runs over the owner's projects
+  for that client only (another client's project, another owner's project and another
+  engine's draft are each tested to survive), one `draft.purged` event per project
+  that had rows, none for one that had none.
+- **A failure is reported, not hidden.** A project file that cannot be opened is
+  counted and logged without its name and the response says `failed: 1`, with the
+  other projects still purged. The consent is already withdrawn by then, so no call can
+  be made whatever the purge does.
+- **A migration, as the invariant says.** `draft.purged` needed `audit_event`'s CHECK
+  widened: v16, `rebuildTable`, the snapshot list a literal, tied to the constant by
+  `check-lists.test.ts`.
+- **Verified:** 3 store tests, 2 db run tests (replacing one), 4 server tests, plus the
+  edited mid-run one. Removing the post-call check, the client filter or the purge call
+  each turns a test red (tried, restored). Not verified: a very large owner (the purge
+  opens every project of the owner on the request thread, which is fine for dozens and
+  would want a job for thousands), and any real engine.
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

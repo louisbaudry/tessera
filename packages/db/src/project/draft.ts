@@ -110,6 +110,8 @@ export interface DraftSuggestionsSummary {
   readonly requested: number;
   /** Suggestions stored. */
   readonly stored: number;
+  /** Replies thrown away because the consent was withdrawn while their call was in flight (D15). */
+  readonly discarded: number;
   /** Replies refused, by reason. */
   readonly rejected: Readonly<Record<DraftRejection, number>>;
   readonly skipped: {
@@ -262,6 +264,7 @@ export async function draftSuggestions(
       error: null as string | null,
       requested: 0,
       stored: 0,
+      discarded: 0,
       rejected: noRejections(),
       tokens: { input: 0, output: 0 },
     };
@@ -321,6 +324,15 @@ export async function draftSuggestions(
       if (outcome.usage) {
         summary.tokens.input += outcome.usage.inputTokens;
         summary.tokens.output += outcome.usage.outputTokens;
+      }
+      // The consent may have been withdrawn while the call was in flight. D15 says
+      // an opt-out deletes every unaccepted suggestion at that moment, so a reply
+      // that lands afterwards is dropped, never stored: no await sits between this
+      // check and the write, so a purge cannot slip in between them either.
+      if (options.gate().engine !== options.adapter.engine) {
+        summary.discarded++;
+        summary.stop = 'gate_closed';
+        break;
       }
       if (outcome.ok) {
         putDraftSuggestion(db, {

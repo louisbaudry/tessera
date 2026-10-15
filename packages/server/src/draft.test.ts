@@ -6,7 +6,7 @@
  * adapter stands in for the network, so no test has a key or a connection.
  */
 
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +30,7 @@ import {
   listEvents,
   openPlatformDb,
   openProjectDb,
+  putDraftSuggestion,
   verifyAudit,
   type Account,
 } from '@cat-tool/db';
@@ -51,6 +52,7 @@ let config: ServerConfig;
 let app: FastifyInstance;
 let alice: Account; // an owner
 let bob: Account; // a vendor, granted on alice's `job`
+let carol: Account; // another owner
 
 /** The adapter every run is given; swapped per test, reset before each. */
 let adapter: DraftEngineAdapter;
@@ -74,7 +76,7 @@ beforeEach(async () => {
     });
   alice = make('alice');
   bob = make('bob', 'vendor');
-  make('carol'); // another owner, who only logs in
+  carol = make('carol');
   platform.close();
   adapter = createFakeEngine(echo, { model: 'm-1' });
   app = await buildApp({
@@ -146,7 +148,7 @@ async function setup(
 
 interface JobBody {
   state: string;
-  result: { stop: string; requested: number; stored: number } | null;
+  result: { stop: string; requested: number; stored: number; discarded: number } | null;
 }
 
 async function settled(token: string, id: string): Promise<JobBody> {
@@ -341,7 +343,178 @@ describe('POST /api/projects/:name/draft', () => {
 
     const job = await settled(a, id);
     expect(job.state).toBe('done');
-    expect(job.result).toMatchObject({ stop: 'gate_closed', requested: 1, stored: 1 });
+    // The call that was out when consent was withdrawn is answered and thrown away:
+    // D15 says nothing of an opted-out client's stays, so it is never stored.
+    expect(job.result).toMatchObject({
+      stop: 'gate_closed',
+      requested: 1,
+      stored: 0,
+      discarded: 1,
+    });
     expect(g.arrived()).toBe(1);
+    const db = projectDb();
+    expect(listDraftSuggestions(db)).toHaveLength(0);
+    db.close();
+  });
+});
+
+describe('withdrawing a client’s consent purges what its engine drafted (D15)', () => {
+  /** A finished run for client 7: how many suggestions it left. */
+  async function drafted(a: string): Promise<number> {
+    await setup(a);
+    const job = await settled(a, jobIdOf(await post(a, '/api/projects/job/draft')));
+    return job.result!.stored;
+  }
+
+  const purgeEvents = () => {
+    const db = projectDb();
+    try {
+      return listEvents(db, { subjectType: 'project' }).filter(
+        (e) => e.action === 'draft.purged',
+      );
+    } finally {
+      db.close();
+    }
+  };
+
+  it('deletes the client’s unaccepted suggestions, logs it, and says how many', async () => {
+    const a = await login('alice');
+    const stored = await drafted(a);
+    expect(stored).toBeGreaterThan(0);
+
+    const res = await put(a, `/api/clients/${CLIENT}/engine`, {
+      consent: { tessera: false },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({
+      consented: [],
+      purged: { removed: stored, failed: 0 },
+    });
+
+    const db = projectDb();
+    expect(listDraftSuggestions(db)).toHaveLength(0);
+    db.close();
+    const events = purgeEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.actor).toBe(`account:${alice.id}`);
+    expect(JSON.parse(events[0]!.detail!)).toEqual({
+      engine: 'tessera',
+      count: stored,
+      reason: 'consent_withdrawn',
+    });
+  });
+
+  it('leaves another client’s project, another owner’s, and another engine’s suggestions alone', async () => {
+    const a = await login('alice');
+    await drafted(a);
+    const one = (root: Account, name: string) => {
+      const db = openProjectDb(projectPath(config.storageRoot, root, name));
+      const [segment] = listAllSegments(db);
+      putDraftSuggestion(db, {
+        segmentId: segment!.id,
+        sourceHash: segment!.sourceHash,
+        targetTokens: [{ t: 'text', v: 'x' }],
+        engine: 'tessera',
+        model: 'm',
+        promptVersion: 'v',
+        inputSha256: 'h',
+        createdAt: '2026-10-15T00:00:00.000Z',
+      });
+      db.close();
+    };
+
+    // Alice's project for another client, and carol's own client 7: not the same client.
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      headers: as(a),
+      payload: { name: 'other', srcLang: 'en', tgtLang: 'es', writeTm: 'mem2' },
+    });
+    expect(
+      (await put(a, '/api/projects/other/portal-client', { clientId: 9 })).statusCode,
+    ).toBe(200);
+    const db = openProjectDb(projectPath(config.storageRoot, alice, 'other'));
+    insertFile(
+      db,
+      'prose-short.docx',
+      assembleFile(new Uint8Array(readFileSync(FIXTURE)), rulesFor('en')),
+      { actor: SETUP },
+    );
+    db.close();
+    one(alice, 'other');
+
+    const c = await login('carol');
+    const carolMade = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      headers: as(c),
+      payload: { name: 'job', srcLang: 'en', tgtLang: 'es', writeTm: 'mem' },
+    });
+    expect(carolMade.statusCode, carolMade.body).toBe(201);
+    expect(
+      (await put(c, '/api/projects/job/portal-client', { clientId: CLIENT })).statusCode,
+    ).toBe(200);
+    const carolDb = openProjectDb(projectPath(config.storageRoot, carol, 'job'));
+    insertFile(
+      carolDb,
+      'prose-short.docx',
+      assembleFile(new Uint8Array(readFileSync(FIXTURE)), rulesFor('en')),
+      { actor: SETUP },
+    );
+    carolDb.close();
+    one(carol, 'job');
+
+    // One deepl suggestion in alice's own client-7 project: another engine's, so it stays.
+    const mine = projectDb();
+    const [first] = listDraftSuggestions(mine);
+    putDraftSuggestion(mine, { ...first!, engine: 'deepl' });
+    mine.close();
+
+    const res = await put(a, `/api/clients/${CLIENT}/engine`, {
+      consent: { tessera: false },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+
+    const left = (root: Account, name: string) => {
+      const d = openProjectDb(projectPath(config.storageRoot, root, name));
+      try {
+        return listDraftSuggestions(d).length;
+      } finally {
+        d.close();
+      }
+    };
+    expect(left(alice, 'other')).toBe(1); // another client
+    expect(left(carol, 'job')).toBe(1); // another owner
+    expect(left(alice, 'job')).toBe(1); // the deepl one only
+  });
+
+  it('says nothing of a purge when no consent was withdrawn', async () => {
+    const a = await login('alice');
+    await drafted(a);
+    const same = await put(a, `/api/clients/${CLIENT}/engine`, {
+      consent: { tessera: true },
+    });
+    expect(same.json()).not.toHaveProperty('purged');
+    const noop = await put(a, `/api/clients/${CLIENT}/engine`, {
+      consent: { deepl: false },
+    });
+    expect(noop.json()).not.toHaveProperty('purged');
+    expect(purgeEvents()).toHaveLength(0);
+  });
+
+  it('reports a project it could not purge instead of calling the purge done', async () => {
+    const a = await login('alice');
+    const stored = await drafted(a);
+    // A file in the owner's projects that is not a project database at all.
+    writeFileSync(projectPath(config.storageRoot, alice, 'broken'), 'not a database');
+
+    const res = await put(a, `/api/clients/${CLIENT}/engine`, {
+      consent: { tessera: false },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ purged: { removed: stored, failed: 1 } });
+    const db = projectDb();
+    expect(listDraftSuggestions(db)).toHaveLength(0);
+    db.close();
   });
 });

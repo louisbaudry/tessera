@@ -230,6 +230,7 @@ their `*_by` columns have always been free text; writers pass the
 | `project.exported` | file | `{ sha256 }` of the DOCX produced — what exactly was delivered |
 | `project.setting_changed` | project | `{ key, from, to }` — QA switches, AI opt-out, TM/glossary refs |
 | `qa.dismissed` / `qa.reinstated` | segment | `{ rule }` — a finding set aside, or counted again (backlog #33, `v1-spec.md` §7.6) |
+| `draft.purged` | project | `{ engine, count, reason }` — unaccepted engine suggestions deleted on a withdrawn consent (backlog #137, `translation-engine-spec.md` D15) |
 | `ai.requested` | segment | §4 |
 
 `platform.sqlite`: `auth.login`, `auth.login_failed`, `auth.logout`,
