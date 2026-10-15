@@ -1,0 +1,410 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+  assembleFile,
+  createFakeEngine,
+  plainText,
+  rulesFor,
+  toTmTokens,
+  type DraftEngineAdapter,
+  type EngineDecision,
+  type Segment,
+} from '@cat-tool/core';
+import type Database from 'better-sqlite3';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { TEST_ACTOR } from '../audit/actor.fixture.js';
+import { listEvents, verifyAudit } from '../audit/events.js';
+import { createGlossary } from '../glossary/index.js';
+import { addVariant, insertTerm } from '../glossary/terms.js';
+import { createTm, writeBack } from '../tm/index.js';
+import { DEFAULT_DRAFT_TOKEN_CEILING, draftSuggestions } from './draft.js';
+import { getDraftSuggestion, listDraftSuggestions } from './draft-suggestions.js';
+import { insertFile } from './files.js';
+import { addGlossaryRef } from './glossary-refs.js';
+import { openProjectDb } from './index.js';
+import { createProject } from './project.js';
+import { listAllSegments, listSegments, setSegmentTarget } from './segments.js';
+import { addTmRef } from './tm-refs.js';
+
+const FIXTURES = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../fixtures/docx',
+);
+
+let dir: string;
+afterEach(() => {
+  if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+});
+
+const allowed: () => EngineDecision = () => ({ engine: 'tessera' });
+const echo = (req: { sourceText: string }) => req.sourceText;
+const NOW = new Date('2026-10-15T12:00:00.000Z');
+
+function project(): Database.Database {
+  dir = mkdtempSync(join(tmpdir(), 'cat-draft-'));
+  const db = openProjectDb(join(dir, 'project.catdb'));
+  createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'es' });
+  const bytes = new Uint8Array(readFileSync(join(FIXTURES, 'prose-long.docx')));
+  insertFile(db, 'prose-long.docx', assembleFile(bytes, rulesFor('en')), {
+    actor: TEST_ACTOR,
+  });
+  return db;
+}
+
+const textOf = (s: Segment): string => plainText(s.sourceTokens).trim();
+/** A plain-text segment whose words need no escaping and whose source is unique in the project. */
+const plainOnly = (s: Segment, all: readonly Segment[]): boolean =>
+  !s.locked &&
+  s.sourceTokens.every((t) => t.t === 'text') &&
+  /^[A-Za-z0-9 ,.'’-]+$/.test(textOf(s)) &&
+  all.filter((o) => o.sourceHash === s.sourceHash).length === 1;
+const actions = (db: Database.Database, action: string) =>
+  listEvents(db, { subjectType: 'segment' }).filter((e) => e.action === action);
+
+/** What a run over `db` should ask about, given segments excluded by hash. */
+const askable = (db: Database.Database, excludeHashes: ReadonlySet<string>): Segment[] =>
+  listAllSegments(db).filter(
+    (s) =>
+      !s.locked &&
+      s.status !== 'confirmed' &&
+      s.targetTokens === null &&
+      textOf(s) !== '' &&
+      !excludeHashes.has(s.sourceHash),
+  );
+
+describe('draftSuggestions', () => {
+  it('stores a suggestion per askable segment, outside the segment, and logs each send', async () => {
+    const db = project();
+    const engine = createFakeEngine(echo, { model: 'm-1' });
+    const expected = askable(db, new Set());
+    expect(expected.length).toBeGreaterThan(3);
+
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+      now: () => NOW,
+    });
+
+    expect(summary).toMatchObject({
+      stop: 'done',
+      error: null,
+      requested: expected.length,
+      stored: expected.length,
+    });
+    expect(engine.calls).toHaveLength(expected.length);
+    expect(summary.tokens).toEqual({
+      input: 100 * expected.length,
+      output: 20 * expected.length,
+    });
+
+    // A suggestion is not a write: no target set, no segment event at all.
+    expect(listAllSegments(db).every((s) => s.targetTokens === null)).toBe(true);
+    expect(actions(db, 'segment.target_set')).toHaveLength(0);
+    const saved = listDraftSuggestions(db);
+    expect(saved).toHaveLength(expected.length);
+    expect(saved[0]).toMatchObject({
+      engine: 'tessera',
+      model: 'fake-model'.replace('fake-model', 'm-1'),
+      promptVersion: 'tessera-draft-v1',
+      createdAt: NOW.toISOString(),
+    });
+
+    // One ai.requested per send, the digest of what was sent, the actor named.
+    const sent = actions(db, 'ai.requested');
+    expect(sent).toHaveLength(expected.length);
+    const first = sent[0]!;
+    expect(first.actor).toBe('cli:test');
+    expect(JSON.parse(first.detail as string)).toEqual({
+      engine: 'tessera',
+      model: 'm-1',
+      prompt_version: 'tessera-draft-v1',
+      input_sha256: engine.calls[0]!.prompt.inputSha256,
+    });
+    expect(verifyAudit(db)).toMatchObject({ brokenAt: null });
+    db.close();
+  });
+
+  it('asks nothing and logs nothing for a client that has not consented', async () => {
+    const db = project();
+    const engine = createFakeEngine(echo);
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: () => ({ engine: 'off', reason: 'client_default_off' }),
+    });
+    expect(summary).toMatchObject({ stop: 'gate_closed', requested: 0, stored: 0 });
+    expect(engine.calls).toHaveLength(0);
+    expect(actions(db, 'ai.requested')).toHaveLength(0);
+    expect(listDraftSuggestions(db)).toHaveLength(0);
+    db.close();
+  });
+
+  it('treats an engine other than the adapter’s as off', async () => {
+    const db = project();
+    const engine = createFakeEngine(echo, { engine: 'tessera' });
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: () => ({ engine: 'deepl' }),
+    });
+    expect(summary.stop).toBe('gate_closed');
+    expect(engine.calls).toHaveLength(0);
+    db.close();
+  });
+
+  it('stops the remaining segments when the client is switched off mid-run', async () => {
+    const db = project();
+    const engine = createFakeEngine(echo);
+    let asked = 0;
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      // The consent is withdrawn after the second segment has been drafted.
+      gate: () =>
+        asked++ < 2 ? { engine: 'tessera' } : { engine: 'off', reason: 'not_consented' },
+    });
+    expect(summary).toMatchObject({ stop: 'gate_closed', requested: 2, stored: 2 });
+    expect(engine.calls).toHaveLength(2);
+    expect(actions(db, 'ai.requested')).toHaveLength(2);
+    db.close();
+  });
+
+  it('never sends what a memory or a confirmed sibling places, nor what already has a target', async () => {
+    const db = project();
+    const segments = listAllSegments(db);
+    const [exactSeg, confirmedSeg, typedSeg, siblingSeg] = segments.filter(
+      (s) => plainOnly(s, segments) && textOf(s).split(/\s+/).length >= 3,
+    );
+    // Hashes the run must leave alone: an exact memory hit, a confirmed donor.
+    const tm = createTm(join(dir, 'm.ctm'), { name: 'm', generator: 'test' });
+    writeBack(tm, {
+      source: {
+        lang: 'en',
+        tokens: toTmTokens(exactSeg!.sourceTokens, exactSeg!.formatTable),
+      },
+      target: { lang: 'es', tokens: [{ t: 'text', v: 'EXACT TARGET' }] },
+    });
+    tm.close();
+    addTmRef(db, { path: join(dir, 'm.ctm'), priority: 1, actor: TEST_ACTOR });
+    setSegmentTarget(db, confirmedSeg!.id, {
+      targetTokens: [{ t: 'text', v: 'Confirmado' }],
+      status: 'confirmed',
+      origin: null,
+      actor: TEST_ACTOR,
+    });
+    setSegmentTarget(db, typedSeg!.id, {
+      targetTokens: [{ t: 'text', v: 'Escrito a mano' }],
+      status: 'translated',
+      origin: null,
+      actor: TEST_ACTOR,
+    });
+
+    // A second segment with the confirmed one's source: internal propagation's.
+    db.prepare('UPDATE segment SET source_hash = ? WHERE id = ?').run(
+      confirmedSeg!.sourceHash,
+      siblingSeg!.id,
+    );
+
+    const engine = createFakeEngine(echo);
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+    });
+
+    const sent = new Set(engine.calls.map((c) => c.sourceText.trim()));
+    for (const s of [exactSeg!, confirmedSeg!, typedSeg!, siblingSeg!]) {
+      expect(sent.has(textOf(s))).toBe(false);
+      expect(getDraftSuggestion(db, s.id)).toBeNull();
+    }
+    expect(summary.skipped.covered).toBe(2); // the exact hit and the sibling
+    expect(summary.skipped.protected).toBeGreaterThanOrEqual(1); // confirmed, and locked ones
+    expect(summary.skipped.hasTarget).toBeGreaterThanOrEqual(1);
+    expect(summary.requested).toBe(
+      askable(db, new Set([exactSeg!.sourceHash, confirmedSeg!.sourceHash])).length,
+    );
+    db.close();
+  });
+
+  it('puts the closest memory units and the glossary terms into the prompt', async () => {
+    const db = project();
+    const everything = listAllSegments(db);
+    const long = everything.find(
+      (s) => plainOnly(s, everything) && textOf(s).split(/\s+/).length >= 8,
+    )!;
+    const words = textOf(long).split(/\s+/);
+    // A near copy of the segment: one word fewer, so a fuzzy match and no exact one.
+    const near = words.slice(0, -1).join(' ');
+    const tm = createTm(join(dir, 'm.ctm'), { name: 'm', generator: 'test' });
+    writeBack(tm, {
+      source: { lang: 'en', tokens: [{ t: 'text', v: near }] },
+      target: { lang: 'es', tokens: [{ t: 'text', v: 'REFERENCIA CERCANA' }] },
+    });
+    tm.close();
+    addTmRef(db, { path: join(dir, 'm.ctm'), priority: 1, actor: TEST_ACTOR });
+
+    const term = words.find((w) => /^[A-Za-z]{5,}$/.test(w))!;
+    const glossary = createGlossary(join(dir, 'g.ctg'), { name: 'g', generator: 'test' });
+    const entry = insertTerm(glossary);
+    addVariant(glossary, { termId: entry.id, lang: 'en', text: term });
+    addVariant(glossary, { termId: entry.id, lang: 'es', text: 'TERMINO FIJO' });
+    glossary.close();
+    addGlossaryRef(db, {
+      path: join(dir, 'g.ctg'),
+      priority: 1,
+      isWriteTarget: true,
+      actor: TEST_ACTOR,
+    });
+
+    const engine = createFakeEngine(echo);
+    await draftSuggestions(db, { actor: TEST_ACTOR, adapter: engine, gate: allowed });
+
+    const prompt = engine.calls.find((c) => c.sourceText.startsWith(words[0]!))!.prompt
+      .user;
+    expect(prompt).toContain(`<source>${near}</source>`);
+    expect(prompt).toContain('<target>REFERENCIA CERCANA</target>');
+    expect(prompt).toContain(
+      `<term><source>${term}</source><preferred>TERMINO FIJO</preferred></term>`,
+    );
+    db.close();
+  });
+
+  it('counts a refused reply, stores nothing for it, and still logs that it was sent', async () => {
+    const db = project();
+    const engine = createFakeEngine('<t9/> not a draft');
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+    });
+    expect(summary.stored).toBe(0);
+    expect(summary.requested).toBe(engine.calls.length);
+    expect(summary.rejected.unknown_tag).toBe(engine.calls.length);
+    expect(listDraftSuggestions(db)).toHaveLength(0);
+    expect(actions(db, 'ai.requested')).toHaveLength(engine.calls.length);
+    // The tokens of a refused reply were spent all the same.
+    expect(summary.tokens.input).toBe(100 * engine.calls.length);
+    db.close();
+  });
+
+  it('stops at the token ceiling, and a rerun resumes where it stopped', async () => {
+    const db = project();
+    const engine = createFakeEngine(echo); // 120 tokens a reply
+    const first = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+      tokenCeiling: 250,
+    });
+    // 120, 240 (under), 360 (over): the third is asked, then the ceiling holds.
+    expect(first.stop).toBe('ceiling');
+    expect(first.requested).toBe(3);
+
+    const rest = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+    });
+    expect(rest.stop).toBe('done');
+    expect(rest.skipped.suggested).toBe(3);
+    expect(first.requested + rest.requested).toBe(askable(db, new Set()).length);
+    expect(DEFAULT_DRAFT_TOKEN_CEILING).toBeGreaterThan(0);
+    db.close();
+  });
+
+  it('reports an engine failure, keeps the log of the attempt, and stops', async () => {
+    const db = project();
+    const broken: DraftEngineAdapter = {
+      engine: 'tessera',
+      model: 'm-1',
+      draft: () => Promise.reject(new Error('401 from the engine')),
+    };
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: broken,
+      gate: allowed,
+    });
+    expect(summary).toMatchObject({
+      stop: 'engine_error',
+      error: '401 from the engine',
+      requested: 1,
+      stored: 0,
+    });
+    expect(actions(db, 'ai.requested')).toHaveLength(1);
+    db.close();
+  });
+
+  it('ends cleanly when told to stop, between segments', async () => {
+    const db = project();
+    const engine = createFakeEngine(echo);
+    const progress: Array<[number, number]> = [];
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+      shouldStop: () => engine.calls.length >= 2,
+      onProgress: (done, total) => progress.push([done, total]),
+    });
+    expect(summary).toMatchObject({ stop: 'cancelled', requested: 2, stored: 2 });
+    expect(progress.map(([done]) => done)).toEqual([1, 2]);
+    expect(progress[0]![1]).toBe(askable(db, new Set()).length);
+    db.close();
+  });
+
+  it('leaves a locked or confirmed segment alone and drafts only the file asked for', async () => {
+    const db = project();
+    const engine = createFakeEngine(echo);
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+      fileId: 999,
+    });
+    expect(summary).toMatchObject({ stop: 'done', requested: 0 });
+    expect(listSegments(db, 1).some((s) => s.locked)).toBeDefined();
+    db.close();
+  });
+});
+
+describe('the suggestion store', () => {
+  it('hides a suggestion once the segment’s source is no longer the one it was made for', async () => {
+    const db = project();
+    await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: createFakeEngine(echo),
+      gate: allowed,
+    });
+    const [one] = listDraftSuggestions(db);
+    expect(getDraftSuggestion(db, one!.segmentId)).not.toBeNull();
+    db.prepare("UPDATE segment SET source_hash = 'changed' WHERE id = ?").run(
+      one!.segmentId,
+    );
+    expect(getDraftSuggestion(db, one!.segmentId)).toBeNull();
+    expect(listDraftSuggestions(db).some((s) => s.segmentId === one!.segmentId)).toBe(
+      false,
+    );
+    db.close();
+  });
+
+  it('goes with its segment, so a restructure cannot be blocked by one', async () => {
+    const db = project();
+    await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: createFakeEngine(echo),
+      gate: allowed,
+    });
+    const [one] = listDraftSuggestions(db);
+    db.prepare('DELETE FROM segment WHERE id = ?').run(one!.segmentId);
+    expect(
+      db
+        .prepare('SELECT 1 FROM draft_suggestion WHERE segment_id = ?')
+        .get(one!.segmentId),
+    ).toBeUndefined();
+    db.close();
+  });
+});

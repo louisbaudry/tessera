@@ -28,6 +28,7 @@ export function createFakeEngine(
   const model = options.model ?? 'fake-model';
   return {
     engine: options.engine ?? 'tessera',
+    model,
     calls,
     draft(request) {
       calls.push(request);
