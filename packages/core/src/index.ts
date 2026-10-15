@@ -34,6 +34,7 @@ export * from './draft/markup.js';
 export * from './draft/prompt.js';
 export * from './draft/draft.js';
 export * from './draft/fake.js';
+export * from './draft/terms.js';
 export * from './glossary/exceptions.js';
 export * from './glossary/key.js';
 export * from './glossary/session.js';

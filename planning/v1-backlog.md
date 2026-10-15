@@ -3060,6 +3060,42 @@ store and the job are slice 3. Stayed in TypeScript (spec D6).
   E-001 is still blocked on it), so the tag instructions in the system prompt
   are untested against Claude and are the first thing the spike should read.
 
+**#135 · ~~Draft engine slice 3a: the suggestion store, retrieval wiring and the gated drafting run~~ · DONE — `db/src/project/draft-suggestions.ts` (project schema v15, `draft_suggestion`), `db/src/project/draft.ts` (`draftSuggestions`), `core/src/draft/terms.ts` (`draftTerms`)** (2026-10-15; card #240, Epic 8 / issue #228, `translation-engine-spec.md` D25–D27)
+
+The `db` half of slice 3, with no network and no key: everything runs against
+the fake engine. 3b (the adapter, the job, the CLI, the purge) is issue #241.
+Stayed in TypeScript (spec D6).
+
+- **A suggestion is a row beside the segment, never in it.** `draft_suggestion`
+  holds the tokens, the provenance acceptance will record and the source hash it
+  was made for; nothing writes `segment.target_tokens`, and a test reads every
+  target as null and finds no `segment.target_set` after a full run. A suggestion
+  whose segment's source has since changed is invisible, not wrong.
+- **The gate is a function asked before every segment.** Withdrawing consent
+  mid-run stops the remaining ones; an opted-out client has no call and no
+  `ai.requested`. Turning the check into a once-per-run value turns three tests
+  red (tried, restored).
+- **`ai.requested` is logged before the send** (D25), which is why the adapter
+  names its `model` up front and `draftSegment` has a `beforeSend` hook. A
+  refused reply is counted by reason, stored nowhere, and still logged as sent.
+- **What a memory can place is never sent.** An exact hit or a confirmed sibling
+  covers a segment (pre-translate places it); so does a target already there.
+  Dropping that check turns the covered-segments test red (tried, restored).
+- **A run resumes.** Segments with a current suggestion are skipped, so hitting
+  the token ceiling (D12) or an engine error is a rerun, not a restart.
+- **Terms use the mismatch matcher's own rule** (`draftTerms`): the prompt names
+  the terms `term.glossary_mismatch` would later hold the draft to, inflection
+  endings included (a test found that `POs` is `PO`, which is the point).
+- **Known limits (D27).** A tagged segment sees its examples as plain text,
+  duplicate sources in a run are drafted twice, and 200,000 tokens is a
+  placeholder ceiling.
+- **Not built.** The Anthropic adapter, the job and route, the CLI step, D15's
+  purge on withdrawal (needs an audit action, so a migration), acceptance and the
+  editor (slice 4).
+- **Verified:** 13 `db` tests and 5 `core` term tests; v15 is in the schema and
+  check-list tests. Not verified: any real
+  memory or glossary beyond synthetic ones, and any real engine.
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

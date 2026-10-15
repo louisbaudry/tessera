@@ -469,6 +469,44 @@ not percentages (D3). Raising a bound is a new `PROMPT_VERSION`
 (`tessera-draft-v1`). Neighbours are plain source text; their tags carry
 nothing the draft needs.
 
+### Decided while building slice 3a (backlog #135, 2026-10-15)
+
+Slice 3 is split in two: 3a is the `db` half (the suggestion store, retrieval
+wiring and the gated run, all offline against the fake engine), 3b the I/O half
+(the Anthropic adapter, the job, the CLI step, D15's purge). Both are cards
+(#240, #241); 3b starts after 3a merges.
+
+**D25. `ai.requested` is logged before the send, so the adapter names its
+model up front.** `audit-spec.md` §4 says the event is "written when client
+content is sent". Written after the call, one that dies in flight would leave
+no record of text that may have arrived. So `draftSegment` takes a
+`beforeSend` hook and `draftSuggestions` writes the event in it, in its own
+short transaction, and `DraftEngineAdapter` carries the `model` it is
+configured to call (the reply's own `model` is still what an accepted draft's
+provenance records). The event's `engine` is the choice (`tessera`, `deepl`),
+not `anthropic` as §4's example has it: the provider is a consequence of the
+choice and the model id says which.
+
+**D26. The gate is asked before every segment, and an engine error stops the
+run.** `draftSuggestions` takes the gate as a function, so a consent withdrawn
+mid-run is seen by the next segment (D15), and the answer must name this
+adapter's engine: `deepl` for a `tessera` adapter is `off`. A thrown adapter
+error ends the run with `stop: 'engine_error'` and the message; nothing is
+retried here, because retrying a 429 or a 5xx is the adapter's job (3b) and a
+401 repeated over a thousand segments is not. A rerun resumes: a segment that
+holds a current suggestion is skipped.
+
+**D27. The first ceiling and the first limits are placeholders.**
+`DEFAULT_DRAFT_TOKEN_CEILING` is 200,000 tokens a run (D12 asked for a ceiling,
+not a number); the run stops once reported tokens reach it, so the request that
+crosses it is made. Retrieval takes the closest units from every attached
+memory at the analysis floor (`FUZZY_FLOOR`, 50) and a closer match in a
+lower-priority memory beats a nearer-priority one's worse (priority breaks
+ties, as pre-translate does). Known limits, not decisions: `retrieveFuzzy`
+returns a unit's source as plain text, so a segment that has visible tags sees
+its examples without tags; two identical sources in one run are drafted twice;
+a text box's fallback copy is drafted like any segment.
+
 ### Still open
 
 1. **The agreement wording** (D11), a check on Louis's side before the first

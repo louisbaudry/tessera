@@ -23,7 +23,12 @@ import { missingTags, validateTagStructure } from '../model/tags.js';
 import { parseTokens, plainText, TokenShapeError, type Token } from '../model/token.js';
 import type { DraftEngine } from './engine.js';
 import { parseMarked, visibleTagIds } from './markup.js';
-import { buildPrompt, type DraftInput, type DraftSource } from './prompt.js';
+import {
+  buildPrompt,
+  type BuiltPrompt,
+  type DraftInput,
+  type DraftSource,
+} from './prompt.js';
 
 /** What an engine is asked: the assembled prompt, and the marked source for one that ignores it. */
 export interface DraftRequest {
@@ -59,6 +64,12 @@ export interface DraftUsage {
 export interface DraftEngineAdapter {
   /** Which engine this is; the gate already allowed exactly this one. */
   readonly engine: DraftEngine;
+  /**
+   * The model id this adapter is configured to call, known before a request is
+   * sent: `ai.requested` is logged ahead of the send, so it cannot wait for the
+   * reply's own `model` (which is what an accepted draft's provenance records).
+   */
+  readonly model: string;
   draft(request: DraftRequest): Promise<DraftResult>;
 }
 
@@ -168,6 +179,9 @@ export type DraftOutcome =
 /**
  * One draft: assemble the prompt, call the engine, read the reply back.
  *
+ * `beforeSend` runs once the prompt is built and before the engine is called,
+ * which is where the caller logs `ai.requested`; if it throws, nothing is sent.
+ *
  * @throws {DraftInputError} for a source with nothing to translate.
  * @throws whatever the adapter throws; that is an engine failure, not a
  *   refused draft, and the caller decides whether to retry or stop.
@@ -175,8 +189,12 @@ export type DraftOutcome =
 export async function draftSegment(
   adapter: DraftEngineAdapter,
   input: DraftInput,
+  beforeSend?: (prompt: BuiltPrompt) => void,
 ): Promise<DraftOutcome> {
   const prompt = buildPrompt(input);
+  // The data-leaving event is logged ahead of the send, not after it: a call
+  // that dies in flight may still have delivered the text (`audit-spec.md` §4).
+  beforeSend?.(prompt);
   const result = await adapter.draft({
     srcLang: input.srcLang,
     tgtLang: input.tgtLang,

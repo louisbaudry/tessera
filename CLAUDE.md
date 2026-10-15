@@ -482,6 +482,13 @@ true:
   hidden tag (`carryHiddenTags` supplies them at write). Raising a prompt bound
   or changing the wording is a new `PROMPT_VERSION`. The interface is
   `DraftEngineAdapter`: `DraftEngine` is the `tessera`/`deepl` union.
+- **A draft is a suggestion beside the segment, never in it** (backlog #135,
+  `db/project/draft-suggestions.ts`, `draft.ts`). `draftSuggestions` asks the
+  gate (a function, not a value) before every segment, logs `ai.requested`
+  _before_ the send, skips what a memory or a confirmed sibling places, and
+  stores a valid reply in `draft_suggestion`; only acceptance writes a target
+  (slice 4). A new run over the same project resumes, because a segment with a
+  current suggestion is skipped. Don't make the gate a once-per-run value.
 - **The engine is invisible to whoever does the work.** Its routes are
   owner-only and `manage`; no route a vendor or grantee can reach returns an
   engine or an origin that names one (spec D3, D20).

@@ -508,6 +508,37 @@ const v14: Migration = {
 };
 
 /**
+ * `draft_suggestion` (backlog #135, `planning/translation-engine-spec.md` D5):
+ * a draft engine's output, held **outside the segment** until a person accepts
+ * it — "a suggestion is not a write" (`audit-spec.md` §4), so nothing here
+ * touches `segment.target_tokens` and an unaccepted draft never reaches an
+ * export. One row per segment (a new draft replaces the old); `source_hash` is
+ * the segment's own at the time, so a restructure that changes the source makes
+ * the row stale rather than wrong. The provenance columns are what acceptance
+ * will write into `segment.target_set` (`audit-spec.md` §4); the prompt itself
+ * is never stored. The row is client content, and D15's purge on a withdrawn
+ * consent deletes it. `engine` is a frozen literal, as every closed set is.
+ */
+const v15: Migration = {
+  version: 15,
+  description: 'draft_suggestion — an engine draft held outside the segment (spec D5)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE draft_suggestion (
+        segment_id    INTEGER PRIMARY KEY REFERENCES segment(id) ON DELETE CASCADE,
+        source_hash   TEXT NOT NULL,
+        target_tokens TEXT NOT NULL,
+        engine        TEXT NOT NULL CHECK (engine IN ('tessera', 'deepl')),
+        model         TEXT NOT NULL,
+        prompt_version TEXT NOT NULL,
+        input_sha256  TEXT NOT NULL,
+        created_at    TEXT NOT NULL
+      );
+    `);
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -527,4 +558,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v12,
   v13,
   v14,
+  v15,
 ];

@@ -58,7 +58,8 @@ export interface DraftReference {
 /** One glossary term found in the source, with the rendering to use. */
 export interface DraftTerm {
   readonly source: string;
-  readonly preferred: string;
+  /** The rendering to use; null for a term that only has forbidden ones. */
+  readonly preferred: string | null;
   /** Renderings the client rejected. */
   readonly forbidden: readonly string[];
 }
@@ -164,7 +165,9 @@ export function buildPrompt(input: DraftInput): BuiltPrompt {
       ...terms.map(
         (t) =>
           `<term><source>${escapeMarkup(t.source)}</source>` +
-          `<preferred>${escapeMarkup(t.preferred)}</preferred>` +
+          (t.preferred === null
+            ? ''
+            : `<preferred>${escapeMarkup(t.preferred)}</preferred>`) +
           t.forbidden.map((f) => `<forbidden>${escapeMarkup(f)}</forbidden>`).join('') +
           '</term>',
       ),
