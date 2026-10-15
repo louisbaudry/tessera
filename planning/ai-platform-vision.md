@@ -64,7 +64,40 @@ Each ring is a real, separately shippable product state — not a phase
 that has to finish before the next starts thinking begins, but a
 sequencing of *building* effort.
 
-### Ring 0 — "Get rid of Trados."
+**Versions and milestones (decided 2026-10-15).** A ring is also a
+**version**, and a version is a **milestone** on the board: the same
+thing under three names, so a card, a commit and a conversation can say
+which product state they belong to without translating. The version is
+the ring plus one, which keeps the README's long-standing `v1 ("Ring 0")`
+and gives the half-step a minor number:
+
+| Version | Ring | Name                         | Epics         |
+| ------- | ---- | ---------------------------- | ------------- |
+| v1      | 0    | The CAT tool                 | 0–7           |
+| v1.5    | 0.5  | AI-assisted translation      | 8             |
+| v2      | 1    | Language Provider tools      | 9, 13 (part)  |
+| v3      | 2    | Client-facing                | 10, 13 (part) |
+| v4      | 3    | Invoicing and payments       | 11            |
+| v5      | 4    | Website localisation         | 12            |
+
+- **A milestone is a GitHub milestone named `v<n> · <name>`**, and every
+  open card belongs to at most one. It is the board's answer to "which
+  product state does this belong to"; status stays on the card, never in
+  these docs.
+- **Epic 13 spans two versions** (v2 receives vendor invoices, v3 issues
+  them to portal clients), so its cards are assigned individually, not by
+  epic. A card pulled forward ahead of its version (the portal, Epic 10a)
+  keeps the version of the work it advances and says so in its entry.
+- **"Ring" stays a valid way to say the same thing.** Existing text that
+  says `Ring 1` is not wrong and is not swept; new text says the version,
+  with the ring in parentheses where it helps (`v2 (Ring 1)`).
+- This **supersedes** the loose "v2/v3" the Ring 4 heading used as a
+  horizon guess when only Ring 0 was designed: website localisation is
+  v5. Version numbers here are product states, not release tags; nothing
+  has to ship under the number, and a version can be reached before an
+  earlier one is fully closed, as the portal and the vendor roster were.
+
+### Ring 0 (v1) — "Get rid of Trados."
 
 Asked directly what to fix first, across 22 years and every tool tried,
 the answer was **the CAT tool itself** — clunky, slow, or ugly — not the
@@ -79,7 +112,7 @@ also the only honest foundation to add AI *to* later; see Ring 0.5.
 
 Nothing here changes. Continue the backlog in its existing order.
 
-### Ring 0.5 — AI-assisted translation *(deliberately sequenced after Ring 0, not bundled with it)*
+### Ring 0.5 (v1.5) — AI-assisted translation *(deliberately sequenced after Ring 0, not bundled with it)*
 
 **Decision (2026-08-30): a solid plain editor first, AI added
 after — not built together.** This was a direct, considered choice
@@ -134,7 +167,7 @@ surface next to rule-based ones). That's Ring 0.5's own spec, written the
 way `segmentation-spec.md` was — when Ring 0 is far enough along that
 Ring 0.5 is next, not now.
 
-### Ring 1 — Language Provider tools
+### Ring 1 (v2) — Language Provider tools
 
 Vendor/translator management (profiles, rates, specialties, capacity,
 quality history — making assigning work to a subcontractor a real
@@ -152,7 +185,7 @@ electronic invoice, read into the European standard (EN 16931) and matched
 to the payable already locked at delivery. Part of Epic 13; design in
 `planning/e-invoicing-spec.md` §6.
 
-### Ring 2 — Client-facing
+### Ring 2 (v3) — Client-facing
 
 Intake beyond a file and a language pair (brief, tone, audience,
 references), status visibility, a way to leave feedback — instead of all
@@ -178,7 +211,7 @@ an EN 16931 invoice, validated, numbered, frozen and handed to a certified
 provider; Tessera does not become the platform itself. Part of Epic 13;
 design in `planning/e-invoicing-spec.md` §5.
 
-### Ring 3 — Invoicing and payments
+### Ring 3 (v4) — Invoicing and payments
 
 Provisional lean: **integrate, don't rebuild.** The account already has
 Zoho Books connected; the natural shape is handing off billable totals to
@@ -193,7 +226,7 @@ forward into Rings 1 and 2 as Epic 13 (`planning/e-invoicing-spec.md` §1).
 Who owns the invoice number was settled on 2026-10-11: Tessera issues it,
 and the ledger tool receives a copy (`e-invoicing-spec.md` §10.1).
 
-### Ring 4 — Website localisation *(v2/v3 — "Weglot, but it accepts your TM")*
+### Ring 4 (v5) — Website localisation *("Weglot, but it accepts your TM")*
 
 **Recorded 2026-09-15, from a real and repeated loss.** Clients who
 already had a translation memory here — years of approved, reviewed,
@@ -353,18 +386,18 @@ re-litigated per project:
 
 ## 6. Backlog placement
 
-Epics 0–7 (`v1-backlog.md`, #1–#38) are Ring 0 and are unchanged in scope
+Epics 0–7 (`v1-backlog.md`, #1–#38) are Ring 0 (v1) and are unchanged in scope
 or order. New epics are appended, not interleaved — Ring 0 finishes on
 its own merits before Ring 0.5 is scoped in the same detail
 segmentation-spec.md gave custom segmentation:
 
-- **Epic 8 — AI-assisted translation** *(Ring 0.5, unsized — spec'd when Epic 7 is close to done)*
-- **Epic 9 — Language Provider tools** *(Ring 1, unsized — first design
+- **Epic 8 — AI-assisted translation** *(Ring 0.5, v1.5, unsized — spec'd when Epic 7 is close to done)*
+- **Epic 9 — Language Provider tools** *(Ring 1, v2, unsized — first design
   pass drafted 2026-09-22, `planning/vendor-spec.md`; see §7.1)*
-- **Epic 10 — Client-facing** *(Ring 2, unsized)*
-- **Epic 11 — Invoicing/payments integration** *(Ring 3, unsized)*
-- **Epic 12 — Website localisation** *(Ring 4, v2/v3, unsized — see §3)*
-- **Epic 13 — E-invoicing** *(Rings 1 and 2, unsized — design drafted
+- **Epic 10 — Client-facing** *(Ring 2, v3, unsized)*
+- **Epic 11 — Invoicing/payments integration** *(Ring 3, v4, unsized)*
+- **Epic 12 — Website localisation** *(Ring 4, v5, unsized — see §3)*
+- **Epic 13 — E-invoicing** *(Rings 1 and 2, v2 and v3, unsized — design drafted
   2026-10-11, `planning/e-invoicing-spec.md`)*
 
 ---

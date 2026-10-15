@@ -2616,7 +2616,7 @@ paid once, against a file format that then holds years of work.
 
 ## Epics 8–12 — beyond v1 (2026-08-30, Epic 12 added 2026-09-15)
 
-Everything above (Epics 0–7, #1–#38) is **Ring 0** of
+Everything above (Epics 0–7, #1–#38) is **Ring 0 (v1)** of
 `planning/ai-platform-vision.md` — unchanged in scope, unchanged in
 order, still the thing to finish first. What follows it, once Ring 0 is
 close to done, is scoped in that document at the level Ring 0 deserved
@@ -2624,10 +2624,15 @@ when it started, not before: a real spec per epic, written when that
 epic is next, the way `segmentation-spec.md` was written for #12a–f
 rather than upfront for all of v1.
 
+Each ring is also a **version** and a GitHub **milestone** (ring + 1,
+`ai-platform-vision.md` §3, decided 2026-10-15); the version is given
+beside the ring below. A card belongs to the milestone of the version it
+advances, assigned on the card, never recorded here.
+
 Placeholders only — sizing and issue-level breakdown deliberately
 deferred:
 
-- **Epic 8 — AI-assisted translation** (Ring 0.5): TM-first, MT
+- **Epic 8 — AI-assisted translation** (Ring 0.5, v1.5): TM-first, MT
   fallback, Claude polish + semantic QA. Design constraints already
   fixed by what's failed in every other tool tried (vision doc §3):
   context-aware, inline in the segment flow, never blocking.
@@ -2638,12 +2643,12 @@ deferred:
   the PM can choose. Design drafted 2026-10-12 in
   `planning/translation-engine-spec.md`; Rust/Wasm asked and declined
   (stay in TypeScript). Unsized; slice 0 is the open points and a spike.
-- **Epic 9 — Language Provider tools** (Ring 1): vendor/translator
+- **Epic 9 — Language Provider tools** (Ring 1, v2): vendor/translator
   management, AI-assisted quoting and project setup.
-- **Epic 10 — Client-facing** (Ring 2): intake, status, feedback.
-- **Epic 11 — Invoicing/payments integration** (Ring 3): provisionally
+- **Epic 10 — Client-facing** (Ring 2, v3): intake, status, feedback.
+- **Epic 11 — Invoicing/payments integration** (Ring 3, v4): provisionally
   hand off to Zoho Books rather than rebuild accounting.
-- **Epic 13 — E-invoicing** (Rings 1 and 2) · [issue #224]: electronic
+- **Epic 13 — E-invoicing** (Rings 1 and 2; v2 and v3) · [issue #224]: electronic
   invoices on the European standard (EN 16931): issue one from a delivered
   portal order and hand it to an approved platform, and read a vendor's
   into the payable it settles. Tessera is never the platform itself. Design
@@ -2652,7 +2657,7 @@ deferred:
   point into it. Unsized; phase 0 is decisions and spikes. Decided
   2026-10-11: Tessera issues the invoice numbers and the ledger receives a
   copy (spec §10.1).
-- **Epic 12 — Website localisation** (Ring 4, v2/v3) · [issue #25]: the
+- **Epic 12 — Website localisation** (Ring 4, v5) · [issue #25]: the
   Weglot slot, with the one thing Weglot cannot do — accept a translation
   memory.
   Design constraints and the four deferred decisions are in vision doc
@@ -2710,7 +2715,7 @@ that stays visible.)
 
 ### Epic 10a — Translation Portal v0 (pulled forward, v0 done 2026-09-11)
 
-Not part of the Ring 0/0.5/1/2/3 sequence above — a business need (a
+Not part of the Ring 0/0.5/1/2/3 (v1 to v4) sequence above — a business need (a
 client-facing intake/delivery surface for Optime Services, one pilot
 client) pulled forward ahead of Epic 10's real design pass,
 which still waits on the pilot client's actual pain points per `ai-platform-vision.md`
