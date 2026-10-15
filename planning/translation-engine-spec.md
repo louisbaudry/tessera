@@ -428,6 +428,47 @@ the project log's action list (`audit-spec.md` §4), so slice 1 adds only
 `client_engine.changed` to the platform log; an override change is a
 `project.setting_changed` with key `engine_override`.
 
+### Decided while building slice 2 (backlog #134, 2026-10-15)
+
+Four readings the build forced, all cheap to reverse; flagged in the PR.
+
+**D21. The seam is `DraftEngineAdapter`, not `DraftEngine`.** §5 calls the
+interface `DraftEngine`, but slice 1 already made that the name of the
+`'tessera' | 'deepl'` union (`core/draft/engine.ts`, used by the gate). The
+interface took the other name rather than rename a shipped type. Its request
+carries both the assembled prompt and the marked source text, because the
+DeepL adapter (slice 6) ignores the prompt and needs only the text.
+
+**D22. Inline tags are `<tN>…</tN>` and `<tN/>`, renumbered from 1, text
+escaped.** Numbered by first appearance among the segment's _visible_ tags,
+never the file's own ids: two identical sentences from two files then give
+the same prompt and the same `input_sha256`, and a retrieved unit can be
+shown in the same numbering. `&`, `<` and `>` are escaped in every piece of
+text the prompt carries (the segment, the units, the terms, the neighbours),
+so a literal bracket is never a marker and a memory unit cannot close the
+element it sits in; that escaping is what the "wrapped as reference material"
+test proves. A unit shows its tags only when both its source and its target
+map onto the segment's visible tags (`remapTmTokens`, the rule a placed match
+follows); otherwise both sides are plain text.
+
+**D23. A reply is read back or refused, never repaired.** `validateDraft`
+returns tokens or one of six named reasons (`empty`, `malformed_markup`,
+`unknown_tag`, `tag_structure`, `tag_missing`, `invalid_tokens`), so a job can
+count each cause. A bare angle bracket is refused rather than guessed at.
+Emptiness is judged on text, not on `isBlankTarget`, which counts a visible tag
+as content: a reply of `<t1></t1>` is no translation (found by a test, not by
+reading). Only the reply's outer whitespace is dropped: it belongs to the
+source and the prompt asks for none. A refused reply still returns its
+provenance and token usage, since the tokens were spent.
+
+**D24. The prompt's bounds are part of the template.** At most 5 units, 20
+terms and 2 neighbours each side (`PROMPT_LIMITS`), taken from the front in the
+caller's order (retrieval order, most similar first). No match score goes in
+the prompt: it would tie the hash to the scorer, and the units are examples,
+not percentages (D3). Raising a bound is a new `PROMPT_VERSION`
+(`tessera-draft-v1`). Neighbours are plain source text; their tags carry
+nothing the draft needs.
+
 ### Still open
 
 1. **The agreement wording** (D11), a check on Louis's side before the first
