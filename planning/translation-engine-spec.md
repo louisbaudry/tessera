@@ -238,9 +238,8 @@ and the benchmark's adversarial cases look for (§6).
   through one function, so a new outbound call cannot skip the gate.
 - **`@cat-tool/web`:** the suggestion in the match panel and the setting in
   the client and project screens. No logic that needs a DOM to prove.
-- **CLI:** `pretranslate` gains the same engine step as one repository call,
-  not a second implementation; a CLI run without a gate-allowed client does
-  nothing and says why.
+- **CLI:** none. `pretranslate` has no engine step and the CLI never drafts
+  (D39): the one outbound path is the server's `engineFor`.
 
 ## 6. Tests
 
@@ -280,7 +279,7 @@ filed when a slice is next, not before.
 | 0 | Decisions and spikes: the two open points of §9 closed (the language pairs, the agreement wording); a spike drafts 50 segments from a synthetic memory and records latency and token counts. | The decisions are written here; the spike's result is a results note, failures included. |
 | 1 | The client engine setting (`off`/`tessera`/`deepl`), the project override, the consent gate, the audit actions. No engine yet. | A client defaults to `off`; the gate refuses and logs nothing sent; the override cannot widen the client's choice. |
 | 2 | `core/draft/`: the interface, prompt template v1, retrieval wiring, placeholders, validation, with a fake engine. | Fixture segments produce valid, tag-safe suggestions through the fake engine; hidden tags carried. |
-| 3 | The Anthropic adapter, the suggestion store, the pre-translate job and the CLI step, provenance and `ai.requested`. | A batch over a fixture project stores suggestions only for allowed clients; the audit chain verifies. |
+| 3 | The Anthropic adapter, the suggestion store, the pre-translate job (the CLI step was dropped, D39), provenance and `ai.requested`. | A batch over a fixture project stores suggestions only for allowed clients; the audit chain verifies. |
 | 4 | The editor: suggestion in the match panel, accept, prefetch ahead of the cursor. | A translator accepts a draft from the keyboard with no blocking wait; the accept is the audited write. |
 | 5 | `research/translation-engine/` and the D7 benchmark harness: hypotheses first, three arms, a results file per run. | A results file compares the three arms on a synthetic corpus; a private-memory run yields numbers only. |
 | 6 | The DeepL adapter behind the same seam, so the PM's choice (D2) is real. | The same fixture project drafts through either engine; the setting picks. |
@@ -513,7 +512,7 @@ Slice 3b is the I/O half: the Anthropic adapter, the drafting job and the route
 that starts it. Two parts of the slice as first written are split into cards of
 their own: D15's purge (#245: it needs a new audit action, so a migration) and
 the CLI step (#246: the CLI never opens `platform.sqlite`, so it cannot name the
-consent that applies).
+consent that applies; dropped, D39).
 
 **D28. A drafting run is an in-process job, polled like any other.** `db`'s
 worker-thread jobs run synchronous operations; a run of network calls waits on
@@ -634,6 +633,33 @@ marker (D3). The value is still in the segment JSON a translator's browser
 receives, which is the strictest reading of D20 ("no route they reach returns an
 origin that names one") not yet met; masking it is #250, with the options and a
 recommendation for Louis (leave it, since `mt_draft` names no engine).
+
+### Decided while closing #246 (backlog #246, 2026-10-15)
+
+**D39. There is no CLI drafting step; drafting is a server job only (Louis,
+2026-10-15).** §5 had `pretranslate` gain an engine step "as one repository call".
+The card (#246) offered three ways to give it the consent it needs: (a) `--platform`
+and `--owner` flags, (b) no step, (c) a CLI-local consent flag. Reading the code
+showed (a) is bigger than its one line: consent is only half of what the step
+needs. The Anthropic adapter lives in `@cat-tool/server` and the CLI depends on
+`core` and `db` alone, so the step would also need the adapter moved to a package
+the CLI can import, and `runCli`, which is synchronous by design (§2.4: a test
+drives a whole job through it with no process spawned), would have to become
+asynchronous because drafting awaits the network. The result would be a second
+process able to send a client's text to Anthropic with a key from its environment,
+beside the server's `engineFor`, which is the single gate D4 and D26 are written
+around. (c) is a second source of consent and was never an option.
+
+(b) keeps one outbound path and leaves the CLI what §2.3 made it, the proof that
+`core` and `db` are complete without a network. What is lost: a batch cannot be
+drafted from a terminal. The server's `POST /api/projects/:name/draft` starts the
+same run (`startDraftRun`) and is polled like any job, so the only person who
+loses anything is one who wants to script it, and `curl` with a session reaches
+that route. **Reopen it** if a real job needs unattended drafting: the way in is
+(a) with the adapter moved first, as its own card, and the gate stays
+`engineFor`.
+
+Stayed in TypeScript (D6); no code changes. The golden transcript is untouched.
 
 ### Still open
 

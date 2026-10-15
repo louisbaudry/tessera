@@ -3101,7 +3101,7 @@ Stayed in TypeScript (spec D6).
 The first code that can send a client's text to Anthropic, built with no key and no
 network: every test runs against a stubbed `fetch` or the fake engine. Stayed in
 TypeScript (spec D6). Two parts of the slice as first written became cards of their
-own: D15's purge (#245) and the CLI step (#246).
+own: D15's purge (#245) and the CLI step (#246, since dropped: spec D39).
 
 - **A run is a job on the server's thread, not a worker's.** `startDraftRun` gives the
   registry the same `JobHandle` an import has (kind `draft`), so polling and cancel
@@ -3121,7 +3121,7 @@ own: D15's purge (#245) and the CLI step (#246).
   3a had already moved into the adapter; the route test's first override payload was
   wrong (`override`, not `engine`), a reminder that the project route takes the
   setting's own name.
-- **Not built.** The purge on withdrawal (#245), the CLI step (#246), the editor and
+- **Not built.** The purge on withdrawal (#245), the CLI step (#246; dropped, D39), the editor and
   acceptance (slice 4), DeepL (slice 6), prompt caching and `temperature`, and any
   real call: no key exists in this environment, so the prompt's tag instructions have
   still never met Claude.
@@ -3191,7 +3191,7 @@ The first screen that shows a draft to a translator. Stayed in TypeScript (spec 
   the audit event naming the account with the provenance, typed text never replaced, and
   three prefetch requests then silence.
 - **Not built.** A match panel and anything showing TM matches (#151), masking the origin
-  in JSON (#250), the CLI step (#246), DeepL (slice 6), a bulk "accept all", and the
+  in JSON (#250), DeepL (slice 6), a bulk "accept all", and the
   benchmark (slice 5). Known cost: a one-segment request still reads every segment of the
   project to decide what a memory places, which is fine at thousands and wants a narrower
   query at tens of thousands.
