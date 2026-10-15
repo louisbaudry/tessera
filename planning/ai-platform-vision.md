@@ -265,6 +265,44 @@ is next, and guessing costs more than deferring:
    possible when the memory is an asset the client owns; §7.5's general
    pricing question covers it and this is the sharpest instance of it.
 
+**WPML sites are a second target (recorded 2026-10-15; research
+pending).** Weglot is not the only product a client's site can be on.
+One client's Spanish site, read from its public HTML on 2026-10-15,
+runs WPML 5.1 on WordPress: a separate WordPress page per language,
+the language chosen by a `?lang=es` parameter, and no hreflang tags in
+the two pages inspected. The English-to-Spanish drift found on that
+site (pages whose English original had moved on, and English pages
+with no Spanish at all) is what that structure produces when nothing
+ties a translation to the page it came from. The wedge is the same as
+Weglot's, the client's memory and glossary never reach the tool, but
+the integration shape differs: a Weglot-style plugin replaces the
+translation layer, and on a WPML site it would meet one that is already
+there.
+
+Questions to answer before this ring's design pass. They are Louis's
+to research, and every answer is dated: WPML ships often, so an answer
+read today is evidence about today's WPML, not a fact to build on.
+
+1. **Does WPML's own memory and glossary accept anything from
+   outside?** If not, a client's `.ctm` and `.ctg` cannot reach it by
+   any route except the one below.
+2. **Which way in?** Feeding WPML's translation jobs (XLIFF export and
+   import, or a translation-service interface) leaves the site's
+   structure alone; writing straight into the per-language pages does
+   not. The first needs an XLIFF filter, which v1 leaves out
+   (`v1-spec.md`, "Out (and why)"), so choosing it reopens that line.
+3. **Does WPML say when a translation is out of date?** If it does, a
+   sync report can read that signal. If it does not, Tessera has to
+   detect drift itself, by comparing each translated page with the
+   source page it came from.
+4. **Is the URL setup a choice?** `?lang=` with no hreflang may be a
+   deliberate setup or a default nobody changed. It decides how much
+   search value the translated pages carry, which is the vision doc's
+   own argument against starting with a snippet (decision 1 above).
+
+This adds a fifth deferred decision, the integration shape on a WPML
+site, and changes nothing built or in v1 scope.
+
 ---
 
 ---
