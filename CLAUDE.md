@@ -502,6 +502,14 @@ true:
   that engine's unaccepted suggestions in the owner's projects for that client
   (`purgeDraftSuggestions`, one `draft.purged` event each). Keep no `await` between the
   post-call check and `putDraftSuggestion`: that is what makes the purge airtight.
+- **A translator sees a draft as tokens and a strip, nothing more** (backlog #138,
+  `server/src/suggestions.ts`, `web/src/suggestions.ts`). Their three routes are `edit`
+  and return no engine, model or prompt; asking for a draft answers `{ tokens: null }`
+  alike whatever the reason, so the page cannot tell off from empty. Accepting is
+  `acceptDraftSuggestion` through the save queue (`accept`, ordered like a confirm), never
+  a client-side insert, and it never replaces a target that is there. The accepted
+  origin (`MT_DRAFT_ORIGIN`) is hidden by `shownOrigin` in every screen that names an
+  origin; a new one goes through it too.
 - **The engine is invisible to whoever does the work.** Its routes are
   owner-only and `manage`; no route a vendor or grantee can reach returns an
   engine or an origin that names one (spec D3, D20).
@@ -807,7 +815,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts` and `add-term.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts`, `add-term.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

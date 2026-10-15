@@ -32,6 +32,14 @@
  * `translated`, which is what it is. The page going away does not send
  * one — a lost confirm costs a keystroke; a lost edit costs the text.
  *
+ * Accepting a draft (`accept`, backlog #138) is the same kind of write as a
+ * confirm — a status write over the text as stored, not a write of text — and
+ * keeps the same rules: it goes after every write of the segment already asked
+ * for, over the version the last one returned, is dropped when one of them fails
+ * or when another is asked for before it goes (the translator typed over the
+ * draft's place), and the later of a confirm and an accept asked for replaces the
+ * earlier. The server then refuses an accept over a target that is there.
+ *
  * Pure of React and fetch — `send` does the request — so the ordering
  * is tested in node (`save-queue.test.ts`).
  */
@@ -64,7 +72,7 @@ export interface SaveQueueDeps {
     segmentId: number,
     error: unknown,
     latest: boolean,
-    kind: 'save' | 'confirm',
+    kind: 'save' | 'confirm' | 'accept',
   ) => void;
   /**
    * Sends one confirm over the version the segment's last write returned,
@@ -74,12 +82,22 @@ export interface SaveQueueDeps {
     segmentId: number,
     baseUpdatedAt: string | undefined,
   ) => Promise<SaveResult>;
+  /**
+   * Sends one accept of the segment's draft over the same version a confirm
+   * would use. Its answer goes to `onSaved`, like a confirm's.
+   */
+  readonly accept: (
+    segmentId: number,
+    baseUpdatedAt: string | undefined,
+  ) => Promise<SaveResult>;
 }
 
 export interface SaveQueue {
   save(segmentId: number, tokens: readonly Token[], urgent?: boolean): void;
   /** Confirms the segment once its writes have landed (see above). */
   confirm(segmentId: number): void;
+  /** Accepts the segment's draft once its writes have landed (see above). */
+  accept(segmentId: number): void;
   /**
    * Resolves once no write, waiting write or confirm of any of these
    * segments is left (v1-spec.md §7.4): a merge or split reads the
@@ -117,8 +135,9 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
   const versions = new Map<number, { readonly updatedAt: string; readonly n: number }>();
   const versionOf = (id: number) =>
     versions.has(id) ? versions.get(id)!.updatedAt : deps.loadedVersion(id);
-  // Confirms asked for and not yet sent, by segment.
-  const confirming = new Set<number>();
+  // Confirms and accepts asked for and not yet sent, by segment: the later
+  // of the two replaces the earlier, as either is replaced by a save.
+  const confirming = new Map<number, 'confirm' | 'accept'>();
   const idle = (id: number) =>
     !inFlight.has(id) && !waiting.has(id) && !confirming.has(id);
   const idleWaiters: Array<{ ids: readonly number[]; resolve: () => void }> = [];
@@ -141,20 +160,23 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
     if (next) {
       waiting.delete(id);
       start(id, next.tokens, next.n, versionOf(id), false);
-    } else if (confirming.delete(id)) {
-      startConfirm(id);
+    } else {
+      const kind = confirming.get(id);
+      if (kind) {
+        confirming.delete(id);
+        startConfirm(id, kind);
+      }
     }
     wake();
   };
 
-  const startConfirm = (id: number) => {
+  const startConfirm = (id: number, kind: 'confirm' | 'accept') => {
     inFlight.set(id, (inFlight.get(id) ?? 0) + 1);
     // Ordered among the writes for the version, but not one of them for
     // `latest`: a confirm asked for later must not silence a save's failure.
     const n = ++asked;
     const wrote = newest.get(id);
-    deps
-      .confirm(id, versionOf(id))
+    (kind === 'confirm' ? deps.confirm : deps.accept)(id, versionOf(id))
       .then(
         (result) => {
           if (n > (versions.get(id)?.n ?? 0)) {
@@ -162,7 +184,7 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
           }
           deps.onSaved(id, result, newest.get(id) === wrote);
         },
-        (error: unknown) => deps.onFailed(id, error, newest.get(id) === wrote, 'confirm'),
+        (error: unknown) => deps.onFailed(id, error, newest.get(id) === wrote, kind),
       )
       .finally(() => drain(id));
   };
@@ -206,8 +228,12 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
       }
     },
     confirm(id) {
-      if (inFlight.has(id) || waiting.has(id)) confirming.add(id);
-      else startConfirm(id);
+      if (inFlight.has(id) || waiting.has(id)) confirming.set(id, 'confirm');
+      else startConfirm(id, 'confirm');
+    },
+    accept(id) {
+      if (inFlight.has(id) || waiting.has(id)) confirming.set(id, 'accept');
+      else startConfirm(id, 'accept');
     },
     save(id, tokens, urgent = false) {
       const n = ++asked;

@@ -21,7 +21,9 @@ import { listEvents, verifyAudit } from '../audit/events.js';
 import { createGlossary } from '../glossary/index.js';
 import { addVariant, insertTerm } from '../glossary/terms.js';
 import { createTm, writeBack } from '../tm/index.js';
+import { acceptDraftSuggestion, NoSuggestionError } from './draft-accept.js';
 import { DEFAULT_DRAFT_TOKEN_CEILING, draftSuggestions } from './draft.js';
+import { editSegmentTarget, TargetConflictError } from './edit-target.js';
 import {
   getDraftSuggestion,
   listDraftSuggestions,
@@ -32,7 +34,12 @@ import { insertFile } from './files.js';
 import { addGlossaryRef } from './glossary-refs.js';
 import { openProjectDb } from './index.js';
 import { createProject } from './project.js';
-import { listAllSegments, listSegments, setSegmentTarget } from './segments.js';
+import {
+  getSegment,
+  listAllSegments,
+  listSegments,
+  setSegmentTarget,
+} from './segments.js';
 import { addTmRef } from './tm-refs.js';
 
 const FIXTURES = join(
@@ -527,6 +534,154 @@ describe('purging suggestions on a withdrawn consent (D15)', () => {
     expect(listAllSegments(db).find((s) => s.id === accepted.id)!.targetTokens).toEqual([
       { t: 'text', v: 'Aceptado' },
     ]);
+    db.close();
+  });
+});
+
+describe('draftSuggestions for named segments', () => {
+  it('asks only about the segments named, still skipping what has a suggestion', async () => {
+    const db = project();
+    const [a, b] = askable(db, new Set());
+    const engine = createFakeEngine(echo);
+    const first = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+      segmentIds: [b!.id],
+    });
+    expect(first).toMatchObject({ stop: 'done', requested: 1, stored: 1 });
+    expect(getDraftSuggestion(db, b!.id)).not.toBeNull();
+    expect(getDraftSuggestion(db, a!.id)).toBeNull();
+
+    const again = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: allowed,
+      segmentIds: [b!.id],
+    });
+    expect(again).toMatchObject({ requested: 0 });
+    expect(again.skipped.suggested).toBe(1);
+    db.close();
+  });
+});
+
+describe('acceptDraftSuggestion', () => {
+  /** A project whose first askable segment has a suggestion; returns that segment. */
+  async function withSuggestion() {
+    const db = project();
+    const segment = askable(db, new Set())[0]!;
+    await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: createFakeEngine(echo, { model: 'm-1' }),
+      gate: allowed,
+      segmentIds: [segment.id],
+    });
+    return { db, segment };
+  }
+
+  it('writes the draft as a draft with the machine origin, the accepting person as actor and the provenance logged', async () => {
+    const { db, segment } = await withSuggestion();
+    const suggestion = getDraftSuggestion(db, segment.id)!;
+    const result = acceptDraftSuggestion(db, segment.id, {
+      actor: TEST_ACTOR,
+      baseUpdatedAt: segment.updatedAt,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.segment).toMatchObject({ status: 'draft', origin: 'mt_draft' });
+    expect(plainText(result.segment.targetTokens!)).toBe(
+      plainText(suggestion.targetTokens),
+    );
+    expect(result.segment.updatedAt).not.toBe(segment.updatedAt);
+    // Consumed: it is the target now.
+    expect(getDraftSuggestion(db, segment.id)).toBeNull();
+
+    const event = listEvents(db, {
+      subjectType: 'segment',
+      subjectId: String(segment.id),
+    })
+      .filter((e) => e.action === 'segment.target_set')
+      .at(-1)!;
+    expect(event.actor).toBe('cli:test');
+    expect(JSON.parse(event.detail as string)).toMatchObject({
+      status: 'draft',
+      origin: 'mt_draft',
+      provenance: {
+        engine: 'tessera',
+        model: 'm-1',
+        prompt_version: 'tessera-draft-v1',
+        input_sha256: suggestion.inputSha256,
+      },
+    });
+    expect(verifyAudit(db)).toMatchObject({ brokenAt: null });
+    db.close();
+  });
+
+  it('refuses a stale version, keeps the suggestion and writes nothing', async () => {
+    const { db, segment } = await withSuggestion();
+    expect(() =>
+      acceptDraftSuggestion(db, segment.id, {
+        actor: TEST_ACTOR,
+        baseUpdatedAt: '2000-01-01T00:00:00.000Z',
+      }),
+    ).toThrow(TargetConflictError);
+    expect(getDraftSuggestion(db, segment.id)).not.toBeNull();
+    expect(getSegment(db, segment.id)!.targetTokens).toBeNull();
+    db.close();
+  });
+
+  it('never replaces a target the translator already has', async () => {
+    const { db, segment } = await withSuggestion();
+    setSegmentTarget(db, segment.id, {
+      targetTokens: [{ t: 'text', v: 'Mi propia traducción' }],
+      status: 'translated',
+      origin: null,
+      actor: TEST_ACTOR,
+    });
+    expect(() => acceptDraftSuggestion(db, segment.id, { actor: TEST_ACTOR })).toThrow(
+      TargetConflictError,
+    );
+    expect(plainText(getSegment(db, segment.id)!.targetTokens!)).toBe(
+      'Mi propia traducción',
+    );
+    expect(getDraftSuggestion(db, segment.id)).not.toBeNull();
+    db.close();
+  });
+
+  it('has nothing to accept without a current suggestion: none made, or made for another source', async () => {
+    const { db, segment } = await withSuggestion();
+    const other = askable(db, new Set([segment.sourceHash]))[0]!;
+    expect(() => acceptDraftSuggestion(db, other.id, { actor: TEST_ACTOR })).toThrow(
+      NoSuggestionError,
+    );
+    db.prepare("UPDATE segment SET source_hash = 'changed' WHERE id = ?").run(segment.id);
+    expect(() => acceptDraftSuggestion(db, segment.id, { actor: TEST_ACTOR })).toThrow(
+      NoSuggestionError,
+    );
+    db.close();
+  });
+
+  it('is the translator’s own once they change anything visible, and still the draft’s if they change nothing', async () => {
+    const { db, segment } = await withSuggestion();
+    const accepted = acceptDraftSuggestion(db, segment.id, { actor: TEST_ACTOR }).segment;
+
+    const same = editSegmentTarget(db, segment.id, {
+      tokens: accepted.targetTokens!,
+      actor: TEST_ACTOR,
+      baseUpdatedAt: accepted.updatedAt,
+    });
+    expect(same.changed).toBe(false);
+    expect(getSegment(db, segment.id)).toMatchObject({
+      status: 'draft',
+      origin: 'mt_draft',
+    });
+
+    const edited = editSegmentTarget(db, segment.id, {
+      tokens: [{ t: 'text', v: 'Otra versión' }],
+      actor: TEST_ACTOR,
+      baseUpdatedAt: accepted.updatedAt,
+    });
+    expect(edited.segment).toMatchObject({ status: 'translated', origin: null });
     db.close();
   });
 });

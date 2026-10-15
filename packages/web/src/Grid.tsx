@@ -9,7 +9,7 @@
  * the progress line counts segments and words confirmed (backlog #34).
  */
 import type { FormatEntry, QaIssue, Segment, SegmentStatus, Token } from '@cat-tool/core';
-import { isBlankTarget } from '@cat-tool/core/model';
+import { isBlankTarget, withoutHiddenTags } from '@cat-tool/core/model';
 import {
   defaultRangeExtractor,
   useVirtualizer,
@@ -74,6 +74,7 @@ import { QaPanel } from './QaPanel.js';
 import { createPageHide, createSaveQueue } from './save-queue.js';
 import { useSession } from './session-context.js';
 import { splitOffset, type SourceChild } from './split-point.js';
+import { createPrefetcher, planPrefetch } from './suggestions.js';
 import { pairGroups } from './tags.js';
 import { TargetEditor, type CommitOptions } from './TargetEditor.js';
 import { useLoad } from './use-load.js';
@@ -84,6 +85,11 @@ interface GridData {
   readonly detail: ProjectDetail;
   readonly file: FileSegments;
   readonly issues: readonly QaIssue[];
+  /** The drafts the project holds, as tokens only (`api.suggestions`). */
+  readonly suggestions: ReadonlyArray<{
+    readonly segmentId: number;
+    readonly tokens: Token[];
+  }>;
 }
 
 /** Why a segment's last write failed: a new object for each failure. */
@@ -95,13 +101,21 @@ export function Grid({ project, fileId }: { project: string; fileId: number }) {
   const data = useLoad(
     useCallback(
       async (token: string, signal: AbortSignal): Promise<GridData> => {
-        const [account, detail, file, qa] = await Promise.all([
+        const [account, detail, file, qa, drafts] = await Promise.all([
           api.me(token, signal),
           api.project(token, project, signal),
           api.segments(token, project, fileId, signal),
           api.qaIssues(token, project, fileId, signal),
+          // Drafts are an extra: the grid never waits on them or fails for them.
+          api.suggestions(token, project, signal).catch(() => ({ suggestions: [] })),
         ]);
-        return { account, detail, file, issues: qa.issues };
+        return {
+          account,
+          detail,
+          file,
+          issues: qa.issues,
+          suggestions: drafts.suggestions,
+        };
       },
       [project, fileId],
     ),
@@ -127,6 +141,14 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
   // The glossary is the owner's to manage (backlog #45): another account's project has none.
   const { name: projectName, owner: projectOwner } = parseProjectKey(project);
   const foreign = projectOwner !== null;
+  // The drafts on offer, by segment, and the target the server last stored for one
+  // the translator took (a new object each time: the open editor shows it).
+  const [suggestions, setSuggestions] = useState<ReadonlyMap<number, readonly Token[]>>(
+    () => new Map(data.suggestions.map((d) => [d.segmentId, d.tokens])),
+  );
+  const [accepted, setAccepted] = useState<
+    { readonly id: number; readonly tokens: readonly Token[] } | undefined
+  >();
   const [dismissing, setDismissing] = useState<ReadonlySet<string>>(new Set());
   const marks = useMemo(() => qaMarks(issues), [issues]);
   const positions = useMemo(() => new Map(segments.map((s, i) => [s.id, i])), [segments]);
@@ -201,6 +223,28 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
         api.confirm(session.current.token, session.current.project, segmentId, {
           baseUpdatedAt,
         }),
+      accept: (segmentId, baseUpdatedAt) =>
+        api
+          .acceptSuggestion(session.current.token, session.current.project, segmentId, {
+            baseUpdatedAt,
+          })
+          .then((result) => {
+            // The draft is the target now: the editor shows what the server
+            // stored, and the offer is used up.
+            setAccepted({
+              id: segmentId,
+              tokens: withoutHiddenTags(
+                result.segment.targetTokens ?? [],
+                result.segment.formatTable,
+              ),
+            });
+            setSuggestions((all) => {
+              const next = new Map(all);
+              next.delete(segmentId);
+              return next;
+            });
+            return result;
+          }),
       loadedVersion: (segmentId) => loadedVersions.current.get(segmentId),
       onSaved: (segmentId, result, latest) => {
         // The row takes what the server stored — unless a later edit of
@@ -240,13 +284,42 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
         const message =
           kind === 'confirm'
             ? `Not confirmed: ${what}`
-            : err instanceof ApiError && err.status === 409
-              ? `${err.message}: this edit was not saved. Reload the file to see the segment as it is now.`
-              : `Not saved: ${what}`;
+            : kind === 'accept'
+              ? `Suggestion not used: ${what}`
+              : err instanceof ApiError && err.status === 409
+                ? `${err.message}: this edit was not saved. Reload the file to see the segment as it is now.`
+                : `Not saved: ${what}`;
         setUnsaved((all) => new Map(all).set(segmentId, { message }));
       },
     });
   });
+
+  // Drafts ahead of the cursor (backlog #138, D37): one request at a time, quiet
+  // when there is none, so a segment the batch missed still has one when the
+  // translator gets there and nothing waits on it.
+  const [prefetcher] = useState(() => {
+    const p = createPrefetcher({
+      ask: async (segmentId) =>
+        (
+          await api.askSuggestion(
+            session.current.token,
+            session.current.project,
+            segmentId,
+          )
+        ).tokens,
+      onSuggestion: (segmentId, tokens) =>
+        setSuggestions((all) => new Map(all).set(segmentId, tokens)),
+    });
+    for (const d of data.suggestions) p.have(d.segmentId);
+    return p;
+  });
+  useEffect(() => {
+    prefetcher.want(planPrefetch(shown, activeId, prefetcher.settled));
+  }, [prefetcher, shown, activeId]);
+  const acceptSuggestion = useCallback(
+    (segmentId: number) => queue.accept(segmentId),
+    [queue],
+  );
 
   // One `pagehide` listener, so the open editor's write goes before the
   // ones still waiting (`createPageHide`), each a `keepalive` request.
@@ -866,6 +939,11 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
                     onCommit={commit}
                     onDraft={keepDraft}
                     onLeave={leave}
+                    suggestion={
+                      segment.id === activeId ? suggestions.get(segment.id) : undefined
+                    }
+                    accepted={accepted?.id === segment.id ? accepted : undefined}
+                    onAccept={acceptSuggestion}
                     onConfirm={confirmAndAdvance}
                     registerPageHide={pageHide.register}
                   />
@@ -926,6 +1004,9 @@ const SegmentRow = memo(function SegmentRow({
   onCommit,
   onDraft,
   onLeave,
+  suggestion,
+  accepted,
+  onAccept,
   onConfirm,
   registerPageHide,
 }: {
@@ -943,6 +1024,10 @@ const SegmentRow = memo(function SegmentRow({
   onCommit: (segmentId: number, tokens: Token[], options: CommitOptions) => void;
   onDraft: (segmentId: number, tokens: Token[]) => void;
   onLeave: () => void;
+  /** The open row's draft, if the page has one. */
+  suggestion: readonly Token[] | undefined;
+  accepted: { readonly tokens: readonly Token[] } | undefined;
+  onAccept: (segmentId: number) => void;
   onConfirm: (segmentId: number) => void;
   registerPageHide: (leaveNow: () => void) => () => void;
 }) {
@@ -1011,6 +1096,9 @@ const SegmentRow = memo(function SegmentRow({
             onCommit={onCommit}
             onDraft={onDraft}
             onLeave={onLeave}
+            suggestion={suggestion}
+            accepted={accepted}
+            onAccept={onAccept}
             onConfirm={onConfirm}
             registerPageHide={registerPageHide}
           />

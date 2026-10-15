@@ -29,6 +29,14 @@ export type KnownOrigin = (typeof KNOWN_ORIGINS)[number];
 export type Origin = KnownOrigin | (string & {});
 
 /**
+ * The `origin` of an accepted draft engine's target (`planning/translation-engine-spec.md`
+ * §4, D3). Stored so pay and audit can tell, and **never shown to whoever does the
+ * work**: the editor treats it as no origin (`shownOrigin`, `web/src/gutter.ts`).
+ * One definition, as every frozen cross-package fact.
+ */
+export const MT_DRAFT_ORIGIN = 'mt_draft';
+
+/**
  * The `origin` a placed fuzzy match carries: its score, not its band
  * (`v1-spec.md` §6.1a, 3), so a revision of the bands needs no migration.
  * Not in {@link KNOWN_ORIGINS}, which is a closed list of literals.

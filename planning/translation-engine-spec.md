@@ -577,6 +577,64 @@ withdrawn): the owner is never told it is done when it is not. The stop of a run
 job is the gate and is recorded by what is absent (no `ai.requested` after the
 `client_engine.changed`) and by the job's own result, not by a second event.
 
+### Decided while building slice 4 (backlog #138, 2026-10-15)
+
+§7 says slice 4 puts a suggestion "in the match panel". The editor has no match
+panel (backlog #129 says so in as many words), so the premise was false and the
+form was Louis's to choose.
+
+**D33. A suggestion strip, not a panel (Louis, 2026-10-15).** Options were a strip
+under the source, building a real match panel first, or pausing the editor. He chose
+the strip: one line under the source of the open segment, shown only while its target
+is empty, with no engine name and no machine marker (D3). It costs a second UI if a
+match panel is built later (issue #151 and the exact/fuzzy matches would then live
+there), and nothing built here blocks that.
+
+**D34. Three routes, all `edit`, none naming an engine.** The translator is the
+one person the engine is invisible to (D20), so what they reach returns tokens and
+nothing else. `GET /api/projects/:name/suggestions` lists the current suggestions as
+`{ segmentId, tokens }`; `POST .../segments/:id/suggestion` asks for one segment now
+(a missed or edited one) and answers `{ tokens }` or `{ tokens: null }`, the same
+answer whether the engine is off, unconfigured, refused or simply had nothing, so a
+translator cannot tell which; `POST .../segments/:id/suggestion/accept` is the write.
+The gate is still the project owner's consent (`engineFor` over the owner), and
+`ai.requested` names the translator who asked, as the accountable human.
+
+**D35. Accepting is a write that goes through the save queue.** `acceptDraftSuggestion`
+stores the draft with status `draft` and origin `mt_draft` (§4: a person confirms it),
+the accepting person as actor and the suggestion's provenance in
+`segment.target_set`'s detail, deletes the suggestion, and reruns QA, in one
+transaction and over the version the editor saw. It refuses (409) a segment that
+has a target already, and answers 404 for a missing or stale suggestion. In the
+browser it is queued behind the segment's pending text writes exactly as a confirm is,
+so it never races a save and is dropped, not sent, if the translator typed first.
+A later edit that changes anything visible makes the target the translator's own
+(`translated`, no origin), by `editSegmentTarget`'s existing rule; one that changes
+nothing keeps `mt_draft`.
+
+**D36. `Ctrl+.` accepts, with a button for the keyboard that misfires.** Literal Ctrl
+on every platform, like `Ctrl+,` (place a tag) and `Ctrl+Ins` (copy source), and a
+"Use suggestion" button beside Copy source. It does nothing unless the strip is
+showing.
+
+**D37. Prefetch is the browser's, sequential and quiet.** When a segment opens, the
+editor asks for drafts for the next few segments that are untranslated and have
+none, one request at a time, so a missed or edited segment still has a suggestion
+by the time the translator reaches it (D5) and nothing waits on it. The page cannot
+tell an engine that is off from one with nothing to say (D34), so it gives up after
+three empty answers in a row and asks again only on the next page load. A failed
+request is never shown: a missing suggestion is the normal state of a segment.
+
+**D38. The editor hides the draft origin; the server still sends it.** An accepted
+draft's `origin` is `mt_draft`, and the grid's badge would otherwise print it
+(unknown origins are shown verbatim, so that a new one never looks untouched). The
+editor now treats `MT_DRAFT_ORIGIN` as no origin at all: no badge, and not a value the
+origin filter offers (`shownOrigin`, one place), so the screen carries no machine
+marker (D3). The value is still in the segment JSON a translator's browser
+receives, which is the strictest reading of D20 ("no route they reach returns an
+origin that names one") not yet met; masking it is #250, with the options and a
+recommendation for Louis (leave it, since `mt_draft` names no engine).
+
 ### Still open
 
 1. **The agreement wording** (D11), a check on Louis's side before the first

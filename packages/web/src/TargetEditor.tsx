@@ -19,6 +19,12 @@
  * never re-reads the segment after opening it: a save's answer updates
  * the grid, not the text under the caret.
  *
+ * A draft suggestion (backlog #138, `translation-engine-spec.md` D33) shows as a
+ * strip above an empty target, with no mark of where it came from; `Ctrl+.` (or
+ * its button) takes it. Taking it is a write the server makes and the grid
+ * queues (`save-queue.ts`), so the text appears when the server has stored it
+ * (`accepted`), under the caret, as an ordinary target to edit.
+ *
  * Between those writes it autosaves (backlog #31): a moment after each
  * keystroke (`DRAFT_DELAY_MS`) the target goes to `onDraft`, which keeps
  * it in this browser and never sends it (`drafts.ts`) — the audited write
@@ -36,7 +42,7 @@ import 'prosemirror-view/style/prosemirror.css';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { DRAFT_DELAY_MS } from './drafts.js';
-import { fullTagLabel, tagLabel, tagTitle } from './pieces.js';
+import { fullTagLabel, tagLabel, tagTitle, toPieces } from './pieces.js';
 import { describeFormat } from './tag-label.js';
 import {
   choicesIn,
@@ -83,6 +89,19 @@ interface TargetEditorProps {
   /** Esc: done with this segment. */
   readonly onLeave: () => void;
   /**
+   * A draft for this segment, if the page has one. Shown only while the target
+   * is empty; there is nothing about it to show but its text.
+   */
+  readonly suggestion?: readonly Token[];
+  /**
+   * The target the server stored when the translator took the draft: a new
+   * object for each, so an open editor hears of one. It is put in the editor
+   * only if the target is still empty (the translator may have typed since).
+   */
+  readonly accepted?: { readonly tokens: readonly Token[] };
+  /** `Ctrl+.` or the button: take the draft. The grid queues the write. */
+  readonly onAccept: (segmentId: number) => void;
+  /**
    * Ctrl+Enter, after the editor has sent any change (`onCommit`): confirm
    * this segment and go to the next one. Never called for a target with
    * nothing visible in it, which there is nothing to confirm in.
@@ -120,6 +139,9 @@ export function TargetEditor({
   onCommit,
   onDraft,
   onLeave,
+  suggestion,
+  accepted,
+  onAccept,
   onConfirm,
   registerPageHide,
 }: TargetEditorProps) {
@@ -154,10 +176,26 @@ export function TargetEditor({
   // What was last sent, to tell a change from a click-through; null when
   // the next leave must send whatever is there.
   const committed = useRef<PmNode | null>(null);
-  const callbacks = useRef({ onCommit, onDraft, onLeave, onConfirm });
+  const callbacks = useRef({ onCommit, onDraft, onLeave, onConfirm, onAccept });
   useEffect(() => {
-    callbacks.current = { onCommit, onDraft, onLeave, onConfirm };
+    callbacks.current = { onCommit, onDraft, onLeave, onConfirm, onAccept };
   });
+  // The draft on offer, and whether taking it is already on its way, for the key.
+  const suggestionNow = useRef(suggestion);
+  const accepting = useRef(false);
+  // What `accepted` and `failed` were when the draft was asked for: while neither
+  // has changed since, the write is still on its way and the button waits.
+  const [waitingOn, setWaitingOn] = useState<{
+    readonly accepted: object | undefined;
+    readonly failed: object | undefined;
+  } | null>(null);
+  const acceptingNow =
+    waitingOn !== null && waitingOn.accepted === accepted && waitingOn.failed === failed;
+  useEffect(() => {
+    suggestionNow.current = suggestion;
+  });
+  // Set below, where the document is known: take the draft if it is on offer.
+  const acceptNow = useRef<() => boolean>(() => false);
   // Set with the editor below: send what changed, then confirm.
   const confirmNow = useRef<(editor: EditorView) => void>(() => undefined);
 
@@ -192,6 +230,9 @@ export function TargetEditor({
           dispatch?.(copySource(state, opened.sourceTokens, opened.formatTable, groups));
           return true;
         },
+        // Literal Ctrl, like Ctrl+, and Ctrl+Ins; a key that does nothing when no
+        // draft is on offer, so it never swallows a keystroke for nothing.
+        'Ctrl-.': () => acceptNow.current(),
         // Cmd+Enter on a Mac, where Ctrl+Enter is the same key for the hand.
         'Ctrl-Enter': (_state, _dispatch, editor) => {
           if (editor) confirmNow.current(editor);
@@ -330,6 +371,51 @@ export function TargetEditor({
     if (failed) committed.current = null;
   }, [failed]);
 
+  // Taking the draft: only while it is on offer and the target is still empty.
+  const tryAccept = (): boolean => {
+    const editor = view.current;
+    if (!editor || !suggestionNow.current || accepting.current) return false;
+    if (!isBlankTarget(targetFromDoc(editor.state.doc), formats)) return false;
+    accepting.current = true;
+    setWaitingOn({ accepted, failed });
+    callbacks.current.onAccept(opened.id);
+    return true;
+  };
+  useEffect(() => {
+    acceptNow.current = tryAccept;
+  });
+
+  // The server stored the draft as the target: show it, as an ordinary target. A
+  // translator who typed while the write was on its way keeps their own text (the
+  // server's draft stays a write they will overwrite or keep, as any other).
+  useEffect(() => {
+    if (!accepted) return;
+    accepting.current = false;
+    const editor = view.current;
+    if (!editor) return;
+    if (!isBlankTarget(targetFromDoc(editor.state.doc), formats)) return;
+    const next = docFromTokens(
+      withoutHiddenTags(accepted.tokens, formats),
+      formats,
+      groups,
+    ).doc;
+    const tr = editor.state.tr.replaceWith(
+      0,
+      editor.state.doc.content.size,
+      next.content,
+    );
+    editor.dispatch(tr);
+    // The server stored exactly this, so leaving is not a change to send.
+    committed.current = editor.state.doc;
+    editor.dispatch(editor.state.tr.setSelection(TextSelection.atEnd(editor.state.doc)));
+    editor.focus();
+  }, [accepted, formats, groups]);
+
+  // A failed write ends the wait, so the key can be tried again.
+  useEffect(() => {
+    if (failed) accepting.current = false;
+  }, [failed]);
+
   const insert = (tag: PaletteTag) => {
     const editor = view.current;
     if (!editor) return;
@@ -349,8 +435,43 @@ export function TargetEditor({
   const choices = choicesIn(doc, palette, formats);
   const unplaced = choices.filter((c) => !c.placed).map((c) => c.tag);
 
+  const offered =
+    suggestion !== undefined && isBlankTarget(targetFromDoc(doc), formats)
+      ? suggestion
+      : null;
+
   return (
     <div className="editor-shell" ref={shell}>
+      {offered && (
+        <div className="suggestion" role="note" aria-label="Suggestion">
+          <span className="suggestion-label">Suggestion</span>
+          <span className="suggestion-text" lang={tgtLang}>
+            {toPieces(offered, formats, groups).map((piece, i) =>
+              piece.kind === 'text' ? (
+                <span key={i}>{piece.text}</span>
+              ) : (
+                <span key={i} className={`chip chip-${piece.role}`} title={piece.title}>
+                  <span className="chip-short">{piece.label}</span>
+                  <span className="chip-full">{piece.full}</span>
+                </span>
+              ),
+            )}
+          </span>
+          <button
+            type="button"
+            className="link"
+            disabled={acceptingNow}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              tryAccept();
+              view.current?.focus();
+            }}
+            title="Use suggestion (Ctrl+.)"
+          >
+            Use suggestion
+          </button>
+        </div>
+      )}
       <div ref={host} />
       <div className="editor-bar">
         {unplaced.length > 0 && (

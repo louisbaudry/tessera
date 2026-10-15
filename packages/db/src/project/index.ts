@@ -30,3 +30,4 @@ export * from './portal-client.js';
 export * from './engine-override.js';
 export * from './draft-suggestions.js';
 export * from './draft.js';
+export * from './draft-accept.js';
