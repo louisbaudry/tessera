@@ -461,6 +461,14 @@ true:
   project's request (`engine_override_setting`, project v14) can narrow what
   the client allows, never widen it. A client is the owner's number, scoped by
   owner; the CAT server never reads `portal.sqlite`.
+- **`core/draft/` reads a reply back or refuses it, never repairs it** (backlog
+  #134). `buildPrompt` is a pure, versioned function of plain data; every piece
+  of third-party text in it is escaped, and tags are `<tN>` markers numbered
+  over the segment's _visible_ tags only. `validateDraft` maps markers to the
+  source's own ids or returns a named reason, and an accepted draft holds no
+  hidden tag (`carryHiddenTags` supplies them at write). Raising a prompt bound
+  or changing the wording is a new `PROMPT_VERSION`. The interface is
+  `DraftEngineAdapter`: `DraftEngine` is the `tessera`/`deepl` union.
 - **The engine is invisible to whoever does the work.** Its routes are
   owner-only and `manage`; no route a vendor or grantee can reach returns an
   engine or an origin that names one (spec D3, D20).

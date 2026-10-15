@@ -40,3 +40,16 @@ Backlog #13a's text, written when they did not, is the stale part. What
 holds: EN to VI needs no Vietnamese segmentation (the source is English), and
 a Vietnamese source's boundaries are not yet earned from real failures.
 Nothing measured is affected; no hypothesis changes. Spec D14 is corrected.
+
+## 2026-10-15 — slice 2 built, nothing measured
+
+Built `core/draft/` (backlog #134, spec D21 to D24): the engine seam, prompt
+template `tessera-draft-v1`, the placeholder markup and the reply validation,
+tested offline through a fake engine. No run, no result, nothing confirmatory.
+
+Recorded for the spike: the system prompt's tag rules (markers `<tN>`,
+`&lt;` for a literal bracket) are untested against any real model. If H-series
+results show tag failures, read `validateDraft`'s refusal counts by reason
+before changing the template, and bump `PROMPT_VERSION` when it changes.
+
+Still blocked: no API key in the environment.
