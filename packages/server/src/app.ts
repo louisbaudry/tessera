@@ -127,6 +127,7 @@ import {
   type HeldSession,
 } from './glossary-session.js';
 import { registerAssignmentRoutes } from './assignments.js';
+import { registerDraftRoutes, type AdapterFor } from './draft.js';
 import { registerEngineRoutes } from './engine.js';
 import type { Resolver, WebhookSender } from './webhook-send.js';
 import {
@@ -163,6 +164,12 @@ declare module 'fastify' {
 
 export interface BuildAppOptions {
   readonly config: ServerConfig;
+  /**
+   * Which adapter serves a draft engine (backlog #136). A deployment passes
+   * nothing and gets the Anthropic adapter when a key is configured; tests
+   * inject a fake, so no run ever reaches a network.
+   */
+  readonly draftAdapterFor?: AdapterFor;
   /**
    * Off in tests; a running server logs every request. Method, URL and
    * status only — never a body, which may be segment text
@@ -1441,6 +1448,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   // --- draft engine consent and the gate (backlog #133, translation-engine-spec.md) ---
   registerEngineRoutes(app, { platform, owner, sessionActor, openProject });
+  registerDraftRoutes(app, {
+    platform,
+    config,
+    jobs,
+    owner,
+    sessionActor,
+    openProject,
+    ...(options.draftAdapterFor ? { adapterFor: options.draftAdapterFor } : {}),
+  });
 
   // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
 

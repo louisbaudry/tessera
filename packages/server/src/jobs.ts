@@ -26,14 +26,18 @@ export type Settled =
   | { readonly state: 'failed'; readonly error: string }
   | { readonly state: 'cancelled' };
 
-/** What a job does: an `import` makes a memory, a `scan` reads one (backlog #122). */
-export type JobKind = 'import' | 'scan';
+/**
+ * What a job does: an `import` makes a memory, a `scan` reads one (backlog
+ * #122), a `draft` asks the draft engine for a project's empty segments (backlog
+ * #136; it runs in-process, not on a thread, but is polled and cancelled alike).
+ */
+export type JobKind = 'import' | 'scan' | 'draft';
 
 /** A job as the API shows it: a slug, never a path. */
 export interface JobView {
   readonly id: string;
   readonly kind: JobKind;
-  /** The memory being made (an import) or read (a scan). */
+  /** The memory being made (an import) or read (a scan); the project being drafted (a draft). */
   readonly tm: string;
   readonly state: JobState;
   readonly progress: JobProgress | null;
