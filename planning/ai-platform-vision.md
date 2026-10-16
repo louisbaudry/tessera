@@ -91,6 +91,9 @@ and gives the half-step a minor number:
 - **"Ring" stays a valid way to say the same thing.** Existing text that
   says `Ring 1` is not wrong and is not swept; new text says the version,
   with the ring in parentheses where it helps (`v2 (Ring 1)`).
+- **No point-versions other than v1.5.** Work that follows a version up (the
+  "v1.1" older text names: concordance, a bilingual review export) stays on
+  that version's milestone as more cards; it does not get a number.
 - This **supersedes** the loose "v2/v3" the Ring 4 heading used as a
   horizon guess when only Ring 0 was designed: website localisation is
   v5. Version numbers here are product states, not release tags; nothing

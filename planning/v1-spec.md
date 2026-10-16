@@ -31,9 +31,9 @@ pool) rides on top later and is out of scope here.
 
 | Deferred | Reason |
 |---|---|
-| Bilingual review export (DOCX table / XLIFF) | Confirmed: no one reviews the work before delivery. Clean v1.1 addition if that changes — the segment table already holds everything it needs. |
+| Bilingual review export (DOCX table / XLIFF) | Confirmed: no one reviews the work before delivery. Clean follow-on to v1 if that changes — the segment table already holds everything it needs. |
 | Fuzzy matching | Explicit v1 cut. Schema is built fuzzy-ready (§4.3) so it lands later without migration. Designed in §6.1a (backlog #61); not built. |
-| Concordance search | Falls out almost free once the TM index exists — first candidate for v1.1. |
+| Concordance search | Falls out almost free once the TM index exists — first follow-on to v1. |
 | Termbase / MT / QA against glossary | No user need yet. |
 | XLIFF, XLSX, PPTX, TXT | DOCX is the whole job. |
 | CJK, Cyrillic, Nordic, Eastern European | Different tokenizer (CJK) or more abbreviation lists; neither is needed. |
