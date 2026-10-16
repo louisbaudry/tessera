@@ -53,3 +53,13 @@ results show tag failures, read `validateDraft`'s refusal counts by reason
 before changing the template, and bump `PROMPT_VERSION` when it changes.
 
 Still blocked: no API key in the environment.
+
+## 2026-10-16 — documentation brought level, nothing measured
+
+Slices 1 to 4 are on `main` (backlog #133 to #138). Stale statements in
+`CLAUDE.md`, `audit-spec.md` §4, the vision's Epic 8 line and the backlog stub
+were corrected. No run, no result, nothing confirmatory.
+
+E-001 (the spike) is still frozen and has not run. It needs `ANTHROPIC_API_KEY`
+as an environment secret, visible only to a new session. The D11 agreement
+wording is also still open. Neither changes a hypothesis.
