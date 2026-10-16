@@ -1,13 +1,16 @@
-# Translation engine — spec (draft)
+# Translation engine — spec
 
-Status: **draft, nothing built.** Written 2026-10-12 from Louis's request:
+Status: **design settled; built as recorded in `v1-backlog.md` #133 to #138
+(consent, seam, gated run, Anthropic adapter, strip, purge). The benchmark and
+DeepL are not built; what is open is on the cards.** Written 2026-10-12 from Louis's request:
 Tessera gets its own automated translation, built on an analysis of the
 client's translation memory plus Claude, invisible to the client and the
 translator, "something similar to what is proposed by ModernMT". It is
 **Epic 8** (Ring 0.5, `ai-platform-vision.md` §3), tracked in issue #228.
 Eight decisions (D1 to D8) were taken by Louis on 2026-10-12 and ten more
 (D9 to D18, §9) on 2026-10-13, each in answer to a question with options and
-a recommendation. Two points stay open (§9). Reasoning is kept on the record, not just the conclusions.
+a recommendation; D19 onward were taken while building. Two points stay open
+(§9, "Still open"). Reasoning is kept on the record, not just the conclusions.
 
 **A word on naming.** "Provider" is taken: a _Language Provider_ is the
 translation business and its vendors (Epic 9). This spec calls the thing an
