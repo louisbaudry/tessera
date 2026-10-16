@@ -526,8 +526,9 @@ them, and this is their record:
 
 ## 4. AI provenance (a requirement on Epic 8)
 
-Epic 8 is not designed yet (`ai-platform-vision.md` §3). This section
-fixes what its design must record, so it cannot be built without it:
+Epic 8's design is `translation-engine-spec.md` (issue #228; `ai-platform-vision.md`
+§3 has the wider vision). This section fixes what it must record, so it cannot be
+built without it:
 
 - **A suggestion is not a write.** Prefetched drafts live outside the
   segment until accepted. Acceptance is a `segment.target_set` with

@@ -391,7 +391,8 @@ or order. New epics are appended, not interleaved — Ring 0 finishes on
 its own merits before Ring 0.5 is scoped in the same detail
 segmentation-spec.md gave custom segmentation:
 
-- **Epic 8 — AI-assisted translation** *(Ring 0.5, v1.5, unsized — spec'd when Epic 7 is close to done)*
+- **Epic 8 — AI-assisted translation** *(Ring 0.5, v1.5, unsized; the draft engine
+  is designed in `planning/translation-engine-spec.md`, issue #228)*
 - **Epic 9 — Language Provider tools** *(Ring 1, v2, unsized — first design
   pass drafted 2026-09-22, `planning/vendor-spec.md`; see §7.1)*
 - **Epic 10 — Client-facing** *(Ring 2, v3, unsized)*
