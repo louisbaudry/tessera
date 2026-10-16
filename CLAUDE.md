@@ -459,9 +459,10 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
 ## The draft engine (Epic 8)
 
 `planning/translation-engine-spec.md` (issue #228): Tessera's own machine
-drafts from a client's TM plus Claude, or DeepL, chosen by the PM. Nothing is
-sent yet; slice 1 (backlog #133) built the consent that must exist first. Keep
-true:
+drafts from a client's TM plus Claude, or DeepL, chosen by the PM. Slices 1 to 4
+(backlog #133 to #138) are built: the consent gate, the `core/draft/` seam, the
+Anthropic adapter, the drafting job, the suggestion store and the editor strip.
+The DeepL adapter (slice 6) and the benchmark (slice 5) are not. Keep true:
 
 - **A client's content leaves only through `engineFor`** (`server/src/engine.ts`),
   which reads the project's client and override and the owner's consent and

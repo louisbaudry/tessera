@@ -2642,7 +2642,8 @@ deferred:
   translator, off until a client opts in, with DeepL as a second engine
   the PM can choose. Design drafted 2026-10-12 in
   `planning/translation-engine-spec.md`; Rust/Wasm asked and declined
-  (stay in TypeScript). Unsized; slice 0 is the open points and a spike.
+  (stay in TypeScript). Built so far: slices 1 to 4 (#133 to #138, records below);
+  the spike, the benchmark and the DeepL adapter are what the issue still tracks.
 - **Epic 9 — Language Provider tools** (Ring 1, v2): vendor/translator
   management, AI-assisted quoting and project setup.
 - **Epic 10 — Client-facing** (Ring 2, v3): intake, status, feedback.
