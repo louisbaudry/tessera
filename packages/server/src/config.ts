@@ -25,6 +25,12 @@ export interface ServerConfig {
    */
   readonly anthropicApiKey?: string;
   /**
+   * The DeepL API key the `deepl` draft engine calls with (backlog #256, D40).
+   * The same rules as the Anthropic key: environment only, never logged or
+   * returned, and unset means that engine is unavailable.
+   */
+  readonly deeplApiKey?: string;
+  /**
    * The model id the engine asks for. A placeholder (D13): the benchmark picks
    * the tier, and the id is recorded in every draft's provenance either way.
    */
@@ -45,6 +51,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     // base-URL setting: the one outbound host is fixed in code, so no
     // environment value can point a client's text somewhere else.
     ...(env.ANTHROPIC_API_KEY ? { anthropicApiKey: env.ANTHROPIC_API_KEY } : {}),
+    ...(env.DEEPL_API_KEY ? { deeplApiKey: env.DEEPL_API_KEY } : {}),
     draftModel: env.CAT_DRAFT_MODEL || DEFAULT_DRAFT_MODEL,
   };
 }

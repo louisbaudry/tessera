@@ -187,6 +187,21 @@ export async function draftSuggestions(
   const ceiling = options.tokenCeiling ?? DEFAULT_DRAFT_TOKEN_CEILING;
   const now = options.now ?? (() => new Date());
 
+  // Before the gate, the candidates and any log entry: a pair the engine cannot
+  // serve is no send, so it must leave no `ai.requested` (slice 6, D40).
+  if (options.adapter.supports && !options.adapter.supports(srcLang, tgtLang)) {
+    return {
+      stop: 'engine_error',
+      error: `the ${options.adapter.engine} engine does not translate ${srcLang} to ${tgtLang}`,
+      requested: 0,
+      stored: 0,
+      discarded: 0,
+      rejected: noRejections(),
+      skipped: { protected: 0, hasTarget: 0, suggested: 0, covered: 0 },
+      tokens: { input: 0, output: 0 },
+    };
+  }
+
   const attached = attachTms(db, listTmRefs(db)); // already priority order
   try {
     const all = listAllSegments(db);

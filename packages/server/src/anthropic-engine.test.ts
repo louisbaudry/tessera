@@ -7,7 +7,8 @@
 import type { DraftRequest } from '@cat-tool/core';
 import { describe, expect, it } from 'vitest';
 
-import { createAnthropicAdapter, DraftEngineError } from './anthropic-engine.js';
+import { createAnthropicAdapter } from './anthropic-engine.js';
+import { DraftEngineError } from './engine-http.js';
 
 const KEY = 'sk-test-KEY-never-in-an-error';
 const request: DraftRequest = {

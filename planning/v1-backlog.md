@@ -2642,8 +2642,8 @@ deferred:
   translator, off until a client opts in, with DeepL as a second engine
   the PM can choose. Design drafted 2026-10-12 in
   `planning/translation-engine-spec.md`; Rust/Wasm asked and declined
-  (stay in TypeScript). Built so far: slices 1 to 4 (#133 to #138, records below);
-  the spike, the benchmark and the DeepL adapter are what the issue still tracks.
+  (stay in TypeScript). Built so far: slices 1 to 4 and 6 (#133 to #139, records below);
+  the spike and the benchmark are what the issue still tracks.
 - **Epic 9 — Language Provider tools** (Ring 1, v2): vendor/translator
   management, AI-assisted quoting and project setup.
 - **Epic 10 — Client-facing** (Ring 2, v3): intake, status, feedback.
@@ -3199,6 +3199,17 @@ The first screen that shows a draft to a translator. Stayed in TypeScript (spec 
 - **Verified:** db 5 accept tests and 1 named-segment test; server 8 route tests;
   web 12 prefetch tests, 6 queue tests, 2 origin tests, plus the browser run. Not
   verified: a real model's draft in the strip (no key here), dark mode and a narrow window by eye.
+
+**#139 · ~~Draft engine slice 6: the DeepL adapter behind the draft seam~~ · DONE — `server/src/deepl-engine.ts` (`createDeeplAdapter`, `deeplSource`, `deeplTarget`), `server/src/engine-http.ts` (`postWithRetry`, `DraftEngineError`), `supports` on `DraftEngineAdapter` (`core/src/draft/draft.ts`) and its check in `draftSuggestions`, `DEEPL_API_KEY` in `server/src/config.ts`** (2026-10-16; card #256, Epic 8 / issue #228, `translation-engine-spec.md` D40)
+
+The PM's choice between engines (D2, D8) is real: a project whose setting resolves to `deepl` now drafts through DeepL, where it answered 501. Stayed in TypeScript, asked and answered with Louis on 2026-10-16: one network-bound HTTPS call behind an existing seam, no profile pointing at the language.
+
+- **One retry loop, not two.** The Anthropic adapter's retry, backoff, `retry-after` and "no error carries a body, a message or the key" rule moved to `engine-http.ts` and both adapters use it, so the rule is one definition (CLAUDE.md, shared facts). The Anthropic tests passed unchanged apart from where `DraftEngineError` is imported from.
+- **DeepL sees the text and nothing else.** `request.sourceText` with its `<tN>` markers, sent with `tag_handling: xml`, `split_sentences: 0` and `outline_detection: false`; no prompt, memory unit or term. Whether DeepL keeps the markers is `validateDraft`'s verdict like any engine's. XML mode may write quotes as entities, which the markup reader does not know, so the adapter decodes `&quot; &apos; &#39;` in one pass (a source's own `&amp;quot;` is untouched; a test says so).
+- **A pair it cannot serve is no send.** An adapter that threw after `ai.requested` was logged would record a send that never happened. `DraftEngineAdapter.supports` is asked once, before the gate and any log entry, and answers `engine_error` with the pair named. The list of languages is short and fails closed; **Vietnamese is not on it**, because whether DeepL serves it is D14's open point and nothing here could check it. Adding it is one line once checked.
+- **No tokens, so characters.** DeepL bills by source character and reports no tokens. Characters go in `usage.inputTokens` so D12's ceiling still bounds a run; 200,000 of them is far fewer words than 200,000 tokens, which is the safe direction.
+- **Verified:** 13 adapter tests against a stubbed network (request shape, free/paid host, entity decoding, retry, no key or text in an error, an unserved pair sends nothing), 1 db test, 2 route tests (the default picks Tessera, an override picks DeepL, each run logging its own engine; unconfigured DeepL is 503), 1 config test. Removing the `supports` check turns the db test red (tried, restored). **Not verified:** a real DeepL call (no key here), that DeepL keeps `<tN>` markers on real text, which languages the live list serves.
+
 
 Sized issues:
 

@@ -9,10 +9,9 @@
  *
  * The route decides nothing about consent itself: `engineFor` does, here to
  * refuse early with the reason and again before every segment inside the run
- * (`startDraftRun`), so a withdrawal mid-run stops it. Three more refusals are
- * plain facts about the server: the engine asked for has no adapter (DeepL
- * comes with slice 6), the Tessera engine has no key configured, and a run is
- * already going for the account.
+ * (`startDraftRun`), so a withdrawal mid-run stops it. Two more refusals are
+ * plain facts about the server: the engine asked for has no key configured, and a
+ * run is already going for the account.
  */
 
 import type {
@@ -25,6 +24,7 @@ import { type Account, type openPlatformDb, type openProjectDb } from '@cat-tool
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { createAnthropicAdapter } from './anthropic-engine.js';
+import { createDeeplAdapter } from './deepl-engine.js';
 import { DEFAULT_DRAFT_MODEL, type ServerConfig } from './config.js';
 import { startDraftRun } from './draft-job.js';
 import { engineFor } from './engine.js';
@@ -34,18 +34,22 @@ import { MAX_RUNNING_JOBS, type JobRegistry } from './jobs.js';
 export type AdapterFor = (engine: DraftEngine) => DraftEngineAdapter | null;
 
 /**
- * The deployment's adapters: Anthropic for the Tessera engine when a key is
- * configured, nothing for DeepL (slice 6). The one place an adapter is built, so
- * the key is read here and nowhere else.
+ * The deployment's adapters: Anthropic for the Tessera engine and DeepL for the
+ * `deepl` engine, each when its key is configured. The one place an adapter is
+ * built, so each key is read here and nowhere else.
  */
 export function defaultAdapterFor(config: ServerConfig): AdapterFor {
-  return (engine) =>
-    engine === 'tessera' && config.anthropicApiKey
-      ? createAnthropicAdapter({
-          apiKey: config.anthropicApiKey,
-          model: config.draftModel ?? DEFAULT_DRAFT_MODEL,
-        })
-      : null;
+  return (engine) => {
+    if (engine === 'tessera') {
+      return config.anthropicApiKey
+        ? createAnthropicAdapter({
+            apiKey: config.anthropicApiKey,
+            model: config.draftModel ?? DEFAULT_DRAFT_MODEL,
+          })
+        : null;
+    }
+    return config.deeplApiKey ? createDeeplAdapter({ apiKey: config.deeplApiKey }) : null;
+  };
 }
 
 export interface DraftRouteDeps {
@@ -92,12 +96,9 @@ export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps):
       }
       const adapter = adapterFor(decision.engine);
       if (!adapter) {
-        return reply.code(decision.engine === 'deepl' ? 501 : 503).send({
-          error:
-            decision.engine === 'deepl'
-              ? 'the DeepL engine is not available yet'
-              : 'the draft engine is not configured on this server',
-        });
+        return reply
+          .code(503)
+          .send({ error: 'the draft engine is not configured on this server' });
       }
       if (jobs.runningFor(me.id, 'draft') >= 1) {
         return reply

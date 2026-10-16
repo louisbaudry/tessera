@@ -277,7 +277,7 @@ describe('POST /api/projects/:name/draft', () => {
     expect((await get(b, `/api/jobs/${id}`)).statusCode).toBe(404);
   });
 
-  it('says plainly when the engine has no adapter: unconfigured Tessera is 503, DeepL 501', async () => {
+  it('says plainly when an engine has no adapter: unconfigured, it is 503 for either', async () => {
     const a = await login('alice');
     await setup(a, { tessera: true, deepl: true, default: 'tessera' });
     await app.close();
@@ -294,7 +294,71 @@ describe('POST /api/projects/:name/draft', () => {
       (await put(a2, '/api/projects/job/engine', { override: 'deepl' })).statusCode,
     ).toBe(200);
     const deepl = await post(a2, '/api/projects/job/draft');
-    expect(deepl.statusCode).toBe(501);
+    expect(deepl.statusCode).toBe(503);
+    expect(deepl.json()).toEqual({
+      error: 'the draft engine is not configured on this server',
+    });
+  });
+
+  it('the client’s default picks the engine: Tessera here (slice 6)', async () => {
+    const tessera = createFakeEngine(echo, { engine: 'tessera', model: 'm-t' });
+    const deepl = createFakeEngine(echo, { engine: 'deepl', model: 'deepl-v2' });
+    await app.close();
+    app = await buildApp({
+      config,
+      logger: false,
+      draftAdapterFor: (engine) => (engine === 'tessera' ? tessera : deepl),
+    });
+    const a = await login('alice');
+    await setup(a, { tessera: true, deepl: true, default: 'tessera' });
+
+    const viaDefault = await settled(
+      a,
+      jobIdOf(await post(a, '/api/projects/job/draft')),
+    );
+    expect(viaDefault.result).toMatchObject({ stop: 'done' });
+    expect(tessera.calls.length).toBeGreaterThan(0);
+    expect(deepl.calls).toHaveLength(0);
+    const db = projectDb();
+    expect(new Set(listDraftSuggestions(db).map((s) => s.engine))).toEqual(
+      new Set(['tessera']),
+    );
+    db.close();
+  });
+
+  it('a project override to DeepL is drafted by DeepL alone, and logged as the engine (slice 6)', async () => {
+    const tessera = createFakeEngine(echo, { engine: 'tessera', model: 'm-t' });
+    const deepl = createFakeEngine(echo, { engine: 'deepl', model: 'deepl-v2' });
+    await app.close();
+    app = await buildApp({
+      config,
+      logger: false,
+      draftAdapterFor: (engine) => (engine === 'tessera' ? tessera : deepl),
+    });
+    const a = await login('alice');
+    await setup(a, { tessera: true, deepl: true, default: 'tessera' });
+    expect(
+      (await put(a, '/api/projects/job/engine', { override: 'deepl' })).statusCode,
+    ).toBe(200);
+
+    const job = await settled(a, jobIdOf(await post(a, '/api/projects/job/draft')));
+    expect(job.result).toMatchObject({ stop: 'done' });
+    expect(deepl.calls.length).toBe(job.result!.requested);
+    expect(tessera.calls).toHaveLength(0);
+    const db = projectDb();
+    expect(new Set(listDraftSuggestions(db).map((s) => s.engine))).toEqual(
+      new Set(['deepl']),
+    );
+    const sent = listEvents(db, { subjectType: 'segment' }).filter(
+      (e) => e.action === 'ai.requested',
+    );
+    expect(sent.length).toBe(job.result!.requested);
+    expect(JSON.parse(sent[0]!.detail!)).toMatchObject({
+      engine: 'deepl',
+      model: 'deepl-v2',
+    });
+    expect(verifyAudit(db)).toMatchObject({ brokenAt: null });
+    db.close();
   });
 
   it('allows one run at a time for an account, and a cancelled run ends between segments', async () => {

@@ -43,4 +43,10 @@ describe('loadConfig', () => {
     expect(config.draftModel).toBe('m-9');
     expect(loadConfig({ CAT_DRAFT_MODEL: '' }).draftModel).toBe(DEFAULT_DRAFT_MODEL);
   });
+
+  it('reads the DeepL key from the environment only, an empty key meaning none', () => {
+    expect(loadConfig({}).deeplApiKey).toBeUndefined();
+    expect(loadConfig({ DEEPL_API_KEY: '' }).deeplApiKey).toBeUndefined();
+    expect(loadConfig({ DEEPL_API_KEY: 'd:fx' }).deeplApiKey).toBe('d:fx');
+  });
 });
