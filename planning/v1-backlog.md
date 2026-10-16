@@ -2575,7 +2575,7 @@ Translate and deliver one real paid multi-file client job end to end.
 *Done when:* delivered without opening Trados. **This is v1 done.**
 
 **#38 · Post-job triage · S** · [issue #23]
-Log every friction point from #37. Feeds v1.1 — concordance is the
+Log every friction point from #37. Feeds the follow-ons to v1 — concordance is the
 expected first item.
 
 ---
