@@ -460,9 +460,9 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
 
 `planning/translation-engine-spec.md` (issue #228): Tessera's own machine
 drafts from a client's TM plus Claude, or DeepL, chosen by the PM. Slices 1 to 4
-(backlog #133 to #138) are built: the consent gate, the `core/draft/` seam, the
-Anthropic adapter, the drafting job, the suggestion store and the editor strip.
-The DeepL adapter (slice 6) and the benchmark (slice 5) are not. Keep true:
+and 6 (backlog #133 to #139) are built: the consent gate, the `core/draft/` seam,
+the Anthropic and DeepL adapters, the drafting job, the suggestion store and the
+editor strip. The benchmark (slice 5) is not. Keep true:
 
 - **A client's content leaves only through `engineFor`** (`server/src/engine.ts`),
   which reads the project's client and override and the owner's consent and
@@ -483,6 +483,12 @@ The DeepL adapter (slice 6) and the benchmark (slice 5) are not. Keep true:
   hidden tag (`carryHiddenTags` supplies them at write). Raising a prompt bound
   or changing the wording is a new `PROMPT_VERSION`. The interface is
   `DraftEngineAdapter`: `DraftEngine` is the `tessera`/`deepl` union.
+- **DeepL is sent the marked text and nothing else, and only for a pair it is
+  known to serve** (backlog #139, spec D40). `supports` on the adapter is asked
+  once per run before the gate and any `ai.requested`, so an unserved pair is no
+  send. The language list is short and fails closed; Vietnamese is left out
+  until checked against DeepL's list (D14), and adding it is one line. It reports
+  no tokens, so characters stand in for them in the run's ceiling.
 - **A draft is a suggestion beside the segment, never in it** (backlog #135,
   `db/project/draft-suggestions.ts`, `draft.ts`). `draftSuggestions` asks the
   gate (a function, not a value) before every segment, logs `ai.requested`
@@ -490,10 +496,12 @@ The DeepL adapter (slice 6) and the benchmark (slice 5) are not. Keep true:
   stores a valid reply in `draft_suggestion`; only acceptance writes a target
   (slice 4). A new run over the same project resumes, because a segment with a
   current suggestion is skipped. Don't make the gate a once-per-run value.
-- **A client's text reaches Anthropic through `startDraftRun` only** (backlog #136,
-  `server/src/{anthropic-engine,draft-job,draft}.ts`). The host is fixed in code
-  (no base-URL setting), the key is `ANTHROPIC_API_KEY` and nothing else, and an
-  error never carries a message or a body. A run is an in-process job with the
+- **A client's text reaches Anthropic or DeepL through `startDraftRun` only**
+  (backlog #136, #139, `server/src/{anthropic-engine,deepl-engine,engine-http,draft-job,draft}.ts`).
+  The host is fixed in code (no base-URL setting), the key is `ANTHROPIC_API_KEY`
+  or `DEEPL_API_KEY` and nothing else, and an error never carries a message or a
+  body: one retry loop (`postWithRetry`) holds that for both, so a third engine
+  uses it rather than writing its own. A run is an in-process job with the
   registry's own handle (kind `draft`), owner-only and `manage`; do not move it to a
   worker thread, which cannot await a network call, and do not add a second way to
   call the adapter. The CLI has no drafting step and never will without a card

@@ -1,8 +1,8 @@
 # Translation engine — spec
 
-Status: **design settled; built as recorded in `v1-backlog.md` #133 to #138
-(consent, seam, gated run, Anthropic adapter, strip, purge). The benchmark and
-DeepL are not built; what is open is on the cards.** Written 2026-10-12 from Louis's request:
+Status: **design settled; built as recorded in `v1-backlog.md` #133 to #139
+(consent, seam, gated run, Anthropic adapter, strip, purge, DeepL adapter). The
+benchmark is not built; what is open is on the cards.** Written 2026-10-12 from Louis's request:
 Tessera gets its own automated translation, built on an analysis of the
 client's translation memory plus Claude, invisible to the client and the
 translator, "something similar to what is proposed by ModernMT". It is
@@ -285,7 +285,7 @@ filed when a slice is next, not before.
 | 3 | The Anthropic adapter, the suggestion store, the pre-translate job (the CLI step was dropped, D39), provenance and `ai.requested`. | A batch over a fixture project stores suggestions only for allowed clients; the audit chain verifies. |
 | 4 | The editor: suggestion in the match panel, accept, prefetch ahead of the cursor. | A translator accepts a draft from the keyboard with no blocking wait; the accept is the audited write. |
 | 5 | `research/translation-engine/` and the D7 benchmark harness: hypotheses first, three arms, a results file per run. | A results file compares the three arms on a synthetic corpus; a private-memory run yields numbers only. |
-| 6 | The DeepL adapter behind the same seam, so the PM's choice (D2) is real. | The same fixture project drafts through either engine; the setting picks. |
+| 6 | The DeepL adapter behind the same seam, so the PM's choice (D2) is real. | The same fixture project drafts through either engine; the setting picks. **Built (#139, D40).** |
 
 Slice 0's spike is recorded in `research/translation-engine/` (experiment
 E-001, hypotheses H1 to H4, written before any run); the folder is the one
@@ -529,7 +529,7 @@ segment (D26). A process restart loses the registry, not the suggestions: a reru
 resumes. `POST /api/projects/:name/draft` is owner-only and `manage` (D20), allows
 one run per account, and refuses with a reason the owner can read: 409 and the
 gate's reason when the client has not consented, 503 when the server has no key,
-501 for DeepL (slice 6).
+501 for DeepL (slice 6; since D40 it is 503 like the other, when the server has no `DEEPL_API_KEY`).
 
 **D29. One host, one key, one header, no echo.** The adapter's host is fixed in
 code (`api.anthropic.com`); there is deliberately no base-URL setting, so no
@@ -663,6 +663,34 @@ that route. **Reopen it** if a real job needs unattended drafting: the way in is
 `engineFor`.
 
 Stayed in TypeScript (D6); no code changes. The golden transcript is untouched.
+
+### Decided while building slice 6 (backlog #139, 2026-10-16)
+
+Slice 6 stayed in TypeScript (D6, re-asked and confirmed by Louis on
+2026-10-16): the adapter is one network-bound HTTPS call behind the existing seam.
+
+**D40. DeepL gets the marked text only, a short fail-closed list of pairs, and
+characters for a ceiling.** (1) The request is `request.sourceText` and nothing
+else, with `tag_handling: xml` so the `<tN>` markers (D22) can move with their
+words; `split_sentences: 0` and `outline_detection: false`, because a segment is
+one unit. Whether the markers come back intact is `validateDraft`'s verdict, as
+for any engine, and is not known until a real call (no key has been available).
+(2) `DraftEngineAdapter` gained an optional `supports(srcLang, tgtLang)`, asked
+once per run before the gate, the candidates or any `ai.requested`: a pair the
+engine cannot serve ends the run as `engine_error` naming the pair, and logs no
+send. The DeepL list is short and a language absent from it is refused.
+**Vietnamese is absent**: whether DeepL serves it is the open point D14 gave to
+slice 5's setup, so EN to VI has no DeepL arm until it is checked against DeepL's
+own languages list (a one-line addition). (3) DeepL reports no tokens, so the
+characters sent go in `usage.inputTokens`; D12's per-run ceiling then bounds a
+DeepL run in characters, which is stricter than 200,000 tokens, the safe
+direction, and is a placeholder like the first ceiling (D27). (4) The host is
+fixed in code (`api-free.deepl.com` for a key ending `:fx`, else
+`api.deepl.com`), the key is `DEEPL_API_KEY` and nothing else, and a failure
+says the status and nothing more, since DeepL's errors carry free text and no
+fixed type. The retry loop and that rule are shared with the Anthropic adapter
+(`server/src/engine-http.ts`), not copied. (5) A route that reaches a DeepL
+adapter is the same `POST /api/projects/:name/draft`; the 501 is gone.
 
 ### Still open
 

@@ -169,6 +169,36 @@ describe('draftSuggestions', () => {
     db.close();
   });
 
+  it('refuses a pair the engine does not serve before asking, building or logging anything (D40)', async () => {
+    const db = project();
+    const base = createFakeEngine(echo, { engine: 'deepl' });
+    const asked: Array<[string, string]> = [];
+    const engine: DraftEngineAdapter = {
+      engine: 'deepl',
+      model: base.model,
+      supports: (src, tgt) => {
+        asked.push([src, tgt]);
+        return false;
+      },
+      draft: (request) => base.draft(request),
+    };
+    const summary = await draftSuggestions(db, {
+      actor: TEST_ACTOR,
+      adapter: engine,
+      gate: () => ({ engine: 'deepl' }),
+    });
+    expect(summary).toMatchObject({
+      stop: 'engine_error',
+      requested: 0,
+      stored: 0,
+      error: expect.stringContaining('deepl engine does not translate'),
+    });
+    expect(asked).toHaveLength(1);
+    expect(base.calls).toHaveLength(0);
+    expect(actions(db, 'ai.requested')).toHaveLength(0);
+    db.close();
+  });
+
   it('stops the remaining segments when the client is switched off between segments', async () => {
     const db = project();
     const engine = createFakeEngine(echo);

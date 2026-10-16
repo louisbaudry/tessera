@@ -70,6 +70,13 @@ export interface DraftEngineAdapter {
    * reply's own `model` (which is what an accepted draft's provenance records).
    */
   readonly model: string;
+  /**
+   * Whether the engine serves a language pair at all, asked once per run before
+   * any request is built or `ai.requested` logged: a pair it cannot serve must
+   * not be recorded as a send. Omitted means "any pair" (a model prompted in
+   * the pair's own words, like the Anthropic adapter).
+   */
+  supports?(srcLang: string, tgtLang: string): boolean;
   draft(request: DraftRequest): Promise<DraftResult>;
 }
 
