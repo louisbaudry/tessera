@@ -3182,7 +3182,7 @@ The first screen that shows a draft to a translator. Stayed in TypeScript (spec 
 - **A hole found while building, not by a failing run.** The grid's origin badge prints
   an unknown origin verbatim, so an accepted draft would have shown `mt_draft` in the
   gutter, against D3. `shownOrigin` makes it no origin in the badge and the filter; the
-  value still reaches the browser in JSON (#250).
+  value still reaches the browser in JSON, which spec D41 accepts.
 - **Prefetch is quiet by construction.** One request at a time, the next few untranslated
   segments, never twice, and it gives up after three empty answers in a row because the
   page cannot tell off from empty (D37).
@@ -3192,7 +3192,7 @@ The first screen that shows a draft to a translator. Stayed in TypeScript (spec 
   the audit event naming the account with the provenance, typed text never replaced, and
   three prefetch requests then silence.
 - **Not built.** A match panel and anything showing TM matches (#151), masking the origin
-  in JSON (#250), DeepL (slice 6), a bulk "accept all", and the
+  in JSON (dropped, spec D41), DeepL (slice 6), a bulk "accept all", and the
   benchmark (slice 5). Known cost: a one-segment request still reads every segment of the
   project to decide what a memory places, which is fine at thousands and wants a narrower
   query at tens of thousands.
