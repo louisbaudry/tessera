@@ -524,7 +524,10 @@ editor strip. The benchmark (slice 5) is not. Keep true:
   origin; a new one goes through it too.
 - **The engine is invisible to whoever does the work.** Its routes are
   owner-only and `manage`; no route a vendor or grantee can reach returns an
-  engine or an origin that names one (spec D3, D20).
+  engine, model or prompt, and no screen shows a draft marker. The
+  stored origin `mt_draft` does reach a translator's browser in segment JSON: it is one
+  word for every engine and names none, and masking it was decided against (spec D3,
+  D20, D41). Never add an origin that names an engine.
 - **A research record, not a feature, for the numbers.** The spike and the
   benchmark follow the semantic-matching protocol in `research/translation-engine/`
   (hypothesis before the run, every run recorded, no client text).

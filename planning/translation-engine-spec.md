@@ -634,8 +634,7 @@ editor now treats `MT_DRAFT_ORIGIN` as no origin at all: no badge, and not a val
 origin filter offers (`shownOrigin`, one place), so the screen carries no machine
 marker (D3). The value is still in the segment JSON a translator's browser
 receives, which is the strictest reading of D20 ("no route they reach returns an
-origin that names one") not yet met; masking it is #250, with the options and a
-recommendation for Louis (leave it, since `mt_draft` names no engine).
+origin that names one") not yet met; masking it was #250, settled in D41 (leave it).
 
 ### Decided while closing #246 (backlog #246, 2026-10-15)
 
@@ -691,6 +690,39 @@ says the status and nothing more, since DeepL's errors carry free text and no
 fixed type. The retry loop and that rule are shared with the Anthropic adapter
 (`server/src/engine-http.ts`), not copied. (5) A route that reaches a DeepL
 adapter is the same `POST /api/projects/:name/draft`; the 501 is gone.
+
+### Decided while closing #250 (backlog #250, 2026-10-17)
+
+**D41. `mt_draft` stays in the segment JSON; "invisible" means no engine, model or
+prompt, and no marker on the screen (Louis, 2026-10-17).** D38 left one gap: an
+accepted draft's stored origin reaches a translator's browser in every segment
+payload (the file listing, a save, a confirm, an accept), where the network tab shows
+it, though the editor draws nothing for it. D20 says "no route they can reach names an
+engine"; read strictly, the origin is not an engine name, so the sentence holds, but
+CLAUDE.md had said "or an origin that names one" and a reader could take that to mean
+the origin is hidden from the wire. The options were (a) leave it, (b) mask it to
+`null` for a non-owner session in every segment-returning route, (c) strip it at one
+serializer. (a) was chosen:
+
+- `mt_draft` is one fixed word for every engine. It does not say Claude or DeepL, which
+  model, which prompt, or even that a client's text was sent anywhere: it says only that
+  the target began as a machine draft. The things D3 hides are the engine's name and a
+  marker a person would read, and both stay hidden.
+- Masking it (b, c) costs a rewrite of how segments are returned, and the owner's own
+  view and the audit trail must keep the truth (D3 stores the origin for exactly that
+  reason). That is a large change to protect a value that names nothing.
+- **What holds, exactly:** no route a vendor or grantee can reach returns an engine, a
+  model or a prompt, and no screen shows a draft marker (a test reads a
+  project as a grantee and finds neither "tessera" nor "deepl"). **What does not hold, and
+  is accepted:** a translator who reads their own network traffic sees that a segment's
+  origin is `mt_draft`.
+- **Reopen it** if a client or a regulator needs the strict reading, as (c) first: one
+  shared segment serializer that masks the origin for a non-owner session, with the
+  owner's reads and the audit trail going through the unmasked path. A new origin that names
+  an engine (`mt_deepl`, say) must never be added; this decision rests on there being one
+  word for all.
+
+No code changes. Stayed in TypeScript (D6).
 
 ### Still open
 
