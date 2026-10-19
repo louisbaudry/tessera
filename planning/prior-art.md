@@ -100,9 +100,10 @@ What it means for what may enter:
 - **LGPL, MPL and EPL** are not allowlisted. As an unmodified dependency they
   may be acceptable, but that is a decision, recorded as a named entry with
   its reason in `scripts/license-policy.mjs`.
-- **The copyright holder is written "The Tessera authors"** in `NOTICE`, a
-  neutral placeholder. Replacing it with a legal name is Louis's call and is
-  not made here: the repository is public and no name was given.
+- **The copyright holder is "The Tessera authors"** in `NOTICE`, by Louis's
+  decision of 2026-10-19. It is a collective name on purpose: the repository is
+  public, so no personal or company name is written into it. Changing it later
+  is Louis's call.
 - Fixtures are synthetic (see _Fixture corpus_ in `CLAUDE.md`) and are
   covered by the same license.
 
