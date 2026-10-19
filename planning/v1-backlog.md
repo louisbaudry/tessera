@@ -3211,6 +3211,17 @@ The PM's choice between engines (D2, D8) is real: a project whose setting resolv
 - **Verified:** 13 adapter tests against a stubbed network (request shape, free/paid host, entity decoding, retry, no key or text in an error, an unserved pair sends nothing), 1 db test, 2 route tests (the default picks Tessera, an override picks DeepL, each run logging its own engine; unconfigured DeepL is 503), 1 config test. Removing the `supports` check turns the db test red (tried, restored). **Not verified:** a real DeepL call (no key here), that DeepL keeps `<tN>` markers on real text, which languages the live list serves.
 
 
+**#140 · ~~Differential OOXML validation of translated exports~~ · DONE — `scripts/ooxml-validate/` (a C# tool over the Open XML SDK), `db/src/project/ooxml.check.test.ts`, `pnpm test:ooxml`, CI job `🧪 OOXML validation`**
+
+Design in `v1-spec.md` §3.7 (issue #265). The gate proves a zero-edit export is byte-identical; nothing proved a *translated* export stays inside the schema. Every fixture is now translated segment by segment, exported through `exportFile`, and validated next to its original; the export may add no finding the original lacked. The Rust/WebAssembly question was asked first and the answer was to stay in TypeScript, with the validator a CI-only .NET tool.
+
+- **Differential, because four originals are invalid.** On 2026-10-19 the validator found nothing on 17 of 21 fixtures and 2, 6, 12 and 15 findings on the originals of `large-media-packet`, `table-hyperlink`, `tracked-changes-endnotes` and `vertalign-superscript`. An absolute bar would fail on files the gate requires us to keep. The comparison key is id, part and description, never the XPath, which shifts when a paragraph is rewritten.
+- **The test can fail, and was seen to.** Adding `w:bogus="1"` to the `<w:t>` the renderer emits turned the run red with the file, XPath and rule for each paragraph (reverted); a second test validates a deliberately broken copy and requires a finding, so a pass is never vacuous.
+- **A skipped check reports green, so a missing `dotnet` fails the run.** The tool is built once in `beforeAll`; the whole run takes about ten seconds. It is excluded from `pnpm test` like the gate, with its own script and CI job, so `pnpm test` needs no .NET.
+- **Kind C in `planning/prior-art.md`:** the SDK is MIT (read at 431ab05), referenced as NuGet `DocumentFormat.OpenXml` 3.3.0 by a dev tool that is excluded from the image (`.dockerignore`); nothing copied, nothing shipped.
+- **Not proven:** that Word opens the file, or anything beyond what the SDK checks.
+
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)

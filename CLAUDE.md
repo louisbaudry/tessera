@@ -128,7 +128,9 @@ wrong and is not swept.
    true with no bookkeeping. Run the full gate before calling it done:
    `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
    `pnpm test`, `pnpm test:gate` if anything under
-   `packages/core/src/docx` changed, and `pnpm test:golden` if anything
+   `packages/core/src/docx` changed, `pnpm test:ooxml` if anything under
+   `packages/core/src/docx`, `core/model`, `core/project` or `db/project`
+   changed (it needs the .NET 8 SDK), and `pnpm test:golden` if anything
    under `packages/cli`, `core/model`, `core/qa`, `core/project`,
    `core/tm`, `db/project`, `db/tm` or `fixtures/golden` changed (its
    transcript is what those deliver, so a change there is a diff to
@@ -177,6 +179,13 @@ wrong and is not swept.
   re-serializing a parsed tree.** A serializer drops namespaces only
   referenced via `mc:Ignorable`, silently breaking documents that use
   them. This is why the roundtrip gate can require byte-identical output.
+- **A translated export is validated differentially, never against an
+  absolute bar** (issue #265, `v1-spec.md` §3.7, `pnpm test:ooxml`). The Open
+  XML SDK validator (`scripts/ooxml-validate`, a CI-only .NET tool) must find
+  nothing in an export that it did not already find in the original, because
+  four fixtures are invalid in their original form and the gate requires us to
+  keep them so. Don't "fix" a fixture to reach zero findings, and don't loosen
+  the comparison key (`id`, part, description; never the XPath, which shifts).
 - **The roundtrip gate (`pnpm test:gate`) is load-bearing.** Zero-edit
   DOCX import → export must reproduce every part byte-for-byte across the
   real-world corpus in `fixtures/docx/`. If a change breaks it, the change

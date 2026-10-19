@@ -129,7 +129,7 @@ short commit it was read at (a shallow clone of the default branch, 2026-10-19).
 | [segment-any-text/wtpsplit](https://github.com/segment-any-text/wtpsplit)                    | Neural sentence segmentation as a benchmark against our rules        | MIT @ 3ef928c | D    | nothing                    | results file, if run    |
 | [nipunsadvilkar/pySBD](https://github.com/nipunsadvilkar/pySBD)                              | Per-language "golden rules" test categories                          | MIT @ 5905f13 | B    | categories only, no cases  | courtesy; notice if copied |
 | [diasks2/pragmatic_segmenter](https://github.com/diasks2/pragmatic_segmenter)                | Origin of those golden rules; abbreviation handling                  | MIT @ 358fe97 | B    | categories only, no cases  | courtesy; notice if copied |
-| [dotnet/Open-XML-SDK](https://github.com/dotnet/Open-XML-SDK)                                | Differential OOXML validation of exports, beside the roundtrip gate  | MIT @ 431ab05 | C    | nothing                    | if the check is added   |
+| [dotnet/Open-XML-SDK](https://github.com/dotnet/Open-XML-SDK)                                | Differential OOXML validation of exports, beside the roundtrip gate  | MIT @ 431ab05 | C    | nothing                    | `scripts/ooxml-validate` (NuGet `DocumentFormat.OpenXml` 3.3.0, dev tool only) |
 | [plutext/docx4j](https://github.com/plutext/docx4j)                                          | Real-world Word quirks, as a reading reference                       | unread  | A    | nothing                    | courtesy                |
 | [vlcn-io/cr-sqlite](https://github.com/vlcn-io/cr-sqlite)                                    | CRDT merge, compared with the `mergeTm` winner rule                  | unread  | A    | nothing                    | courtesy                |
 | [benbjohnson/litestream](https://github.com/benbjohnson/litestream)                          | Continuous SQLite backup, against the migration runner's own backup  | unread  | E    | nothing                    | if adopted              |
@@ -163,11 +163,10 @@ card first reads them.
 
 ## 7. Cards that follow, each gated on its source's row
 
-- Differential OOXML validation of exports (the Open-XML-SDK row is read: MIT,
-  so the validator may run in CI; a new .NET step in CI is an infrastructure
-  change, so its PR carries the `Infrastructure:` line and a `claude-shared`
-  register PR, and the card is a new feature, so the Rust/Wasm question comes
-  first).
+- ~~Differential OOXML validation of exports~~ (built, issue #265, `v1-spec.md`
+  §3.7: the Open XML SDK runs as a CI-only .NET tool, kind C, MIT, nothing
+  copied and nothing shipped; the Rust/Wasm question was asked and the answer
+  was to stay in TypeScript).
 - A segmentation golden-rules corpus written by us (needs the pySBD and
   pragmatic_segmenter rows only if a case is ever copied; categories alone
   do not need them).

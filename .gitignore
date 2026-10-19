@@ -19,3 +19,7 @@ packages/portal-server/data/
 
 # server's default local dev db/storage path (config.ts)
 packages/server/data/
+
+# The OOXML validator tool (scripts/ooxml-validate): .NET build output
+scripts/ooxml-validate/bin/
+scripts/ooxml-validate/obj/

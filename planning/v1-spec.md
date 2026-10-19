@@ -594,6 +594,53 @@ Five further decisions, each the conservative or the consistent one:
 
 ---
 
+### 3.7 Validating a translated export
+
+Decided 2026-10-19 (issue #265). The roundtrip gate (§3.1) proves a
+zero-edit export is byte-identical. It says nothing about a *translated*
+one, where `renderTokens` rewrites every paragraph that has a target: that
+output was checked by eye, or by a one-off XSD run on six fixtures.
+
+**The check is differential.** Every fixture is translated segment by
+segment (each visible token's text changed, a non-ASCII letter and `&<`
+added so escaping is on the path), exported through `exportFile`, and
+validated together with its original. The export may add **no finding the
+original did not already have**. The comparison key is the finding's id, part
+and description; the XPath is left out because a rewritten paragraph can
+shift the position of a finding that is otherwise the same one.
+
+An absolute bar ("no findings") is wrong here. On 2026-10-19 the Open XML
+SDK validator reported nothing on 17 of the 21 fixtures and, on the originals
+of the other four, `Sem_UniqueAttributeValue` twice (`large-media-packet`)
+and `Sch_UndeclaredAttribute` 6, 12 and 15 times (`table-hyperlink`,
+`tracked-changes-endnotes`, `vertalign-superscript`). Those are Word's own
+output, kept as it is (`fixtures/docx/README.md`), and the gate requires us to
+preserve them. (`media-heavy-packet`, which fails the strict XSD, is clean
+under the SDK, which models Markup Compatibility.)
+
+**The validator is the Open XML SDK** (MIT, read at 431ab05), run as a small
+C# console tool under `scripts/ooxml-validate` that prints findings as JSON.
+It is a CI-only dev tool that ships nowhere (`planning/prior-art.md`, kind C).
+Options weighed, with the Rust/WebAssembly question asked first:
+
+| Option | Why not |
+|---|---|
+| Rust/Wasm validator | no mature OOXML validator exists in Rust, so it would be written from scratch, and no profile shows TypeScript is the bottleneck |
+| `xmllint` and the ECMA-376 schemas | no schema files in the repo (each would need its license read first), and a structure-only check |
+| **Open XML SDK in CI (chosen)** | Tessera's code stays TypeScript; costs a .NET 8 SDK in one CI job (an infrastructure change) and a NuGet dependency of the tool |
+
+**It proves** that the renderer's output stays inside the schema the SDK
+knows, for every paragraph the fixtures exercise; the test also validates a
+deliberately broken copy and requires a finding, so a pass is not vacuous
+(and breaking the renderer on purpose turns the run red with the file, XPath
+and rule). **It does not prove** that Word opens the file (no Word is in the
+loop), that the synthetic translation looks like real content, or anything
+about semantics the SDK does not check.
+
+Run with `pnpm test:ooxml` (needs the .NET 8 SDK; it fails loudly without it,
+because a skipped check reports green). Its own CI job, excluded from
+`pnpm test` like the gate and the golden test.
+
 ## 4. Data model
 
 SQLite, one file per project (`project.catdb`), plus one file per TM

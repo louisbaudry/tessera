@@ -148,6 +148,7 @@ pnpm install
 pnpm test        # vitest, excludes the roundtrip gate
 pnpm test:gate   # the roundtrip gate — byte-identical DOCX import/export
 pnpm test:golden # the golden end-to-end job — a real DOCX and TMX through every CLI command, against a committed transcript
+pnpm test:ooxml  # differential OOXML validation — a translated export may add no validator finding its original lacked (needs the .NET 8 SDK)
 pnpm test:all    # everything
 pnpm typecheck   # includes test files — vitest only transpiles
 pnpm lint
