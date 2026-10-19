@@ -66,6 +66,18 @@ document becomes a fixture only through
 scrub has leaked before); a real memory contributes numbers only,
 under opaque ids (`research/`, `pnpm bench:tm --sdltm`).
 
+## Prior art and third-party code
+
+`planning/prior-art.md` (issue #259) is the register and the rules. Before
+anything from outside enters the repo or the build, read that file: **its
+license is read at a pinned commit and recorded first.** An idea is cited,
+copied code, data and assets follow their source's license and are listed in
+`THIRD-PARTY-NOTICES.md`, and a copyleft source cannot be combined with
+Tessera's code. `pnpm licenses:check` (run inside `pnpm test`) fails on a
+production dependency outside the allowlist in `scripts/license-policy.mjs`;
+an exception is a named entry there with its reason, never a looser list.
+Tessera's own license is undecided and is Louis's call.
+
 ## Code comments
 
 Code comments rule synced: 2026-10-11
