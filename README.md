@@ -268,3 +268,10 @@ full row of green checks — see CLAUDE.md's gotcha list.
   `portal.sqlite` is declared "never translation content"; a glossary is.
   See `planning/smart-glossary-spec.md` §2.1 before routing glossary data
   anywhere else.
+
+## License
+
+Tessera is licensed under the [Apache License 2.0](LICENSE); see
+[`NOTICE`](NOTICE). Third-party code, if any is ever included, is listed in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md), and
+[`planning/prior-art.md`](planning/prior-art.md) is the rule for what may be.

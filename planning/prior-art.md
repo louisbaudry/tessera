@@ -36,7 +36,8 @@ license of their source.
 | F    | Code, data or an asset copied, ported or bundled.                   | The license in full, the copyright line, and any `NOTICE`; changes marked for Apache-2.0. Copyleft cannot enter.  |
 
 Kind F is not proposed for any repository below. If a card finds a reason,
-it comes back to Louis with the license in hand first.
+it comes back to Louis with the license in hand first, and section 5 says
+which licenses can be combined with Tessera's own.
 
 ## 3. How a license is checked
 
@@ -82,11 +83,28 @@ wording before a commercial release.
 
 ## 5. Tessera's own license
 
-The repository has no `LICENSE` file and `package.json` declares none, so
-Tessera is all rights reserved today although it is public. Choosing a
-license is Louis's decision and is not made here. It matters to this file in
-one direction: a copyleft source could not be combined with a permissive
-Tessera license, which is why kind F is closed for now.
+Tessera is licensed under **Apache-2.0** (decided by Louis on 2026-10-19,
+issue #261): the text is in `LICENSE`, the notice in `NOTICE`, and
+`package.json` declares it. Before that the repository had no license and was
+all rights reserved although public.
+
+What it means for what may enter:
+
+- **MIT, BSD, ISC, Apache-2.0 and the other allowlisted permissive licenses**
+  can be copied or bundled (kind F) with their notice kept, as section 3 and
+  `THIRD-PARTY-NOTICES.md` describe.
+- **GPL and AGPL code cannot be combined into Tessera's code**: Apache-2.0 is
+  compatible with GPL-3.0 only in the direction of the combined work becoming
+  GPL, which Tessera is not, and it is not compatible with GPL-2.0-only at
+  all. This is why kind F stays closed for any source that is not permissive.
+- **LGPL, MPL and EPL** are not allowlisted. As an unmodified dependency they
+  may be acceptable, but that is a decision, recorded as a named entry with
+  its reason in `scripts/license-policy.mjs`.
+- **The copyright holder is written "The Tessera authors"** in `NOTICE`, a
+  neutral placeholder. Replacing it with a legal name is Louis's call and is
+  not made here: the repository is public and no name was given.
+- Fixtures are synthetic (see _Fixture corpus_ in `CLAUDE.md`) and are
+  covered by the same license.
 
 ## 6. The register
 
