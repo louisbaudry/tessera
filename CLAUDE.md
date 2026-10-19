@@ -78,8 +78,8 @@ production dependency outside the allowlist in `scripts/license-policy.mjs`;
 an exception is a named entry there with its reason, never a looser list.
 Tessera itself is Apache-2.0 (`LICENSE`, `NOTICE`; decided 2026-10-19,
 issue #261), so a GPL or AGPL source cannot be combined with it; the
-copyright holder in `NOTICE` is the neutral "The Tessera authors" until Louis
-names one.
+copyright holder in `NOTICE` is "The Tessera authors" (Louis's decision,
+2026-10-19), so no personal or company name goes in the repo.
 
 ## Code comments
 
