@@ -10,3 +10,5 @@ packages/*/data
 *.catdb
 *.ctm
 *.ctg
+# A dev and CI tool (v1-spec.md §3.7); the image needs no .NET source.
+scripts/ooxml-validate

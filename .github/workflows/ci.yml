@@ -135,6 +135,45 @@ jobs:
       - name: Golden end-to-end
         run: pnpm test:golden
 
+  # 🧪 DIFFERENTIAL OOXML VALIDATION — issue #265, v1-spec.md §3.7.
+  #
+  # The gate proves a zero-edit export is byte-identical; this asks the Open
+  # XML SDK validator whether a *translated* export is any less valid than its
+  # original. The validator is a small .NET tool under scripts/ooxml-validate
+  # (a dev tool that ships nowhere), so this job installs the .NET 8 SDK.
+  # Its own job, and its own script (`pnpm test:ooxml`, excluded from
+  # `pnpm test`), so a failure names the finding rather than hiding among a
+  # thousand unit tests, and so `pnpm test` needs no .NET.
+  ooxml:
+    name: 🧪 OOXML validation
+    # Same positive condition as the gate and the golden job, for the same
+    # reason: a skipped job shows green.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The test exports through @cat-tool/db, which resolves @cat-tool/core
+      # through its dist/ — same reason the check job builds first.
+      - name: Build
+        run: pnpm build
+
+      - name: Differential OOXML validation
+        run: pnpm test:ooxml
+
   # 🐳 THE CONTAINER IMAGE — backlog #36.
   #
   # Builds the image from the Dockerfile and runs it against a throwaway
