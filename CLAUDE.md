@@ -76,7 +76,10 @@ copied code, data and assets follow their source's license and are listed in
 Tessera's code. `pnpm licenses:check` (run inside `pnpm test`) fails on a
 production dependency outside the allowlist in `scripts/license-policy.mjs`;
 an exception is a named entry there with its reason, never a looser list.
-Tessera's own license is undecided and is Louis's call.
+Tessera itself is Apache-2.0 (`LICENSE`, `NOTICE`; decided 2026-10-19,
+issue #261), so a GPL or AGPL source cannot be combined with it; the
+copyright holder in `NOTICE` is the neutral "The Tessera authors" until Louis
+names one.
 
 ## Code comments
 

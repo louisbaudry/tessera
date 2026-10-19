@@ -1,6 +1,6 @@
 # Third-party notices
 
-This file lists third-party code, data and assets that are **included in
+Tessera's own license (Apache-2.0) is in `LICENSE` and `NOTICE`. This file lists third-party code, data and assets that are **included in
 this repository or bundled with the product**, with the license notice each
 one requires. The rules for what may enter, and how authors are credited when
 they are not required to be, are in `planning/prior-art.md`.
