@@ -110,13 +110,14 @@ What it means for what may enter:
 ## 6. The register
 
 `unread` means the license has not been read at a commit by a session: no
-claim about it is made here. Stars and descriptions are from GitHub search on
+claim about it is made here. A read row gives the SPDX identifier and the
+short commit it was read at (a shallow clone of the default branch, 2026-10-19). Stars and descriptions are from GitHub search on
 2026-10-16 and are context, not evidence of anything else.
 
 | Repository                                                                                   | Studied for                                                          | License | Kind | Taken                      | Credit                  |
 | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------- | ---- | -------------------------- | ----------------------- |
 | [maxprograms-com/Swordfish](https://github.com/maxprograms-com/Swordfish)                    | Open-standards CAT tool: project and TM model                        | unread  | A    | nothing                    | courtesy                |
-| [maxprograms-com/OpenXLIFF](https://github.com/maxprograms-com/OpenXLIFF)                    | XLIFF 1.2 to 2.2 validation, as a check on an XLIFF export           | unread  | C    | nothing                    | if the check is added   |
+| [maxprograms-com/OpenXLIFF](https://github.com/maxprograms-com/OpenXLIFF)                    | XLIFF 1.2 to 2.2 validation, as a check on an XLIFF export           | EPL-1.0 @ 1d24db7 | C    | nothing                    | if the check is added   |
 | [microsoft/XLIFF2-Object-Model](https://github.com/microsoft/XLIFF2-Object-Model)            | Typed XLIFF 2 model, as a reference for tokens and tags              | unread  | A    | nothing                    | courtesy                |
 | [vslavik/poedit](https://github.com/vslavik/poedit)                                          | Translator-editor UX                                                 | unread  | A    | nothing                    | courtesy                |
 | [mozilla/pontoon](https://github.com/mozilla/pontoon)                                        | Review roles, terminology, contribution record                       | unread  | A    | nothing                    | courtesy                |
@@ -125,10 +126,10 @@ claim about it is made here. Stars and descriptions are from GitHub search on
 | [box/mojito](https://github.com/box/mojito)                                                  | Continuous localization with TM leverage                             | unread  | A    | nothing                    | courtesy                |
 | [hint-lab/deeptrans-studio](https://github.com/hint-lab/deeptrans-studio)                    | Nearest AI-native competitor: QA and workflow                        | unread  | A    | nothing                    | courtesy                |
 | [Supervertaler/Supervertaler-for-Trados](https://github.com/Supervertaler/Supervertaler-for-Trados) | AI in a CAT tool, MCP over a live session, SQLite knowledge base | unread  | A    | nothing                    | courtesy                |
-| [segment-any-text/wtpsplit](https://github.com/segment-any-text/wtpsplit)                    | Neural sentence segmentation as a benchmark against our rules        | unread  | D    | nothing                    | results file, if run    |
-| [nipunsadvilkar/pySBD](https://github.com/nipunsadvilkar/pySBD)                              | Per-language "golden rules" test categories                          | unread  | B    | categories only, no cases  | courtesy; notice if copied |
-| [diasks2/pragmatic_segmenter](https://github.com/diasks2/pragmatic_segmenter)                | Origin of those golden rules; abbreviation handling                  | unread  | B    | categories only, no cases  | courtesy; notice if copied |
-| [dotnet/Open-XML-SDK](https://github.com/dotnet/Open-XML-SDK)                                | Differential OOXML validation of exports, beside the roundtrip gate  | unread  | C    | nothing                    | if the check is added   |
+| [segment-any-text/wtpsplit](https://github.com/segment-any-text/wtpsplit)                    | Neural sentence segmentation as a benchmark against our rules        | MIT @ 3ef928c | D    | nothing                    | results file, if run    |
+| [nipunsadvilkar/pySBD](https://github.com/nipunsadvilkar/pySBD)                              | Per-language "golden rules" test categories                          | MIT @ 5905f13 | B    | categories only, no cases  | courtesy; notice if copied |
+| [diasks2/pragmatic_segmenter](https://github.com/diasks2/pragmatic_segmenter)                | Origin of those golden rules; abbreviation handling                  | MIT @ 358fe97 | B    | categories only, no cases  | courtesy; notice if copied |
+| [dotnet/Open-XML-SDK](https://github.com/dotnet/Open-XML-SDK)                                | Differential OOXML validation of exports, beside the roundtrip gate  | MIT @ 431ab05 | C    | nothing                    | if the check is added   |
 | [plutext/docx4j](https://github.com/plutext/docx4j)                                          | Real-world Word quirks, as a reading reference                       | unread  | A    | nothing                    | courtesy                |
 | [vlcn-io/cr-sqlite](https://github.com/vlcn-io/cr-sqlite)                                    | CRDT merge, compared with the `mergeTm` winner rule                  | unread  | A    | nothing                    | courtesy                |
 | [benbjohnson/litestream](https://github.com/benbjohnson/litestream)                          | Continuous SQLite backup, against the migration runner's own backup  | unread  | E    | nothing                    | if adopted              |
@@ -136,15 +137,37 @@ claim about it is made here. Stars and descriptions are from GitHub search on
 | [DRYTRIX/TimeTracker](https://github.com/DRYTRIX/TimeTracker)                                | Peppol e-invoicing with time-based billing, for Epic 13              | unread  | A    | nothing                    | courtesy                |
 | [meteroid-oss/meteroid](https://github.com/meteroid-oss/meteroid)                            | Usage-based billing model, for v4 (Ring 3)                           | unread  | A    | nothing                    | courtesy                |
 
+Read on 2026-10-19 (each `LICENSE` file opened at the commit in its row):
+
+- **Open-XML-SDK, pySBD, pragmatic_segmenter and wtpsplit are MIT**, with the
+  copyright lines ".NET Foundation and Contributors", "Nipun Sadvilkar" (2019),
+  "Kevin S. Dias" (2015) and "Benjamin Minixhofer, Markus Frohmann, Igor
+  Sterner" (2024). MIT is on the allowlist, so a copy of code or data from any
+  of them (kind F) would be permitted with its notice kept in
+  `THIRD-PARTY-NOTICES.md`. None is proposed.
+- **OpenXLIFF is EPL-1.0**, a weak-copyleft license and not on the allowlist.
+  It stays kind C: invoked unmodified as a validator, never copied, ported,
+  linked into Tessera or bundled in the image. A card that wants more than
+  that comes back to Louis first. Its `licenses/` directory lists the licenses
+  of the components it bundles; they were not read.
+- **wtpsplit's model weights** (downloaded from a model hub) carry their own
+  license, which was not read; the benchmark card must read it before any
+  weights are downloaded.
+- Open-XML-SDK's own `NOTICE` lists third-party material it incorporates
+  (StyleCopAnalyzers is the first entry). That matters only if its source were
+  copied, which is not proposed.
+
 Weblate, Okapi, translate-toolkit, Matecat, RapidFuzz and Svix were named in
 the same sweep but their search failed, so they have no row: add one when a
 card first reads them.
 
 ## 7. Cards that follow, each gated on its source's row
 
-- Differential OOXML validation of exports (needs the Open-XML-SDK row; a
-  new .NET step in CI is an infrastructure change, so its PR carries the
-  `Infrastructure:` line and a `claude-shared` register PR).
+- Differential OOXML validation of exports (the Open-XML-SDK row is read: MIT,
+  so the validator may run in CI; a new .NET step in CI is an infrastructure
+  change, so its PR carries the `Infrastructure:` line and a `claude-shared`
+  register PR, and the card is a new feature, so the Rust/Wasm question comes
+  first).
 - A segmentation golden-rules corpus written by us (needs the pySBD and
   pragmatic_segmenter rows only if a case is ever copied; categories alone
   do not need them).
