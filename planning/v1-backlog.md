@@ -3292,6 +3292,15 @@ Closes the gap issue #272 recorded. A bug fix in existing code with a small desi
 - **Seen to fail:** against the old `segmenter.ts` the two promoted cases and the new Spanish `Paso 1.` case fail, nothing else.
 - **Not covered:** scripts without case (Korean `단계 1.`, Vietnamese labels are cased and are covered), and list numbering at the start of a paragraph (`1. Open ...`), which the corpus has no case for.
 
+**#147 · ~~A sentence that starts with a lowercase product name~~ · DONE — `core/src/segment/segmenter.ts` (`opensSentence`)**
+
+Closes the gap issue #273 recorded. A bug fix in existing code, no new feature, so no Rust/WebAssembly question.
+
+- **Rule:** a lowercase letter after a full stop opens a sentence when the word has a capital inside it (`iPhone`, `eBay`, `macOS`, `pH`). An ordinary lowercase word never has one, so `He bought apples. oranges were sold out.` still does not break (the `policy` case stays as it was).
+- **Known cost:** a camel-case identifier after a full stop (`Call it. myVariable is set.`) now opens a sentence. That is the likelier reading, and a wrong break here costs a fragment only if the text before it really was not a sentence end.
+- **Seen to fail:** against the old `segmenter.ts` the promoted case and the two new ones (`eBay`/`macOS`, `pH`) fail, nothing else.
+
+
 
 
 

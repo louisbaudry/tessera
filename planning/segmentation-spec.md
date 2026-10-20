@@ -369,7 +369,7 @@ branch):
 | #270 | an abbreviation written in two parts with a space (`z. B.`) is split. Closed: a dotted list entry also matches when its parts are written with spaces |
 | #271 | the word "no" is an abbreviation and never ends a sentence. Closed: `no` and `nos` are abbreviations only before a digit |
 | #272 | a step number is cut off from its text (`Step 1. Open ...`). Closed: a segment so far that is one capitalised word and a number is a label, not a sentence |
-| #273 | a sentence starting with a lowercase product name (`iPhone`) is not cut |
+| #273 | a sentence starting with a lowercase product name (`iPhone`) is not cut. Closed: a lowercase word with a capital inside opens a sentence |
 | #274 | the Korean list holds single syllables that end ordinary clauses |
 
 **Prior art.** The idea of a "golden rules" set organised by edge-case
