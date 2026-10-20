@@ -194,9 +194,6 @@ export const EN: readonly CorpusCase[] = [
     category: 'numbered steps',
     text: 'Step 1. Open the file. Step 2. Save it.',
     sentences: ['Step 1. Open the file.', 'Step 2. Save it.'],
-    status: 'gap',
-    issue: 272,
-    note: 'A digit, a full stop and a capital read as the end of a sentence, so each step number is cut off from its text: "Step 1." / "Open the file." / "Step 2." / "Save it."',
   },
 
   // \u2500\u2500 urls, emails and file names \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -290,5 +287,10 @@ export const EN: readonly CorpusCase[] = [
     category: 'abbreviation at a sentence end',
     text: 'No. We moved on.',
     sentences: ['No.', 'We moved on.'],
+  },
+  {
+    category: 'numbered steps',
+    text: 'We counted 20. Then we left.',
+    sentences: ['We counted 20.', 'Then we left.'],
   },
 ];

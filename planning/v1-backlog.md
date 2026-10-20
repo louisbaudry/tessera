@@ -3271,6 +3271,17 @@ Closes the gap issue #270 recorded. A bug fix in existing code, no new feature, 
 - **Seen to fail:** against the old `segmenter.ts` the two promoted cases and the new `i. d. R.` and Spanish `a. C.` cases fail, nothing else.
 - **Not covered:** entries with a hyphen inside (`c.-à-d`, `J.-C`) are still matched only as written without spaces; Portuguese `p. ex.` and French `p. ex.` are lowercase-led and never broke.
 
+**#146 · ~~Step numbers cut off from their text (`Step 1. Open the file.`)~~ · DONE — `core/src/segment/segmenter.ts`**
+
+Closes the gap issue #272 recorded. A bug fix in existing code with a small design choice, recorded here; no new feature, so no Rust/WebAssembly question.
+
+- **Decision: a label is recognised by its shape, not by a word list.** When a digit-and-full-stop is about to end a sentence, and everything since the last break is one capitalised word and the number (`Step 1`, `Schritt 2`, `Paso 3`), it is the label of the text after it and does not break. No per-language list of label words was written: the shape works in every cased script and a list would be one more thing to maintain per language and per profile.
+- **Why it is safe:** the only text it keeps joined is a one-word-plus-number "sentence", which is never worth a segment of its own, and a missed break gives a longer segment, not a fragment in the memory. `We counted 20. Then we left.` still breaks (two words before the number), and the ordinal rules for German and Dutch are untouched.
+- **Known cost:** a genuine one-word-plus-number sentence (`Room 5.`) followed by a capital stays joined to the next sentence.
+- **Seen to fail:** against the old `segmenter.ts` the two promoted cases and the new Spanish `Paso 1.` case fail, nothing else.
+- **Not covered:** scripts without case (Korean `단계 1.`, Vietnamese labels are cased and are covered), and list numbering at the start of a paragraph (`1. Open ...`), which the corpus has no case for.
+
+
 
 
 
