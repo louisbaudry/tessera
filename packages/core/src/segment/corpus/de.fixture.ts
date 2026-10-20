@@ -41,17 +41,11 @@ export const DE: readonly CorpusCase[] = [
     category: 'abbreviations',
     text: 'Das gilt z. B. für Kinder und Senioren.',
     sentences: ['Das gilt z. B. für Kinder und Senioren.'],
-    status: 'gap',
-    issue: 270,
-    note: 'Written with a space, "z. B." is the usual German form. The first part, "z.", is a single lowercase letter and is not in the list, and "B." that follows is a capital, so the segmenter breaks inside the abbreviation.',
   },
   {
     category: 'abbreviations',
     text: 'Das gilt z.\u00A0B. für Kinder und Senioren.',
     sentences: ['Das gilt z.\u00A0B. für Kinder und Senioren.'],
-    status: 'gap',
-    issue: 270,
-    note: 'The same gap with the no-break space that correct German typography puts inside "z. B.".',
   },
   {
     category: 'abbreviations',
@@ -95,5 +89,15 @@ export const DE: readonly CorpusCase[] = [
     category: 'quotes and brackets',
     text: 'Er rief: \u201EKomm her.\u201C sagte sie leise.',
     sentences: ['Er rief: \u201EKomm her.\u201C sagte sie leise.'],
+  },
+  {
+    category: 'abbreviations',
+    text: 'Das gilt i. d. R. für alle.',
+    sentences: ['Das gilt i. d. R. für alle.'],
+  },
+  {
+    category: 'abbreviations',
+    text: 'Wir wählen Variante z. Danach gehen wir.',
+    sentences: ['Wir wählen Variante z.', 'Danach gehen wir.'],
   },
 ];

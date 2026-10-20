@@ -109,6 +109,57 @@ function precedingWord(text: string, at: number): string {
   return text.slice(start, end);
 }
 
+/**
+ * Whether the dot at `dot` sits inside a multi-part abbreviation written
+ * with spaces ("z. B.", "i. d. R.", Spanish "a. C."), given the dotted
+ * entries of the language split into parts (`z.B` gives `["z", "B"]`).
+ *
+ * The parts before the dot are collected backwards through `. ` joins and
+ * the letters after it are the next part; the abbreviation continues when a
+ * known entry begins with exactly those parts. The first part may differ in
+ * the case of its first letter, as in {@link isAbbreviation}. Without this,
+ * the lowercase "z" before a capital "B" reads as a sentence end, and the
+ * fragment "Das gilt z." would enter the memory.
+ */
+function continuesMultiPart(
+  text: string,
+  dot: number,
+  next: number,
+  multiPart: readonly (readonly string[])[],
+): boolean {
+  if (multiPart.length === 0) return false;
+  const follow = text.slice(next).match(/^\p{L}+/u)?.[0];
+  if (!follow) return false;
+  const parts: string[] = [];
+  let end = dot;
+  for (;;) {
+    let start = end;
+    while (start > 0 && /\p{L}/u.test(text[start - 1]!)) start--;
+    if (start === end) break;
+    parts.unshift(text.slice(start, end));
+    let k = start;
+    while (k > 0 && isSpace(text[k - 1])) k--;
+    if (k === 0 || text[k - 1] !== '.') break;
+    end = k - 1;
+  }
+  if (parts.length === 0) return false;
+  const wanted = [...parts, follow];
+  return multiPart.some(
+    (entry) =>
+      entry.length >= wanted.length &&
+      wanted.every((part, n) =>
+        n === 0 ? sameIgnoringFirstCase(entry[0]!, part) : entry[n] === part,
+      ),
+  );
+}
+
+/** Equal except possibly for the case of the first letter. */
+function sameIgnoringFirstCase(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length === 0 || b.length === 0 || a.slice(1) !== b.slice(1)) return false;
+  return a[0]!.toLowerCase() === b[0]!.toLowerCase();
+}
+
 /** The word ending at `end` (exclusive), letters and interior dots only. */
 function wordBefore(text: string, end: number): string {
   let start = end;
@@ -185,6 +236,9 @@ export function findBoundaries(text: string, rules: SegmenterRules): number[] {
   if (rules.breakOnSemicolon) terminators.add(';');
 
   const abbreviations = new Set(rules.abbreviations);
+  const multiPart = rules.abbreviations
+    .filter((a) => a.includes('.'))
+    .map((a) => a.split('.'));
   const userRules = 'userRules' in rules ? rules.userRules : [];
   const variables = 'variables' in rules ? rules.variables : [];
   const decided = decideWithUserRules(text, userRules);
@@ -288,6 +342,10 @@ export function findBoundaries(text: string, rules: SegmenterRules): number[] {
       if (word.includes('.') && isAbbreviation(word.replace(/\.$/, ''), abbreviations)) {
         continue;
       }
+
+      // The same abbreviation written with spaces, "z. B.": the part before
+      // this dot is not an abbreviation on its own.
+      if (continuesMultiPart(text, i, next, multiPart)) continue;
     }
 
     if (!opensSentence(text, next, rules)) continue;
