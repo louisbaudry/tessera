@@ -31,8 +31,5 @@ export const VI: readonly CorpusCase[] = [
     category: 'abbreviations',
     text: 'Xem tr. 12 để biết thêm.',
     sentences: ['Xem tr. 12 để biết thêm.'],
-    status: 'gap',
-    issue: 269,
-    note: '"tr." (trang, page) is not in the list, and a digit after a full stop opens a sentence, so the reference is cut off from its number.',
   },
 ];

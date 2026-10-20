@@ -60,7 +60,7 @@ export interface LanguageRules {
 }
 
 /** Shared across Latin-script languages: titles, initials, units. */
-const COMMON = ['cf', 'vs', 'etc', 'al', 'ca', 'approx', 'fig', 'vol', 'ed', 'pp'];
+const COMMON = ['cf', 'vs', 'etc', 'al', 'ca', 'approx', 'fig', 'vol', 'ed', 'p', 'pp'];
 
 const EN = [
   ...COMMON,
@@ -84,6 +84,7 @@ const EN = [
   'Lt',
   'Sgt',
   'Msgr',
+  'Mt',
   'Fr',
   'Ave',
   'Blvd',
@@ -554,6 +555,7 @@ const VI: readonly string[] = [
   'GS', // Giáo Sư (Professor)
   'TT', // Thư ký / Secretary
   'KH', // Khoa học / Science
+  'tr', // trang (page)
 ];
 
 export const LANGUAGE_RULES: Readonly<Record<string, LanguageRules>> = {

@@ -335,7 +335,7 @@ branch):
 | Issue | Gap |
 |---|---|
 | #268 | a closing quotation mark after a sentence end is not recognised (U+2019, German U+201C and reversed guillemets, a space before French `»`) |
-| #269 | abbreviations missing from the default lists (en `p.`, `Mt.`; vi `tr.`) |
+| #269 | abbreviations missing from the default lists (en `p.`, `Mt.`; vi `tr.`). Closed: `p` joined the shared list, `Mt` the English one, `tr` the Vietnamese one, and the three cases were promoted |
 | #270 | an abbreviation written in two parts with a space (`z. B.`) is split |
 | #271 | the word "no" is an abbreviation and never ends a sentence |
 | #272 | a step number is cut off from its text (`Step 1. Open ...`) |
