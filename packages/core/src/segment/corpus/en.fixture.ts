@@ -33,6 +33,22 @@ export const EN: readonly CorpusCase[] = [
   },
 
   {
+    category: 'hard separators',
+    text: 'Home | About us | Contact',
+    sentences: ['Home |', 'About us |', 'Contact'],
+  },
+  {
+    category: 'hard separators',
+    text: 'Sale ends today. Shop | basket',
+    sentences: ['Sale ends today.', 'Shop |', 'basket'],
+  },
+  {
+    category: 'hard separators',
+    text: 'Read a|b as one token',
+    sentences: ['Read a|b as one token'],
+  },
+
+  {
     category: 'abbreviation at a sentence end',
     text: 'She said no. We moved on.',
     sentences: ['She said no.', 'We moved on.'],
