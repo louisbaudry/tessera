@@ -3261,6 +3261,17 @@ Closes the gap issue #271 recorded. A bug fix in existing code, no new feature, 
 - **Seen to fail:** against the old `segmenter.ts` the promoted case and the new `No. We moved on.` case fail, nothing else.
 - **Not covered:** the issue also names other entries that double as words (English `Co`, `Rep`, `Gen`, `Fr`, Dutch `bv`); the corpus has no case for them, so they were not touched.
 
+**#145 · ~~Multi-part abbreviations written with spaces (`z. B.`)~~ · DONE — `core/src/segment/segmenter.ts` (`continuesMultiPart`)**
+
+Closes the gap issue #270 recorded. A bug fix in existing code, no new feature, so no Rust/WebAssembly question.
+
+- **A mechanism, not a list edit.** The lists already hold the dotted forms (`z.B`, `i.d.R`, Spanish `a.C`, Dutch `d.w.z`). At a dot, the parts written before it (collected backwards through `. ` joins, with or without a space or U+00A0) plus the letters after it are compared with the start of each dotted entry; a match means the dot is inside the abbreviation. It applies to every language and to a profile's own dotted entries.
+- **Why it only mattered before a capital.** `d. h.` and `u. a.` never broke, because a lowercase follower does not open a sentence; `z. B.`, `i. d. R.` and `a. C.` did, because the second part is a capital.
+- **Guard against over-matching:** the follower must equal the entry's next part exactly, so `Variante z. Danach gehen wir.` still breaks (a new corpus case).
+- **Seen to fail:** against the old `segmenter.ts` the two promoted cases and the new `i. d. R.` and Spanish `a. C.` cases fail, nothing else.
+- **Not covered:** entries with a hyphen inside (`c.-à-d`, `J.-C`) are still matched only as written without spaces; Portuguese `p. ex.` and French `p. ex.` are lowercase-led and never broke.
+
+
 
 
 

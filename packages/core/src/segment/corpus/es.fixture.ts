@@ -74,4 +74,9 @@ export const ES: readonly CorpusCase[] = [
     text: 'El 3,5 por ciento sube. Luego baja.',
     sentences: ['El 3,5 por ciento sube.', 'Luego baja.'],
   },
+  {
+    category: 'abbreviations',
+    text: 'Nació en el 45 a. C. y murió joven.',
+    sentences: ['Nació en el 45 a. C. y murió joven.'],
+  },
 ];
