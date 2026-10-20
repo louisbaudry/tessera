@@ -33,8 +33,37 @@ export type SegmenterRules = LanguageRules | SegmentationProfile;
 /** Sentence-ending punctuation. `:` and `;` are opt-in per language. */
 const TERMINATORS = new Set(['.', '!', '?', '…']);
 
-/** Closing marks that trail a terminator and belong to the same sentence. */
-const TRAILING = new Set(['"', "'", '»', '”', '\u2018', ')', ']', '}', '›']);
+/**
+ * Closing marks that trail a terminator and belong to the same sentence:
+ * straight quotes, brackets, and each language's closing quotation marks
+ * (English U+2019/U+201D, German U+201C and U+00AB, French/Spanish U+00BB,
+ * single guillemet U+203A). U+2018 is kept from the original set.
+ *
+ * Only marks written directly against the terminator are matched here. A mark
+ * after a space is handled by {@link consumeTrailing}.
+ */
+const TRAILING = new Set([
+  '"',
+  "'",
+  '\u00bb',
+  '\u00ab',
+  '\u201d',
+  '\u201c',
+  '\u2019',
+  '\u2018',
+  ')',
+  ']',
+  '}',
+  '\u203a',
+]);
+
+/**
+ * Closing marks that French and some other typography set after a space
+ * (U+00AB, a sentence, U+00BB, with U+00A0 or U+202F inside). Opening and closing share a
+ * glyph in German (U+00BB before the word, U+00AB after), so a mark only counts as closing here when it
+ * stands alone between spaces: an opening mark is always against its word.
+ */
+const SPACED_CLOSING = new Set(['\u00bb', '\u201d', '\u2019', '\u203a']);
 
 /** Marks that can legitimately open a Spanish sentence. */
 const INVERTED = new Set(['¿', '¡']);
@@ -272,8 +301,26 @@ function skipSpace(text: string, from: number): number {
 
 function consumeTrailing(text: string, from: number): number {
   let i = from;
-  while (TRAILING.has(text[i] ?? '')) i++;
-  return i;
+  for (;;) {
+    while (TRAILING.has(text[i] ?? '')) i++;
+    // French "Non. [U+00BB] Puis": a closing mark set off by spaces, followed by a space
+    // or the end. Looked at only after a terminator, so a lone mark elsewhere
+    // is never taken for one.
+    let j = i;
+    while (j < text.length && /[ \u00a0\u202f]/.test(text[j]!)) j++;
+    const mark = text[j];
+    const after = text[j + 1];
+    if (
+      j > i &&
+      mark !== undefined &&
+      SPACED_CLOSING.has(mark) &&
+      (after === undefined || isSpace(after))
+    ) {
+      i = j + 1;
+      continue;
+    }
+    return i;
+  }
 }
 
 /**

@@ -25,25 +25,16 @@ export const FR: readonly CorpusCase[] = [
     category: 'quotes and brackets',
     text: 'Il a dit : \u00AB Non. \u00BB Puis il est parti.',
     sentences: ['Il a dit : \u00AB Non. \u00BB', 'Puis il est parti.'],
-    status: 'gap',
-    issue: 268,
-    note: 'French puts a space between the full stop and the closing guillemet. The closing mark is then read as the start of the next word, and a guillemet is not something that opens a sentence, so no break is made.',
   },
   {
     category: 'quotes and brackets',
     text: 'Il a dit\u00A0: \u00AB\u00A0Non.\u00A0\u00BB Puis il est parti.',
     sentences: ['Il a dit\u00A0: \u00AB\u00A0Non.\u00A0\u00BB', 'Puis il est parti.'],
-    status: 'gap',
-    issue: 268,
-    note: 'The same gap with the correct typography: a no-break space before the closing guillemet.',
   },
   {
     category: 'quotes and brackets',
     text: 'Il a dit \u00AB non. \u00BB Puis il est parti.',
     sentences: ['Il a dit \u00AB non. \u00BB', 'Puis il est parti.'],
-    status: 'gap',
-    issue: 268,
-    note: 'Same cause as the others, with a lowercase quotation.',
   },
   {
     category: 'abbreviations',
@@ -79,5 +70,10 @@ export const FR: readonly CorpusCase[] = [
     category: 'ordinals and dates',
     text: 'Elle est née le 1er mai 1990. Elle a grandi à Lyon.',
     sentences: ['Elle est née le 1er mai 1990.', 'Elle a grandi à Lyon.'],
+  },
+  {
+    category: 'quotes and brackets',
+    text: 'Il a dit \u00AB non. \u00BB puis il est parti.',
+    sentences: ['Il a dit \u00AB non. \u00BB puis il est parti.'],
   },
 ];
