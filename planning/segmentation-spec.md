@@ -287,3 +287,70 @@ sold as if it can.
    its memory, so the same rules can seed a new TM?
 3. **Per-file overrides.** A single badly-formatted file sometimes needs
    one-off rules. Worth it, or does manual merge/split (#14) cover it?
+
+---
+
+## 9. The corpus
+
+Decided 2026-10-20 (issue #267). `segmenter.test.ts` holds the cases someone
+thought of while writing the code. A corpus organised by *what makes a text
+hard*, per language, shows what the segmenter does not do yet and records the
+choices it makes on purpose.
+
+**Where:** `packages/core/src/segment/corpus/<lang>.fixture.ts` (test
+scaffolding, excluded from the build), run by `corpus.test.ts` inside
+`pnpm test`. A language in `SUPPORTED_LANGUAGES` with no corpus fails the run,
+so adding a language forces its cases to be written. The text-level function
+under test is `findBoundaries`; the token-level path is covered elsewhere.
+
+**Three kinds of case.** A case is `correct` (the default), `policy` or `gap`:
+
+| Kind | Meaning | What the test asserts |
+|---|---|---|
+| correct | the segmenter gives what a translator should get | the cut equals `sentences` |
+| policy | a deliberate conservative choice, with the reason in `note` | the cut equals `sentences` (today's behaviour) |
+| gap | the segmenter is wrong; `sentences` is what it should give, `issue` tracks it | the cut still **differs**, so fixing it fails the run until the case is promoted |
+
+The last row is the point of the exercise. A corpus that holds only passing
+cases says nothing about what is missing, and a gap asserted as "still wrong"
+cannot be fixed by accident and forgotten: closing it turns the run red with
+"gap #N is closed: delete the status, note and issue from this case".
+
+**The policy that recurs:** a known abbreviation followed by a capital
+("etc. They", "Inc. Her desk") does not break. A false break puts half a
+sentence into the memory, where it never matches again; a missed break only
+makes a longer segment the translator can split by hand (v1-spec.md §5.1).
+
+**Categories** (a `Category` on each case, so a gap names its cause):
+plain terminators, ellipsis and runs of marks, quotes and brackets,
+abbreviations, abbreviation at a sentence end, initials and acronyms, numbers
+and decimals, ordinals and dates, numbered steps, URLs / emails / file names,
+lowercase starts, whitespace, inverted marks, typographic spacing, scripts
+without case.
+
+**What it found on the first run** (127 cases in nine languages: 104 correct,
+7 policy, 16 gaps, each gap filed as its own issue and none fixed on that
+branch):
+
+| Issue | Gap |
+|---|---|
+| #268 | a closing quotation mark after a sentence end is not recognised (U+2019, German U+201C and reversed guillemets, a space before French `»`) |
+| #269 | abbreviations missing from the default lists (en `p.`, `Mt.`; vi `tr.`) |
+| #270 | an abbreviation written in two parts with a space (`z. B.`) is split |
+| #271 | the word "no" is an abbreviation and never ends a sentence |
+| #272 | a step number is cut off from its text (`Step 1. Open ...`) |
+| #273 | a sentence starting with a lowercase product name (`iPhone`) is not cut |
+| #274 | the Korean list holds single syllables that end ordinary clauses |
+
+**Prior art.** The idea of a "golden rules" set organised by edge-case
+category is pySBD's and pragmatic_segmenter's (both MIT, read at 5905f13 and
+358fe97: `planning/prior-art.md`, kind B). Only their READMEs' description of
+the idea and the names of their test files were looked at; no case was read,
+and nothing is copied: every sentence is written for Tessera.
+
+**What it does not prove.** It is synthetic text written by us, so it shows
+the cases we thought of, not how often they occur. It holds no client text.
+The corpus covers the nine languages the segmenter supports and has not been
+reviewed by a native reader of each; the Korean and Vietnamese cases in
+particular are a start (#274 asks for that review).
+

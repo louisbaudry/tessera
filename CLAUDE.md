@@ -1132,6 +1132,14 @@ and a real one does not. When a fixture encodes a belief about someone
 else's format, the belief is the thing under test; check it against a
 real file before trusting the tests that rest on it.
 
+**The segmentation corpus** (issue #267, `segmentation-spec.md` §9,
+`core/src/segment/corpus/`) keeps cases of three kinds. A `gap` case asserts the
+segmenter is _still wrong_; if your change makes it right, the run fails with
+"gap #N is closed", and you promote the case by deleting its `status`, `note`
+and `issue` (and close the issue). Don't weaken a `correct` case to pass. A new
+language in `SUPPORTED_LANGUAGES` fails the run until it has a corpus. Lookalike
+characters in a case are `\uXXXX` escapes like everywhere else.
+
 ## Current status
 
 Don't trust this file for "what's done" — that goes stale immediately.

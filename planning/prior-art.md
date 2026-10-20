@@ -127,8 +127,8 @@ short commit it was read at (a shallow clone of the default branch, 2026-10-19).
 | [hint-lab/deeptrans-studio](https://github.com/hint-lab/deeptrans-studio)                    | Nearest AI-native competitor: QA and workflow                        | unread  | A    | nothing                    | courtesy                |
 | [Supervertaler/Supervertaler-for-Trados](https://github.com/Supervertaler/Supervertaler-for-Trados) | AI in a CAT tool, MCP over a live session, SQLite knowledge base | unread  | A    | nothing                    | courtesy                |
 | [segment-any-text/wtpsplit](https://github.com/segment-any-text/wtpsplit)                    | Neural sentence segmentation as a benchmark against our rules        | MIT @ 3ef928c | D    | nothing                    | results file, if run    |
-| [nipunsadvilkar/pySBD](https://github.com/nipunsadvilkar/pySBD)                              | Per-language "golden rules" test categories                          | MIT @ 5905f13 | B    | categories only, no cases  | courtesy; notice if copied |
-| [diasks2/pragmatic_segmenter](https://github.com/diasks2/pragmatic_segmenter)                | Origin of those golden rules; abbreviation handling                  | MIT @ 358fe97 | B    | categories only, no cases  | courtesy; notice if copied |
+| [nipunsadvilkar/pySBD](https://github.com/nipunsadvilkar/pySBD)                              | Per-language "golden rules" test categories                          | MIT @ 5905f13 | B    | category idea only, no cases | cited in `segmentation-spec.md` section 9; nothing copied |
+| [diasks2/pragmatic_segmenter](https://github.com/diasks2/pragmatic_segmenter)                | Origin of those golden rules; abbreviation handling                  | MIT @ 358fe97 | B    | category idea only, no cases | cited in `segmentation-spec.md` section 9; nothing copied |
 | [dotnet/Open-XML-SDK](https://github.com/dotnet/Open-XML-SDK)                                | Differential OOXML validation of exports, beside the roundtrip gate  | MIT @ 431ab05 | C    | nothing                    | `scripts/ooxml-validate` (NuGet `DocumentFormat.OpenXml` 3.3.0, dev tool only) |
 | [plutext/docx4j](https://github.com/plutext/docx4j)                                          | Real-world Word quirks, as a reading reference                       | unread  | A    | nothing                    | courtesy                |
 | [vlcn-io/cr-sqlite](https://github.com/vlcn-io/cr-sqlite)                                    | CRDT merge, compared with the `mergeTm` winner rule                  | unread  | A    | nothing                    | courtesy                |
@@ -167,9 +167,9 @@ card first reads them.
   §3.7: the Open XML SDK runs as a CI-only .NET tool, kind C, MIT, nothing
   copied and nothing shipped; the Rust/Wasm question was asked and the answer
   was to stay in TypeScript).
-- A segmentation golden-rules corpus written by us (needs the pySBD and
-  pragmatic_segmenter rows only if a case is ever copied; categories alone
-  do not need them).
+- ~~A segmentation golden-rules corpus written by us~~ (built, issue #267,
+  `segmentation-spec.md` section 9: 127 cases in nine languages, none copied;
+  the 16 gaps it found are issues #268 to #274).
 - A wtpsplit benchmark under `research/`, hypothesis committed before the
   run (`research/` protocol; numbers only; the row first).
 - Design notes on #152, #148, #174 and #171 from the kind A projects: a

@@ -3222,6 +3222,19 @@ Design in `v1-spec.md` §3.7 (issue #265). The gate proves a zero-edit export is
 - **Not proven:** that Word opens the file, or anything beyond what the SDK checks.
 
 
+**#141 · ~~Segmentation corpus: per-language cases for findBoundaries~~ · DONE — `core/src/segment/corpus/` (nine `<lang>.fixture.ts`), `core/src/segment/corpus.test.ts`**
+
+Design in `segmentation-spec.md` §9 (issue #267). 127 cases in `en`, `es`, `fr`, `de`, `it`, `pt`, `nl`, `ko` and `vi`, organised by category of difficulty, written for Tessera. No Rust/WebAssembly question: tests only, no new feature.
+
+- **Three kinds of case, one of them the point.** `correct` and `policy` assert today's cut; a `gap` asserts the cut is *still wrong*, so a fix fails the run with "gap #N is closed" until the case is promoted. 104 correct, 7 policy, 16 gaps on the first run.
+- **The first run found six real bugs the unit tests had not.** A closing quotation mark after a sentence end is not recognised for U+2019, German U+201C, reversed guillemets or a French space before `»` (#268); `p.`, `Mt.`, `tr.` missing (#269); `z. B.` written with a space is split (#270); the word "no" is an abbreviation and never ends a sentence (#271); step numbers are cut off from their text (#272); lowercase product names (#273); Korean single-syllable entries (#274). Each is its own issue and none was fixed on that branch.
+- **One cause per case, or a gap hides behind another.** The first draft used "She said no." to test curly quotes and it passed the wrong way: "no." was read as the abbreviation, so the quote handling was never reached. Each case now isolates one cause.
+- **Seen to fail, both ways.** Adding U+2019 to `TRAILING` turned exactly the matching gap case red with the "closed" message and broke no existing test; disabling the initials rule turned three correct cases red. Both changes were reverted.
+- **Lookalike characters are `\uXXXX` escapes** (NBSP, U+202F, curly quotes, guillemets, ellipsis; the set `tm-format-spec.md` §4 normalises). The tool that wrote the files turned typed escapes into glyphs, so a small script escapes them after the fact; accented and Hangul letters stay readable.
+- **Prior art:** the "golden rules" idea is pySBD's and pragmatic_segmenter's (MIT; kind B in `planning/prior-art.md`). No case was read or copied.
+- **Not proven:** frequency (the cases are what we thought of) and native review of each language.
+
+
 Sized issues:
 
 ### Epic 8a — Smart glossary (spec'd 2026-09-14, #39 done 2026-09-15)
