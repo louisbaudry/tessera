@@ -73,6 +73,11 @@ export const DE: readonly CorpusCase[] = [
     sentences: ['Er sagte: \u00BBKomm her.\u00AB', 'Dann ging er.'],
   },
   {
+    category: 'hard separators',
+    text: 'Startseite | \u00DCber uns | Kontakt',
+    sentences: ['Startseite |', '\u00DCber uns |', 'Kontakt'],
+  },
+  {
     category: 'numbers and decimals',
     text: 'Der Preis beträgt 1.250,50 Euro. Das ist viel.',
     sentences: ['Der Preis beträgt 1.250,50 Euro.', 'Das ist viel.'],

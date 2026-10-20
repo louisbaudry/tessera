@@ -172,6 +172,35 @@ User rules run **first** and win outright. "Custom" is worthless if the
 built-ins can veto it — a translator who writes a rule and watches it get
 overruled will not write a second one.
 
+### Hard separators
+
+Decided 2026-10-20. `|` is a **hard separator**: in every language, with no
+profile setting, a bar followed by whitespace and then more text ends a
+segment ("Home | About us | Contact" gives three). It is not a terminator, so
+it skips the tests a terminator gets (abbreviations, ordinals, initials,
+decimals, and `opensSentence`): the item after a bar in a menu, a breadcrumb or
+a table row is as often lowercase as not, and the capital-letter test would
+veto exactly those breaks. Rules:
+
+- **The bar stays** at the end of the segment before it, so export loses no
+  character. A run (`||`) is one separator.
+- **Whitespace must follow**, so `a|b` is left alone. A shell pipe written
+  with spaces (`cat file | grep x`) does break; there the bar is as much a
+  separator as in a menu, and a longer segment would be the same mistake the
+  other way.
+- **Nothing breaks if only blanks (or bars) precede the bar in its segment**,
+  so `| Name | Value |` gives `| Name |` and `Value |`, never a segment of one
+  bar. The end of the text is no boundary.
+- It sits after the user rules and the variables in the order above: a user
+  rule can say no-break at that position, and a variable containing a bar
+  ("Ops | Dev") is never cut. SRX export carries the generic break rule, and
+  import still recognises exports made without it.
+
+It was chosen over an opt-in flag (as `breakOnColon` is) because a bar between
+spaces is a separator in nearly all running text and a flag nobody sets would
+leave menus unsplit. Segments already stored are not re-cut: segmentation runs
+at import.
+
 The built-in logic stays hand-written rather than being re-expressed as
 regexes. It does things regex handles badly: case-flipped abbreviation
 matching, backward ordinal lookback, and the deferred-split behaviour that
@@ -207,6 +236,7 @@ has, so it ships first.
 | `ordinalFollowers` | generated `break="no"` rules, `\d+\.` + `\s*WORD` |
 | `variables` | generated `break="no"` rules |
 | flags | generated break rules |
+| hard separators (`\|`) | one generated break rule, `\|+` + `\s+\S`, last of the generic suffix |
 | `lang` | `<languagemap>` |
 
 **Import** is best-effort and must say so, and it preserves semantics
@@ -322,7 +352,7 @@ sentence into the memory, where it never matches again; a missed break only
 makes a longer segment the translator can split by hand (v1-spec.md §5.1).
 
 **Categories** (a `Category` on each case, so a gap names its cause):
-plain terminators, ellipsis and runs of marks, quotes and brackets,
+plain terminators, hard separators, ellipsis and runs of marks, quotes and brackets,
 abbreviations, abbreviation at a sentence end, initials and acronyms, numbers
 and decimals, ordinals and dates, numbered steps, URLs / emails / file names,
 lowercase starts, whitespace, inverted marks, typographic spacing, scripts

@@ -8,6 +8,7 @@ import { importDocx, translatableSegments } from '../docx/document.js';
 import { renderRegion } from '../docx/render.js';
 import { tokenizeRegion, tokensText } from '../docx/tokenize.js';
 import { validateTagStructure } from '../model/tags.js';
+import { resolveProfile } from './profile.js';
 import { rulesFor, SUPPORTED_LANGUAGES } from './rules.js';
 import { findBoundaries, segmentsAreValid, segmentTokens } from './segmenter.js';
 
@@ -116,6 +117,71 @@ describe('findBoundaries — the traps', () => {
 
   it('does not break on a double period', () => {
     expect(sentences('Wait.. what happened here.')).toHaveLength(1);
+  });
+});
+
+describe('findBoundaries — the | separator', () => {
+  it('breaks after a bar followed by whitespace, in any language', () => {
+    for (const lang of ['en', 'de', 'es', 'fr', 'ko']) {
+      expect(sentences('Home | About us | Contact', lang)).toEqual([
+        'Home |',
+        'About us |',
+        'Contact',
+      ]);
+    }
+  });
+
+  it('does not ask the next item to start with a capital', () => {
+    expect(sentences('products | prices')).toEqual(['products |', 'prices']);
+  });
+
+  it('leaves a bar with no whitespace after it alone', () => {
+    expect(sentences('cat file | grep x')).toEqual(['cat file |', 'grep x']);
+    expect(sentences('a|b and c|d')).toEqual(['a|b and c|d']);
+  });
+
+  it('keeps every character: the bar ends the segment before it', () => {
+    const text = 'Home | About us';
+    const cuts = findBoundaries(text, rulesFor('en'));
+    expect(cuts).toEqual([6]);
+    expect(text.slice(0, cuts[0])).toBe('Home |');
+  });
+
+  it('treats a run of bars as one separator', () => {
+    expect(sentences('one || two')).toEqual(['one ||', 'two']);
+  });
+
+  it('cuts no segment that holds only a bar', () => {
+    expect(sentences('| Name | Value |')).toEqual(['| Name |', 'Value |']);
+    expect(sentences('a | | b')).toEqual(['a |', '| b']);
+  });
+
+  it('makes no boundary at the end of the text', () => {
+    expect(findBoundaries('Home |', rulesFor('en'))).toEqual([]);
+    expect(findBoundaries('Home | ', rulesFor('en'))).toEqual([]);
+  });
+
+  it('combines with terminators', () => {
+    expect(sentences('Sale ends today. Shop | Basket')).toEqual([
+      'Sale ends today.',
+      'Shop |',
+      'Basket',
+    ]);
+  });
+
+  it('yields to a variable and to a user rule', () => {
+    const variable = resolveProfile({
+      version: 1,
+      lang: 'en',
+      variables: { added: ['Ops | Dev'] },
+    });
+    expect(findBoundaries('The Ops | Dev team', variable)).toEqual([]);
+    const noBreak = resolveProfile({
+      version: 1,
+      lang: 'en',
+      userRules: [{ break: false, beforeBreak: '\\|', afterBreak: '\\s' }],
+    });
+    expect(findBoundaries('Home | About us', noBreak)).toEqual([]);
   });
 });
 
