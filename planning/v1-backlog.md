@@ -3253,6 +3253,15 @@ Closes the gap issue #268 recorded. A bug fix in existing code, no new feature, 
 - **Seen to fail:** against the old `segmenter.ts` exactly those six promoted cases fail, and nothing else.
 - **Left alone, noticed in passing:** U+2018 stays in the trailing set although it is an opening mark, and `opensSentence` lists a straight `"` twice where the second was probably U+201C. Neither is part of this card; both would change today's cuts.
 
+**#144 · ~~"no" and "nos" read as abbreviations before a word~~ · DONE — `core/src/segment/segmenter.ts` (`NUMBER_LED`)**
+
+Closes the gap issue #271 recorded. A bug fix in existing code, no new feature, so no Rust/WebAssembly question.
+
+- **One rule, not a list edit.** `no` and `nos` stay in the lists (they abbreviate "number" in English and French), but the abbreviation reading applies only when a digit follows (`no. 5`). Before a word they are the ordinary word and may end a sentence: `She said no. We moved on.` now breaks, `Please see no. 5 for details.` still does not. The capitalised `No.` follows the same rule, so `No. We moved on.` breaks.
+- **Seen to fail:** against the old `segmenter.ts` the promoted case and the new `No. We moved on.` case fail, nothing else.
+- **Not covered:** the issue also names other entries that double as words (English `Co`, `Rep`, `Gen`, `Fr`, Dutch `bv`); the corpus has no case for them, so they were not touched.
+
+
 
 
 Sized issues:

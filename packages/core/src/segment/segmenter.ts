@@ -65,6 +65,13 @@ const TRAILING = new Set([
  */
 const SPACED_CLOSING = new Set(['\u00bb', '\u201d', '\u2019', '\u203a']);
 
+/**
+ * Abbreviations that are also ordinary words ("no", "nos"). They are
+ * abbreviations only when a digit follows ("no. 5"); see the lookup in
+ * {@link findBoundaries}.
+ */
+const NUMBER_LED = new Set(['no', 'nos']);
+
 /** Marks that can legitimately open a Spanish sentence. */
 const INVERTED = new Set(['¿', '¡']);
 
@@ -273,7 +280,11 @@ export function findBoundaries(text: string, rules: SegmenterRules): number[] {
 
       // Known abbreviation, including the dotted forms "p.ej", "z.B".
       const word = wordBefore(text, i);
-      if (isAbbreviation(word, abbreviations)) continue;
+      if (isAbbreviation(word, abbreviations)) {
+        // "no." and "nos." abbreviate "number" only in front of one; before a
+        // word they are the ordinary word, which can end a sentence.
+        if (!NUMBER_LED.has(word.toLowerCase()) || isDigit(text[next])) continue;
+      }
       if (word.includes('.') && isAbbreviation(word.replace(/\.$/, ''), abbreviations)) {
         continue;
       }
