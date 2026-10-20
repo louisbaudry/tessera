@@ -3243,6 +3243,17 @@ Closes the first of the gaps #141 found (issue #269). A data change, no new feat
 - **Cost of a false positive:** a sentence that really ends in the letter "p" or the word "tr" followed by a capital now stays joined to the next one. A missed break gives a longer segment; a false break puts a fragment such as "See p." into the memory, which is the worse failure, so the list errs this way.
 - **Not covered:** a pass over every language's list for page references, titles and place names (the issue suggested one) is still open.
 
+**#143 · ~~Closing quotation marks after a sentence end~~ · DONE — `core/src/segment/segmenter.ts` (`TRAILING`, `consumeTrailing`)**
+
+Closes the gap issue #268 recorded. A bug fix in existing code, no new feature, so no Rust/WebAssembly question.
+
+- **Two changes, one per cause.** The trailing set gained U+2019 (English single close), U+201C (German close) and U+00AB (reversed German guillemet close); it already held U+201D, U+00BB and U+203A. A closing mark set off by spaces (French `« Non. »`, with U+00A0 or U+202F inside) is consumed by `consumeTrailing` when it stands alone between spaces.
+- **Why the spaced rule needs no language switch.** An opening mark is written against its word (`»Komm`), a closing one after a space only in French, so "alone between spaces, followed by a space or the end" separates them without a per-language flag. The cost is that a stray spaced U+00BB in German is read as a close; it has no opening use there.
+- **The six gap cases were promoted** (the run said "gap #268 is closed" for all six) and two new correct cases guard the other side: a lowercase word after a closing mark still does not break, in French and German.
+- **Seen to fail:** against the old `segmenter.ts` exactly those six promoted cases fail, and nothing else.
+- **Left alone, noticed in passing:** U+2018 stays in the trailing set although it is an opening mark, and `opensSentence` lists a straight `"` twice where the second was probably U+201C. Neither is part of this card; both would change today's cuts.
+
+
 
 Sized issues:
 

@@ -72,17 +72,11 @@ export const DE: readonly CorpusCase[] = [
     category: 'quotes and brackets',
     text: 'Er sagte: \u201EKomm her.\u201C Dann ging er.',
     sentences: ['Er sagte: \u201EKomm her.\u201C', 'Dann ging er.'],
-    status: 'gap',
-    issue: 268,
-    note: 'The German closing quotation mark is U+201C, which is not in TRAILING (only U+201D is). It is read as the start of the next word and no break is made.',
   },
   {
     category: 'quotes and brackets',
     text: 'Er sagte: \u00BBKomm her.\u00AB Dann ging er.',
     sentences: ['Er sagte: \u00BBKomm her.\u00AB', 'Dann ging er.'],
-    status: 'gap',
-    issue: 268,
-    note: 'The reversed German guillemets (closing mark U+00AB) are not in TRAILING either; only U+00BB is.',
   },
   {
     category: 'numbers and decimals',
@@ -96,5 +90,10 @@ export const DE: readonly CorpusCase[] = [
     status: 'gap',
     issue: 272,
     note: 'As in English: a digit, a full stop and a capital read as a sentence end, and "Schritt" is not an ordinal prefix, so each step number is cut off from its text.',
+  },
+  {
+    category: 'quotes and brackets',
+    text: 'Er rief: \u201EKomm her.\u201C sagte sie leise.',
+    sentences: ['Er rief: \u201EKomm her.\u201C sagte sie leise.'],
   },
 ];

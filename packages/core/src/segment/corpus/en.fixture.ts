@@ -88,9 +88,6 @@ export const EN: readonly CorpusCase[] = [
     category: 'quotes and brackets',
     text: 'She said \u2018stop.\u2019 We moved on.',
     sentences: ['She said \u2018stop.\u2019', 'We moved on.'],
-    status: 'gap',
-    issue: 268,
-    note: 'A closing single quote (U+2019) after the full stop is not in TRAILING, so the quote is read as the start of the next word and no break is made.',
   },
   {
     category: 'quotes and brackets',
