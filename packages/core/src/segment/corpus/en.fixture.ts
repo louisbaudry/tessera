@@ -36,9 +36,6 @@ export const EN: readonly CorpusCase[] = [
     category: 'abbreviation at a sentence end',
     text: 'She said no. We moved on.',
     sentences: ['She said no.', 'We moved on.'],
-    status: 'gap',
-    issue: 271,
-    note: 'The word "no" is in the abbreviation list (for "no. 5"), so a full stop after it never breaks, even when a capitalised word follows and no number does.',
   },
 
   // \u2500\u2500 ellipsis and runs of marks \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -283,5 +280,15 @@ export const EN: readonly CorpusCase[] = [
     category: 'abbreviation at a sentence end',
     text: 'The meeting starts at 9 a.m. Bring snacks.',
     sentences: ['The meeting starts at 9 a.m.', 'Bring snacks.'],
+  },
+  {
+    category: 'abbreviations',
+    text: 'Please see no. 5 for details.',
+    sentences: ['Please see no. 5 for details.'],
+  },
+  {
+    category: 'abbreviation at a sentence end',
+    text: 'No. We moved on.',
+    sentences: ['No.', 'We moved on.'],
   },
 ];
