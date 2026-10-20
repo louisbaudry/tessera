@@ -246,9 +246,6 @@ export const EN: readonly CorpusCase[] = [
     category: 'lowercase starts',
     text: 'It works. iPhone users agree.',
     sentences: ['It works.', 'iPhone users agree.'],
-    status: 'gap',
-    issue: 273,
-    note: 'A product name that starts with a lowercase letter (iPhone, eBay) does open a sentence, but the segmenter only breaks before a capital, digit or opening mark.',
   },
 
   // \u2500\u2500 whitespace \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -308,5 +305,15 @@ export const EN: readonly CorpusCase[] = [
     category: 'numbered steps',
     text: 'We counted 20. Then we left.',
     sentences: ['We counted 20.', 'Then we left.'],
+  },
+  {
+    category: 'lowercase starts',
+    text: 'We sold it on eBay. macOS users were first.',
+    sentences: ['We sold it on eBay.', 'macOS users were first.'],
+  },
+  {
+    category: 'lowercase starts',
+    text: 'The index is low. pH matters here.',
+    sentences: ['The index is low.', 'pH matters here.'],
   },
 ];

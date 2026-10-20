@@ -458,6 +458,10 @@ function opensSentence(text: string, at: number, rules: SegmenterRules): boolean
     return true;
   }
   if (isDigit(ch)) return true;
+  // A lowercase brand name with a capital inside ("iPhone", "eBay", "macOS").
+  // An ordinary lowercase word never has one, so a continuation such as
+  // "oranges" still does not open a sentence.
+  if (/^\p{Ll}+\p{Lu}/u.test(text.slice(at, at + 40))) return true;
   // An opening quote or bracket followed by an opener.
   if (['"', "'", '\u00ab', '"', '\u2018', '(', '['].includes(ch)) {
     const inner = text[at + 1];
