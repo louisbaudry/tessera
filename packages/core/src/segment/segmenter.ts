@@ -344,6 +344,12 @@ export function findBoundaries(text: string, rules: SegmenterRules): number[] {
       if (isDigit(previous) && isDigit(text[i + 1])) continue;
 
       if (isDigit(previous)) {
+        // A step label: everything since the last break is one capitalised
+        // word and a number ("Step 1.", "Schritt 2."). A sentence that
+        // short is the label of the text after it, not a sentence.
+        const sinceBreak = text.slice(boundaries[boundaries.length - 1] ?? 0, i);
+        if (/^\s*\p{Lu}\p{L}*\s+\d+$/u.test(sinceBreak)) continue;
+
         const following = text.slice(next).match(/^\p{L}+/u)?.[0];
 
         // Forward, the Trados model: a word that legitimately follows an

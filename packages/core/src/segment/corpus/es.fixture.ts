@@ -79,4 +79,9 @@ export const ES: readonly CorpusCase[] = [
     text: 'Nació en el 45 a. C. y murió joven.',
     sentences: ['Nació en el 45 a. C. y murió joven.'],
   },
+  {
+    category: 'numbered steps',
+    text: 'Paso 1. Abra el archivo. Paso 2. Guárdelo.',
+    sentences: ['Paso 1. Abra el archivo.', 'Paso 2. Guárdelo.'],
+  },
 ];

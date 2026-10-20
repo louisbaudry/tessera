@@ -86,9 +86,6 @@ export const DE: readonly CorpusCase[] = [
     category: 'numbered steps',
     text: 'Schritt 1. Öffnen Sie die Datei. Schritt 2. Speichern Sie sie.',
     sentences: ['Schritt 1. Öffnen Sie die Datei.', 'Schritt 2. Speichern Sie sie.'],
-    status: 'gap',
-    issue: 272,
-    note: 'As in English: a digit, a full stop and a capital read as a sentence end, and "Schritt" is not an ordinal prefix, so each step number is cut off from its text.',
   },
   {
     category: 'quotes and brackets',
