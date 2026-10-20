@@ -12,6 +12,7 @@
 /** What makes a text hard to segment. One per case, so a gap names its cause. */
 export type Category =
   | 'plain terminators'
+  | 'hard separators'
   | 'ellipsis and runs of marks'
   | 'quotes and brackets'
   | 'abbreviations'

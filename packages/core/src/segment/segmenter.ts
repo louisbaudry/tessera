@@ -34,6 +34,16 @@ export type SegmenterRules = LanguageRules | SegmentationProfile;
 const TERMINATORS = new Set(['.', '!', '?', '…']);
 
 /**
+ * Hard separators: characters that end a segment by themselves, in every
+ * language, with none of the sentence tests a terminator gets. `|` divides the
+ * items of a menu, a breadcrumb or a table row ("Home | About us"), where the
+ * next item is as often lowercase as not, so {@link opensSentence} would
+ * wrongly veto the break. The separator stays at the end of the segment before
+ * it, so export loses no character.
+ */
+const SEPARATORS = new Set(['|']);
+
+/**
  * Closing marks that trail a terminator and belong to the same sentence:
  * straight quotes, brackets, and each language's closing quotation marks
  * (English U+2019/U+201D, German U+201C and U+00AB, French/Spanish U+00BB,
@@ -192,6 +202,36 @@ export function findBoundaries(text: string, rules: SegmenterRules): number[] {
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!;
+
+    if (SEPARATORS.has(ch)) {
+      // A run ("||") is one separator, as an ellipsis is one terminator.
+      const runStart = i;
+      let end = i + 1;
+      while (text[end] === ch) end++;
+      i = end - 1;
+
+      const verdict = decided.get(end);
+      if (verdict === false) continue;
+      if (verdict === true) {
+        boundaries.push(end);
+        continue;
+      }
+      if (strictlyInside(protectedRanges, end)) continue;
+
+      // Whitespace must follow, so "a|b" (a shell pipe, a regex) is left
+      // alone, and something must follow it: the end of the text is no boundary.
+      const next = skipSpace(text, end);
+      if (next === end || next >= text.length) continue;
+
+      // A separator with nothing before it ("| a | b |", a leading bar) would
+      // cut a segment holding only the bar, which nobody can translate.
+      const segmentStart = boundaries.length > 0 ? boundaries[boundaries.length - 1]! : 0;
+      if (text.slice(segmentStart, runStart).trim() === '') continue;
+
+      boundaries.push(end);
+      continue;
+    }
+
     if (!terminators.has(ch)) continue;
 
     // An ellipsis is one terminator, not three.

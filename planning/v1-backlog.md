@@ -367,6 +367,17 @@ actual SQLite file lands with #15a. Trados cannot export SRX at all — its
 rules live in the TM rather than a file type — so the `.txt` lists are
 the real migration path off Trados.
 
+**Later (2026-10-20): `|` is a hard separator** (`findBoundaries`' `SEPARATORS`,
+`segmentation-spec.md` §4). Louis's request, no card. Built in every language,
+not behind a flag: a bar followed by whitespace and more text breaks, with no
+capital-letter test, and the bar stays at the end of the segment before it.
+What it taught: the first draft would have cut a segment holding only a bar
+from `| Name | Value |`, so a bar with nothing before it in its segment is
+skipped. The SRX generic suffix grew from three rules to four, and
+`ownExportSuffix` keeps recognising the old three, so an export made before
+this still lifts its lists. No Rust/Wasm question: an edit to existing code,
+no new feature.
+
 **#14 · ~~Merge / split segments~~ · DONE — `segment/edit.ts`**
 Within one paragraph, with target preservation and skeleton consistency.
 

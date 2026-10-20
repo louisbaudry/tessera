@@ -76,10 +76,11 @@ const followerRule = (word: string): SegmentationRule => ({
 
 /**
  * Characters at which the engine could break inside a variable — every
- * terminator it knows, including the flag-gated colon and semicolon.
+ * terminator and separator it knows, including the flag-gated colon and
+ * semicolon.
  * Matches {@link liftableVariableEnd} on import.
  */
-const VARIABLE_TERMINATORS = new Set(['.', '!', '?', '…', ':', ';']);
+const VARIABLE_TERMINATORS = new Set(['.', '!', '?', '…', ':', ';', '|']);
 
 /**
  * No-break rules covering each internal terminator of a variable, so
@@ -100,8 +101,25 @@ function variableRules(variable: string): SegmentationRule[] {
   return rules;
 }
 
-/** Generic break rules approximating the built-in terminator logic. */
-function genericBreakRulesFor(invertedMarks: boolean): SegmentationRule[] {
+/**
+ * The hard-separator rule (`|`), the last of the generic suffix. Exports before
+ * it existed end in the three rules of {@link genericBreakRulesFor} without it,
+ * which {@link ownExportSuffix} still recognises.
+ */
+const SEPARATOR_RULE: SegmentationRule = {
+  break: true,
+  beforeBreak: '\\|+',
+  afterBreak: '\\s+\\S',
+};
+
+/**
+ * Generic break rules approximating the built-in terminator logic.
+ * `withSeparator` is false only to recognise exports older than the separator.
+ */
+function genericBreakRulesFor(
+  invertedMarks: boolean,
+  withSeparator = true,
+): SegmentationRule[] {
   const openers = invertedMarks ? '\\p{Lu}\\d¿¡' : '\\p{Lu}\\d';
   return [
     // Initials and decimals, expressible losslessly as no-break rules.
@@ -112,6 +130,7 @@ function genericBreakRulesFor(invertedMarks: boolean): SegmentationRule[] {
       beforeBreak: `[.!?…]+['"»”’)\\]}›]*`,
       afterBreak: `\\s+[${openers}'"«“‘([]`,
     },
+    ...(withSeparator ? [SEPARATOR_RULE] : []),
   ];
 }
 
@@ -123,17 +142,19 @@ const sameRule = (a: SegmentationRule, b: SegmentationRule): boolean =>
   a.break === b.break && a.beforeBreak === b.beforeBreak && a.afterBreak === b.afterBreak;
 
 /**
- * Whether a group's rules end with exactly the generic suffix this module
- * emits — the fingerprint of our own export.
+ * How many trailing rules of a group are exactly the generic suffix this module
+ * emits (the fingerprint of our own export), or 0 when it is not our export.
  */
-function isOwnExport(rules: readonly SegmentationRule[]): boolean {
-  for (const inverted of [false, true]) {
-    const generic = genericBreakRulesFor(inverted);
-    if (rules.length < generic.length) continue;
-    const tail = rules.slice(-generic.length);
-    if (generic.every((rule, i) => sameRule(rule, tail[i]!))) return true;
+function ownExportSuffix(rules: readonly SegmentationRule[]): number {
+  for (const withSeparator of [true, false]) {
+    for (const inverted of [false, true]) {
+      const generic = genericBreakRulesFor(inverted, withSeparator);
+      if (rules.length < generic.length) continue;
+      const tail = rules.slice(-generic.length);
+      if (generic.every((rule, i) => sameRule(rule, tail[i]!))) return generic.length;
+    }
   }
-  return false;
+  return 0;
 }
 
 /** All rules for a profile, in evaluation order. */
@@ -314,8 +335,9 @@ export function importSrx(xml: string): SrxImport {
      * foreign document is imported verbatim as ordered rules instead,
      * preserving its first-match-wins semantics exactly.
      */
-    const ours = isOwnExport(raw);
-    const body = ours ? raw.slice(0, raw.length - 3) : raw;
+    const suffix = ownExportSuffix(raw);
+    const ours = suffix > 0;
+    const body = ours ? raw.slice(0, raw.length - suffix) : raw;
 
     for (const candidate of body) {
       const { break: breakHere, beforeBreak, afterBreak } = candidate;

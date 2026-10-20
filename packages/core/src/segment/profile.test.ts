@@ -365,6 +365,36 @@ describe('SRX', () => {
     expect(en.variables?.added).toEqual(['Yahoo! Japan']);
   });
 
+  it('exports the | separator and re-imports it without a stray rule', () => {
+    const xml = exportSrx([resolveProfile('en')]);
+    expect(xml).toContain('<beforebreak>\\|+</beforebreak>');
+    const result = importSrx(xml);
+    expect(result.problems).toEqual([]);
+    const en = result.deltas.find((d) => d.lang === 'en')!;
+    // Recognised as the generic suffix and dropped, not carried as a user rule.
+    expect(en.userRules ?? []).toHaveLength(0);
+  });
+
+  it('still recognises an export made before the | separator existed', () => {
+    const legacy = exportSrx([resolveProfile('en')]).replace(
+      /\s*<rule break="yes">\s*<beforebreak>\\\|\+<\/beforebreak>[\s\S]*?<\/rule>/,
+      '',
+    );
+    expect(legacy).not.toContain('\\|+');
+    const en = importSrx(legacy).deltas.find((d) => d.lang === 'en')!;
+    expect(en.userRules ?? []).toHaveLength(0);
+  });
+
+  it('roundtrips a variable holding a bar', () => {
+    const profile = resolveProfile({
+      version: 1,
+      lang: 'en',
+      variables: { added: ['Ops | Dev'] },
+    });
+    const en = importSrx(exportSrx([profile])).deltas.find((d) => d.lang === 'en')!;
+    expect(en.variables?.added).toEqual(['Ops | Dev']);
+  });
+
   it('maps full-locale languagepatterns onto the primary subtag', () => {
     // Real SRX files target document locale tags ("en-US", "en[-_].*"),
     // which never literally match a bare primary subtag.
