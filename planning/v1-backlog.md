@@ -3234,6 +3234,15 @@ Design in `segmentation-spec.md` §9 (issue #267). 127 cases in `en`, `es`, `fr`
 - **Prior art:** the "golden rules" idea is pySBD's and pragmatic_segmenter's (MIT; kind B in `planning/prior-art.md`). No case was read or copied.
 - **Not proven:** frequency (the cases are what we thought of) and native review of each language.
 
+**#142 · ~~Missing abbreviations: `p.`, `Mt.`, `tr.`~~ · DONE — `core/src/segment/rules.ts`**
+
+Closes the first of the gaps #141 found (issue #269). A data change, no new feature, so no Rust/WebAssembly question.
+
+- **`p` is in the shared Latin list, not only English.** "p." (page) is the same abbreviation in every Latin-script language the segmenter supports, so it sits beside `pp` in `COMMON`. `Mt` was added to the English list and `tr` (trang, page) to the Vietnamese one.
+- **The gap cases did their job.** The three cases were promoted by deleting their `status`, `note` and `issue` after the run said "gap #269 is closed"; the other 13 gaps still assert they are wrong.
+- **Cost of a false positive:** a sentence that really ends in the letter "p" or the word "tr" followed by a capital now stays joined to the next one. A missed break gives a longer segment; a false break puts a fragment such as "See p." into the memory, which is the worse failure, so the list errs this way.
+- **Not covered:** a pass over every language's list for page references, titles and place names (the issue suggested one) is still open.
+
 
 Sized issues:
 

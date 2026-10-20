@@ -271,17 +271,11 @@ export const EN: readonly CorpusCase[] = [
     category: 'abbreviations',
     text: 'See p. 12 for details.',
     sentences: ['See p. 12 for details.'],
-    status: 'gap',
-    issue: 269,
-    note: 'The list has "pp" but not "p", and a digit after a full stop opens a sentence, so the page reference is cut off from its number.',
   },
   {
     category: 'abbreviations',
     text: 'Mt. Everest is the highest mountain.',
     sentences: ['Mt. Everest is the highest mountain.'],
-    status: 'gap',
-    issue: 269,
-    note: '"Mt" is not in the list, so a capital after it opens a sentence and the place name is split.',
   },
   {
     category: 'abbreviations',
