@@ -2599,7 +2599,20 @@ Design in `v1-spec.md` §6.1b. Louis lifted the card's "not before #37 and #38" 
 - **Owner only.** A hit is a whole unit from the owner's memories, and a base memory is often shared across clients. The route is `manage` (a grantee gets the usual 403) and a hit names its memory by position, never by slug or path. Whether a translator may search the memories is a business call for Louis and is recorded in the spec, not defaulted.
 - **A scan cap.** A matched variant whose unit has nothing in the other language is skipped, so a memory of one-sided units would be walked end to end for a few hits; the walk stops at 20 rows per hit wanted.
 - **Seen in a browser.** The built SPA against a real server and a seeded memory: the palette opens the box, a source and a target search mark the phrase, Escape closes it, and a word selected in the grid opens the box prefilled on the side it was selected in. No console error.
-- **Not built:** inserting a hit into a target, the box for a grantee, and ranking. The regex find/replace half is #148b.
+- **Not built:** inserting a hit into a target, the box for a grantee, and ranking. The regex find/replace half is #148b. Fixing or retiring a hit's unit is #149.
+
+**#149 · ~~Fix or retire a memory unit from the editor~~ · DONE — `db/src/tm/edit.ts` (`editUnitTarget`, `retireUnit`), `db/src/project/memory-units.ts` (`editMemoryUnit`, `retireMemoryUnit`), project schema v17, `PUT /api/projects/:name/memory-units` and `POST .../memory-units/retire` (`server/src/concordance.ts`), edit and retire in `web/src/ConcordanceDialog.tsx`**
+(2026-10-21; half 1 of card #151, half 2 is #129)
+
+Design in `v1-spec.md` §6.1c. Louis chose TypeScript over Rust/Wasm (a write path, not a kernel) and picked this card.
+
+- **A correction always keeps the old value.** `writeBack` historizes only when tags differ, because confirming the same text loses nothing; a person's edit always loses something, so `editUnitTarget` writes the previous tokens to `tuv_history` every time, with the actor's label as `changed_by`. An edit to the text it already holds is a no-op, so a double click is not a revision.
+- **Text only, so a tagged variant is refused.** The new text becomes one text token; a variant with tags would lose them in silence. The hit says `editable: false` and the button explains; a tagged unit can still be retired. A text with XML-illegal characters is cleaned (`xmlLegalText`), so an export of the memory stays valid.
+- **Retire is the §7 tombstone, not a delete.** `tu.deleted = 1`, `rev` and `updated_at` moved, and who and when in two `tu_attr` keys because a unit has no `updated_by`. Retrieval, fuzzy and concordance skip it, a merge never resurrects it, and the rows stay for compaction to decide.
+- **The memory has no log, so the project keeps it** (`tm.unit_edited`, `tm.unit_retired`, a v17 migration that widens the CHECK with `rebuildTable`). The detail is the reference id, the unit's uuid, the language and revisions and never a word of text, which is client content in a hashed field that could not be erased. Two files cannot share a transaction, so the memory is written first and the event after: a failure between loses a log line and never invents one. A no-op logs nothing.
+- **A write names a reference and a revision, never a path.** The hit carries the project's own `tm_ref.id`, the variant and its `rev`; a changed `rev` is a 409, an unknown or switched-off reference a 404, a read-only memory a 409. Owner only, like the search.
+- **Seen in a browser.** The built SPA against a seeded server: edit (prefilled, Save disabled while unchanged), the list refreshing to the new text, a cancelled retire, a confirmed retire leaving no match. No console error.
+- **Not built:** editing the source side (re-keying a unit is another operation), restoring a retired unit, and a grantee's use of either.
 
 **#148b · Regex find/replace across the project · M** · [issue #170]
 A replace across confirmed segments is a write: it goes through `editSegmentTarget` so hidden tags, QA and audit stay correct, never a bulk SQL update. Waits on the first real job (#37, #38) saying it is needed.

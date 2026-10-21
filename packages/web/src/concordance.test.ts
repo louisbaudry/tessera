@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  doneNote,
+  editProblem,
   isConcordanceKey,
   MAX_QUERY_CHARS,
   pieces,
+  refusal,
   startFromSelection,
   summary,
   type ConcordanceView,
@@ -70,6 +73,10 @@ describe('summary', () => {
     hits: Array.from({ length: hits }, (_, i) => ({
       tuId: i,
       memory: 1,
+      ref: 1,
+      tuvId: i,
+      rev: 1,
+      editable: true,
       source: '',
       target: '',
       ranges: [],
@@ -108,5 +115,42 @@ describe('isConcordanceKey', () => {
     expect(isConcordanceKey({ ...key, metaKey: true })).toBe(false);
     expect(isConcordanceKey({ ...key, altKey: true })).toBe(false);
     expect(isConcordanceKey({ ...key, code: 'KeyD' })).toBe(false);
+  });
+});
+
+describe('editProblem', () => {
+  it('lets a changed translation be saved', () => {
+    expect(editProblem('Deckel auf', 'Dekel auf')).toBeNull();
+  });
+
+  it('says what is missing: a blank text, or no change (whitespace does not count as one)', () => {
+    expect(editProblem('  \n ', 'Dekel auf')).toBe('Type the translation.');
+    expect(editProblem('Dekel auf', 'Dekel auf')).toBe('The translation is unchanged.');
+    expect(editProblem('  Dekel\n auf ', 'Dekel auf')).toBe(
+      'The translation is unchanged.',
+    );
+  });
+});
+
+describe('refusal', () => {
+  it('tells a person whose unit changed to look again, and keeps any other answer as the server gave it', () => {
+    expect(refusal(409, 'the unit was changed since it was read')).toBe(
+      'the unit was changed since it was read. Search again, then retry.',
+    );
+    expect(
+      refusal(422, 'this translation holds tags, which a text edit would lose'),
+    ).toBe('this translation holds tags, which a text edit would lose');
+    expect(refusal(404, 'no such memory in this project')).toBe(
+      'no such memory in this project',
+    );
+  });
+});
+
+describe('doneNote', () => {
+  it('says what happened, including that nothing did', () => {
+    expect(doneNote('edit', true)).toBe('Translation saved.');
+    expect(doneNote('edit', false)).toBe('Nothing to save: it was already so.');
+    expect(doneNote('retire', true)).toBe('Unit retired.');
+    expect(doneNote('retire', false)).toBe('That unit was already retired.');
   });
 });

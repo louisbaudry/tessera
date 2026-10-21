@@ -181,6 +181,44 @@ describe('retrieveConcordance', () => {
     db.close();
   });
 
+  it('carries what an edit needs: the target variant, its revision, and whether text alone can replace it', () => {
+    const db = createTm(dbPath(), { name: 't', generator: 'test' });
+    const plain = unit(db, pair('Open the lid.', 'Deckel auf'));
+    const tagged = unit(db, pair('Close the lid.', 'Deckel zu'));
+    const target = (tuId: number) =>
+      db
+        .prepare('SELECT id, rev FROM tuv WHERE tu_id = ? AND lang = ?')
+        .get(tuId, 'de-DE') as {
+        id: number;
+        rev: number;
+      };
+    db.prepare('UPDATE tuv SET tokens = ?, rev = 4 WHERE id = ?').run(
+      JSON.stringify([
+        { t: 'open', id: 1, k: 'bold' },
+        { t: 'text', v: 'Deckel zu' },
+        { t: 'close', id: 1 },
+      ]),
+      target(tagged).id,
+    );
+
+    for (const side of ['source', 'target'] as const) {
+      const text = side === 'source' ? 'lid' : 'deckel';
+      const { hits } = retrieveConcordance(db, { ...ask, text, side });
+      const byTu = new Map(hits.map((h) => [h.tuId, h]));
+      expect(byTu.get(plain)).toMatchObject({
+        targetTuvId: target(plain).id,
+        targetRev: 1,
+        editable: true,
+      });
+      expect(byTu.get(tagged)).toMatchObject({
+        targetTuvId: target(tagged).id,
+        targetRev: 4,
+        editable: false,
+      });
+    }
+    db.close();
+  });
+
   it('seeks the full-text index and scans no table', () => {
     const db = createTm(dbPath(), { name: 't', generator: 'test' });
     for (let i = 0; i < 20; i++) unit(db, pair(`Item ${i} text`, `Eintrag ${i}`));

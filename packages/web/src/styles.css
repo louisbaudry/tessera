@@ -1438,6 +1438,26 @@ button.chip-button:hover {
   padding: 0.5rem 0.25rem;
   border-top: 1px solid var(--border);
 }
+.concordance-edit {
+  display: grid;
+  gap: 0.4rem;
+}
+.concordance-edit textarea {
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  resize: vertical;
+}
+.concordance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
 .concordance-hits mark {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
   color: inherit;
