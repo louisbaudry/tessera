@@ -189,6 +189,35 @@ has that repo in scope; otherwise ask Louis for the file):
   database privileges. Never put a project ref or key in a snippet in
   `settings/`: snippets are copied into other repos, some of them public.
 
+## Supabase table grants
+
+From 2026-10-30, Supabase no longer grants Data API access automatically
+to new tables in `public`, for existing projects too. Existing tables
+keep their grants. Without a grant, supabase-js, PostgREST and GraphQL
+return `permission denied`, and that includes new projects, preview
+branches and a local `supabase db reset` that replay the migrations.
+
+- **A migration that creates a table in `public` grants access in the same
+  file.** A table with no grant is unreachable through the API.
+- **Grant the least that the table needs.** `anon` only where the table is
+  meant to be publicly readable, `authenticated` only what signed-in users
+  do, `service_role` for server-side code. Row Level Security still
+  decides which rows; a grant does not replace a policy.
+
+  ```sql
+  grant select on public.your_table to anon;
+  grant select, insert, update, delete on public.your_table to authenticated;
+  grant select, insert, update, delete on public.your_table to service_role;
+  ```
+
+- **Check the Data API settings** of the project for which schemas and
+  tables are exposed.
+- **Test it:** apply the migrations to a scratch Postgres and assert as
+  each role (see "Tests"); a table with no grant fails that test.
+- Grants go in migrations, not through `execute_sql`: the hook above
+  blocks `grant`, and a migration is what a new project, a branch and
+  `db reset` replay.
+
 ## AI output in code
 
 - Generated code is a proposal: read it, run it, and be able to explain it
