@@ -129,6 +129,7 @@ import {
 import { registerAssignmentRoutes } from './assignments.js';
 import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft.js';
 import { registerEngineRoutes } from './engine.js';
+import { registerConcordanceRoutes } from './concordance.js';
 import { registerSuggestionRoutes } from './suggestions.js';
 import type { Resolver, WebhookSender } from './webhook-send.js';
 import {
@@ -1466,6 +1467,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     adapterFor,
   });
   registerSuggestionRoutes(app, { platform, sessionActor, openProject, adapterFor });
+  registerConcordanceRoutes(app, { openProject });
 
   // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
 

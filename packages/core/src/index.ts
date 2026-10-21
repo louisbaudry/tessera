@@ -21,6 +21,7 @@ export * from './segment/profile.js';
 export * from './segment/trados-lists.js';
 export * from './segment/srx.js';
 export * from './segment/edit.js';
+export * from './tm/concordance.js';
 export * from './tm/context.js';
 export * from './tm/mapping.js';
 export * from './tm/embedding.js';

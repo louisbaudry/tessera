@@ -1381,6 +1381,69 @@ button.chip-button:hover {
   gap: 0.5rem;
 }
 
+/* The concordance box (issue #170), over the palette's backdrop. */
+.concordance {
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+}
+.concordance-results {
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+}
+.concordance h3 {
+  margin: 0;
+}
+.concordance-ask {
+  display: flex;
+  gap: 0.5rem;
+}
+.concordance-ask input {
+  flex: 1;
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+}
+.concordance-sides {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+.concordance-sides label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.concordance-hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.concordance-hits li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.5rem 0.25rem;
+  border-top: 1px solid var(--border);
+}
+.concordance-hits mark {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
 /* The stale-work check on a memory (backlog #122). */
 .list li.memory-row {
   flex-wrap: wrap;

@@ -2589,6 +2589,21 @@ Translate and deliver one real paid multi-file client job end to end.
 Log every friction point from #37. Feeds the follow-ons to v1 — concordance is the
 expected first item.
 
+**#148a · ~~Concordance search~~ · DONE — `core/src/tm/concordance.ts`, `db/src/tm/concordance.ts` (`retrieveConcordance`), `db/src/project/concordance.ts` (`searchConcordance`), `GET /api/projects/:name/concordance` (`server/src/concordance.ts`), `web/src/{ConcordanceDialog.tsx,concordance.ts}` and `Ctrl+Shift+L`**
+(2026-10-21; the read-only half of card #170)
+
+Design in `v1-spec.md` §6.1b. Louis lifted the card's "not before #37 and #38" gate for this half, and chose TypeScript over Rust/Wasm: the query is an FTS5 phrase read, and `tm-format-spec.md` §11 had already measured the unranked form under 10 ms at p99 up to 5M units.
+
+- **Unranked on purpose.** §11 found ranked concordance on a common word costs 1.4 s at p99 at 1M, because bm25 scores every hit before the top 50. The query orders by `rowid` descending instead, so a limit stops the walk and the newest unit comes first. A test pins the plan: the FTS index is seeked and no table is scanned.
+- **One phrase, folded like the index.** The words of what was typed become one quoted phrase, so nothing a person types is FTS syntax (a test feeds it `NEAR(a b)`, `a OR b`, an unbalanced quote). The same fold marks the match in a hit (`highlightRanges`), so the page marks exactly what the index matched and holds no tokenizer; ranges are UTF-16 offsets.
+- **Owner only.** A hit is a whole unit from the owner's memories, and a base memory is often shared across clients. The route is `manage` (a grantee gets the usual 403) and a hit names its memory by position, never by slug or path. Whether a translator may search the memories is a business call for Louis and is recorded in the spec, not defaulted.
+- **A scan cap.** A matched variant whose unit has nothing in the other language is skipped, so a memory of one-sided units would be walked end to end for a few hits; the walk stops at 20 rows per hit wanted.
+- **Seen in a browser.** The built SPA against a real server and a seeded memory: the palette opens the box, a source and a target search mark the phrase, Escape closes it, and a word selected in the grid opens the box prefilled on the side it was selected in. No console error.
+- **Not built:** inserting a hit into a target, the box for a grantee, and ranking. The regex find/replace half is #148b.
+
+**#148b · Regex find/replace across the project · M** · [issue #170]
+A replace across confirmed segments is a write: it goes through `editSegmentTarget` so hidden tags, QA and audit stay correct, never a bulk SQL update. Waits on the first real job (#37, #38) saying it is needed.
+
 ---
 
 ## Sequencing
@@ -4688,6 +4703,7 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #21]: https://github.com/louisbaudry/tessera/issues/21
 [issue #22]: https://github.com/louisbaudry/tessera/issues/22
 [issue #23]: https://github.com/louisbaudry/tessera/issues/23
+[issue #170]: https://github.com/louisbaudry/tessera/issues/170
 [issue #24]: https://github.com/louisbaudry/tessera/issues/24
 [issue #13]: https://github.com/louisbaudry/tessera/issues/13
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14

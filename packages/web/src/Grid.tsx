@@ -35,6 +35,7 @@ import {
   type QaMark,
 } from './gutter.js';
 import { AddTermDialog } from './AddTermDialog.js';
+import { ConcordanceDialog } from './ConcordanceDialog.js';
 import {
   draftFromSelection,
   isAddTermKey,
@@ -45,6 +46,11 @@ import { nextUnconfirmed } from './advance.js';
 import { isPaletteKey, nextMarked } from './commands.js';
 import { FilterBar } from './FilterBar.js';
 import { CommandPalette, type PaletteCommand } from './CommandPalette.js';
+import {
+  isConcordanceKey,
+  startFromSelection,
+  type ConcordanceStart,
+} from './concordance.js';
 import { GlossaryPanel } from './GlossaryPanel.js';
 import { ResourcesPanel } from './ResourcesPanel.js';
 import { JobPayable } from './JobPayable.js';
@@ -630,6 +636,25 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [foreign, openAddTerm]);
+  // Concordance (issue #170): Ctrl+Shift+L reads the selection as the box opens, for the same
+  // reason as the add-term key; the palette opens it empty. The owner's memories, so never in
+  // a grantee's view (`foreign`): the route is `manage`.
+  const [concordance, setConcordance] = useState<ConcordanceStart | null>(null);
+  const openConcordance = useCallback((withSelection: boolean) => {
+    const start = startFromSelection(withSelection ? termSelection() : null);
+    // A box already open keeps what is typed in it.
+    setConcordance((open) => open ?? start);
+  }, []);
+  useEffect(() => {
+    if (foreign) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!isConcordanceKey(e)) return;
+      e.preventDefault();
+      openConcordance(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [foreign, openConcordance]);
   const commands = useMemo<PaletteCommand[]>(() => {
     const from = () => segmentsNow.current.findIndex((s) => s.id === activeNow.current);
     const goTo = (index: number | null, none: string) => {
@@ -698,6 +723,13 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
               run: () => openAddTerm(false),
             },
             {
+              id: 'concordance',
+              title: 'Search the memories (concordance)',
+              keywords: 'find lookup translation memory tm phrase',
+              hint: 'Ctrl+Shift+L',
+              run: () => openConcordance(false),
+            },
+            {
               id: 'toggle-glossary',
               title: 'Toggle glossary panel',
               keywords: 'terms terminology',
@@ -739,6 +771,7 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     marks,
     restructure,
     openAddTerm,
+    openConcordance,
     foreign,
     fullTags,
     qaOpen,
@@ -973,6 +1006,15 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           initial={addingTerm.draft}
           note={addingTerm.note}
           onClose={() => setAddingTerm(null)}
+        />
+      )}
+      {concordance && !foreign && (
+        <ConcordanceDialog
+          project={project}
+          srcLang={detail.project.srcLang}
+          tgtLang={detail.project.tgtLang}
+          initial={concordance}
+          onClose={() => setConcordance(null)}
         />
       )}
       {resourcesOpen && <ResourcesPanel project={project} />}

@@ -1093,6 +1093,49 @@ transcript shows it (`pnpm test:golden` moves, and its diff is read, not
 regenerated); latency and recall at 1M are measured in `tm-format-spec.md`
 §11; and `RATE_TIERS` is reconciled with §2's table in the same change.
 
+### 6.1b Concordance search (issue #170)
+
+Decided 2026-10-21. A translator selects or types a word or phrase and sees
+every source/target pair in the project's attached memories that contains it.
+This is the read-only half of issue #170; a project-wide regex find/replace is
+a write across confirmed segments and stays out until the first real job (#37,
+#38) says it is needed.
+
+- **Stack: TypeScript.** Louis chose to stay in TypeScript (2026-10-21). The
+  query is an FTS5 phrase search over `tuv_fts` (`tm-format-spec.md` §2.6), the
+  same index the fuzzy shortlist uses; no profile has shown the language to be a
+  bottleneck, and §11 measured the unranked query under 10 ms at p99 up to 5M
+  units.
+- **What is asked.** The words of the text (`[\p{L}\p{M}\p{N}]+`, so
+  punctuation is never FTS syntax) joined into **one phrase**, which the
+  tokenizer folds (case, diacritics: `accion` finds `acción`). A phrase, not
+  "all of these words": a translator looking up "set up" wants those two words
+  together. At most `CONCORDANCE_MAX_WORDS` words and
+  `CONCORDANCE_MAX_CHARS` characters; no words is no query, not an error.
+- **Either side.** `side: 'source'` matches the project's source language and
+  returns the unit's best target variant; `'target'` the reverse. Both are
+  region-insensitive (`matchingLangs`). A unit with no variant in the other
+  language is skipped, a tombstoned unit never shown.
+- **Unranked, newest first.** §11: ranked concordance on a common word scores
+  every hit (1.4 s at p99 at 1M). The query orders by `rowid` descending, so a
+  limit stops the index walk, and the newest unit comes first. Memories are
+  read in `tm_ref` priority order, enabled ones only, up to
+  `CONCORDANCE_LIMIT` hits in all; `more` says the cap was reached.
+- **Highlighting is `core`'s** (`highlightRanges`): the offsets of each
+  occurrence of the phrase in a hit's text, found with the tokenizer's own
+  folding, so the page marks exactly what FTS matched and holds no tokenizer.
+- **Owner only (`manage`) in this slice.** A concordance returns whole units
+  from the owner's memories, and a base memory is often shared across clients;
+  the grantee routes were built so a translator sees a project and nothing of
+  the owner's other content (`GET /api/projects/:name/resources` returns no
+  slug, id or path for that reason). Whether a translator on a grant may search
+  the memories is a business call for Louis, not a default; until then the route
+  is a 403 to a grantee, as every `manage` route is, and the editor shows no
+  control. A hit names its memory
+  by position in priority order, never by slug or path.
+- **No audit event**: nothing is written or sent. No origin is set and no
+  target touched; inserting a hit into a target stays a later slice.
+
 ### 6.2 Write-back
 
 Confirming a segment upserts into the write-target TM, keyed on
