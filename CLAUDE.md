@@ -854,7 +854,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts`, `add-term.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts`, `add-term.ts`, `concordance.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
@@ -918,6 +918,15 @@ constraint and dependency isolation:
   200,000 units; `retrieveFuzzy` is the one place to change this, and
   `pnpm bench:tm`'s product-path row is how to check it. FS-1 stays the
   research scorer (`db/tm/bench/stats.ts`) and is never "fixed" into FS-2.
+- **Concordance (backlog #148a, `v1-spec.md` §6.1b) is an unranked FTS5 phrase
+  read, and owner-only.** `db/tm/concordance.ts` orders by `rowid` descending
+  because ranked concordance on a common word scores every hit (1.4 s at p99 at
+  1M, `tm-format-spec.md` §11); don't add `ORDER BY rank`. What a text asks for
+  and where it matches in a hit are `core/tm/concordance.ts`'s (one fold, shared
+  with the index), so the SPA holds no tokenizer. The route is `manage` and names
+  a memory by position, never slug or path: a hit is a whole unit from the
+  owner's memories, and opening it to a translator on a grant is a decision for
+  Louis, not a default.
 - **Schema and repository** — `db/tm/schema.ts` owns `.ctm` schema versioning
   and writes through the shared migration runner. Pair retrieval
   (`retrievePair`) lives in `db/tm/retrieve.ts`, not in `core`.

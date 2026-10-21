@@ -4,6 +4,7 @@
  */
 import type {
   AccountRole,
+  ConcordanceSide,
   Project,
   QaIssue,
   QaRule,
@@ -26,6 +27,7 @@ import type {
   MismatchList,
   SessionView,
 } from './glossary-panel.js';
+import type { ConcordanceView } from './concordance.js';
 import type { FuzzyThresholdView } from './fuzzy-threshold.js';
 import type { ImportJob } from './import-job.js';
 import type { ScanJob } from './stale-scan.js';
@@ -843,6 +845,21 @@ export const api = {
         body,
       },
     ),
+  /** Concordance over the project's attached memories (`v1-spec.md` §6.1b; issue #170). Owner only. */
+  concordance: (
+    token: string,
+    name: string,
+    body: { text: string; side: ConcordanceSide },
+    signal?: AbortSignal,
+  ) => {
+    const base = projectUrl(name, '/concordance');
+    const joiner = base.includes('?') ? '&' : '?';
+    return call<ConcordanceView>(
+      `${base}${joiner}q=${encodeURIComponent(body.text)}&side=${body.side}`,
+      token,
+      { signal },
+    );
+  },
   glossaryProposals: (token: string, name: string, signal?: AbortSignal) =>
     call<{ glossary: string | null; proposals: ExceptionProposalView[] }>(
       projectUrl(name, '/glossary/proposals'),
