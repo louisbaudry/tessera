@@ -860,6 +860,29 @@ export const api = {
       { signal },
     );
   },
+  /**
+   * Corrects one translation in a memory a concordance hit came from (`v1-spec.md` §6.1c;
+   * issue #151). `ref`, `tuvId` and `rev` are as the hit carried them: a changed `rev` is a 409.
+   */
+  editMemoryUnit: (
+    token: string,
+    name: string,
+    body: { ref: number; tuvId: number; rev: number; text: string },
+  ) =>
+    call<{ changed: boolean; rev: number }>(projectUrl(name, '/memory-units'), token, {
+      method: 'PUT',
+      body,
+    }),
+  /** Retires the unit a concordance hit came from (a tombstone, §6.1c). */
+  retireMemoryUnit: (
+    token: string,
+    name: string,
+    body: { ref: number; tuvId: number; rev: number },
+  ) =>
+    call<{ changed: boolean }>(projectUrl(name, '/memory-units/retire'), token, {
+      method: 'POST',
+      body,
+    }),
   glossaryProposals: (token: string, name: string, signal?: AbortSignal) =>
     call<{ glossary: string | null; proposals: ExceptionProposalView[] }>(
       projectUrl(name, '/glossary/proposals'),

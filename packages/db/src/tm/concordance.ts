@@ -19,6 +19,7 @@ import {
   highlightRanges,
   type ConcordanceSide,
   type TextRange,
+  type TmToken,
 } from '@cat-tool/core';
 
 import { ensurePrimarySubtagFn, matchingLangs } from '../lang-match.js';
@@ -52,6 +53,12 @@ export interface ConcordanceHit {
   readonly ranges: readonly TextRange[];
   readonly quality: number;
   readonly updatedAt: string;
+  /** The target-language variant of the unit: what an edit names (`edit.ts`). */
+  readonly targetTuvId: number;
+  /** That variant's `rev` when read; a write names it, and a changed one is refused. */
+  readonly targetRev: number;
+  /** Whether the target holds text only, the one kind a text edit can replace without losing tags. */
+  readonly editable: boolean;
 }
 
 export interface ConcordanceResult {
@@ -61,14 +68,20 @@ export interface ConcordanceResult {
 }
 
 interface MatchRow {
+  tuv_id: number;
   tu_id: number;
   plain: string;
+  rev: number;
+  tokens: string;
   updated_at: string;
 }
 
 interface OtherRow {
+  tuv_id: number;
   plain: string;
   quality: number;
+  rev: number;
+  tokens: string;
 }
 
 /**
@@ -97,7 +110,8 @@ export function retrieveConcordance(
 
   const matches = db
     .prepare<{ match: string; lang: string }, MatchRow>(
-      `SELECT m.tu_id AS tu_id, m.plain AS plain, u.updated_at AS updated_at
+      `SELECT m.id AS tuv_id, m.tu_id AS tu_id, m.plain AS plain, m.rev AS rev,
+              m.tokens AS tokens, u.updated_at AS updated_at
        FROM   ${q}tuv_fts f
        JOIN   ${q}tuv m ON m.id = f.rowid
        JOIN   ${q}tu  u ON u.id = m.tu_id AND u.deleted = 0
@@ -108,7 +122,8 @@ export function retrieveConcordance(
     .iterate({ match, lang: searched });
 
   const otherOf = db.prepare<{ tuId: number; lang: string }, OtherRow>(
-    `SELECT t.plain AS plain, t.quality AS quality
+    `SELECT t.id AS tuv_id, t.plain AS plain, t.quality AS quality, t.rev AS rev,
+            t.tokens AS tokens
      FROM   ${q}tuv t
      WHERE  t.tu_id = @tuId AND primary_subtag(t.lang) = primary_subtag(@lang)
      ORDER  BY t.quality DESC, t.updated_at DESC
@@ -128,6 +143,7 @@ export function retrieveConcordance(
     }
     const source = params.side === 'source' ? row.plain : counterpart.plain;
     const target = params.side === 'source' ? counterpart.plain : row.plain;
+    const targetVariant = params.side === 'source' ? counterpart : row;
     hits.push({
       tuId: row.tu_id,
       sourcePlain: source,
@@ -135,6 +151,11 @@ export function retrieveConcordance(
       ranges: highlightRanges(row.plain, words),
       quality: counterpart.quality,
       updatedAt: row.updated_at,
+      targetTuvId: targetVariant.tuv_id,
+      targetRev: targetVariant.rev,
+      editable: (JSON.parse(targetVariant.tokens) as TmToken[]).every(
+        (t) => t.t === 'text',
+      ),
     });
   }
   return { hits, more };

@@ -927,6 +927,16 @@ constraint and dependency isolation:
   a memory by position, never slug or path: a hit is a whole unit from the
   owner's memories, and opening it to a translator on a grant is a decision for
   Louis, not a default.
+- **A correction to a memory unit keeps the old value, is a tombstone and is
+  logged in the project** (backlog #149, `v1-spec.md` §6.1c). `db/tm/edit.ts`
+  always writes the previous tokens to `tuv_history` (`writeBack`'s only-if-tags-
+  differ rule does not apply to a person's fix), refuses a tagged variant rather
+  than lose its tags, and retires with `tu.deleted = 1`, never a delete. A `.ctm`
+  has no `audit_event`, so `db/project/memory-units.ts` writes `tm.unit_edited` /
+  `tm.unit_retired` in the project, after the memory, with ids and revisions and
+  **never the text** (client content in a hashed detail cannot be erased). A write
+  names the project's `tm_ref.id` and the `rev` the hit carried, never a path; both
+  routes are `manage`.
 - **Schema and repository** — `db/tm/schema.ts` owns `.ctm` schema versioning
   and writes through the shared migration runner. Pair retrieval
   (`retrievePair`) lives in `db/tm/retrieve.ts`, not in `core`.

@@ -27,6 +27,8 @@ export interface ProjectConcordanceParams {
 export interface ProjectConcordanceHit extends ConcordanceHit {
   /** Position of the memory in the project's priority order, from 1. */
   readonly memory: number;
+  /** The project's own `tm_ref.id` for that memory: what an edit names, never a path. */
+  readonly ref: number;
 }
 
 export interface ProjectConcordance {
@@ -76,7 +78,7 @@ export function searchConcordance(
       if (hits.length >= limit) {
         if (found.hits.length > 0) more = true;
       } else {
-        for (const hit of found.hits) hits.push({ ...hit, memory: i + 1 });
+        for (const hit of found.hits) hits.push({ ...hit, memory: i + 1, ref: ref.id });
         if (found.more) more = true;
       }
       if (more) break;

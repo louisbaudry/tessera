@@ -145,6 +145,30 @@ const V16_AUDIT_ACTIONS = [
   'ai.requested',
 ] as const satisfies readonly ProjectAuditAction[];
 
+/**
+ * `audit_event.action` since v17: v16's list, and `tm.unit_edited` and
+ * `tm.unit_retired` (issue #151, `v1-spec.md` §6.1c).
+ */
+const V17_AUDIT_ACTIONS = [
+  'segment.target_set',
+  'segment.confirmed',
+  'segment.locked',
+  'segment.unlocked',
+  'segment.baseline',
+  'segment.split',
+  'segment.merged',
+  'file.added',
+  'project.pretranslate',
+  'project.exported',
+  'project.setting_changed',
+  'qa.dismissed',
+  'qa.reinstated',
+  'draft.purged',
+  'ai.requested',
+  'tm.unit_edited',
+  'tm.unit_retired',
+] as const satisfies readonly ProjectAuditAction[];
+
 const v1: Migration = {
   version: 1,
   description: 'initial project schema (v1-spec.md §4.1)',
@@ -575,6 +599,20 @@ const v16: Migration = {
 };
 
 /**
+ * `audit_event` widened with `tm.unit_edited` and `tm.unit_retired` (issue #151):
+ * fixing or retiring a memory unit from the editor is a change that matters, and
+ * a `.ctm` has no log of its own, so the project that acted records it.
+ * `rebuildTable`, as v16: rows, ids, hashes and the append-only triggers survive.
+ */
+const v17: Migration = {
+  version: 17,
+  description: 'audit_event widened with tm.unit_edited and tm.unit_retired (issue #151)',
+  up: (db) => {
+    rebuildTable(db, 'audit_event', auditEventDdl(V17_AUDIT_ACTIONS));
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -596,4 +634,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v14,
   v15,
   v16,
+  v17,
 ];

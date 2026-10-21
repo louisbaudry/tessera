@@ -1131,10 +1131,59 @@ a write across confirmed segments and stays out until the first real job (#37,
   slug, id or path for that reason). Whether a translator on a grant may search
   the memories is a business call for Louis, not a default; until then the route
   is a 403 to a grantee, as every `manage` route is, and the editor shows no
-  control. A hit names its memory
-  by position in priority order, never by slug or path.
-- **No audit event**: nothing is written or sent. No origin is set and no
-  target touched; inserting a hit into a target stays a later slice.
+  control. A hit names its memory by
+  position in priority order and by the project's own reference id (§6.1c), never
+  by slug or path.
+- **The search writes nothing**: no event, no origin, no target. Inserting a hit
+  into a target stays a later slice; correcting a unit is §6.1c.
+
+### 6.1c Fixing or retiring a memory unit from the concordance box (issue #151)
+
+Decided 2026-10-21. A bad match is usually found where it is looked up, so each
+concordance hit (§6.1b) can have its translation corrected or its unit retired
+without leaving the editor. The other half of #151, adding a term from the
+editor, is backlog #129. Louis chose TypeScript (2026-10-21): this is a write
+path over SQLite, not a compute kernel.
+
+- **Owner only (`manage`), like the search.** A write into the owner's memory is
+  the larger reason for that rule: a memory can be shared by many projects and
+  clients, so a fix or a retirement reaches all of them.
+- **Two operations, no more.** *Edit the translation* of one unit's variant in
+  the project's target language, and *retire* the unit. The source side is never
+  edited here: the source hash is how a unit is found, and re-keying it is a
+  different operation. Deleting for good stays compaction's (`tm-format-spec.md`
+  §7), never a request.
+- **Edit is text only, and refused on a tagged variant.** The new text replaces
+  the variant's tokens with one text token. A variant that holds tags would lose
+  them silently, so it is refused (`editable: false` on the hit) and can only be
+  retired. Normalisation, hash and `plain` come from `normalizeTokens`, the same
+  as `writeBack`; a stored vector of the old `plain` is dropped as there.
+- **The old value is kept, always.** `writeBack` historizes only when tags
+  differ, because a confirm of the same text is not a loss; a person's correction
+  always is one, so the previous tokens go to `tuv_history` at their `rev`, with
+  the actor's label as `changed_by`, then `rev` moves on and `quality` rises to at
+  least `confirmed` (a human fixed it). An unchanged text is a no-op, not a new
+  revision.
+- **Retire is a tombstone**, `tu.deleted = 1` with `rev` and `updated_at` moved,
+  exactly the §7 tombstone: retrieval, fuzzy and concordance all skip it, a merge
+  never resurrects it, and only compaction removes the rows. Who retired it and
+  when are two `tu_attr` keys (`x-retired-by`, `x-retired-at`), since a unit has
+  no `updated_by` and the memory is where a later reader of it will look.
+- **A stale write is refused.** The hit carries the variant's `rev`; a write
+  names it, and a different `rev` is a 409, as `editSegmentTarget`'s version
+  check is. A memory marked `read_only` is refused.
+- **Addressed by `tm_ref` id, never a path.** The write names the project's own
+  reference (`tm_ref.id`, an integer in the project file) and a unit, and the
+  server resolves the file from the reference, as every memory path is built.
+  An id the project does not hold is a 404.
+- **Logged in the project, because the memory has no log.** A `.ctm` has no
+  `audit_event` (§7), so the project that acted records `tm.unit_edited` and
+  `tm.unit_retired`, with the reference id, the unit's uuid and the revisions,
+  and never a word of the text (a unit is client content, and a hashed `detail`
+  can never be erased). The two files cannot share a transaction: the memory is
+  written first and the event after, so a failure between loses the log line and
+  never invents one, and for an edit `tuv_history` still names who changed what.
+  The project migration widens the action list (`rebuildTable`, backlog #64).
 
 ### 6.2 Write-back
 

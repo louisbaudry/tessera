@@ -18,6 +18,12 @@ export interface ConcordanceHitView {
   readonly tuId: number;
   /** Position of the memory in the project's priority order, from 1. */
   readonly memory: number;
+  /** What an edit names: the project's own memory reference, the variant and its revision. */
+  readonly ref: number;
+  readonly tuvId: number;
+  readonly rev: number;
+  /** Whether the translation is text only, so an edit cannot lose a tag. */
+  readonly editable: boolean;
   readonly source: string;
   readonly target: string;
   /** Where the phrase sits in the searched side's text. */
@@ -103,4 +109,28 @@ export function isConcordanceKey(e: {
   readonly code: string;
 }): boolean {
   return e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === 'KeyL';
+}
+
+/** Why an edited translation cannot be saved yet, or null when it can. */
+export function editProblem(draft: string, current: string): string | null {
+  const text = cleanSelection(draft);
+  if (text === '') return 'Type the translation.';
+  if (text === cleanSelection(current)) return 'The translation is unchanged.';
+  return null;
+}
+
+/**
+ * What to tell a person whose write was refused. A 409 is a unit changed since it was
+ * searched (or a memory marked read-only, which the server's own words say), and the
+ * answer is to look again; anything else keeps the server's words.
+ */
+export function refusal(status: number, message: string): string {
+  return status === 409 ? `${message}. Search again, then retry.` : message;
+}
+
+/** The line shown after a write: what happened, and that the list below is fresh. */
+export function doneNote(kind: 'edit' | 'retire', changed: boolean): string {
+  if (kind === 'edit')
+    return changed ? 'Translation saved.' : 'Nothing to save: it was already so.';
+  return changed ? 'Unit retired.' : 'That unit was already retired.';
 }

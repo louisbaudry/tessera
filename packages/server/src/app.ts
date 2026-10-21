@@ -1467,7 +1467,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     adapterFor,
   });
   registerSuggestionRoutes(app, { platform, sessionActor, openProject, adapterFor });
-  registerConcordanceRoutes(app, { openProject });
+  registerConcordanceRoutes(app, { openProject, sessionActor });
 
   // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
 

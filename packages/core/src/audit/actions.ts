@@ -30,6 +30,8 @@ export const PROJECT_AUDIT_ACTIONS = [
   'qa.reinstated',
   'draft.purged',
   'ai.requested',
+  'tm.unit_edited',
+  'tm.unit_retired',
 ] as const;
 
 export const PLATFORM_AUDIT_ACTIONS = [
@@ -184,6 +186,26 @@ export interface AuditDetail {
     readonly reason: 'consent_withdrawn';
   };
   'ai.requested': AiProvenance;
+  /**
+   * A translation in one of the project's memories corrected by the owner from
+   * the concordance box (issue #151, `v1-spec.md` §6.1c). The subject is the
+   * project: a `.ctm` has no log of its own. Never the text, which is client
+   * content and could not be erased from a hashed detail; the old revision is in
+   * the memory's `tuv_history`.
+   */
+  'tm.unit_edited': {
+    /** The project's own `tm_ref.id`, never a path. */
+    readonly tm_ref: number;
+    readonly tu_uuid: string;
+    readonly lang: string;
+    readonly from_rev: number;
+    readonly to_rev: number;
+  };
+  /** A unit tombstoned in one of the project's memories (`v1-spec.md` §6.1c). */
+  'tm.unit_retired': {
+    readonly tm_ref: number;
+    readonly tu_uuid: string;
+  };
   // platform.sqlite (backlog #57, spec §2.5). Nothing personal in a
   // detail: it is hashed, so erasure could never reach it.
   'auth.login': null;

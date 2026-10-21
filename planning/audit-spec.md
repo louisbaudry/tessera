@@ -232,6 +232,8 @@ their `*_by` columns have always been free text; writers pass the
 | `qa.dismissed` / `qa.reinstated` | segment | `{ rule }` — a finding set aside, or counted again (backlog #33, `v1-spec.md` §7.6) |
 | `draft.purged` | project | `{ engine, count, reason }` — unaccepted engine suggestions deleted on a withdrawn consent (backlog #137, `translation-engine-spec.md` D15) |
 | `ai.requested` | segment | §4 |
+| `tm.unit_edited` | project | `{ tm_ref, tu_uuid, lang, from_rev, to_rev }` — a memory translation corrected from the concordance box; never the text, the old revision is in the memory's `tuv_history` (issue #151, `v1-spec.md` §6.1c) |
+| `tm.unit_retired` | project | `{ tm_ref, tu_uuid }` — a memory unit tombstoned from the concordance box (issue #151) |
 
 `platform.sqlite`: `auth.login`, `auth.login_failed`, `auth.logout`,
 `account.created`, `authorization.granted` / `authorization.revoked`
