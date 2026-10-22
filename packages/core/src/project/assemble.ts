@@ -11,6 +11,7 @@
 
 import { documentSegments, importDocx, type DocumentSegment } from '../docx/document.js';
 import { tokenizeRegion } from '../docx/tokenize.js';
+import type { FileKind } from '../model/file.js';
 import type { DocPart, SegmentStatus } from '../model/segment.js';
 import type { FormatEntry, Token } from '../model/token.js';
 import { segmentTokens, type SegmenterRules } from '../segment/segmenter.js';
@@ -33,9 +34,15 @@ export interface AssembledSegment {
   readonly locked: boolean;
   /** Inside an `mc:Fallback` (`fallbackRegionKeys`): counted as its twin. */
   readonly fallbackCopy: boolean;
+  /**
+   * A target the file arrived with (XLIFF only, §3.8); its status is the
+   * segment's `status`. A DOCX import never has one.
+   */
+  readonly targetTokens?: readonly Token[];
 }
 
 export interface AssembledFile {
+  readonly kind: FileKind;
   readonly originalBlob: Uint8Array;
   readonly skeleton: ReturnType<typeof importDocx>['skeletons'];
   readonly partMap: readonly string[];
@@ -105,6 +112,7 @@ export function assembleFile(bytes: Uint8Array, rules: SegmenterRules): Assemble
     }
   }
   return {
+    kind: 'docx',
     originalBlob: bytes,
     skeleton: doc.skeletons,
     partMap: doc.skeletons.map((s) => s.part),

@@ -179,6 +179,17 @@ wrong and is not swept.
   re-serializing a parsed tree.** A serializer drops namespaces only
   referenced via `mc:Ignorable`, silently breaking documents that use
   them. This is why the roundtrip gate can require byte-identical output.
+- **An XLIFF 2.x file is edited as a string and found again by position**
+  (issue #169, `v1-spec.md` §3.8). Its segments are the file's own
+  `<segment>`s, never re-segmented; `para_key` is the unit's ordinal and
+  `para_ord` the segment's index, so no id is trusted and no skeleton stored.
+  Export slices the original by offsets from `core/src/xliff/scan.ts` and skips
+  a segment whose target is the one the file arrived with, so a zero-edit
+  export is byte-identical. Merge and split are refused on it. A target that
+  arrives is never `confirmed`. `file.kind` (`FILE_KINDS`) picks the filter,
+  `exportFileBytes` dispatches on it, and the column has no CHECK on purpose
+  (`file` is referenced, `rebuildTable` refuses it). The fixtures in
+  `fixtures/xliff/` are hand-written: no real tool's XLIFF has been read.
 - **A translated export is validated differentially, never against an
   absolute bar** (issue #265, `v1-spec.md` §3.7, `pnpm test:ooxml`). The Open
   XML SDK validator (`scripts/ooxml-validate`, a CI-only .NET tool) must find

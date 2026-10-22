@@ -18,11 +18,13 @@ import { pipeline } from 'node:stream/promises';
 
 import {
   assembleFile,
+  assembleXliff,
   attachmentDisposition,
   DEFAULT_FUZZY_THRESHOLD,
   findMismatches,
   FUZZY_FLOOR,
   FUZZY_MAX_SCORE,
+  fileKindOfName,
   formatActor,
   generateSessionToken,
   isFuzzyThreshold,
@@ -36,6 +38,8 @@ import {
   TokenShapeError,
   UnsupportedGlossaryLanguage,
   verifyPassword,
+  XliffError,
+  type AssembledFile,
   type AuditActor,
   type Project,
   type ProjectAction,
@@ -261,6 +265,7 @@ const LOGIN_GATE: AuditActor = { actor: { kind: 'system', name: 'login' }, label
 
 const DOCX_TYPE =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const XLIFF_TYPE = 'application/xliff+xml';
 
 /** What a client sees of an account: never the password hash or the storage root. */
 function publicAccount(account: Account) {
@@ -536,9 +541,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     }
   });
 
-  // One DOCX per request, multipart; its filename is the `rel_path`
-  // unless a `relPath` field says otherwise. `assembleFile` +
-  // `insertFile`, exactly the CLI's `add-file`.
+  // One DOCX or XLIFF 2.x per request, multipart; its filename is the
+  // `rel_path` unless a `relPath` field says otherwise, and the name's
+  // extension picks the filter (`fileKindOfName`; anything but `.xlf` and
+  // `.xliff` is read as a DOCX, as before). `assembleFile` or `assembleXliff`
+  // + `insertFile`, exactly the CLI's `add-file`.
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/files',
     async (req, reply) => {
@@ -557,15 +564,34 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
             ? String(relPathField.value)
             : part.filename;
 
-        let rules: SegmenterRules;
-        try {
-          rules = rulesFor(project.srcLang);
-        } catch (err) {
-          return reply.code(422).send({
-            error: `cannot segment ${project.srcLang}: ${err instanceof Error ? err.message : String(err)}`,
-          });
+        let assembled: AssembledFile;
+        if (fileKindOfName(relPath) === 'xliff') {
+          // An XLIFF file arrives segmented, so no rules are consulted and
+          // any source language imports (v1-spec.md §3.8).
+          try {
+            assembled = assembleXliff(bytes, {
+              srcLang: project.srcLang,
+              tgtLang: project.tgtLang,
+            });
+          } catch (err) {
+            if (err instanceof XliffError) {
+              return reply
+                .code(422)
+                .send({ error: `cannot read ${relPath}: ${err.message}` });
+            }
+            throw err;
+          }
+        } else {
+          let rules: SegmenterRules;
+          try {
+            rules = rulesFor(project.srcLang);
+          } catch (err) {
+            return reply.code(422).send({
+              error: `cannot segment ${project.srcLang}: ${err instanceof Error ? err.message : String(err)}`,
+            });
+          }
+          assembled = assembleFile(bytes, rules);
         }
-        const assembled = assembleFile(bytes, rules);
         let fileId: number;
         try {
           fileId = insertFile(db, relPath, assembled, { actor: sessionActor(req) }).id;
@@ -630,7 +656,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     },
   );
 
-  // The delivered DOCX: `exportFile`, exactly the CLI's `export`. The
+  // The delivered file, DOCX or XLIFF by its kind: `exportFile`, exactly the CLI's `export`. The
   // project's log records it produced (`project.exported`); this file's
   // records it left, to whom (`file.downloaded`) — before the first byte.
   app.get<{ Params: { name: string; fileId: string } }>(
@@ -664,7 +690,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         sha256: exported.sha256,
       });
       return reply
-        .header('content-type', DOCX_TYPE)
+        .header('content-type', exported.file.kind === 'xliff' ? XLIFF_TYPE : DOCX_TYPE)
         .header('content-disposition', attachmentDisposition(name))
         .send(Buffer.from(exported.bytes));
     },

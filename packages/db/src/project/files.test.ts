@@ -130,6 +130,7 @@ describe('listFileSummaries / getFileSummary', () => {
     );
     const summary = (f: typeof a) => ({
       id: f.id,
+      kind: f.kind,
       relPath: f.relPath,
       importedAt: f.importedAt,
       segmentCount: listSegments(db, f.id).length,

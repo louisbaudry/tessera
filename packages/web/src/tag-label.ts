@@ -104,11 +104,34 @@ function describePlaceholder(xml: string): string {
 }
 
 /**
+ * An XLIFF 2.x tag (`v1-spec.md` §3.8), named by what the file calls it: its
+ * `disp` or `equiv` text when it has one, else its type, else the element.
+ */
+function describeXliffTag(xml: string): string {
+  const element = /^<(?:[\w-]+:)?(pc|ph|sc|ec|sm|em|mrk|cp)\b/.exec(xml)?.[1] ?? 'tag';
+  const named = (name: string) => new RegExp(`\\b${name}="([^"]*)"`).exec(xml)?.[1];
+  const label = named('disp') ?? named('equiv') ?? named('type');
+  switch (element) {
+    case 'cp':
+      return 'control character';
+    case 'mrk':
+      return label ? `marker ${label}` : 'marker';
+    default:
+      return (
+        label ?? (element === 'ph' ? 'placeholder' : element === 'pc' ? 'tag' : element)
+      );
+  }
+}
+
+/**
  * The words for a tag's format: `bold italic`, `link`, `footnote`,
  * `field PAGE`. A tag the table cannot explain is `unknown tag`.
  */
 export function describeFormat(format: FormatEntry | undefined): string {
   if (!format) return 'unknown tag';
+  if (/^<(?:[\w-]+:)?(?:pc|ph|sc|ec|sm|em|mrk|cp)\b/.test(format.open)) {
+    return describeXliffTag(format.open);
+  }
   switch (format.placement) {
     case 'run': {
       const rPr =

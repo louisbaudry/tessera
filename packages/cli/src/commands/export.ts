@@ -16,8 +16,9 @@ import {
 export const EXPORT_USAGE = 'cat-tool export <project.catdb> [--out <dir>] [--file <id>]';
 
 /**
- * Writes every file (or one) back to DOCX under its original `rel_path`
- * in `--out`, targets spliced in per v1-spec.md §3.4's fold rule.
+ * Writes every file (or one) back to its own format (DOCX, or XLIFF by the
+ * file's kind) under its original `rel_path` in `--out`, targets spliced in per
+ * v1-spec.md §3.4's fold rule (§3.8 for XLIFF).
  */
 export function exportCommand(args: readonly string[], io: CliIo): number {
   const { values, positionals } = parse(args, {
@@ -48,8 +49,11 @@ export function exportCommand(args: readonly string[], io: CliIo): number {
       mkdirSync(dirname(outPath), { recursive: true });
       writeFileSync(outPath, bytes);
       io.stdout(
-        `Wrote ${outPath}: ${summary.paragraphsRendered}/${summary.paragraphs} paragraphs ` +
-          `rebuilt, ${summary.segmentsWithTarget}/${summary.segments} segments with a target`,
+        file.kind === 'xliff'
+          ? `Wrote ${outPath}: ${summary.paragraphsRendered} targets written, ` +
+              `${summary.segmentsWithTarget}/${summary.segments} segments with a target`
+          : `Wrote ${outPath}: ${summary.paragraphsRendered}/${summary.paragraphs} paragraphs ` +
+              `rebuilt, ${summary.segmentsWithTarget}/${summary.segments} segments with a target`,
       );
     }
   } finally {

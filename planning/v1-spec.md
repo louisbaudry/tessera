@@ -35,7 +35,7 @@ pool) rides on top later and is out of scope here.
 | Fuzzy matching | Explicit v1 cut. Schema is built fuzzy-ready (§4.3) so it lands later without migration. Designed in §6.1a (backlog #61); not built. |
 | Concordance search | Falls out almost free once the TM index exists — first follow-on to v1. |
 | Termbase / MT / QA against glossary | No user need yet. |
-| XLIFF, XLSX, PPTX, TXT | DOCX is the whole job. |
+| XLSX, PPTX, TXT | DOCX is the whole job. XLIFF 2.x is built (§3.8, issue #169); XLIFF 1.2 is not. |
 | CJK, Cyrillic, Nordic, Eastern European | Different tokenizer (CJK) or more abbreviation lists; neither is needed. |
 | Auto-localisation of numbers/dates | Real Trados feature, but it interacts with matching in ways worth designing once fuzzy exists. |
 | Cloud tier, licensing, collaboration | Separate product surface; a prototype already exists (§2.1). |
@@ -640,6 +640,100 @@ about semantics the SDK does not check.
 Run with `pnpm test:ooxml` (needs the .NET 8 SDK; it fails loudly without it,
 because a skipped check reports green). Its own CI job, excluded from
 `pnpm test` like the gate and the golden test.
+
+### 3.8 The XLIFF 2.x filter (issue #169)
+
+Decided 2026-10-22. The first file type after DOCX, and the way work moves to
+and from other CAT tools and client pipelines. Rust/Wasm was asked first and
+the answer was to stay in TypeScript: the filter is XML scanning and tag
+mapping, no profile points at the language, and it stays headless in `core`
+under the same gate-style tests.
+
+**What it takes.** XLIFF 2.0, 2.1 and 2.2 (`.xlf`, `.xliff`; the same
+namespace, told by `version`). XLIFF 1.2, the Trados and memoQ default, is
+**refused by name** ("XLIFF 1.2 is not supported; export 2.x"): its inline
+elements and states are a different filter, and nothing here pretends to read it.
+
+**The same two rules as the DOCX filter.**
+
+- **The original is never re-serialised.** The file's bytes are stored as they
+  came (`file.original_blob`) and export edits the string: a located `<target>`
+  or `<segment>` start tag is replaced by slicing, everything else, namespaces,
+  modules, `<notes>`, `<originalData>`, attribute order and self-closing style,
+  stays byte for byte. A scanner that reports offsets
+  (`core/src/xliff/scan.ts`) says where things are; it rewrites nothing.
+- **Export never re-renders what the project did not change.** A segment whose
+  target is the one the file arrived with is not touched, so a **zero-edit
+  import → export is byte-identical**, including a file that came with targets
+  (the gate's property, tested on the fixtures in `fixtures/xliff/`).
+
+**One `<segment>` is one segment.** XLIFF is already segmented by whoever
+made it, and export finds a segment again by its position, so Tessera does
+**not** sentence-segment it (its rules are not consulted, so any source
+language imports). A segment is stored with `part = 'xliff'`, `para_key` =
+the unit's ordinal in the document (every `<unit>` counted across `<file>` and
+`<group>`, never its `id`, which a sloppy producer repeats) and `para_ord` =
+the segment's index in the unit. `<ignorable>` is not a segment and is never
+touched. A segment is **locked** when `translate="no"` holds on its unit or an
+enclosing group or file, or when its source is empty. **Merge and split are
+refused** on an XLIFF file (§7.4): they would break the position a segment is
+found by.
+
+**Languages.** The file's `srcLang` must match the project's source language
+and its `trgLang`, when it has one, the target's, compared on the primary subtag
+(`primarySubtag`, as retrieval does). A mismatch is refused with both pairs
+named, because a memory match across the wrong pair is worse than no import.
+
+**Inline content → tokens.** A segment's source is read into the project's
+tokens (§3.3) and a per-segment format table whose `open`/`close` hold the
+original element text, so export writes the tag back as it was.
+
+| XLIFF | Tokens | Placement | Kind |
+|---|---|---|---|
+| `<pc id>…</pc>` | `open` … `close` | `inline` | `link` for `type="link"`, else `other` |
+| `<ph id/>` | `ph` | `in-run` | `image` for `type="image"`, else `other` |
+| `<sc id/>` … `<ec startRef/>` in the same segment | `open` … `close` | `inline` | `other` |
+| an `<sc>`, `<ec>`, `<sm>` or `<em>` with no partner in the segment | `ph` | `in-run` | `other` |
+| `<mrk id>…</mrk>` | `open` … `close` | `inline` | `other` |
+| `<sm id/>` … `<em startRef/>` | as `<sc>`/`<ec>` | | |
+| `<cp hex="…"/>` | `ph` | `in-run` | `other` |
+
+Text is read with its entities decoded and written with `&`, `<`, `>` escaped;
+whitespace is kept exactly (no collapsing). Every tag of this filter is
+**visible**: nothing in a segment is a spell-check marker, so nothing is
+hidden. A tag whose end is in another segment is a placeholder in this one;
+export gives back its original text unchanged either way.
+
+**Existing targets.** A `<target>` that arrives is read like the source (its tags
+matched to the source's by element and `id`; a tag the source lacks is added to
+the table, which `tag.*` QA then flags). Its status is `draft` when the segment's
+`state` is `initial` or absent and `translated` for `translated`, `reviewed` and
+`final`; **never `confirmed`**, because confirming is a person's act here and
+writes the memory. An empty target is no target. A segment with a target that
+arrives has no `origin`.
+
+**Export of a changed target.** The segment's tokens are rendered to inline XML
+from the format table, the existing `<target>` content replaced (a self-closing
+`<target/>` opened) or, when there was none, a `<target>` inserted just after
+`</source>` with the source element's own prefix. The `<segment>` start tag's
+`state` is set to `translated` (or `initial` for a `draft`); a start tag with no
+`state` gets one. A segment without a target is left alone.
+
+**What it does not do** (named so a pass is not read as more): it does not
+interpret the modules (Translation Candidates is not imported as a memory, the
+Glossary module not as a glossary, `fs`/`its` markup is carried and not
+understood); it does not resegment on `canResegment`; it does not read XLIFF 1.2;
+it does not validate against the XLIFF schema or the specification's
+processing requirements; the portal's order intake still takes DOCX only.
+
+**What proves it, and what does not.** Hand-written fixtures in
+`fixtures/xliff/` (synthetic text, written to the specification's examples'
+shapes; the OASIS XLIFF 2.1 text is the reference and was not copied) and tests
+that the roundtrip is byte-identical, that every inline element round-trips
+through tokens, and that a translated export parses again and holds the new
+targets. **No real Trados, memoQ, Phrase or Smartling XLIFF has been read**, so
+the fixtures encode a belief about other tools' output, exactly the risk the
+repo's fixture rule names; a real sample from a client pipeline is the next check.
 
 ## 4. Data model
 

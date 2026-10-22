@@ -223,6 +223,7 @@ describe('carryHiddenTags — the whole corpus', () => {
         id: 1,
         relPath: name,
         originalBlob: assembled.originalBlob,
+        kind: 'docx',
         skeleton: assembled.skeleton,
         partMap: assembled.partMap,
         importedAt: '2026-09-27T00:00:00.000Z',

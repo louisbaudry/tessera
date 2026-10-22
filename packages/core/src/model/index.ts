@@ -15,4 +15,5 @@ export * from './words.js';
 export * from './lang.js';
 export * from './slug.js';
 export * from './segment.js';
+export * from './file.js';
 export * from './csv.js';

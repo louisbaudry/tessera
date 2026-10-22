@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xlf:xliff xmlns:xlf="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en-GB" trgLang="de-DE">
+  <xlf:file id="f1">
+    <xlf:unit id="u1">
+      <xlf:segment state="translated">
+        <xlf:source>The <xlf:pc id="1">red</xlf:pc> door is <xlf:ph id="2"/>.</xlf:source>
+        <xlf:target>Die <xlf:pc id="1">rote</xlf:pc> Tür ist <xlf:ph id="2"/>.</xlf:target>
+      </xlf:segment>
+    </xlf:unit>
+    <xlf:unit id="u2">
+      <xlf:segment state="initial">
+        <xlf:source>Knock twice.</xlf:source>
+        <xlf:target>Zweimal klopfen &amp; warten.</xlf:target>
+      </xlf:segment>
+      <xlf:segment state="final">
+        <xlf:source>Wait.</xlf:source>
+        <xlf:target>Warten.</xlf:target>
+      </xlf:segment>
+    </xlf:unit>
+    <xlf:unit id="u3">
+      <xlf:segment>
+        <xlf:source>Come in.</xlf:source>
+        <xlf:target/>
+      </xlf:segment>
+      <xlf:segment>
+        <xlf:source>Sit down.</xlf:source>
+      </xlf:segment>
+    </xlf:unit>
+  </xlf:file>
+</xlf:xliff>

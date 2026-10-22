@@ -9,6 +9,7 @@
  * on a job where nothing was even translated.
  */
 
+import type { FileKind } from '../model/file.js';
 import {
   getPart,
   readDocx,
@@ -50,6 +51,8 @@ export interface DocxDocument {
  */
 export interface ProjectFile {
   readonly id: number;
+  /** What the original is; export dispatches on it (§3.8). */
+  readonly kind: FileKind;
   readonly relPath: string;
   /** Untouched source bytes — what `readDocx` was originally given. */
   readonly originalBlob: Uint8Array;

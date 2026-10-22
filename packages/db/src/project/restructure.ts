@@ -87,6 +87,13 @@ function assertUnlocked(segment: Segment): void {
   if (segment.locked || segment.status === 'locked') {
     throw new SegmentRepoError(`segment ${segment.id} is locked`);
   }
+  // An XLIFF segment is found again on export by its position in the file
+  // (`v1-spec.md` §3.8); a split or merge would move it.
+  if (segment.part === 'xliff') {
+    throw new SegmentRepoError(
+      `segment ${segment.id} is in an XLIFF file, whose segments cannot be split or merged`,
+    );
+  }
 }
 
 /**

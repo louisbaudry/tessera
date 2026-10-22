@@ -10,13 +10,14 @@
 
 import { createHash } from 'node:crypto';
 
-import type { AssembledFile, AuditActor, ProjectFile } from '@cat-tool/core';
+import type { AssembledFile, AuditActor, FileKind, ProjectFile } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
 import { appendAuditEvent } from '../audit/events.js';
 
 interface FileRow {
   id: number;
+  kind: string;
   rel_path: string;
   original_blob: Buffer;
   skeleton: string;
@@ -26,6 +27,7 @@ interface FileRow {
 
 const fromRow = (row: FileRow): ProjectFile => ({
   id: row.id,
+  kind: row.kind as FileKind,
   relPath: row.rel_path,
   originalBlob: new Uint8Array(row.original_blob),
   skeleton: JSON.parse(row.skeleton) as ProjectFile['skeleton'],
@@ -49,21 +51,22 @@ export function insertFile(
   options: InsertFileOptions,
 ): ProjectFile {
   const insertFileStmt = db.prepare(
-    `INSERT INTO file (rel_path, original_blob, skeleton, part_map, imported_at)
-     VALUES (@rel_path, @original_blob, @skeleton, @part_map, @imported_at)`,
+    `INSERT INTO file (kind, rel_path, original_blob, skeleton, part_map, imported_at)
+     VALUES (@kind, @rel_path, @original_blob, @skeleton, @part_map, @imported_at)`,
   );
   const insertSegmentStmt = db.prepare(
     `INSERT INTO segment
        (file_id, part, ord, para_key, para_ord, source_tokens, format_table,
-        source_hash, status, locked, fallback_copy, updated_at)
+        source_hash, target_tokens, status, locked, fallback_copy, updated_at)
      VALUES
        (@file_id, @part, @ord, @para_key, @para_ord, @source_tokens, @format_table,
-        @source_hash, @status, @locked, @fallback_copy, @updated_at)`,
+        @source_hash, @target_tokens, @status, @locked, @fallback_copy, @updated_at)`,
   );
 
   return db.transaction((): ProjectFile => {
     const importedAt = new Date().toISOString();
     const info = insertFileStmt.run({
+      kind: assembled.kind,
       rel_path: relPath,
       original_blob: Buffer.from(assembled.originalBlob),
       skeleton: JSON.stringify(assembled.skeleton),
@@ -82,6 +85,7 @@ export function insertFile(
         source_tokens: JSON.stringify(segment.sourceTokens),
         format_table: JSON.stringify(segment.formatTable),
         source_hash: segment.sourceHash,
+        target_tokens: segment.targetTokens ? JSON.stringify(segment.targetTokens) : null,
         status: segment.status,
         locked: segment.locked ? 1 : 0,
         fallback_copy: segment.fallbackCopy ? 1 : 0,
@@ -102,6 +106,7 @@ export function insertFile(
 
     return {
       id: fileId,
+      kind: assembled.kind,
       relPath,
       originalBlob: assembled.originalBlob,
       skeleton: assembled.skeleton,
@@ -130,6 +135,7 @@ export function listFiles(db: Database.Database): ProjectFile[] {
  */
 export interface FileSummary {
   readonly id: number;
+  readonly kind: FileKind;
   readonly relPath: string;
   readonly importedAt: string;
   readonly segmentCount: number;
@@ -137,18 +143,20 @@ export interface FileSummary {
 
 interface FileSummaryRow {
   id: number;
+  kind: string;
   rel_path: string;
   imported_at: string;
   segment_count: number;
 }
 
 const SUMMARY_SQL = `
-  SELECT f.id, f.rel_path, f.imported_at,
+  SELECT f.id, f.kind, f.rel_path, f.imported_at,
          (SELECT COUNT(*) FROM segment s WHERE s.file_id = f.id) AS segment_count
     FROM file f`;
 
 const summaryFromRow = (row: FileSummaryRow): FileSummary => ({
   id: row.id,
+  kind: row.kind as FileKind,
   relPath: row.rel_path,
   importedAt: row.imported_at,
   segmentCount: row.segment_count,

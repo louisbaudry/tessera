@@ -31,4 +31,21 @@ describe('describeFormat', () => {
   it('calls a tag its table cannot explain an unknown tag', () => {
     expect(describeFormat(undefined)).toBe('unknown tag');
   });
+
+  it('names an XLIFF tag by its disp, equiv or type, else by its element', () => {
+    expect(describeFormat(placeholder('<ph id="1" type="fmt" disp="br"/>'))).toBe('br');
+    expect(describeFormat(placeholder('<ph id="1" equiv="[price]"/>'))).toBe('[price]');
+    expect(describeFormat(placeholder('<xlf:ph id="1" type="image"/>'))).toBe('image');
+    expect(describeFormat(placeholder('<ph id="1"/>'))).toBe('placeholder');
+    expect(describeFormat(placeholder('<cp hex="0001"/>'))).toBe('control character');
+    const pair = (open: string): FormatEntry => ({
+      ...placeholder(open),
+      placement: 'inline',
+      close: '</pc>',
+    });
+    expect(describeFormat(pair('<pc id="1" type="link">'))).toBe('link');
+    expect(describeFormat(pair('<pc id="2">'))).toBe('tag');
+    expect(describeFormat(pair('<mrk id="m" type="term">'))).toBe('marker term');
+    expect(describeFormat(placeholder('<sc id="3"/>'))).toBe('sc');
+  });
 });

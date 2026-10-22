@@ -11,7 +11,7 @@
 import { createHash } from 'node:crypto';
 
 import {
-  exportProjectFile,
+  exportFileBytes,
   type AuditActor,
   type ExportedFile,
   type ProjectFile,
@@ -41,7 +41,7 @@ export interface ExportFileOptions {
 }
 
 /**
- * Folds a file back into a DOCX and records a `project.exported` event
+ * Renders a file back into its own format (DOCX or XLIFF, by `kind`) and records a `project.exported` event
  * with the produced bytes' SHA-256 — content leaving the system
  * (audit-spec.md decision 9), recorded at production (§2.4).
  */
@@ -55,7 +55,7 @@ export function exportFile(
     if (!file) {
       throw new ProjectExportError(`no file with id ${fileId}`);
     }
-    const exported = exportProjectFile(file, listSegments(db, fileId));
+    const exported = exportFileBytes(file, listSegments(db, fileId));
     const sha256 = createHash('sha256').update(exported.bytes).digest('hex');
     appendAuditEvent(db, {
       actor: options.actor,

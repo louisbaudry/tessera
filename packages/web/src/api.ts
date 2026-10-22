@@ -5,6 +5,7 @@
 import type {
   AccountRole,
   ConcordanceSide,
+  FileKind,
   Project,
   QaIssue,
   QaRule,
@@ -207,6 +208,7 @@ export interface ProjectSummary {
 
 export interface FileSummary {
   readonly id: number;
+  readonly kind: FileKind;
   readonly relPath: string;
   readonly importedAt: string;
   readonly segmentCount: number;
