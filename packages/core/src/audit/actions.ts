@@ -32,6 +32,7 @@ export const PROJECT_AUDIT_ACTIONS = [
   'ai.requested',
   'tm.unit_edited',
   'tm.unit_retired',
+  'project.replaced',
 ] as const;
 
 export const PLATFORM_AUDIT_ACTIONS = [
@@ -200,6 +201,24 @@ export interface AuditDetail {
     readonly lang: string;
     readonly from_rev: number;
     readonly to_rev: number;
+  };
+  /**
+   * One find-and-replace run over a project's targets (backlog #148b,
+   * `v1-spec.md` §7.8): the batch parent of the `segment.target_set` events it
+   * wrote, as `project.pretranslate` is. Never the pattern or the replacement,
+   * which are the owner's own words and may carry a client's.
+   */
+  'project.replaced': {
+    readonly regex: boolean;
+    readonly case_sensitive: boolean;
+    /** Segments written. */
+    readonly segments: number;
+    /** Matches replaced in them. */
+    readonly matches: number;
+    /** Segments skipped because they changed after the preview. */
+    readonly stale: number;
+    /** Segments skipped because they are locked. */
+    readonly locked: number;
   };
   /** A unit tombstoned in one of the project's memories (`v1-spec.md` §6.1c). */
   'tm.unit_retired': {

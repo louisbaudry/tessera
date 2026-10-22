@@ -130,6 +130,7 @@ import { registerAssignmentRoutes } from './assignments.js';
 import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft.js';
 import { registerEngineRoutes } from './engine.js';
 import { registerConcordanceRoutes } from './concordance.js';
+import { registerReplaceRoutes } from './replace.js';
 import { registerSuggestionRoutes } from './suggestions.js';
 import type { Resolver, WebhookSender } from './webhook-send.js';
 import {
@@ -183,6 +184,12 @@ export interface BuildAppOptions {
    * real sender, the real resolver and a 15 s timer. Tests inject a fake sender and
    * resolver and set `tickMs` to 0 so they drive each pass themselves.
    */
+  /**
+   * How long a find-and-replace scan and apply may run before their thread is ended
+   * (`v1-spec.md` §7.8). A deployment passes nothing and gets `core`'s limits; a test of
+   * a pattern that hangs shortens them, so it need not wait ten real seconds.
+   */
+  readonly replaceLimitsMs?: { readonly scan?: number; readonly apply?: number };
   readonly webhooks?: {
     readonly send?: WebhookSender;
     readonly resolve?: Resolver;
@@ -1468,6 +1475,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
   registerSuggestionRoutes(app, { platform, sessionActor, openProject, adapterFor });
   registerConcordanceRoutes(app, { openProject, sessionActor });
+  registerReplaceRoutes(app, {
+    jobs,
+    openProject,
+    sessionActor,
+    accountId: (req) => owner(req).id,
+    ...(options.replaceLimitsMs ? { limitsMs: options.replaceLimitsMs } : {}),
+  });
 
   // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
 

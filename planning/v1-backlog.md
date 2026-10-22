@@ -2614,8 +2614,18 @@ Design in `v1-spec.md` §6.1c. Louis chose TypeScript over Rust/Wasm (a write pa
 - **Seen in a browser.** The built SPA against a seeded server: edit (prefilled, Save disabled while unchanged), the list refreshing to the new text, a cancelled retire, a confirmed retire leaving no match. No console error.
 - **Not built:** editing the source side (re-keying a unit is another operation), restoring a retired unit, and a grantee's use of either.
 
-**#148b · Regex find/replace across the project · M** · [issue #170]
-A replace across confirmed segments is a write: it goes through `editSegmentTarget` so hidden tags, QA and audit stay correct, never a bulk SQL update. Waits on the first real job (#37, #38) saying it is needed.
+**#148b · ~~Regex find/replace across the project~~ · DONE — `core/src/project/find-replace.ts`, `db/src/project/find-replace.ts` (`scanReplace`, `applyReplace`), jobs `project.replaceScan` / `project.replaceApply` in `db/src/jobs/ops.ts`, `POST /api/projects/:name/replace/{scan,apply}` (`server/src/replace.ts`), project schema v18, `web/src/{FindReplaceDialog.tsx,find-replace.ts}` and `Ctrl+Shift+H`**
+(2026-10-22; closes issue #170, the write half)
+
+Design in `v1-spec.md` §7.8. Louis lifted the card's "not before the first real job" gate and chose TypeScript over Rust/Wasm, on the condition that a pattern that hangs cannot take the server with it.
+
+- **A pattern can hang a thread, so the work is a job with a time limit.** A regular expression with nested quantifiers (`(a+)+$` on forty `a`s and a `b`) takes exponential time and no validation rules it out, so the preview and the apply run on a worker thread (`ops.ts`, as `tm-format-spec.md` §1.1 always planned for batch find-and-replace) and the thread is terminated at `REPLACE_TIME_LIMIT_MS` (the apply gets a longer one, since it writes). A test runs exactly that pattern and sees the thread end and the project untouched. Rust's linear-time regex would have removed the hang at the price of lookahead, backreferences and a Rust build; nothing measured says a limit is not enough.
+- **Writes go through `editSegmentTarget`, and nothing else.** So a replaced segment is a segment its translator edited: hidden tags carried, status and origin derived, QA rerun, a stale write refused. A confirmed segment becomes `translated` and is confirmed again before the memory hears of it; a locked one is never touched. `editSegmentTarget` gained an optional `batchId`, so each write is a child of the run's one `project.replaced` event (as pre-translate's are), written with the counts and **never the pattern or replacement**.
+- **Apply is exactly the preview, all or nothing.** It names the ticked segments and the `updatedAt` each had; a segment changed since is skipped and counted, not overwritten, and the whole apply is one transaction, so a terminated or failed run changes nothing. A run holds at most `REPLACE_MAX_SEGMENTS`, and the preview says when it was capped.
+- **Text runs, not tags.** The target is read with hidden tags removed and adjacent text joined, so a bookmark inside a phrase does not hide it; a match that would cross a visible tag is not found, and no replacement can break a pair. Said on the box, not hidden.
+- **A real bug the first db test found:** the repository called `compileFind`, which refused an empty pattern only in regular-expression mode, so an empty text search was accepted and would have matched between every character. The checks (empty, length) now live in `compileFind` itself, which a run is built from, not in a `findProblem` a caller could skip. And V8's error message repeats the pattern and its flags, so only the reason is shown.
+- **Seen in a browser.** The built SPA against a seeded server: preview with the matches marked, an untick, Apply disabled when a box is edited after the preview, a confirmed segment replaced and the grid reloaded, a bad pattern refused in the server's words. The one console line is the 400 for that.
+- **Not built:** searching the source (the concordance box does that), replacing across a tag, restoring a replaced run in one step (each segment's history is in the log), and a translator's use on a grant.
 
 ---
 
@@ -4716,7 +4726,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #21]: https://github.com/louisbaudry/tessera/issues/21
 [issue #22]: https://github.com/louisbaudry/tessera/issues/22
 [issue #23]: https://github.com/louisbaudry/tessera/issues/23
-[issue #170]: https://github.com/louisbaudry/tessera/issues/170
 [issue #24]: https://github.com/louisbaudry/tessera/issues/24
 [issue #13]: https://github.com/louisbaudry/tessera/issues/13
 [issue #14]: https://github.com/louisbaudry/tessera/issues/14

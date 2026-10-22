@@ -66,6 +66,8 @@ export interface EditTargetOptions {
   readonly actor: AuditActor;
   /** The segment's `updatedAt` as the editor last saw it. */
   readonly baseUpdatedAt?: string;
+  /** The batch event this edit belongs to (spec §2.3), e.g. a find-and-replace run. */
+  readonly batchId?: number;
 }
 
 export interface EditTargetResult {
@@ -113,6 +115,7 @@ export function editSegmentTarget(
       status: empty ? 'new' : 'translated',
       origin: null,
       actor: options.actor,
+      ...(options.batchId !== undefined ? { batchId: options.batchId } : {}),
     });
     if (!written) return { segment, changed: false, rerun: [], issues: [] };
     const { rerun, issues } = rerunQaAfterEdit(db, id, stored);

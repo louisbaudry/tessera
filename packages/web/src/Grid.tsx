@@ -36,6 +36,8 @@ import {
 } from './gutter.js';
 import { AddTermDialog } from './AddTermDialog.js';
 import { ConcordanceDialog } from './ConcordanceDialog.js';
+import { FindReplaceDialog } from './FindReplaceDialog.js';
+import { isReplaceKey } from './find-replace.js';
 import {
   draftFromSelection,
   isAddTermKey,
@@ -104,6 +106,8 @@ interface SaveFailure {
 }
 
 export function Grid({ project, fileId }: { project: string; fileId: number }) {
+  // Bumped after a find-and-replace wrote segments: the grid loads them again (§7.8).
+  const [reloads, setReloads] = useState(0);
   const data = useLoad(
     useCallback(
       async (token: string, signal: AbortSignal): Promise<GridData> => {
@@ -123,15 +127,31 @@ export function Grid({ project, fileId }: { project: string; fileId: number }) {
           suggestions: drafts.suggestions,
         };
       },
-      [project, fileId],
+      // `reloads` is not read: a new one makes a new load.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [project, fileId, reloads],
     ),
   );
   if (data.state === 'loading') return <p className="muted">Loading segments{'…'}</p>;
   if (data.state === 'error') return <p className="error">{data.message}</p>;
-  return <SegmentGrid project={project} data={data.data} />;
+  return (
+    <SegmentGrid
+      project={project}
+      data={data.data}
+      onReplaced={() => setReloads((n) => n + 1)}
+    />
+  );
 }
 
-function SegmentGrid({ project, data }: { project: string; data: GridData }) {
+function SegmentGrid({
+  project,
+  data,
+  onReplaced,
+}: {
+  project: string;
+  data: GridData;
+  onReplaced: () => void;
+}) {
   const { detail, file } = data;
   const { token, signOut } = useSession();
   const [segments, setSegments] = useState(file.segments);
@@ -655,6 +675,19 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [foreign, openConcordance]);
+  // Find and replace (issue #170, §7.8): Ctrl+Shift+H, the owner's alone like the concordance
+  // box, since it rewrites across the project.
+  const [replacing, setReplacing] = useState(false);
+  useEffect(() => {
+    if (foreign) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!isReplaceKey(e)) return;
+      e.preventDefault();
+      setReplacing(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [foreign]);
   const commands = useMemo<PaletteCommand[]>(() => {
     const from = () => segmentsNow.current.findIndex((s) => s.id === activeNow.current);
     const goTo = (index: number | null, none: string) => {
@@ -728,6 +761,13 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
               keywords: 'find lookup translation memory tm phrase',
               hint: 'Ctrl+Shift+L',
               run: () => openConcordance(false),
+            },
+            {
+              id: 'find-replace',
+              title: 'Find and replace across the project',
+              keywords: 'search regex regular expression change terminology',
+              hint: 'Ctrl+Shift+H',
+              run: () => setReplacing(true),
             },
             {
               id: 'toggle-glossary',
@@ -1006,6 +1046,16 @@ function SegmentGrid({ project, data }: { project: string; data: GridData }) {
           initial={addingTerm.draft}
           note={addingTerm.note}
           onClose={() => setAddingTerm(null)}
+        />
+      )}
+      {replacing && !foreign && (
+        <FindReplaceDialog
+          project={project}
+          tgtLang={detail.project.tgtLang}
+          onClose={(changed) => {
+            setReplacing(false);
+            if (changed) onReplaced();
+          }}
         />
       )}
       {concordance && !foreign && (
