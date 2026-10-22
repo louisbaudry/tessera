@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import type { GlossaryRefView, TmRefView } from './api.js';
+import type {
+  GlossaryRefView,
+  OwnerReferenceFile,
+  TmRefView,
+  WorkerReferenceFile,
+} from './api.js';
 import {
   anonymousRows,
+  formatBytes,
   glossaryRows,
+  mediaTypeName,
   memoryRows,
   OUTSIDE_NAME,
+  ownerReferenceRows,
   resourceSummary,
+  workerReferenceRows,
 } from './resources.js';
 
 const tm = (over: Partial<TmRefView> & { id: number }): TmRefView => ({
@@ -90,5 +99,52 @@ describe('anonymousRows', () => {
       { id: 1, name: 'Glossary 1', badges: ['writes here'], enabled: true },
     ]);
     expect(anonymousRows([], 'Memory')).toEqual([]);
+  });
+});
+
+describe('reference files', () => {
+  it('names sizes and types in words', () => {
+    expect(formatBytes(640)).toBe('640 B');
+    expect(formatBytes(12 * 1024 + 100)).toBe('12 KB');
+    expect(formatBytes(3.45 * 1024 * 1024)).toBe('3.5 MB');
+    expect(mediaTypeName('application/pdf')).toBe('PDF');
+    expect(mediaTypeName('image/webp')).toBe('WebP');
+    expect(mediaTypeName('text/html')).toBe('file');
+  });
+
+  it("shows the owner the file's name, with their label beside it", () => {
+    const files: OwnerReferenceFile[] = [
+      {
+        id: 4,
+        name: 'brief.pdf',
+        label: null,
+        mediaType: 'application/pdf',
+        size: 2048,
+        addedAt: 't',
+      },
+      {
+        id: 9,
+        name: 'shot.png',
+        label: 'Screen 3',
+        mediaType: 'image/png',
+        size: 100,
+        addedAt: 't',
+      },
+    ];
+    expect(ownerReferenceRows(files)).toEqual([
+      { id: 4, title: 'brief.pdf', detail: 'PDF, 2 KB' },
+      { id: 9, title: 'Screen 3 (shot.png)', detail: 'PNG, 100 B' },
+    ]);
+  });
+
+  it("shows a translator the owner's label, or the position, and never a name", () => {
+    const files: WorkerReferenceFile[] = [
+      { id: 4, label: 'Style guide', mediaType: 'application/pdf', size: 2048 },
+      { id: 9, label: null, mediaType: 'image/png', size: 100 },
+    ];
+    const rows = workerReferenceRows(files);
+    expect(rows.map((r) => r.title)).toEqual(['Style guide', 'Reference 2 (PNG)']);
+    // The row has no field a name could be in.
+    expect(Object.keys(rows[0]!).sort()).toEqual(['detail', 'id', 'title']);
   });
 });

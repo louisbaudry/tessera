@@ -2641,6 +2641,20 @@ Design in `v1-spec.md` §7.8. Louis lifted the card's "not before the first real
 - **Seen in a browser.** The built SPA against a seeded server: preview with the matches marked, an untick, Apply disabled when a box is edited after the preview, a confirmed segment replaced and the grid reloaded, a bad pattern refused in the server's words. The one console line is the 400 for that.
 - **Not built:** searching the source (the concordance box does that), replacing across a tag, restoring a replaced run in one step (each segment's history is in the log), and a translator's use on a grant.
 
+
+**#203 · ~~Reference files in the Resources panel~~ · DONE — `core/src/project/reference.ts` (`sniffReferenceType`, limits, names), `db/src/project/reference-files.ts`, project schema v20 (`reference_file`, `reference.added`/`reference.removed`), `server/src/reference-files.ts` (`/api/projects/:name/reference-files`), `web/src/ResourcesPanel.tsx` and `resources.ts`**
+(2026-10-22; follow-up to #124, closes issue #203)
+
+Design in `v1-spec.md` §7.9. Louis lifted the card's "not before someone asks" gate and chose TypeScript over Rust/Wasm.
+
+- **Rows in the project's own database, not files on disk.** The card's constraints (a server-minted name, a download scoped to the project, never by file id alone) are met by construction: there is no path to mint, and an id means nothing in another project's database (a test asks project B for project A's id and gets a 404). A file travels with the project and is deleted with it. A listing never reads `data`.
+- **The type is read from the bytes.** PDF, PNG, JPEG, GIF and WebP by signature, nothing else: no HTML and no SVG, because the file is served from the application's own origin and a type that can run script there is a stored XSS. A script renamed `.pdf` is a 415. The download answers with the stored type, `nosniff` and `no-store`.
+- **The question the card left open: whose name is shown.** The owner sees the file's name. Someone on a grant sees only a **label the owner wrote for them**, or `Reference 2 (PDF)` by position, and the name is not in what the server sends (the response of the download carries a neutral file name too). Memories are shown by position for the same reason (#124).
+- **The bearer token cannot ride a link.** The page fetches the bytes with the header and opens a `blob:` URL; the tab is opened in the click's own turn so a pop-up blocker lets it through.
+- **Audited with size and digest, never the name or label** (a client's name in a hashed field cannot be erased).
+- **Seen in a browser:** an upload with a label, the row, a script renamed `.pdf` refused in the server's words, the file opened from a `blob:` URL and removed. The one console line is the 415.
+- **Not built:** inline preview (it opens in a tab), renaming or replacing in place, office documents and text, the style guide (#148) and a limit on the project's total beyond twenty files of 10 MB.
+
 ---
 
 ## Sequencing

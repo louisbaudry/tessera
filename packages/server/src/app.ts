@@ -134,6 +134,7 @@ import { registerAssignmentRoutes } from './assignments.js';
 import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft.js';
 import { registerEngineRoutes } from './engine.js';
 import { registerConcordanceRoutes } from './concordance.js';
+import { registerReferenceFileRoutes } from './reference-files.js';
 import { registerReplaceRoutes } from './replace.js';
 import { registerSuggestionRoutes } from './suggestions.js';
 import type { Resolver, WebhookSender } from './webhook-send.js';
@@ -1501,6 +1502,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
   registerSuggestionRoutes(app, { platform, sessionActor, openProject, adapterFor });
   registerConcordanceRoutes(app, { openProject, sessionActor });
+  registerReferenceFileRoutes(app, {
+    openProject,
+    sessionActor,
+    accountId: (req) => owner(req).id,
+  });
   registerReplaceRoutes(app, {
     jobs,
     openProject,

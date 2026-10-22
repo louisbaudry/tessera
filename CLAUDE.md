@@ -847,6 +847,15 @@ action)`, and names the action** (`read`, `edit` or `manage`,
   pattern or replacement, for exactly the segments the preview showed (a changed one is
   skipped). The checks on a pattern live in `compileFind`, which a run is built from; a
   new caller must not rely on `findProblem` alone. Both routes are `manage`.
+- **A reference file is a row in the project's database, typed by its bytes,
+  and its name is the owner's alone** (issue #203, `v1-spec.md` §7.9,
+  `server/src/reference-files.ts`). `sniffReferenceType` accepts a PDF or
+  an image by signature and nothing that can run script (no HTML, no SVG): the
+  file is served from the application's origin. Someone on a grant is sent the
+  owner's label or nothing (`Reference 2 (PDF)` by position), never the name,
+  which may carry a client's; the audit detail carries size and digest, not the
+  name either. An id is only meaningful in its own project's database, so a
+  download cannot cross projects.
 - **A route's actor is `sessionActor(req)`, never built in the
   handler** (`audit-spec.md` §2.5). A write in the project goes to the
   project's log; one about the platform (login, a project's creation or

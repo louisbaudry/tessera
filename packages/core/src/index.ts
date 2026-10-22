@@ -54,6 +54,7 @@ export * from './project/assemble.js';
 export * from './project/assemble-xliff.js';
 export * from './project/export-xliff.js';
 export * from './project/export-any.js';
+export * from './project/reference.js';
 export * from './project/parts.js';
 export * from './project/export.js';
 export * from './project/changed.js';

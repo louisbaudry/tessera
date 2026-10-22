@@ -338,6 +338,24 @@ export interface Restructured {
 
 /** A glossary attached to a project: its slug, never its path. */
 /** A project's attached memories and glossaries without names, for a grantee (backlog #124). */
+/** A reference file as its owner sees it (`v1-spec.md` §7.9). */
+export interface OwnerReferenceFile {
+  readonly id: number;
+  readonly name: string;
+  readonly label: string | null;
+  readonly mediaType: string;
+  readonly size: number;
+  readonly addedAt: string;
+}
+
+/** A reference file as someone working on the project sees it: no name, no date. */
+export interface WorkerReferenceFile {
+  readonly id: number;
+  readonly label: string | null;
+  readonly mediaType: string;
+  readonly size: number;
+}
+
 export interface ProjectResourcesView {
   readonly memories: ReadonlyArray<{ writeTarget: boolean; enabled: boolean }>;
   readonly glossaries: ReadonlyArray<{ writeTarget: boolean; enabled: boolean }>;
@@ -588,6 +606,42 @@ export const api = {
   /** What the project consults, without names: the one a grantee may read (backlog #124). */
   projectResources: (token: string, name: string, signal?: AbortSignal) =>
     call<ProjectResourcesView>(projectUrl(name, `/resources`), token, { signal }),
+  referenceFiles: (token: string, name: string, signal?: AbortSignal) =>
+    call<{ files: Array<OwnerReferenceFile | WorkerReferenceFile> }>(
+      projectUrl(name, `/reference-files`),
+      token,
+      { signal },
+    ),
+  addReferenceFile: (token: string, name: string, file: File, label: string) => {
+    const form = new FormData();
+    // The label is a field before the file, so the server has it when the file ends.
+    if (label.trim() !== '') form.append('label', label.trim());
+    form.append('file', file, file.name);
+    return call<{ file: OwnerReferenceFile }>(
+      projectUrl(name, `/reference-files`),
+      token,
+      {
+        method: 'POST',
+        body: form,
+      },
+    );
+  },
+  removeReferenceFile: (token: string, name: string, id: number) =>
+    call<{ files: OwnerReferenceFile[] }>(
+      projectUrl(name, `/reference-files/${id}`),
+      token,
+      {
+        method: 'DELETE',
+      },
+    ),
+  /** The bytes, fetched with the bearer token a link or an iframe cannot send. */
+  referenceFileBlob: async (token: string, name: string, id: number): Promise<Blob> => {
+    const res = await fetch(projectUrl(name, `/reference-files/${id}/content`), {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+    return res.blob();
+  },
   attachMemory: (token: string, name: string, tm: string, writeTarget: boolean) =>
     call<{ refs: TmRefView[] }>(projectUrl(name, `/tms`), token, {
       method: 'POST',

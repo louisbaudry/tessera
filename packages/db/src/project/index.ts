@@ -26,6 +26,7 @@ export * from './qa-settings.js';
 export * from './concordance.js';
 export * from './memory-units.js';
 export * from './find-replace.js';
+export * from './reference-files.js';
 export * from './fuzzy-settings.js';
 export * from './qa-issues.js';
 export * from './export.js';

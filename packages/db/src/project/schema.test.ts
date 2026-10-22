@@ -47,6 +47,7 @@ describe('openProjectDb', () => {
       'qa_issue',
       'qa_rule_setting',
       'qa_untranslated_allowlist',
+      'reference_file',
       'segment',
       'tm_ref',
     ]);

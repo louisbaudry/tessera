@@ -194,6 +194,33 @@ const V18_AUDIT_ACTIONS = [
   'project.replaced',
 ] as const satisfies readonly ProjectAuditAction[];
 
+/**
+ * `audit_event.action` since v20: v18's list, and `reference.added` and `reference.removed`
+ * (issue #203, `v1-spec.md` §7.9).
+ */
+const V20_AUDIT_ACTIONS = [
+  'segment.target_set',
+  'segment.confirmed',
+  'segment.locked',
+  'segment.unlocked',
+  'segment.baseline',
+  'segment.split',
+  'segment.merged',
+  'file.added',
+  'project.pretranslate',
+  'project.exported',
+  'project.setting_changed',
+  'qa.dismissed',
+  'qa.reinstated',
+  'draft.purged',
+  'ai.requested',
+  'tm.unit_edited',
+  'tm.unit_retired',
+  'project.replaced',
+  'reference.added',
+  'reference.removed',
+] as const satisfies readonly ProjectAuditAction[];
+
 const v1: Migration = {
   version: 1,
   description: 'initial project schema (v1-spec.md §4.1)',
@@ -668,6 +695,34 @@ const v19: Migration = {
 };
 
 /**
+ * `reference_file` (issue #203, `v1-spec.md` §7.9): files an owner attaches for
+ * whoever works on the project, kept as rows so they travel with it and can only
+ * be looked up in it. `data` is never read by a listing. `media_type` has no
+ * CHECK, like `file.kind` and `origin`: the closed set is `REFERENCE_MEDIA_TYPES`
+ * in `core`, and the table is new, so nothing is lost by leaving it open.
+ */
+const v20: Migration = {
+  version: 20,
+  description:
+    'reference_file, and audit_event widened with reference.added and reference.removed (issue #203)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE reference_file (
+        id         INTEGER PRIMARY KEY,
+        name       TEXT NOT NULL,
+        label      TEXT,
+        media_type TEXT NOT NULL,
+        size       INTEGER NOT NULL,
+        sha256     TEXT NOT NULL,
+        data       BLOB NOT NULL,
+        added_at   TEXT NOT NULL
+      );
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V20_AUDIT_ACTIONS));
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -692,4 +747,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v17,
   v18,
   v19,
+  v20,
 ];

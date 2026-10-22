@@ -2056,6 +2056,54 @@ job" gate and chose TypeScript over Rust/Wasm (2026-10-22). What it settled:
 
 ---
 
+### 7.9 Reference files in the Resources panel (`@cat-tool/core`, `@cat-tool/db`, `@cat-tool/server`, `@cat-tool/web`; issue #203)
+
+Decided 2026-10-22. An owner attaches reference files (a PDF style guide, a
+screenshot, a client brief) to a project, and whoever works on it opens them from
+the Resources panel (§7.5, backlog #114, #124) without leaving the editor. Louis
+chose TypeScript over Rust/Wasm: this is storage and a download, with no kernel.
+
+- **Stored in the project's own database, as rows.** `reference_file` (project
+  schema v20): `id`, the original `name`, an optional `label`, `media_type`,
+  `size`, `sha256`, `data` (BLOB), `added_at`. A project is already one file that
+  holds its documents' bytes (`file.original_blob`), so a reference file travels
+  with it, is deleted with it, and can only be looked up *in* it: a download route
+  names a project and an id, and the id means nothing in another project's
+  database, so "scoped to the project, never by file id alone" holds by
+  construction. No path exists to take from a request. A listing never reads
+  `data` (§4.1's lesson from #28).
+- **The type is read from the bytes, never from the upload.** `sniffReferenceType`
+  (`core/src/project/reference.ts`) accepts a PDF, PNG, JPEG, GIF or WebP by its
+  signature and refuses everything else, so the stored `media_type` is one of five
+  fixed values and is what the download answers with. HTML and SVG are not
+  accepted: the file is served from the application's own origin, and a type that
+  can run script there is a stored XSS. The download carries
+  `X-Content-Type-Options: nosniff` and `Cache-Control: private, no-store`.
+- **Limits.** `REFERENCE_MAX_BYTES` (10 MiB) a file and `REFERENCE_MAX_FILES` (20) a
+  project, both refused with a 413/409 naming the limit. The name is its last path
+  segment with control characters removed and at most 120 characters, kept for the
+  owner only.
+- **What a translator sees.** The owner sees each file by its name. Someone on a grant
+  sees a **label the owner chose for them** (at most 80 characters, say "Style
+  guide") or, when there is none, `Reference 1 (PDF)` by position: **the original
+  file name never leaves the owner's view**, because it may name the client, the
+  same reason memories are shown by position (§7.5). The type and size are shown.
+- **Routes.** `GET /api/projects/:name/reference-files` (`read`: owner rows with
+  names, grantee rows without), `GET .../reference-files/:id/content` (`read`),
+  `POST .../reference-files` (`manage`, one multipart file, optional `label`),
+  `DELETE .../reference-files/:id` (`manage`). The editor sends a bearer token in a
+  header, which a link or an `<iframe>` cannot, so the page fetches the bytes and
+  opens them from a `blob:` URL.
+- **Audited, in the same transaction, actor required** (audit-spec §2.2):
+  `reference.added` and `reference.removed`, subject the row, with `size` and
+  `sha256` and **never the name or the label** (a client's name in a hashed field
+  cannot be erased). A new action widens the CHECK: project schema v20,
+  `rebuildTable`. A download is not audited here: the file is content the owner chose
+  to give whoever works on the project, not content leaving the system.
+- **Not built:** previewing inline in the panel (it opens in a new tab), renaming,
+  replacing a file in place (remove and add), the style guide itself (#148),
+  office documents and text files, and a limit on the project's total.
+
 ## 8. Risks
 
 | Risk | Mitigation |
