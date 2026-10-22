@@ -28,6 +28,12 @@ import type {
   SessionView,
 } from './glossary-panel.js';
 import type { ConcordanceView } from './concordance.js';
+import type {
+  ReplaceApplyResult,
+  ReplaceForm,
+  ReplaceJob,
+  ReplaceScanResult,
+} from './find-replace.js';
 import type { FuzzyThresholdView } from './fuzzy-threshold.js';
 import type { ImportJob } from './import-job.js';
 import type { ScanJob } from './stale-scan.js';
@@ -883,6 +889,38 @@ export const api = {
       method: 'POST',
       body,
     }),
+  /**
+   * Starts a find-and-replace job over a project's targets (`v1-spec.md` §7.8; backlog #148b),
+   * answering at once with the job, which `replaceJob` follows and `cancelReplace` stops.
+   * `scan` previews; `apply` makes the run for the segments named in `chosen`.
+   */
+  startReplaceScan: (token: string, name: string, form: ReplaceForm) =>
+    call<{ job: ReplaceJob<ReplaceScanResult> }>(
+      projectUrl(name, '/replace/scan'),
+      token,
+      {
+        method: 'POST',
+        body: form,
+      },
+    ),
+  startReplaceApply: (
+    token: string,
+    name: string,
+    form: ReplaceForm,
+    chosen: ReadonlyArray<{ segmentId: number; updatedAt: string }>,
+  ) =>
+    call<{ job: ReplaceJob<ReplaceApplyResult> }>(
+      projectUrl(name, '/replace/apply'),
+      token,
+      {
+        method: 'POST',
+        body: { ...form, chosen },
+      },
+    ),
+  replaceJob: <R>(token: string, id: string, signal?: AbortSignal) =>
+    call<ReplaceJob<R>>(`/api/jobs/${id}`, token, { signal }),
+  cancelReplace: <R>(token: string, id: string) =>
+    call<ReplaceJob<R>>(`/api/jobs/${id}`, token, { method: 'DELETE' }),
   glossaryProposals: (token: string, name: string, signal?: AbortSignal) =>
     call<{ glossary: string | null; proposals: ExceptionProposalView[] }>(
       projectUrl(name, '/glossary/proposals'),

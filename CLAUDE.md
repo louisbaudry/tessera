@@ -827,6 +827,15 @@ action)`, and names the action** (`read`, `edit` or `manage`,
   glossaries is `GET /api/projects/:name/resources` (backlog #124): order and
   write/on-off flags, never a slug, id or path, because the owner's names
   often carry a client's.
+- **A pattern someone typed runs on a thread with a time limit, never on the
+  request thread** (backlog #148b, `v1-spec.md` §7.8). Find-and-replace is two jobs
+  (`project.replaceScan`, `project.replaceApply`), terminated at
+  `REPLACE_TIME_LIMIT_MS`, because a regular expression can take exponential time and
+  no validation rules that out. The apply writes only through `editSegmentTarget`, in
+  one transaction under one `project.replaced` event that carries counts and never the
+  pattern or replacement, for exactly the segments the preview showed (a changed one is
+  skipped). The checks on a pattern live in `compileFind`, which a run is built from; a
+  new caller must not rely on `findProblem` alone. Both routes are `manage`.
 - **A route's actor is `sessionActor(req)`, never built in the
   handler** (`audit-spec.md` §2.5). A write in the project goes to the
   project's log; one about the platform (login, a project's creation or
@@ -854,7 +863,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts`, `add-term.ts`, `concordance.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that

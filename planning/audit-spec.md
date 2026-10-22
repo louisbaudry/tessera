@@ -234,6 +234,7 @@ their `*_by` columns have always been free text; writers pass the
 | `ai.requested` | segment | §4 |
 | `tm.unit_edited` | project | `{ tm_ref, tu_uuid, lang, from_rev, to_rev }` — a memory translation corrected from the concordance box; never the text, the old revision is in the memory's `tuv_history` (issue #151, `v1-spec.md` §6.1c) |
 | `tm.unit_retired` | project | `{ tm_ref, tu_uuid }` — a memory unit tombstoned from the concordance box (issue #151) |
+| `project.replaced` | project | `{ regex, case_sensitive, segments, matches, stale, locked }` — one find-and-replace run, the batch parent of its `segment.target_set` events; never the pattern or the replacement (backlog #148b, `v1-spec.md` §7.8) |
 
 `platform.sqlite`: `auth.login`, `auth.login_failed`, `auth.logout`,
 `account.created`, `authorization.granted` / `authorization.revoked`

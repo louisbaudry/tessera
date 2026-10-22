@@ -1904,6 +1904,62 @@ settled:
   estimate or vendor pay; `primarySubtag` moved into `model/lang.ts`
   for that, re-exported from `segment/rules.ts`, still one definition.
 
+### 7.8 Find and replace across the project (`@cat-tool/core`, `@cat-tool/db`, `@cat-tool/server`, `@cat-tool/web`, backlog #148b; issue #170)
+
+Decided 2026-10-22. The write half of issue #170 (the read half is the
+concordance box, §6.1b). Louis lifted the card's "not before the first real
+job" gate and chose TypeScript over Rust/Wasm (2026-10-22). What it settled:
+
+- **It replaces in the target, through `editSegmentTarget`.** A bulk SQL
+  update would skip everything that makes an edit mean something (§7.2): hidden
+  tags carried, status and origin derived, a stale write refused, QA rerun. So
+  each replaced segment is written exactly as if the translator had typed it,
+  which means a confirmed segment becomes `translated` and is confirmed again
+  before the memory hears of it; a locked one is never touched. The search
+  reads the target only. Searching the source for a lookup is the concordance's.
+- **Text, not tags.** The pattern is matched against the visible target with
+  hidden tags removed and adjacent text joined, so a hidden bookmark inside a
+  phrase does not hide it. A match is found inside runs of text only: one that
+  would cross a visible tag (`<b>` inside the phrase) is not found, and no
+  replacement can break a tag pair. That limit is shown, not hidden.
+- **Literal by default, regular expression on request.** Literal is a plain
+  text search whose replacement is taken verbatim (`$` is a dollar). A regular
+  expression is JavaScript's, with the `u` flag, and its replacement uses
+  JavaScript's `$1`, `$&` and `$$`. Case is ignored unless "match case" is set.
+  A pattern that matches the empty string (`a*`, `^`) is refused, since it
+  would insert the replacement between every pair of characters. At most
+  `FIND_MAX_PATTERN_CHARS` for a pattern, `REPLACE_MAX_CHARS` for a replacement.
+- **A pattern can hang a thread, so it runs on one, with a time limit.** A
+  regular expression with nested quantifiers can take exponential time, which
+  no amount of validation rules out and which would stop every other request if
+  run on the server's thread. The scan and the apply are bulk jobs
+  (`tm-format-spec.md` §1.1, `project.replace`): off the request thread, polled
+  and cancellable, and **terminated** at `REPLACE_TIME_LIMIT_MS` (the apply gets the longer
+  `REPLACE_APPLY_TIME_LIMIT_MS`, since it also writes, and is reached by a pattern that was
+  never previewed), reported as "the
+  pattern took too long, simplify it". Rust's linear-time regex would remove the
+  hang at the price of lookahead, backreferences and a Rust build; it was not
+  taken, and there is no measurement that says a limit is not enough.
+- **Preview, then apply, and apply is exactly the preview.** The scan returns
+  each segment it would change, with the text before and after, and writes
+  nothing. Apply names the segments the owner kept (ticked) and the `updatedAt`
+  each had in the preview; a segment that changed since is **skipped and
+  reported**, never overwritten, so what was applied is what was seen.
+  Hard cap `REPLACE_MAX_SEGMENTS` segments a run, with the cap said on the
+  preview.
+- **All or nothing.** An apply is one transaction: a terminated or failed run
+  leaves the project as it was, and a cancel is the runner's terminate plus
+  SQLite's rollback (`db/jobs/run.ts`). A stale, locked or unchanged segment is
+  skipped and counted, not an error that aborts the rest.
+- **One batch in the log.** A run is one `project.replaced` event with the mode
+  (literal or regular expression, case) and the counts, and every segment it
+  writes is a `segment.target_set` child of it (§2.3 of the audit spec), as a
+  pre-translate run is. **The pattern and the replacement are not in it**: they
+  are the owner's own words and may carry a client's, and a hashed detail could
+  not be erased.
+- **Owner only (`manage`).** A project-wide rewrite is not a translator's to
+  run on a grant; the segment-by-segment edit is theirs already.
+
 ---
 
 ## 8. Risks

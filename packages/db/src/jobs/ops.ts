@@ -14,7 +14,7 @@
 import { copyFileSync } from 'node:fs';
 import { basename } from 'node:path';
 
-import type { AuditActor } from '@cat-tool/core';
+import type { AuditActor, FindSpec } from '@cat-tool/core';
 import type { TierWords } from '@cat-tool/vendor-core';
 
 import { Cancelled } from '../cancelled.js';
@@ -23,7 +23,14 @@ import { importTmxFile, type ImportTmxResult } from '../tm/import-tmx.js';
 import { mergeTm, type MergeTmResult } from '../tm/merge.js';
 import { listTermEntries } from '../glossary/terms.js';
 import { openGlossary } from '../glossary/index.js';
-import { openProjectDb } from '../project/index.js';
+import {
+  applyReplace,
+  openProjectDb,
+  scanReplace,
+  type ApplyReplaceResult,
+  type ReplaceChoice,
+  type ReplaceScan,
+} from '../project/index.js';
 import { describeTm, openTm, type TmSummary } from '../tm/index.js';
 import { scanTmForStale, type StaleScan } from '../tm/stale.js';
 import { analyseTierWords } from '../vendor/payable.js';
@@ -90,6 +97,35 @@ export interface OpTable {
   'project.analyseTiers': {
     args: { readonly projectPath: string; readonly fileId?: number };
     result: TierWords;
+  };
+  /**
+   * The preview of a find-and-replace run over a project's targets (`v1-spec.md`
+   * §7.8, backlog #148b): which segments would change, and how. Reads only. On a thread
+   * with a time limit because a regular expression can take exponential time.
+   */
+  'project.replaceScan': {
+    args: {
+      readonly projectPath: string;
+      readonly find: FindSpec;
+      readonly replacement: string;
+      readonly fileId?: number;
+    };
+    result: ReplaceScan;
+  };
+  /**
+   * The run the owner kept (`v1-spec.md` §7.8): one transaction, so a terminated apply
+   * leaves the project as it was. The same time limit as the scan.
+   */
+  'project.replaceApply': {
+    args: {
+      readonly projectPath: string;
+      readonly find: FindSpec;
+      readonly replacement: string;
+      readonly fileId?: number;
+      readonly chosen: readonly ReplaceChoice[];
+      readonly actor: AuditActor;
+    };
+    result: ApplyReplaceResult;
   };
   /**
    * Stale work in a memory (`smart-glossary-spec.md` §6.2, backlog #122): the units
@@ -231,6 +267,50 @@ export const OPS: Ops = {
       });
       return { value, cancelled: !value.complete };
     });
+  },
+
+  'project.replaceScan': (args, ctx) => {
+    const db = openProjectDb(args.projectPath);
+    try {
+      ctx.progress({ stage: 'searching', fraction: 0, units: 0 });
+      const { complete, ...scan } = scanReplace(
+        db,
+        {
+          find: args.find,
+          replacement: args.replacement,
+          ...(args.fileId !== undefined ? { fileId: args.fileId } : {}),
+        },
+        {
+          onProgress: (done, total) =>
+            ctx.progress({
+              stage: 'searching',
+              fraction: total > 0 ? done / total : null,
+              units: done,
+            }),
+          shouldStop: () => ctx.stopRequested(),
+        },
+      );
+      return { value: scan, cancelled: !complete };
+    } finally {
+      db.close();
+    }
+  },
+
+  'project.replaceApply': (args, ctx) => {
+    const db = openProjectDb(args.projectPath);
+    try {
+      ctx.progress({ stage: 'replacing', fraction: null, units: null });
+      const value = applyReplace(db, {
+        find: args.find,
+        replacement: args.replacement,
+        ...(args.fileId !== undefined ? { fileId: args.fileId } : {}),
+        chosen: args.chosen,
+        actor: args.actor,
+      });
+      return { value, cancelled: false };
+    } finally {
+      db.close();
+    }
   },
 
   'project.analyseTiers': (args) => {

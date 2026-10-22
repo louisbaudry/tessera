@@ -29,15 +29,16 @@ export type Settled =
 /**
  * What a job does: an `import` makes a memory, a `scan` reads one (backlog
  * #122), a `draft` asks the draft engine for a project's empty segments (backlog
- * #136; it runs in-process, not on a thread, but is polled and cancelled alike).
+ * #136; it runs in-process, not on a thread, but is polled and cancelled alike), a
+ * `replace` previews or applies a find-and-replace over a project (backlog #148b).
  */
-export type JobKind = 'import' | 'scan' | 'draft';
+export type JobKind = 'import' | 'scan' | 'draft' | 'replace';
 
 /** A job as the API shows it: a slug, never a path. */
 export interface JobView {
   readonly id: string;
   readonly kind: JobKind;
-  /** The memory being made (an import) or read (a scan); the project being drafted (a draft). */
+  /** The memory being made (an import) or read (a scan); the project being drafted (a draft) or replaced in (a replace). */
   readonly tm: string;
   readonly state: JobState;
   readonly progress: JobProgress | null;

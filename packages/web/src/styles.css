@@ -1464,6 +1464,83 @@ button.chip-button:hover {
   border-radius: 2px;
 }
 
+/* Find and replace across the project (issue #170), over the palette's backdrop. */
+.find-replace {
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: 85vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+}
+.find-replace h3 {
+  margin: 0;
+}
+.find-replace > label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.find-replace input[type='text'] {
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+}
+.find-replace-options,
+.find-replace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.find-replace-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+.find-replace-hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.find-replace-hits li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.5rem 0.25rem;
+  border-top: 1px solid var(--border);
+}
+.find-replace-hits li label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.find-replace-hits mark {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.find-replace-after {
+  color: var(--text);
+  opacity: 0.85;
+}
+.find-replace-after::before {
+  content: '\2192\00a0';
+  color: var(--muted);
+}
+
 /* The stale-work check on a memory (backlog #122). */
 .list li.memory-row {
   flex-wrap: wrap;

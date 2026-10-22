@@ -52,6 +52,7 @@ export * from './project/export.js';
 export * from './project/changed.js';
 export * from './project/count.js';
 export * from './project/fallback.js';
+export * from './project/find-replace.js';
 export * from './auth/authorization.js';
 export * from './auth/credentials.js';
 export * from './audit/actor.js';
