@@ -651,6 +651,23 @@ const v18: Migration = {
 };
 
 /**
+ * `file.kind` (issue #169, v1-spec.md §3.8): what the original is, `docx` for
+ * every file already here. **No CHECK constraint, like `origin`**: `file` is
+ * referenced by `segment`, so `rebuildTable` refuses it, and a CHECK here
+ * would make every future file type a migration the runner cannot yet do.
+ * `FILE_KINDS` (`core/model/file.ts`) is the closed set the code accepts; an
+ * unknown value fails at export, loudly, not at the schema.
+ */
+const v19: Migration = {
+  version: 19,
+  description:
+    'file.kind, docx for every file already stored (v1-spec.md §3.8, issue #169)',
+  up: (db) => {
+    db.exec("ALTER TABLE file ADD COLUMN kind TEXT NOT NULL DEFAULT 'docx';");
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -674,4 +691,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v16,
   v17,
   v18,
+  v19,
 ];

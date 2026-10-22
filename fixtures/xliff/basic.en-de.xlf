@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture: every sentence is written for this repository. -->
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.1" srcLang="en" trgLang="de"
+       xmlns:mtc="urn:oasis:names:tc:xliff:matches:2.0">
+  <file id="f1" original="guide.html">
+    <notes>
+      <note id="n1">Kept as it is.</note>
+    </notes>
+    <group id="g1">
+      <unit id="u1">
+        <segment id="s1">
+          <source>The garden gate is open.</source>
+        </segment>
+        <ignorable>
+          <source> </source>
+        </ignorable>
+        <segment id="s2">
+          <source>Please close it &amp; lock it.</source>
+        </segment>
+      </unit>
+      <unit id="u2">
+        <originalData>
+          <data id="d1">&lt;b&gt;</data>
+          <data id="d2">&lt;/b&gt;</data>
+        </originalData>
+        <segment id="s3">
+          <source>Water the <pc id="1" dataRefStart="d1" dataRefEnd="d2">tomato</pc> plants daily.</source>
+        </segment>
+      </unit>
+      <unit id="u3">
+        <segment>
+          <source>Line one<ph id="1" type="fmt" disp="br"/>line two <ph id="2" type="image" disp="sun.png"/>.</source>
+        </segment>
+      </unit>
+    </group>
+    <unit id="u4">
+      <segment>
+        <source>Open <sc id="1"/>the shed<ec startRef="1"/> before noon.</source>
+      </segment>
+      <segment>
+        <source>Then <mrk id="m1" type="term">compost</mrk> the leaves.</source>
+      </segment>
+    </unit>
+    <unit id="u5" translate="no">
+      <segment>
+        <source>GATE-4471</source>
+      </segment>
+    </unit>
+    <unit id="u6">
+      <mtc:matches>
+        <mtc:match id="mt1" matchQuality="90">
+          <source>Water the plants.</source>
+          <target>Gießen Sie die Pflanzen.</target>
+        </mtc:match>
+      </mtc:matches>
+      <segment>
+        <source>A <cp hex="0001"/> control code, a &lt;tag&gt; and an apostrophe&apos;s tail.</source>
+      </segment>
+    </unit>
+    <unit id='u7'>
+      <segment state='initial'>
+        <source><sm id="a"/>Note:<em startRef="a"/> keep the hose coiled.</source>
+      </segment>
+      <segment>
+        <source><sc id="9" isolated="yes"/>Half open.</source>
+      </segment>
+    </unit>
+  </file>
+</xliff>

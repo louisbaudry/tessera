@@ -263,3 +263,26 @@ describe('v11: qa_issue and qa_rule_setting widened with term.glossary_mismatch 
     db.close();
   });
 });
+
+describe('v19: file.kind (issue #169)', () => {
+  it('a v18 file keeps its files as docx', () => {
+    const path = dbPath();
+    openAndMigrate(path, {
+      applicationId: PROJECT_APPLICATION_ID,
+      migrations: PROJECT_MIGRATIONS.slice(0, 18),
+    }).close();
+    const seeded = new Database(path);
+    seeded.exec(`
+      INSERT INTO file (id, rel_path, original_blob, skeleton, part_map, imported_at)
+        VALUES (1, 'a.docx', x'00', '[]', '[]', '2026-01-01');
+    `);
+    seeded.close();
+
+    const db = openProjectDb(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(PROJECT_MIGRATIONS.length);
+    expect(db.prepare('SELECT id, kind FROM file').all()).toEqual([
+      { id: 1, kind: 'docx' },
+    ]);
+    db.close();
+  });
+});

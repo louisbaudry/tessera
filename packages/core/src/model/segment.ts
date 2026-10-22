@@ -60,7 +60,13 @@ export function fuzzyScoreOfOrigin(origin: string | null): number | null {
  * skeleton of the part it came from.
  */
 export type DocPart =
-  'document' | 'footnotes' | 'endnotes' | `header${number}` | `footer${number}`;
+  | 'document'
+  | 'footnotes'
+  | 'endnotes'
+  | `header${number}`
+  | `footer${number}`
+  /** An XLIFF file has no parts: all its segments are this one (§3.8). */
+  | 'xliff';
 
 export interface Segment {
   readonly id: number;

@@ -254,6 +254,20 @@ no letter in any script — pure numbers, punctuation, whitespace — is not
 presented as a segment. Uses `\p{L}` rather than an ASCII range, so
 Spanish accents and inverted marks count as content.
 
+**#169 · More file formats · XLIFF 2.x DONE — `core/src/xliff/{scan,inline,document}.ts`, `core/src/project/{assemble-xliff,export-xliff,export-any}.ts`, `file.kind` (project schema v19), `fixtures/xliff/`; PPTX and XLSX still open** · [issue #169]
+(XLIFF phase 2026-10-22; design in `v1-spec.md` §3.8)
+
+Louis lifted the card's "not before the first real job" gate for the XLIFF phase and chose TypeScript over Rust/Wasm.
+
+- **One `<segment>` is one stored segment, and nothing is sentence-segmented.** XLIFF arrives segmented, and export finds a segment again by its position (`para_key` = the unit's ordinal in the document, `para_ord` = its index in the unit), so no skeleton is stored and no `id` is trusted (a sloppy producer repeats them). It also means any source language imports, which a DOCX cannot. Merge and split are refused on these files: they would move the position.
+- **The invariants of the DOCX filter carried over, and are tested.** The original is edited as a string by offsets from a scanner that rewrites nothing, and a segment whose target is the one the file arrived with is not touched, so a zero-edit export is the original bytes, including a file that came with targets (`fixtures/xliff/prefilled.en-de.xlf`).
+- **A tag's identity is its element, id and role.** A start code whose end is in the same segment and does not cross another pair is a pair; anything else is a placeholder and its key says so (`sc#1!`). So a source pair and a target that lost its end code are two tags and `tag.*` QA says so, instead of one table entry used in two roles.
+- **A target that arrives is a draft or translated, never confirmed**: confirming writes the memory and is a person's act here. `initial` is a draft, `translated`, `reviewed` and `final` are translated; export sets `state` to `translated`, or `initial` for a draft.
+- **`file.kind` has no CHECK**, like `origin`: `file` is referenced by `segment`, so `rebuildTable` refuses it, and a CHECK would make every future file type a migration the runner cannot do yet. An unknown kind fails at export.
+- **Seen end to end:** `cat-tool add-file`, `add-tm`, `pretranslate`, `qa`, `export` on `basic.en-de.xlf`: two exact matches and a tag-diff draft placed, the draft's missing tag reported by `tag.missing`, and the export differing from the original by exactly the three targets and two `state` attributes.
+- **Not proven:** the fixtures are hand-written to the specification's shapes, so they encode a belief about other tools' XLIFF, which is the risk this repository's fixture rule names. No Trados, memoQ, Phrase or Smartling file has been read. A real sample is the next check, and the first thing a pilot client's file will show.
+- **Not built:** XLIFF 1.2 (refused by name), the modules (Translation Candidates is not read as a memory, nor the Glossary module as a glossary), `canResegment`, schema validation, the portal taking XLIFF orders, and a segment whose project target was cleared (the file's own target is left, not deleted).
+
 ---
 
 ## Epic 2 — Segmentation

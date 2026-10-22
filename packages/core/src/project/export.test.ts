@@ -34,6 +34,7 @@ function persisted(name: string): { file: ProjectFile; segments: Segment[] } {
     id: FILE_ID,
     relPath: name,
     originalBlob: assembled.originalBlob,
+    kind: 'docx',
     skeleton: assembled.skeleton,
     partMap: assembled.partMap,
     importedAt: '2026-09-20T00:00:00.000Z',
