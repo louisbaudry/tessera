@@ -33,6 +33,8 @@ export const PROJECT_AUDIT_ACTIONS = [
   'tm.unit_edited',
   'tm.unit_retired',
   'project.replaced',
+  'reference.added',
+  'reference.removed',
 ] as const;
 
 export const PLATFORM_AUDIT_ACTIONS = [
@@ -219,6 +221,21 @@ export interface AuditDetail {
     readonly stale: number;
     /** Segments skipped because they are locked. */
     readonly locked: number;
+  };
+  /**
+   * A reference file attached to a project (issue #203, `v1-spec.md` §7.9).
+   * Subject: the `reference_file` row. Never the name or the label, which may
+   * carry a client's name into a field that cannot be erased.
+   */
+  'reference.added': {
+    readonly media_type: string;
+    readonly size: number;
+    readonly sha256: string;
+  };
+  /** A reference file removed from a project; the row is gone, this is the trace. */
+  'reference.removed': {
+    readonly size: number;
+    readonly sha256: string;
   };
   /** A unit tombstoned in one of the project's memories (`v1-spec.md` §6.1c). */
   'tm.unit_retired': {

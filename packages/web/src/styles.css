@@ -1283,6 +1283,28 @@ button.chip-button:hover {
   color: var(--muted);
   text-decoration: line-through;
 }
+/* Reference files (v1-spec.md §7.9): a row opens the file; the owner adds and removes. */
+.link-button {
+  font: inherit;
+  padding: 0;
+  margin-right: 0.4rem;
+  border: 0;
+  background: none;
+  color: var(--accent, #2563eb);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.link-button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.rp-add {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
 
 /* The editor's command palette (backlog #115). */
 .palette-backdrop {
