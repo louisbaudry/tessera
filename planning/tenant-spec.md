@@ -122,6 +122,17 @@ access rules, with no hot kernel and nothing a benchmark has pointed at; the
 existing vitest suites and `inject` tests cover all of it. A plugin sandbox for
 LSP extensions is a different product question and would be its own card.
 
+**D12. The first tenant is the operator's own company (decided 2026-10-23,
+Louis).** The business that built Tessera is its first customer, so every
+choice here is proven on a real LSP before another is sold to. Two
+consequences. The one existing install is not a throwaway: its owner account
+becomes that company's first `admin`, its root becomes that tenant's root, and
+the portal it already runs becomes that tenant's portal (§9 O2). And **the
+company's name is data, never repo content**: this repo is public and `NOTICE`
+keeps any company name out of it, so the name is typed when the tenant is
+provisioned or renamed, lives in `tenant.name` in the operator's file, and
+appears in no fixture, test, doc, issue or commit. Tests use invented names.
+
 ## 4. Data model
 
 ```sql
@@ -165,8 +176,10 @@ tenant. Its rows are keyed by vendor account id and do not change.
 Additive, in one platform migration (slice 1), on every existing file:
 
 1. For each `account` with role `owner`: insert a `tenant` whose `storage_root`
-   is that account's, named `Tenant <id>` (the display name is changed after,
-   and no personal address is used as a name); insert an `admin` membership.
+   is that account's, named `Tenant <id>` (no personal address is used as a
+   name); insert an `admin` membership. The operator then gives the first
+   tenant its real name with `rename-tenant` (D12), an audited write, so no
+   name is ever in a migration or in the repo.
 2. Nothing else changes in slice 1. Existing sessions, grants and files work
    as before because no reader looks at the new tables.
 3. `bringTenantLevel`, in the style of `bringRosterLevel`, mends a tenant whose
@@ -213,7 +226,7 @@ seen to fail before the code that satisfies it.
 
 | Slice | Issue | What                                                                 | Size |
 | ----- | ----- | -------------------------------------------------------------------- | ---- |
-| 1     | #291  | `tenant`, `tenant_membership`, backfill, `createTenant`, `create-tenant` | M |
+| 1     | #291  | `tenant`, `tenant_membership`, backfill, `createTenant`, `create-tenant`, `rename-tenant` | M |
 | 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent | L |
 | 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations                   | M    |
 | 4     | #294  | Isolation matrix across every route; tenant-scoped audit view        | M    |
@@ -234,7 +247,9 @@ Each has a recommendation; none blocks slices 1 to 3.
   tables?** Recommended: a file per tenant. The portal holds uploaded client
   files, so it follows the same placement and deletion rule as D8. Cost: the
   portal server opens a database by tenant, and a tenant's admin is created per
-  file. Blocks slice 5 only.
+  file. Blocks slice 5 only. With D12 the existing portal file simply becomes
+  the first tenant's, with no data move, which favours a file per tenant: the
+  column option would have to back-fill every portal table for that tenant.
 - **O3. Does the platform `audit_event` carry a nullable `tenant_id`, inside the
   hash?** Recommended: yes (operator events have none). It lets a tenant's admin
   read their own slice and lets an operator export one tenant's slice on
@@ -243,7 +258,7 @@ Each has a recommendation; none blocks slices 1 to 3.
 - **O4. Self-service signup, plans and billing.** Not now. A commercial and
   legal call (price, trial, who is the data controller, the DPA a tenant signs),
   and `ai-platform-vision.md` §5 deferred the paperwork until a client needs it.
-  The first LSP is provisioned by hand.
+  The first LSP is the operator's own company (D12), provisioned by hand.
 - **O5. The region unit.** `worldwide-and-compliance-spec.md` §3.1 leaves it
   open. Recommended: the tenant, with a `region` column added when a second
   region exists, not before.
