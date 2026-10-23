@@ -13,6 +13,20 @@
 export const ACCOUNT_ROLES = ['owner', 'vendor'] as const;
 export type AccountRole = (typeof ACCOUNT_ROLES)[number];
 
+/**
+ * What a member of a tenant is there (`planning/tenant-spec.md` D2, D5): `admin`
+ * (everything, including staff, engine consent, webhooks) or `pm` (projects,
+ * memories, roster, assignments). Staff only: a vendor is never tenant staff
+ * (D3), so there is no vendor role here and `tenant_membership` refuses one.
+ * What each role may do is slice 3's one pure function (backlog #206); until
+ * then a role permits nothing a route checks.
+ */
+export const TENANT_ROLES = ['admin', 'pm'] as const;
+export type TenantRole = (typeof TENANT_ROLES)[number];
+
+export const isTenantRole = (value: unknown): value is TenantRole =>
+  (TENANT_ROLES as readonly unknown[]).includes(value);
+
 /** What an owner can grant another account on a project. A reviewer scope is Ring 1. */
 export const PROJECT_SCOPES = ['assigned_translator'] as const;
 export type ProjectScope = (typeof PROJECT_SCOPES)[number];

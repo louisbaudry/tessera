@@ -9,7 +9,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.check.json",
     "start": "node dist/main.js",
-    "create-account": "node dist/create-account.js"
+    "create-account": "node dist/create-account.js",
+    "create-tenant": "node dist/create-tenant.js",
+    "rename-tenant": "node dist/rename-tenant.js"
   },
   "dependencies": {
     "@cat-tool/core": "workspace:*",

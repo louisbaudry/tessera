@@ -246,4 +246,71 @@ const v7: Migration = {
   },
 };
 
-export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7];
+/**
+ * `audit_event.action` since v8: `PLATFORM_AUDIT_ACTIONS` as of backlog #204 (the v7
+ * list and the two tenant events). Frozen, never the live constant.
+ */
+const V8_AUDIT_ACTIONS = [
+  ...V7_AUDIT_ACTIONS,
+  'tenant.created',
+  'tenant.renamed',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * `tenant` and `tenant_membership` (backlog #204, `planning/tenant-spec.md` §4, §5):
+ * a tenant is one customer LSP, and staff belong to one tenant through a membership.
+ * Nothing reads them yet (slice 2, #205, switches the readers), so a file that
+ * migrates behaves as before.
+ *
+ * **Every existing owner becomes the admin of a tenant that takes over its
+ * `storage_root`** (D4), so no file moves: the tenant names the directory the
+ * account already had. The migration writes no `audit_event` and no real name:
+ * nothing recorded who made these and an author is never invented
+ * (`audit-spec.md` §6), and the first tenant's name is the operator's to type
+ * (`rename-tenant`, D12), never repo content. Each is named `Tenant <id>` until then.
+ *
+ * `UNIQUE (account_id)` is v1's one tenant per person (D2, O1): a table so that
+ * relaxing it later is a constraint change, not a migration of rows. The trigger is
+ * D3 in the schema, not in a route: a vendor is never tenant staff, and a vendor
+ * reaches a tenant only through its roster. `role` is a frozen literal
+ * (`TENANT_ROLES`, tied by `db/check-lists.test.ts`). `audit_event` is rebuilt to
+ * admit the two tenant actions.
+ */
+const v8: Migration = {
+  version: 8,
+  description: 'tenant, tenant_membership and the tenant audit actions (backlog #204)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE tenant (
+        id           INTEGER PRIMARY KEY,
+        name         TEXT NOT NULL CHECK (length(trim(name)) > 0),
+        storage_root TEXT NOT NULL UNIQUE,
+        created_at   TEXT NOT NULL
+      );
+      CREATE TABLE tenant_membership (
+        tenant_id  INTEGER NOT NULL REFERENCES tenant(id),
+        account_id INTEGER NOT NULL REFERENCES account(id),
+        role       TEXT    NOT NULL CHECK (role IN ('admin', 'pm')),
+        added_at   TEXT    NOT NULL,
+        PRIMARY KEY (tenant_id, account_id),
+        UNIQUE (account_id)
+      ) WITHOUT ROWID;
+      CREATE TRIGGER tenant_membership_staff_only
+      BEFORE INSERT ON tenant_membership
+      WHEN COALESCE((SELECT role FROM account WHERE id = NEW.account_id), 'owner') <> 'owner'
+      BEGIN SELECT RAISE(ABORT, 'a vendor is never tenant staff'); END;
+
+      INSERT INTO tenant (name, storage_root, created_at)
+        SELECT 'Tenant', storage_root, created_at FROM account
+        WHERE role = 'owner' ORDER BY id;
+      UPDATE tenant SET name = 'Tenant ' || id;
+      INSERT INTO tenant_membership (tenant_id, account_id, role, added_at)
+        SELECT t.id, a.id, 'admin', a.created_at
+        FROM account a JOIN tenant t ON t.storage_root = a.storage_root
+        WHERE a.role = 'owner';
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V8_AUDIT_ACTIONS));
+  },
+};
+
+export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7, v8];

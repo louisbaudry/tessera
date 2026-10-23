@@ -73,9 +73,12 @@ tenant already, because each `.ctv` is. A tenant never sees a vendor's other
 tenants.
 
 **D4. The storage root belongs to the tenant and is minted once.** The existing
-owner's `u/…` root becomes their tenant's root, so **no file moves**. A tenant
-created later gets `t/<96 bits hex>`. The root is never chosen by a caller and
-no path comes from a request (`CLAUDE.md`, _The API server_), unchanged.
+owner's `u/…` root becomes their tenant's root, so **no file moves**. Slice 1
+(#291) makes that the rule for every tenant: it takes its founding admin's
+account root, copied once, because until slice 2 moves the readers every file is
+still under that directory. Whether a tenant created after slice 2 mints its own
+root is slice 2's call. The root is never chosen by a caller and no path comes
+from a request (`CLAUDE.md`, _The API server_), unchanged.
 
 **D5. Two staff roles, and a table says what each may do.** `admin`: everything,
 including staff, engine consent, webhooks and settings. `pm`: projects,
@@ -107,8 +110,9 @@ question should not take that away without weighing it.
 **D9. The audit actor stays a person; the tenant is what the event is about.**
 An event is attributed to an account as now (`actor` required, an AI engine is
 an `origin`). New actions, each a frozen literal widened with `rebuildTable`:
-`tenant.created`, `tenant.member_added`, `tenant.member_removed`,
-`tenant.role_changed`. Whether the platform log also carries a `tenant_id` is
+`tenant.created` and `tenant.renamed` (slice 1, built), then `tenant.member_added`,
+`tenant.member_removed` and `tenant.role_changed` (slice 3). No event carries a
+name or an address: a detail is hashed. Whether the platform log also carries a `tenant_id` is
 O3.
 
 **D10. Telemetry names a tenant by `pid`.** `HMAC(telemetry_key, "tenant:<id>")`,
@@ -142,11 +146,11 @@ other** (§7, O4), because nothing in the data model treats it as special.
 ## 4. Data model
 
 ```sql
--- platform.sqlite, slice 1 (#291).
+-- platform.sqlite v8, slice 1 (#291, built).
 CREATE TABLE tenant (
   id           INTEGER PRIMARY KEY,
-  name         TEXT NOT NULL,                -- the LSP's display name
-  storage_root TEXT NOT NULL UNIQUE,         -- "u/…" (carried over) or "t/…"
+  name         TEXT NOT NULL CHECK (length(trim(name)) > 0),  -- the LSP's display name
+  storage_root TEXT NOT NULL UNIQUE,         -- the founding admin's account root, D4
   created_at   TEXT NOT NULL
 );
 
@@ -158,6 +162,11 @@ CREATE TABLE tenant_membership (
   PRIMARY KEY (tenant_id, account_id),
   UNIQUE (account_id)                        -- v1: one tenant per person (O1)
 ) WITHOUT ROWID;
+
+-- D3 in the schema, not in a route: a vendor is never tenant staff.
+CREATE TRIGGER tenant_membership_staff_only BEFORE INSERT ON tenant_membership
+WHEN COALESCE((SELECT role FROM account WHERE id = NEW.account_id), 'owner') <> 'owner'
+BEGIN SELECT RAISE(ABORT, 'a vendor is never tenant staff'); END;
 ```
 
 Slice 2 (#292) re-keys the five owner tables: add `tenant_id`, backfill through
@@ -185,11 +194,16 @@ Additive, in one platform migration (slice 1), on every existing file:
    is that account's, named `Tenant <id>` (no personal address is used as a
    name); insert an `admin` membership. The operator then gives the first
    tenant its real name with `rename-tenant` (D12), an audited write, so no
-   name is ever in a migration or in the repo.
+   name is ever in a migration or in the repo. The migration writes **no audit
+   event**: nothing recorded who made these and an author is never invented
+   (`audit-spec.md` §6).
 2. Nothing else changes in slice 1. Existing sessions, grants and files work
    as before because no reader looks at the new tables.
-3. `bringTenantLevel`, in the style of `bringRosterLevel`, mends a tenant whose
-   membership was not written, so the step is not repeated and is not lost.
+3. From then on `createAccount` founds a tenant for every `owner` account it
+   makes, in the same transaction, so no owner is ever without one and slice 2's
+   backfill has nothing to miss. This replaces the `bringTenantLevel` mender this
+   section first proposed: a roster entry spans two files and needs mending, but
+   a tenant and its admin are rows in one file written together.
 
 Slice 2 then switches the readers in one release. A rollback of slice 2 is the
 backup the runner already takes before a migration.

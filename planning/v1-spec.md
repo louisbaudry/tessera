@@ -894,6 +894,12 @@ migration.
 Nothing about `project`, `file`, `segment`, `tm_ref`, or `qa_issue`
 changes: they stay scoped to one project file, exactly as designed.
 
+**Tenants (2026-10-23).** Selling to other LSPs makes the owner account a tenant's
+admin and adds `tenant` and `tenant_membership` beside `account`
+(`planning/tenant-spec.md`; platform schema v8, backlog #204). A tenant takes its
+founding admin's `storage_root`, so the paths above are unchanged; slice 2 (#205)
+moves the readers from the account to the tenant.
+
 ### 4.2 TM database — own format
 
 The TM is **not** a loose SQLite schema. It is a specified, versioned,

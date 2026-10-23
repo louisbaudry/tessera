@@ -12,7 +12,7 @@ import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
-import { listEvents, verifyAudit } from '../audit/events.js';
+import { appendAuditEvent, listEvents, verifyAudit } from '../audit/events.js';
 import { openAndMigrate } from '../migrate.js';
 import { createAccount, getAccountByEmail, type Account } from './accounts.js';
 import { openPlatformDb } from './index.js';
@@ -459,7 +459,20 @@ describe('the v6 migration', () => {
       applicationId: PLATFORM_APPLICATION_ID,
       migrations: PLATFORM_MIGRATIONS.slice(0, 5),
     });
-    createAccount(old, { email: 'o@example.com', passwordHash: 'h', actor: TEST_ACTOR });
+    // Written the way that schema had it: today's createAccount also founds a tenant,
+    // and this file has no tenant table yet.
+    old
+      .prepare(
+        'INSERT INTO account (email, password_hash, storage_root, created_at) VALUES (?, ?, ?, ?)',
+      )
+      .run('o@example.com', 'h', 'u/old', '2026-01-01');
+    appendAuditEvent(old, {
+      actor: TEST_ACTOR,
+      action: 'account.created',
+      subjectType: 'account',
+      subjectId: '1',
+      detail: null,
+    });
     const events = (d: Database.Database) =>
       d
         .prepare('SELECT id, action, chain_hash FROM audit_event ORDER BY id')
