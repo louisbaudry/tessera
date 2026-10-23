@@ -54,7 +54,9 @@ freelancers, proven first on this one real triangle.** That horizon is
 why storage was already built account-scoped (`v1-spec.md` §4.1a, backlog
 #15) rather than as a single global project set — extending to other
 users later is additive, not a migration. It does **not** mean building
-generic multi-tenant signup now; see §5.
+generic multi-tenant signup now; see §5. *(Updated 2026-10-23: the sale
+is the plan, and the data model for several LSPs is now designed in
+`tenant-spec.md`; signup, plans and billing stay deferred, §9 O4 there.)*
 
 ---
 
@@ -75,7 +77,7 @@ and gives the half-step a minor number:
 | ------- | ---- | ---------------------------- | ------------- |
 | v1      | 0    | The CAT tool                 | 0–7           |
 | v1.5    | 0.5  | AI-assisted translation      | 8             |
-| v2      | 1    | Language Provider tools      | 9, 13 (part)  |
+| v2      | 1    | Language Provider tools      | 9, 13 (part), 14 |
 | v3      | 2    | Client-facing                | 10, 13 (part) |
 | v4      | 3    | Invoicing and payments       | 11            |
 | v5      | 4    | Website localisation         | 12            |

@@ -4400,6 +4400,37 @@ rest of that range:
   - Not built: cascading offers, reminders to vendors (no channel), a per-event filter (issue #206), a
     badge on the owner's list for a late job.
 
+### Epic 14 — Tenancy (spec'd 2026-10-23, not started)
+
+Design in `planning/tenant-spec.md` (issue #290, decisions D1 to D11). Louis's
+call on 2026-10-23: Tessera is sold to other Language Service Providers, so a
+**tenant is a customer LSP**. Today the owner account is the tenant in all but
+name (it owns the storage root, the roster, the consents and the grants), which
+is why this is a re-keying and not a redesign: the existing owner's root becomes
+their tenant's root and no file moves. Worth carrying forward:
+
+- **A vendor is not tenant staff.** A freelancer serving two LSPs has one account
+  and a roster entry in each; staff belong to one tenant through a membership
+  table (`UNIQUE (account_id)` in v1, so "two tenants" is a relaxed constraint
+  later, not a migration).
+- **Five leaf tables key on `owner_id`** (`project_authorization`,
+  `roster_membership`, `vendor_invitation`, `client_engine_consent`,
+  `client_engine_default`); all can be rebuilt with `rebuildTable`. `account`
+  cannot (it is referenced), so `account.storage_root` stays as an unread leftover.
+- **Stack decided:** TypeScript, no Rust/Wasm (spec D11).
+- **Signup, plans and billing are not in this epic** (spec §9 O4): the first LSP
+  is provisioned by the operator.
+
+**#204 · Tenant and tenant_membership, backfilled from the owner accounts · M** · [issue #291]
+
+**#205 · Key ownership on the tenant, not the owner account · L** · [issue #292]
+
+**#206 · Staff roles inside a tenant, and inviting staff · M** · [issue #293]
+
+**#207 · Isolation test matrix and a tenant-scoped audit view · M** · [issue #294]
+
+**#208 · A portal per tenant · L** · [issue #295]
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the
