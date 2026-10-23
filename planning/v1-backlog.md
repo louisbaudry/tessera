@@ -4540,7 +4540,43 @@ routes. What it taught:
 - Not built: a staff screen (#300), the isolation matrix (#207), a portal per tenant (#208), a
   subdomain per tenant (#209).
 
-**#207 · Isolation test matrix and a tenant-scoped audit view · M** · [issue #294]
+**#207 · ~~Isolation test matrix across every route~~ · DONE — `server/src/isolation.test.ts`, `server/src/app.ts` (`BuildAppOptions.onRoute`)** (2026-10-23; card #294, Epic 14, `tenant-spec.md` §6 invariant 1)
+
+One test walks every route the app registers with a session of tenant A against tenant B's
+project, file, segment, memory, job, assignment, webhook, invitation, staff member and client
+number, and requires what a missing object gets: the same status and the same body. What it taught:
+
+- **The app lists its own routes.** `buildApp` takes `onRoute` (Fastify's hook, one call per
+  route) and the test reads the registered list, so a route added later without an entry fails
+  `every route is classified`, and an entry whose route is gone fails it too. Every
+  `/api/projects/:name/...` route needs no entry: it is probed automatically, plain and with
+  `?tenant=<B>`, because that is exactly what the rule is about (over 100 of its 170 probes). The other routes
+  are `public`, `list` (the body must name nothing of B's), `own` (writes in the caller's tenant)
+  or `object` (B's id against one nobody has). Fastify's generated HEAD and OPTIONS are not ours and
+  are left out.
+- **A control that is not a 404 proves nothing.** A request turned back by body validation is
+  the same for B's object and for a missing one, so a probe whose control is not 404 fails and says
+  to give it a body that gets past validation. The first run found four such probes (a memory's stale
+  scan wants a glossary and a pair, a payment wants a date) and one control that is rightly 200 (a client
+  number nobody configured is a plain default, so that entry says so).
+- **Ids are tenant-local, so the probing session must hold nothing.** The first run reported a
+  leak that was not one: the matrix had made a project and a webhook in A with B's names and ids, and
+  the answers were A's own. The probes that create things in A (`own`) now run last, still with B's
+  names (same name in two tenants is itself the case), and B's own view of its data is compared
+  before and after the whole run, which also catches a write that answered 404 and happened.
+- **No leak was found.** Every route already answered as a missing object did, which is slice
+  2 doing its job. The test's worth is therefore shown by mutation, and both were seen: a grant
+  check removed from `openProject` fails the project probes, a job lookup keyed on the wrong tenant
+  fails `GET /api/jobs/:id`, and a new route with no entry fails the classification.
+- Not covered: **grantees** (invariant 3, a grant opens one project, is in `tenancy.test.ts`), a
+  vendor session as the prober (a vendor has no tenant and a 404 or empty answer there is
+  `tenancy.test.ts`'s), and the routes of `portal-server`, which is not per tenant yet (#208).
+- Verified: 3 tests; the whole suite and the gate (see the PR). The audit half of this card moved
+  to its own entry (#211) because it needs Louis's answer to spec §9 O3.
+
+**#210 · A staff screen in the SPA · S** · [issue #300]
+
+**#211 · A tenant-scoped audit view, with `tenant_id` in the platform audit hash · S** · [issue #302]
 
 **#208 · A portal per tenant · L** · [issue #295]
 
