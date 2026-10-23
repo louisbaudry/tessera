@@ -115,6 +115,16 @@ status still lives on the card, never in the docs. Write the version in new
 text (`v2 (Ring 1)` where the ring helps); existing "Ring N" text is not
 wrong and is not swept.
 
+## Tenants (spec'd, not built)
+
+Tessera is to be sold to other Language Service Providers, so a **tenant** is
+one customer LSP (`planning/tenant-spec.md`, Epic 14, issues #291 to #295).
+Until slice 2 lands the code still keys everything on the owner account, and
+the invariants below that say "owner account" stay true as written. Two rules
+bind new work now: a new platform table or route that names an owner names
+it in a way slice 2 can re-key (an id column, never a path or a role check
+inlined in a route), and **a vendor is never tenant staff** (spec D3).
+
 ## The working rhythm
 
 1. **Spec before code.** A design decision (a new data model, a new file
