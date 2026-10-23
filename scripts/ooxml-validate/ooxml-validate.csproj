@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- A dev and CI tool, never shipped (planning/prior-art.md, kind C):
-       prints the Open XML SDK validator's findings for DOCX files as JSON.
+       prints the Open XML SDK validator's findings for DOCX and PPTX files as JSON.
        The TypeScript test that runs it compares findings before and after
        an export (packages/db/src/project/ooxml.validate.test.ts). -->
   <PropertyGroup>

@@ -35,7 +35,7 @@ pool) rides on top later and is out of scope here.
 | Fuzzy matching | Explicit v1 cut. Schema is built fuzzy-ready (§4.3) so it lands later without migration. Designed in §6.1a (backlog #61); not built. |
 | Concordance search | Falls out almost free once the TM index exists — first follow-on to v1. |
 | Termbase / MT / QA against glossary | No user need yet. |
-| XLSX, PPTX, TXT | DOCX is the whole job. XLIFF 2.x is built (§3.8, issue #169); XLIFF 1.2 is not. |
+| XLSX, TXT | DOCX is the whole job. XLIFF 2.x (§3.8) and PPTX (§3.9) are built (issue #169); XLIFF 1.2 is not. |
 | CJK, Cyrillic, Nordic, Eastern European | Different tokenizer (CJK) or more abbreviation lists; neither is needed. |
 | Auto-localisation of numbers/dates | Real Trados feature, but it interacts with matching in ways worth designing once fuzzy exists. |
 | Cloud tier, licensing, collaboration | Separate product surface; a prototype already exists (§2.1). |
@@ -734,6 +734,87 @@ through tokens, and that a translated export parses again and holds the new
 targets. **No real Trados, memoQ, Phrase or Smartling XLIFF has been read**, so
 the fixtures encode a belief about other tools' output, exactly the risk the
 repo's fixture rule names; a real sample from a client pipeline is the next check.
+
+### 3.9 The PPTX filter (issue #169, second phase)
+
+Decided 2026-10-23. Slides are the second thing clients send after documents,
+and PPTX is OOXML like DOCX, so the filter is the DOCX filter's shape with
+DrawingML text. Louis chose TypeScript over Rust/Wasm: it is ZIP, XML scanning
+by offsets and tag mapping, with no kernel and no profile pointing at the
+language.
+
+**The two rules of §3.1 carry over unchanged.** A part's skeleton is its
+original XML sliced around the paragraphs (`extractSkeleton` takes the
+paragraph and paragraph-properties element names, `a:p` and `a:pPr` here,
+`w:p` and `w:pPr` for DOCX), so a zero-edit export is each part byte for byte
+(`pnpm test:gate` covers `fixtures/pptx/`). And an untouched paragraph is never
+re-rendered: only a paragraph with a target is folded from tokens.
+
+**What is extracted.** Slides (`ppt/slides/slide<n>.xml`) and notes pages
+(`ppt/notesSlides/notesSlide<n>.xml`), every `a:p` in them: titles, text boxes,
+placeholders, table cells, grouped shapes. Reading order is **presentation
+order**, read from `ppt/presentation.xml` and its relationships, not the file
+numbers (a deck written by another tool need not number its slides in order);
+notes follow all the slides, as footnotes follow the body in a DOCX (§3.5). A
+part whose order cannot be read falls back to its number. A segment's `part` is
+`slide<n>` or `notes<n>`. A paragraph with no letter is locked, as in §3.5: a
+slide number field, a bare year.
+
+**What is not extracted, and said so.** Slide masters and layouts (their text is
+prompt text such as "Click to edit Master title style", not content), charts
+(`ppt/charts/`), SmartArt (`ppt/diagrams/`), comments, alt text on pictures and
+shapes, and the text inside embedded objects. A deck whose words live there
+imports without them. `mc:AlternateContent` text in a slide is read as DOCX
+reads it, both copies, the second counted once (`fallback_copy`, §3.6).
+
+**Runs and tags.** Text sits in `a:r` runs (`a:rPr` attributes plus children,
+then `a:t`), and, unlike Word, a paragraph's content is flat: no hyperlink,
+insertion or content-control wrapper. A run is a paired tag around its text,
+visible only when its properties are formatting a translator would recognise:
+`b`, `i`, `u`, `strike`, `baseline` (superscript, subscript), `cap`, a
+highlight or a hyperlink. Colour is not on that list (PowerPoint puts a colour
+on nearly every run, and the tag would be noise); size, spacing, `lang`,
+`dirty`, `err` and the like are incidental. An incidental run still has a tag,
+hidden, so the run can be rebuilt. A hyperlink is a run property
+(`a:hlinkClick`), so a link is a run tag of kind `link` and its relationship id
+keeps pointing at the same target, because the slide's relationships are never
+touched.
+
+| DrawingML | Token | Visible | Kind |
+|---|---|---|---|
+| `a:r` | `open` … `close` around its text | when its properties are formatting | `b`, `i`, `u`, `strike`, `sup`, `sub`, `link`, else `other` |
+| `a:br` | `ph` | yes | `br` |
+| `a:fld` (slide number, date) | `ph`, kept whole | yes | `field` |
+| `a:endParaRPr` | `ph` | no | `other` |
+| anything else | `ph` | no | `other` |
+
+All the paragraph-level elements are `block` placeholders (they may not sit
+inside a run); a run is `run`. There is no `in-run` placement in DrawingML, and
+the renderer is the DOCX renderer's (`renderTokens`) with the text node `a:t`
+and no `xml:space`: DrawingML keeps edge whitespace as it is.
+
+**Segmentation, fold and the rest are DOCX's.** A paragraph is cut into
+sentences by the language's rules (§5) and folded back with the same separator
+rule (§3.4); `file.kind` is `pptx`, so no migration is needed (`file.kind` has no
+CHECK, §3.8). Export is dispatched by the kind (`exportFileBytes`).
+
+**What proves it, and what does not.** The roundtrip gate over two decks: one
+**written by LibreOffice 24.2** from a flat ODP authored for this repository
+(real producer output: master, layouts, theme, fields, a table, notes), and one
+**built by `scripts/make-pptx-fixture.py`** for the constructs a producer rarely
+emits (slides out of file order, a hyperlink, line breaks, a fallback copy, an
+empty run, entities). The translated export is opened by LibreOffice and rendered
+to a PDF whose text is read back (a manual check, not in CI: the CI image has no
+Office), and the Open XML SDK validator runs differentially over the decks as it
+does over DOCX (§3.7). **No file written by PowerPoint itself has been read**, so
+the fixtures encode a belief about its output where LibreOffice's differs from it,
+and the Open XML SDK is not PowerPoint: a deck that validates can still need a
+repair prompt. A real sample is the next check, and needs Louis.
+
+**Not built:** the unextracted parts above, a PPTX in the portal's order intake
+(`countDocxWords` stays DOCX-only, so the upload's word count is `null`),
+`.ppt`, `.potx` and `.ppsx`, and slide-level context (the editor shows a
+paragraph, not the slide it sits on).
 
 ## 4. Data model
 

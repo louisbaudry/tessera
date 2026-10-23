@@ -5,11 +5,15 @@
  * counts or pays by a stored segment has to re-scan a part.
  */
 
-import { renderSkeleton, type PartSkeleton } from '../docx/skeleton.js';
+import {
+  renderSkeleton,
+  WORD_DIALECT,
+  type PartSkeleton,
+  type SkeletonDialect,
+} from '../docx/skeleton.js';
 import { scanElements } from '../docx/xml-scan.js';
 
 const FALLBACK = new Set(['mc:Fallback']);
-const PARAGRAPH = new Set(['w:p']);
 
 /**
  * Keys of the regions that sit inside an `mc:Fallback`. A text box is
@@ -20,9 +24,12 @@ const PARAGRAPH = new Set(['w:p']);
  * The parent's token stream cannot say which copy is which (the whole
  * `mc:AlternateContent` is one opaque placeholder there), so this reads
  * the part itself and keys paragraphs the way `extractSkeleton` does:
- * `s<n>`, n-th `w:p` in document order.
+ * `s<n>`, n-th paragraph (`dialect.paragraph`) in document order.
  */
-export function fallbackRegionKeys(sk: PartSkeleton): Set<string> {
+export function fallbackRegionKeys(
+  sk: PartSkeleton,
+  dialect: SkeletonDialect = WORD_DIALECT,
+): Set<string> {
   const xml = renderSkeleton(sk);
   const fallbacks = scanElements(xml, FALLBACK);
   const keys = new Set<string>();
@@ -33,7 +40,7 @@ export function fallbackRegionKeys(sk: PartSkeleton): Set<string> {
   // paragraph is quadratic, which a large upload turns into minutes.)
   let next = 0;
   let reach = -1; // furthest end of any fallback that has started
-  scanElements(xml, PARAGRAPH).forEach((para, index) => {
+  scanElements(xml, new Set([dialect.paragraph])).forEach((para, index) => {
     while (next < fallbacks.length && fallbacks[next]!.start <= para.start) {
       reach = Math.max(reach, fallbacks[next]!.end);
       next++;

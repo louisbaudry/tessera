@@ -1,4 +1,4 @@
-// Prints the Open XML SDK validator's findings for each DOCX path given as an
+// Prints the Open XML SDK validator's findings for each DOCX or PPTX path given as an
 // argument, as one JSON object: { "<path>": [ { id, type, part, path, description } ] }.
 // A file that cannot be opened as a package reports one finding with id "open".
 // Exit status is 0 whenever it ran, whatever it found: judging the findings is
@@ -15,7 +15,10 @@ foreach (var file in args)
     var findings = new List<Dictionary<string, string>>();
     try
     {
-        using var doc = WordprocessingDocument.Open(file, false);
+        // The package type follows the extension (a .pptx is a PresentationDocument).
+        using OpenXmlPackage doc = file.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase)
+            ? PresentationDocument.Open(file, false)
+            : WordprocessingDocument.Open(file, false);
         var validator = new OpenXmlValidator();
         foreach (var e in validator.Validate(doc))
         {

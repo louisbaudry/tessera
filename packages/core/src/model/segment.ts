@@ -66,7 +66,10 @@ export type DocPart =
   | `header${number}`
   | `footer${number}`
   /** An XLIFF file has no parts: all its segments are this one (§3.8). */
-  | 'xliff';
+  | 'xliff'
+  /** A PPTX slide or notes page, by the number in its file name (§3.9). */
+  | `slide${number}`
+  | `notes${number}`;
 
 export interface Segment {
   readonly id: number;

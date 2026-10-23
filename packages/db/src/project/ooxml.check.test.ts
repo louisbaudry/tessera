@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   assembleFile,
+  assemblePptx,
   readDocx,
   rulesFor,
   withoutHiddenTags,
@@ -44,9 +45,13 @@ import { TEST_ACTOR } from '../audit/actor.fixture.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, '../../../../fixtures/docx');
+const PPTX_FIXTURES = join(HERE, '../../../../fixtures/pptx');
 const TOOL = join(HERE, '../../../../scripts/ooxml-validate');
 const fixtureNames = readdirSync(FIXTURES)
   .filter((f) => f.endsWith('.docx'))
+  .sort();
+const pptxNames = readdirSync(PPTX_FIXTURES)
+  .filter((f) => f.endsWith('.pptx'))
   .sort();
 
 /** One validator finding, as `scripts/ooxml-validate/Program.cs` prints it. */
@@ -125,7 +130,8 @@ function added(before: readonly Finding[], after: readonly Finding[]): Finding[]
 function translateAndExport(name: string, bytes: Uint8Array) {
   const db = openProjectDb(join(work, `${name}.catdb`));
   createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'fr' });
-  const file = insertFile(db, name, assembleFile(bytes, rulesFor('en')), {
+  const assemble = name.endsWith('.pptx') ? assemblePptx : assembleFile;
+  const file = insertFile(db, name, assemble(bytes, rulesFor('en')), {
     actor: TEST_ACTOR,
   });
   let translated = 0;
@@ -150,43 +156,59 @@ function translateAndExport(name: string, bytes: Uint8Array) {
   return { exported, translated };
 }
 
+/**
+ * Translates every fixture in `dir`, exports it, and returns what the export
+ * adds to the validator's findings over the original (empty when it adds none).
+ */
+function addedFindings(dir: string, names: readonly string[]): string[] {
+  const originals: string[] = [];
+  const exports: string[] = [];
+  for (const name of names) {
+    const bytes = new Uint8Array(readFileSync(join(dir, name)));
+    const { exported, translated } = translateAndExport(name, bytes);
+    expect(translated, `${name} has translatable segments`).toBeGreaterThan(0);
+    expect(
+      exported.summary.paragraphsRendered,
+      `${name}: the export re-rendered paragraphs, so the test exercises the renderer`,
+    ).toBeGreaterThan(0);
+    const original = join(work, `orig-${name}`);
+    const exportPath = join(work, `out-${name}`);
+    writeFileSync(original, bytes);
+    writeFileSync(exportPath, exported.bytes);
+    originals.push(original);
+    exports.push(exportPath);
+  }
+
+  const found = validate([...originals, ...exports]);
+  const report: string[] = [];
+  names.forEach((name, i) => {
+    const before = found.get(originals[i]!) ?? [];
+    const after = found.get(exports[i]!) ?? [];
+    for (const f of added(before, after)) {
+      report.push(`${name}: ${f.id} in ${f.part} at ${f.path}: ${f.description}`);
+    }
+  });
+  return report;
+}
+
+/** A broken renderer adds a finding per paragraph; the first few say it. */
+const shownOf = (report: readonly string[]): string =>
+  [
+    ...report.slice(0, 15),
+    ...(report.length > 15 ? [`... and ${report.length - 15} more`] : []),
+  ].join('\n');
+
 describe('differential OOXML validation of translated exports', () => {
   it('adds no validator finding the original did not already have, on every fixture', () => {
-    const originals: string[] = [];
-    const exports: string[] = [];
-    const rendered: Record<string, number> = {};
-    for (const name of fixtureNames) {
-      const bytes = new Uint8Array(readFileSync(join(FIXTURES, name)));
-      const { exported, translated } = translateAndExport(name, bytes);
-      expect(translated, `${name} has translatable segments`).toBeGreaterThan(0);
-      expect(
-        exported.summary.paragraphsRendered,
-        `${name}: the export re-rendered paragraphs, so the test exercises the renderer`,
-      ).toBeGreaterThan(0);
-      rendered[name] = exported.summary.paragraphsRendered;
-      const original = join(work, `orig-${name}`);
-      const exportPath = join(work, `out-${name}`);
-      writeFileSync(original, bytes);
-      writeFileSync(exportPath, exported.bytes);
-      originals.push(original);
-      exports.push(exportPath);
-    }
+    const report = addedFindings(FIXTURES, fixtureNames);
+    expect(report, shownOf(report)).toEqual([]);
+  }, 280_000);
 
-    const found = validate([...originals, ...exports]);
-    const report: string[] = [];
-    fixtureNames.forEach((name, i) => {
-      const before = found.get(originals[i]!) ?? [];
-      const after = found.get(exports[i]!) ?? [];
-      for (const f of added(before, after)) {
-        report.push(`${name}: ${f.id} in ${f.part} at ${f.path}: ${f.description}`);
-      }
-    });
-    // A broken renderer adds a finding per paragraph; the first few say it.
-    const shown = [
-      ...report.slice(0, 15),
-      ...(report.length > 15 ? [`... and ${report.length - 15} more`] : []),
-    ];
-    expect(report, shown.join('\n')).toEqual([]);
+  // PPTX (issue #169, `v1-spec.md` §3.9): the same question over the decks.
+  it('adds no validator finding the original did not already have, on every PPTX', () => {
+    expect(pptxNames.length).toBeGreaterThanOrEqual(2);
+    const report = addedFindings(PPTX_FIXTURES, pptxNames);
+    expect(report, shownOf(report)).toEqual([]);
   }, 280_000);
 
   it('does report a finding for a document that is invalid, so a pass means something', () => {

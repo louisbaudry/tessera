@@ -26,6 +26,25 @@ export function toDocPart(part: string): DocPart {
   throw new Error(`unrecognised translatable part: "${part}"`);
 }
 
+const SLIDE_PART_RE = /^ppt\/slides\/slide(\d+)\.xml$/;
+const NOTES_PART_RE = /^ppt\/notesSlides\/notesSlide(\d+)\.xml$/;
+
+/** Maps a PPTX package part path to the `DocPart` the project schema stores. */
+export function toPptxDocPart(part: string): DocPart {
+  const slide = SLIDE_PART_RE.exec(part);
+  if (slide) return `slide${Number(slide[1])}`;
+  const notes = NOTES_PART_RE.exec(part);
+  if (notes) return `notes${Number(notes[1])}`;
+  throw new Error(`unrecognised translatable part: "${part}"`);
+}
+
+/** The inverse of {@link toPptxDocPart}. */
+export function toPptxPartName(part: DocPart): string {
+  if (part.startsWith('slide')) return `ppt/slides/${part}.xml`;
+  if (part.startsWith('notes')) return `ppt/notesSlides/notesSlide${part.slice(5)}.xml`;
+  throw new Error(`unrecognised presentation part: "${part as string}"`);
+}
+
 /** The inverse: the package part path a stored `DocPart` came from. */
 export function toPartName(part: DocPart): string {
   if (part === 'document') return 'word/document.xml';

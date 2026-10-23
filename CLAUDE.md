@@ -230,6 +230,16 @@ it is now `?tenant=<tenant id>`. Keep true:
   re-serializing a parsed tree.** A serializer drops namespaces only
   referenced via `mc:Ignorable`, silently breaking documents that use
   them. This is why the roundtrip gate can require byte-identical output.
+- **A PPTX is the DOCX filter with DrawingML text, not a second filter**
+  (issue #169, `v1-spec.md` §3.9). What differs is data: the paragraph and text
+  element names (`SkeletonDialect`), the text node a run is written with
+  (`RenderDialect`) and how a part is named (`OoxmlFormat`,
+  `project/ooxml-format.ts`), so segmenting, hashing, the hidden-tag rule and
+  the fold are written once. Slides are read in **play order** (`p:sldIdLst`),
+  then notes; masters, layouts, charts and SmartArt are not extracted. The
+  gate (`pptx/roundtrip.gate.test.ts`) is as load-bearing as the DOCX one.
+  `fixtures/pptx/` has one LibreOffice-written deck and one built by
+  `scripts/make-pptx-fixture.py`: **no file PowerPoint wrote has been read.**
 - **An XLIFF 2.x file is edited as a string and found again by position**
   (issue #169, `v1-spec.md` §3.8). Its segments are the file's own
   `<segment>`s, never re-segmented; `para_key` is the unit's ordinal and

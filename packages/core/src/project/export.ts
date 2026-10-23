@@ -17,13 +17,13 @@
  * not.
  */
 
-import { exportDocx, type ProjectFile, type Replacements } from '../docx/document.js';
-import { readDocx } from '../docx/package.js';
+import { type ProjectFile, type Replacements } from '../docx/document.js';
+import { readDocx, readPptx } from '../docx/package.js';
 import { renderTokens } from '../docx/render.js';
 import type { Segment } from '../model/segment.js';
 import type { TokenizedRegion } from '../model/token.js';
 import { mergeSegments } from '../segment/edit.js';
-import { toPartName } from './parts.js';
+import { DOCX_FORMAT, type OoxmlFormat } from './ooxml-format.js';
 
 export class ExportError extends Error {
   constructor(message: string) {
@@ -65,7 +65,10 @@ function contribution(segment: Segment): TokenizedRegion {
  * between a source piece (carrying the inter-sentence space the
  * segmenter left on it) and a target (which never does).
  */
-export function foldSegments(segments: readonly Segment[]): FoldedSegments {
+export function foldSegments(
+  segments: readonly Segment[],
+  format: OoxmlFormat = DOCX_FORMAT,
+): FoldedSegments {
   const paragraphs = new Map<string, Segment[]>();
   for (const segment of segments) {
     const key = `${segment.part}\u0000${segment.paraKey}`;
@@ -87,10 +90,10 @@ export function foldSegments(segments: readonly Segment[]): FoldedSegments {
     const folded = group
       .map(contribution)
       .reduce((acc, next) => mergeSegments(acc, next, { separator: ' ' }));
-    const xml = renderTokens(folded.tokens, folded.formats);
+    const xml = renderTokens(folded.tokens, folded.formats, format.render);
 
     const first = group[0]!;
-    const partName = toPartName(first.part);
+    const partName = format.toPartName(first.part);
     let byKey = replacements.get(partName);
     if (!byKey) {
       byKey = new Map();
@@ -124,6 +127,7 @@ export interface ExportedFile {
 export function exportProjectFile(
   file: ProjectFile,
   segments: readonly Segment[],
+  format: OoxmlFormat = DOCX_FORMAT,
 ): ExportedFile {
   const foreign = segments.find((s) => s.fileId !== file.id);
   if (foreign) {
@@ -131,7 +135,9 @@ export function exportProjectFile(
       `segment ${foreign.id} belongs to file ${foreign.fileId}, not file ${file.id}`,
     );
   }
-  const { replacements, summary } = foldSegments(segments);
-  const doc = { pkg: readDocx(file.originalBlob), skeletons: file.skeleton };
-  return { bytes: exportDocx(doc, replacements), summary };
+  const { replacements, summary } = foldSegments(segments, format);
+  const pkg =
+    format.kind === 'pptx' ? readPptx(file.originalBlob) : readDocx(file.originalBlob);
+  const doc = { pkg, skeletons: file.skeleton };
+  return { bytes: format.exportDoc(doc, replacements), summary };
 }

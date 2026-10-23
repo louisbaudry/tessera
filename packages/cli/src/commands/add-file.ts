@@ -3,6 +3,7 @@ import { basename } from 'node:path';
 
 import {
   assembleFile,
+  assemblePptx,
   assembleXliff,
   fileKindOfName,
   rulesFor,
@@ -22,10 +23,10 @@ import {
 } from '../support.js';
 
 export const ADD_FILE_USAGE =
-  'cat-tool add-file <project.catdb> <file.docx|file.xlf> [--rel-path <name>]';
+  'cat-tool add-file <project.catdb> <file.docx|file.pptx|file.xlf> [--rel-path <name>]';
 
 /**
- * Imports a DOCX (tokenised, sentence-segmented, hashed) or an XLIFF 2.x file
+ * Imports a DOCX or PPTX (tokenised, sentence-segmented, hashed) or an XLIFF 2.x file
  * (read as it is segmented, `v1-spec.md` §3.8; the extension picks), persisted
  * as one unit.
  */
@@ -63,7 +64,10 @@ export function addFile(args: readonly string[], io: CliIo): number {
           `cannot segment ${project.srcLang}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-      assembled = assembleFile(bytes, rules);
+      assembled =
+        fileKindOfName(docxPath) === 'pptx'
+          ? assemblePptx(bytes, rules)
+          : assembleFile(bytes, rules);
     }
     const relPath = values['rel-path'] ?? basename(docxPath);
     let fileId: number;

@@ -9,15 +9,14 @@
  * integration lives in its own layer rather than in either.
  */
 
-import { documentSegments, importDocx, type DocumentSegment } from '../docx/document.js';
-import { tokenizeRegion } from '../docx/tokenize.js';
+import type { DocumentSegment, DocxDocument } from '../docx/document.js';
 import type { FileKind } from '../model/file.js';
 import type { DocPart, SegmentStatus } from '../model/segment.js';
 import type { FormatEntry, Token } from '../model/token.js';
 import { segmentTokens, type SegmenterRules } from '../segment/segmenter.js';
 import { normalizeTokens } from '../tm/normalize.js';
 import { fallbackRegionKeys } from './fallback.js';
-import { toDocPart } from './parts.js';
+import { DOCX_FORMAT, PPTX_FORMAT, type OoxmlFormat } from './ooxml-format.js';
 
 /** A segment as assembled, before it has an id, a file, or a target. */
 export interface AssembledSegment {
@@ -44,7 +43,7 @@ export interface AssembledSegment {
 export interface AssembledFile {
   readonly kind: FileKind;
   readonly originalBlob: Uint8Array;
-  readonly skeleton: ReturnType<typeof importDocx>['skeletons'];
+  readonly skeleton: DocxDocument['skeletons'];
   readonly partMap: readonly string[];
   readonly segments: readonly AssembledSegment[];
 }
@@ -59,9 +58,10 @@ export interface AssembledFile {
 function assembleParagraph(
   docSeg: DocumentSegment,
   rules: SegmenterRules,
+  format: OoxmlFormat,
 ): Array<Omit<AssembledSegment, 'ord' | 'fallbackCopy'>> {
-  const region = tokenizeRegion(docSeg.xml);
-  const part = toDocPart(docSeg.part);
+  const region = format.tokenize(docSeg.xml);
+  const part = format.toDocPart(docSeg.part);
 
   if (docSeg.untranslatable) {
     const { hash } = normalizeTokens(region.tokens);
@@ -101,18 +101,40 @@ function assembleParagraph(
  * this function's.
  */
 export function assembleFile(bytes: Uint8Array, rules: SegmenterRules): AssembledFile {
-  const doc = importDocx(bytes);
-  const fallbacks = new Map(doc.skeletons.map((sk) => [sk.part, fallbackRegionKeys(sk)]));
+  return assembleOoxml(bytes, rules, DOCX_FORMAT);
+}
+
+/**
+ * {@link assembleFile} for a PPTX (`planning/v1-spec.md` §3.9): slides and notes
+ * pages, cut into sentences by `rules` like a DOCX's paragraphs.
+ */
+export function assemblePptx(bytes: Uint8Array, rules: SegmenterRules): AssembledFile {
+  return assembleOoxml(bytes, rules, PPTX_FORMAT);
+}
+
+/**
+ * {@link assembleFile} for any format with paragraph text (DOCX, PPTX): the
+ * format says how its package is read and tokenized, the rest is shared.
+ */
+export function assembleOoxml(
+  bytes: Uint8Array,
+  rules: SegmenterRules,
+  format: OoxmlFormat,
+): AssembledFile {
+  const doc = format.importDoc(bytes);
+  const fallbacks = new Map(
+    doc.skeletons.map((sk) => [sk.part, fallbackRegionKeys(sk, format.skeleton)]),
+  );
   const segments: AssembledSegment[] = [];
   let ord = 0;
-  for (const docSeg of documentSegments(doc)) {
+  for (const docSeg of format.segments(doc)) {
     const fallbackCopy = fallbacks.get(docSeg.part)?.has(docSeg.key) ?? false;
-    for (const piece of assembleParagraph(docSeg, rules)) {
+    for (const piece of assembleParagraph(docSeg, rules, format)) {
       segments.push({ ...piece, ord: ord++, fallbackCopy });
     }
   }
   return {
-    kind: 'docx',
+    kind: format.kind,
     originalBlob: bytes,
     skeleton: doc.skeletons,
     partMap: doc.skeletons.map((s) => s.part),

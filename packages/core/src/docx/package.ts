@@ -41,7 +41,19 @@ export class DocxError extends Error {
 /** Parts every DOCX must have for us to treat it as one. */
 const REQUIRED_PARTS = ['[Content_Types].xml', 'word/document.xml'] as const;
 
+/** Parts every PPTX must have (`planning/v1-spec.md` §3.9). */
+const PPTX_REQUIRED_PARTS = ['[Content_Types].xml', 'ppt/presentation.xml'] as const;
+
 export function readDocx(bytes: Uint8Array): DocxPackage {
+  return readPackage(bytes, REQUIRED_PARTS);
+}
+
+/** A PPTX read the same way: parts and their order, nothing parsed. */
+export function readPptx(bytes: Uint8Array): DocxPackage {
+  return readPackage(bytes, PPTX_REQUIRED_PARTS);
+}
+
+function readPackage(bytes: Uint8Array, required: readonly string[]): DocxPackage {
   let entries: Record<string, Uint8Array>;
   try {
     entries = unzipSync(bytes);
@@ -58,15 +70,24 @@ export function readDocx(bytes: Uint8Array): DocxPackage {
     parts.push({ name, data });
   }
 
-  for (const required of REQUIRED_PARTS) {
-    if (!parts.some((p) => p.name === required)) {
-      throw new DocxError(`missing required part: ${required}`);
+  for (const name of required) {
+    if (!parts.some((p) => p.name === name)) {
+      throw new DocxError(`missing required part: ${name}`);
     }
   }
   return { parts };
 }
 
 export function writeDocx(pkg: DocxPackage): Uint8Array {
+  return writePackage(pkg, REQUIRED_PARTS);
+}
+
+/** The inverse of {@link readPptx}. */
+export function writePptx(pkg: DocxPackage): Uint8Array {
+  return writePackage(pkg, PPTX_REQUIRED_PARTS);
+}
+
+function writePackage(pkg: DocxPackage, required: readonly string[]): Uint8Array {
   const seen = new Set<string>();
   const entries: Record<string, Uint8Array> = {};
   for (const part of pkg.parts) {
@@ -76,9 +97,9 @@ export function writeDocx(pkg: DocxPackage): Uint8Array {
     seen.add(part.name);
     entries[part.name] = part.data;
   }
-  for (const required of REQUIRED_PARTS) {
-    if (!seen.has(required)) {
-      throw new DocxError(`refusing to write a package missing ${required}`);
+  for (const name of required) {
+    if (!seen.has(name)) {
+      throw new DocxError(`refusing to write a package missing ${name}`);
     }
   }
   // level 6 is the usual default; the container's own bytes are not
