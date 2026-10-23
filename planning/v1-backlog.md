@@ -4488,7 +4488,7 @@ a feed row's `owner` is `tenantId`; `openProject` returns `tenant`, not `owner`.
   `<account>/<slug>` and `owner_id` in an `invitation.accepted` detail. No reader keys on either.
 - **Jobs and glossary sessions are the tenant's.** A colleague polls or cancels an import another
   staff member started, which is the point of a tenant; the tests insert a second membership by SQL
-  until slice 3 (#206) lets an admin add one.
+  until slice 3 (#206) let an admin add one.
 - Verified: 3 new migration tests (all five tables re-keyed with owners 1 and 3 around a vendor, the
   invitation trigger and the indexes kept, an orphan refused with a rollback) and 9 new isolation tests
   (`tenancy.test.ts`: staff share a tenant's projects, memories, jobs and root; a vendor has no tenant;
@@ -4501,10 +4501,44 @@ a feed row's `owner` is `tenantId`; `openProject` returns `tenant`, not `owner`.
   tests. Then the whole suite (198 files, 2942 tests) and `pnpm test:golden`. Not verified: any screen
   in a browser. Not run: `pnpm test:ooxml`, `test:gate` (nothing under `core/docx`, `core/model`,
   `core/project` or `db/project` changed).
-- Not built: staff roles and adding staff (#206), the route-by-route isolation matrix (#207), a portal
+- Not built then: staff roles and adding staff (built in #206), the route-by-route isolation matrix (#207), a portal
   per tenant (#208), a subdomain per tenant (#209).
 
-**#206 · Staff roles inside a tenant, and inviting staff · M** · [issue #293]
+**#206 · ~~Staff roles inside a tenant, and inviting staff~~ · DONE — platform schema v10 (`staff_invitation`, last-admin triggers), `db/src/platform/{staff-invitations,tenants,accounts}.ts` (`joinTenant`, `changeTenantRole`, `removeTenantStaff`), `core/src/auth/authorization.ts` (`tenantRoleAllows`), `server/src/{staff,app}.ts` (`tenantFor`)** (2026-10-23; card #293, Epic 14, `tenant-spec.md` D5, §6)
+
+An admin lists, invites, changes and removes staff; a pm does the work and is refused the admin's
+routes. What it taught:
+
+- **One table, asked by a function.** `tenantRoleAllows(role, action)` over `TENANT_ACTIONS`
+  (`work`, `staff`, `consent`, `webhooks`): an admin may all, a pm only `work`. The server's
+  `tenantFor(req, action)` does the role check and the tenant lookup in one call, so a route cannot do
+  one and forget the other. It returns null for a vendor (reads stay empty or 404, as slice 2 settled)
+  and throws a 403 for a pm. Staff, engine consent (both GET and PUT) and every webhook route use
+  it; the project-level engine override and draft runs stay a pm's.
+- **A staff link is a table of its own, not a flag on the vendor one.** `staff_invitation` fixes
+  the tenant and role at invitation and freezes both, with the state, by trigger. Acceptance reads
+  them from the row; the request names neither, so a link cannot attach to another tenant or in
+  another role. The two kinds have separate public routes (`/api/staff-invitations/open|accept`)
+  and a vendor token is a 404 on the staff route and the reverse.
+- **Joining is not founding.** `createAccount` takes `joinTenant` and then founds no tenant; an
+  invitee is an `owner` account that is staff of someone else's tenant. Created and added by
+  the inviting admin (they vouched), accepted by the new account, as with a vendor.
+- **A tenant keeps an admin, in the schema.** Two triggers refuse deleting or demoting the last
+  admin of a tenant, beneath the repository's `LastAdminError`. The first draft of an old test
+  (a role CHECK, by `UPDATE` on the only admin) was answered by the trigger, which fires before the CHECK; the test
+  now uses a pm. Removing someone deletes their `account_session` rows in the same transaction,
+  so a removed person is signed out at once (seen: the next request is a 401).
+- **One person, one tenant (O1) is kept by an answer, not a rule.** An address that already
+  has an account is refused at acceptance with the link left pending, as for a vendor.
+- **Audit.** `tenant.member_added`, `tenant.member_removed` and `tenant.role_changed` carry account
+  ids and roles, never an address; the invitation subject is `staff_invitation`.
+- Verified: 17 db and 17 server tests, each seen failing first; the pm refusal was checked by
+  mutation (`tenantFor` without the role check fails two tests). `tenancy.test.ts` now makes its second
+  staff member with `joinTenant` instead of editing the tables by hand. Not verified: any screen (none
+  exists, #300). Not built: offboarding a removed account (it stays, tenantless), reassigning
+  a removed person's work.
+- Not built: a staff screen (#300), the isolation matrix (#207), a portal per tenant (#208), a
+  subdomain per tenant (#209).
 
 **#207 · Isolation test matrix and a tenant-scoped audit view · M** · [issue #294]
 

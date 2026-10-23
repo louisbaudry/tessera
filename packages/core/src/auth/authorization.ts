@@ -18,11 +18,30 @@ export type AccountRole = (typeof ACCOUNT_ROLES)[number];
  * (everything, including staff, engine consent, webhooks) or `pm` (projects,
  * memories, roster, assignments). Staff only: a vendor is never tenant staff
  * (D3), so there is no vendor role here and `tenant_membership` refuses one.
- * What each role may do is slice 3's one pure function (backlog #206); until
- * then a role permits nothing a route checks.
+ * What each may do is `tenantRoleAllows` below, the one table a route asks.
  */
 export const TENANT_ROLES = ['admin', 'pm'] as const;
 export type TenantRole = (typeof TENANT_ROLES)[number];
+
+/**
+ * What a route asks a staff role about (`planning/tenant-spec.md` D5): `work` is
+ * everything a PM does (projects, memories, glossaries, the roster, assignments, payables),
+ * and the rest govern the tenant itself: who is staff and in which role, which engines a
+ * client consents to, and where webhooks go.
+ */
+export const TENANT_ACTIONS = ['work', 'staff', 'consent', 'webhooks'] as const;
+export type TenantAction = (typeof TENANT_ACTIONS)[number];
+
+/** A `Record` over the role union, so a new role fails typecheck until it says what it may do. */
+const TENANT_PERMITTED: Readonly<Record<TenantRole, readonly TenantAction[]>> = {
+  admin: ['work', 'staff', 'consent', 'webhooks'],
+  pm: ['work'],
+};
+
+/** Whether a staff member of `role` may do `action`. Pure: the server asks, a route never re-encodes. */
+export function tenantRoleAllows(role: TenantRole, action: TenantAction): boolean {
+  return TENANT_PERMITTED[role].includes(action);
+}
 
 export const isTenantRole = (value: unknown): value is TenantRole =>
   (TENANT_ROLES as readonly unknown[]).includes(value);

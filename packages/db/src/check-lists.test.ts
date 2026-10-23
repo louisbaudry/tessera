@@ -91,6 +91,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'account.role': ACCOUNT_ROLES,
       'project_authorization.scope': PROJECT_SCOPES,
       'tenant_membership.role': TENANT_ROLES,
+      'staff_invitation.role': TENANT_ROLES,
       'client_engine_consent.engine': DRAFT_ENGINES,
       'client_engine_default.engine': DRAFT_ENGINES,
     },

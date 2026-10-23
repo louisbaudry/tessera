@@ -118,18 +118,27 @@ wrong and is not swept.
 ## Tenants
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
-one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 3 to 6, issues #293
-to #295 and #298, still open). `tenant` and `tenant_membership` (platform schema
+one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 4 to 6, issues #294,
+#295 and #298, and #300 (a staff screen) still open). `tenant` and `tenant_membership` (platform schema
 v8, backlog #204) own what an owner account used to (backlog #205, schema v9): the
 storage root, the `.ctv` roster, client engine consent, project grants, roster
 membership, invitations and jobs. Where older text below says "owner" it means
 the tenant (or the staff member acting for it); where it says `?owner=<account id>`
 it is now `?tenant=<tenant id>`. Keep true:
 
-- **Every owner account is the admin of exactly one tenant, from creation.**
-  `createAccount` founds it in the same transaction; a vendor founds none. A tenant
+- **Every owner account is staff of exactly one tenant, from creation.**
+  `createAccount` founds a tenant in the same transaction (its first admin), or with
+  `joinTenant` joins an existing one in a role; a vendor does neither. A tenant
   takes its founding admin's `storage_root` (spec D4). Provision with `create-tenant`,
   name it with `rename-tenant`.
+- **Two roles, one table** (backlog #206, spec D5). `tenantRoleAllows(role, action)` in
+  `core/auth` over `work`, `staff`, `consent`, `webhooks`: an admin may all, a pm only `work`. A
+  server route gets its tenant from `tenantFor(req, action)`, never `ownTenant` plus a hand-written
+  role test: null for a vendor, a 403 `{ error }` for a pm. **A tenant keeps an admin**: two
+  triggers refuse removing or demoting the last one. Staff join by `staff_invitation`, a table
+  of its own (tenant and role frozen at invitation, read from the row at acceptance, never from the
+  request), through `/api/staff-invitations/open|accept`, not the vendor routes. Removing staff
+  ends their sessions in the same transaction.
 - **A vendor is never tenant staff** (spec D3), refused by a trigger in the schema.
 - **A tenant's name is data, never repo content** (spec D12): this repo is public.
   No real company or person name in a test, fixture, doc, issue or commit; tests use

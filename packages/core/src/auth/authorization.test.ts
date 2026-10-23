@@ -6,7 +6,9 @@ import {
   PROJECT_ACTIONS,
   PROJECT_SCOPES,
   scopeAllows,
+  TENANT_ACTIONS,
   TENANT_ROLES,
+  tenantRoleAllows,
 } from './authorization.js';
 
 describe('scopeAllows', () => {
@@ -45,5 +47,23 @@ describe('TENANT_ROLES', () => {
     expect(isTenantRole('pm')).toBe(true);
     expect(isTenantRole('owner')).toBe(false);
     expect(isTenantRole(undefined)).toBe(false);
+  });
+});
+
+describe('tenantRoleAllows (planning/tenant-spec.md D5)', () => {
+  it('lets an admin do everything', () => {
+    for (const action of TENANT_ACTIONS)
+      expect(tenantRoleAllows('admin', action), action).toBe(true);
+  });
+
+  it('lets a pm do the work and nothing that governs the tenant', () => {
+    expect(tenantRoleAllows('pm', 'work')).toBe(true);
+    for (const action of ['staff', 'consent', 'webhooks'] as const) {
+      expect(tenantRoleAllows('pm', action), action).toBe(false);
+    }
+  });
+
+  it('names exactly the actions a route may ask about', () => {
+    expect(TENANT_ACTIONS).toEqual(['work', 'staff', 'consent', 'webhooks']);
   });
 });

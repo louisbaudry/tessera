@@ -41,6 +41,22 @@ export class TenantError extends Error {
   }
 }
 
+/** The tenant has no such member: a stranger's account and a missing one read the same. */
+export class NoSuchMemberError extends TenantError {
+  constructor() {
+    super('no such member on this tenant');
+    this.name = 'NoSuchMemberError';
+  }
+}
+
+/** The write would leave a tenant with no admin (spec §6, invariant 4). */
+export class LastAdminError extends TenantError {
+  constructor() {
+    super('a tenant keeps at least one admin');
+    this.name = 'LastAdminError';
+  }
+}
+
 /** Long enough for any company's name, short enough to fit a header. */
 export const MAX_TENANT_NAME_LENGTH = 120;
 
@@ -170,6 +186,175 @@ export function insertTenant(
     storageRoot: options.storageRoot,
     createdAt: options.now,
   };
+}
+
+export interface TenantStaffMember {
+  readonly accountId: number;
+  readonly email: string;
+  readonly role: TenantRole;
+  readonly addedAt: string;
+}
+
+/**
+ * A tenant's staff in the order they joined (account ids rise with joining, and an
+ * `added_at` can be older than the account when a migration backfilled it).
+ */
+export function listTenantStaff(
+  db: Database.Database,
+  tenantId: number,
+): TenantStaffMember[] {
+  const rows = db
+    .prepare(
+      `SELECT m.account_id AS accountId, a.email, m.role, m.added_at AS addedAt
+       FROM tenant_membership m JOIN account a ON a.id = m.account_id
+       WHERE m.tenant_id = ? ORDER BY m.account_id`,
+    )
+    .all(tenantId) as Array<Omit<TenantStaffMember, 'role'> & { role: string }>;
+  return rows.map((row) => {
+    if (!isTenantRole(row.role)) {
+      throw new TenantError(`tenant membership has an unknown role "${row.role}"`);
+    }
+    return { ...row, role: row.role };
+  });
+}
+
+export interface AddTenantMemberOptions {
+  readonly tenantId: number;
+  readonly accountId: number;
+  readonly role: TenantRole;
+  readonly now: string;
+  readonly actor: AuditActor;
+}
+
+/**
+ * Puts an existing owner account on a tenant's staff and logs `tenant.member_added`.
+ * Runs inside the caller's transaction (`createAccount`'s `joinTenant`, a staff link
+ * accepted): there is no route that adds a member on its own. A vendor, a second
+ * tenant for the same account and a role outside the list are all refused by the
+ * schema's triggers and CHECKs; the unknown tenant is refused here.
+ *
+ * @throws {TenantError} for an unknown tenant or role.
+ */
+export function addTenantMember(
+  db: Database.Database,
+  options: AddTenantMemberOptions,
+): void {
+  if (!isTenantRole(options.role))
+    throw new TenantError(`unknown role "${options.role}"`);
+  if (!getTenantById(db, options.tenantId)) {
+    throw new TenantError(`no tenant #${options.tenantId}`);
+  }
+  db.prepare(
+    'INSERT INTO tenant_membership (tenant_id, account_id, role, added_at) VALUES (?, ?, ?, ?)',
+  ).run(options.tenantId, options.accountId, options.role, options.now);
+  appendAuditEvent(db, {
+    actor: options.actor,
+    action: 'tenant.member_added',
+    subjectType: 'tenant',
+    subjectId: String(options.tenantId),
+    detail: { account_id: options.accountId, role: options.role },
+  });
+}
+
+function memberRole(
+  db: Database.Database,
+  tenantId: number,
+  accountId: number,
+): TenantRole {
+  const row = db
+    .prepare('SELECT role FROM tenant_membership WHERE tenant_id = ? AND account_id = ?')
+    .get(tenantId, accountId) as { role: string } | undefined;
+  // A stranger's account and a missing one read the same.
+  if (!row || !isTenantRole(row.role)) throw new NoSuchMemberError();
+  return row.role;
+}
+
+function adminCount(db: Database.Database, tenantId: number): number {
+  return (
+    db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM tenant_membership WHERE tenant_id = ? AND role = 'admin'",
+      )
+      .get(tenantId) as { n: number }
+  ).n;
+}
+
+export interface ChangeTenantRoleOptions {
+  readonly tenantId: number;
+  readonly accountId: number;
+  readonly role: TenantRole;
+  readonly actor: AuditActor;
+}
+
+/**
+ * Sets a staff member's role and logs `tenant.role_changed` with both roles. The
+ * same role again writes nothing. Demoting the last admin is refused here and, as a
+ * backstop for any other writer, by a trigger (spec §6, invariant 4).
+ *
+ * @throws {TenantError} for an unknown role; its `NoSuchMemberError` for a member the
+ *   tenant does not have (another tenant's staff included) and `LastAdminError` for
+ *   the last admin.
+ */
+export function changeTenantRole(
+  db: Database.Database,
+  options: ChangeTenantRoleOptions,
+): void {
+  if (!isTenantRole(options.role))
+    throw new TenantError(`unknown role "${options.role}"`);
+  db.transaction(() => {
+    const from = memberRole(db, options.tenantId, options.accountId);
+    if (from === options.role) return;
+    if (from === 'admin' && adminCount(db, options.tenantId) === 1) {
+      throw new LastAdminError();
+    }
+    db.prepare(
+      'UPDATE tenant_membership SET role = ? WHERE tenant_id = ? AND account_id = ?',
+    ).run(options.role, options.tenantId, options.accountId);
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'tenant.role_changed',
+      subjectType: 'tenant',
+      subjectId: String(options.tenantId),
+      detail: { account_id: options.accountId, from, to: options.role },
+    });
+  }).immediate();
+}
+
+export interface RemoveTenantStaffOptions {
+  readonly tenantId: number;
+  readonly accountId: number;
+  readonly actor: AuditActor;
+}
+
+/**
+ * Takes someone off a tenant's staff, ends their sessions in the same transaction (a
+ * removed person must not stay signed in) and logs `tenant.member_removed`. The
+ * account itself stays, tenantless: offboarding it is not built (tenant-spec.md §9).
+ *
+ * @throws {NoSuchMemberError} for a member the tenant does not have.
+ * @throws {LastAdminError} for the tenant's last admin.
+ */
+export function removeTenantStaff(
+  db: Database.Database,
+  options: RemoveTenantStaffOptions,
+): void {
+  db.transaction(() => {
+    const role = memberRole(db, options.tenantId, options.accountId);
+    if (role === 'admin' && adminCount(db, options.tenantId) === 1) {
+      throw new LastAdminError();
+    }
+    db.prepare('DELETE FROM account_session WHERE account_id = ?').run(options.accountId);
+    db.prepare(
+      'DELETE FROM tenant_membership WHERE tenant_id = ? AND account_id = ?',
+    ).run(options.tenantId, options.accountId);
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'tenant.member_removed',
+      subjectType: 'tenant',
+      subjectId: String(options.tenantId),
+      detail: { account_id: options.accountId },
+    });
+  }).immediate();
 }
 
 export interface RenameTenantOptions {

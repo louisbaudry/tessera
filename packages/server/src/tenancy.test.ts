@@ -58,17 +58,15 @@ beforeEach(async () => {
   alice = make('alice');
   bob = make('bob', 'vendor');
   carol = make('carol');
-  dave = make('dave');
   tenantA = getTenantForAccount(platform, alice.id)!.tenant;
   tenantB = getTenantForAccount(platform, carol.id)!.tenant;
-  // Dave joins tenant A the way slice 3 (#206) will: his own tenant goes, a membership in A stays.
-  platform.prepare('DELETE FROM tenant_membership WHERE account_id = ?').run(dave.id);
-  platform.prepare('DELETE FROM tenant WHERE storage_root = ?').run(dave.storageRoot);
-  platform
-    .prepare(
-      "INSERT INTO tenant_membership (tenant_id, account_id, role, added_at) VALUES (?, ?, 'pm', '2026-01-01')",
-    )
-    .run(tenantA.id, dave.id);
+  // Dave joins tenant A as staff does: his account is made with a membership, founding no tenant.
+  dave = createAccount(platform, {
+    email: 'dave@example.com',
+    passwordHash: hashPassword('dave-pw'),
+    actor: SETUP,
+    joinTenant: { tenantId: tenantA.id, role: 'pm' },
+  });
   platform.close();
   app = await buildApp({ config, logger: false });
 });

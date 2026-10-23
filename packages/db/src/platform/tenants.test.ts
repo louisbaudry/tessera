@@ -204,10 +204,18 @@ describe('tenant_membership', () => {
 
   it('refuses a role outside the closed set', () => {
     const o = owner();
+    // a pm, so the keep-an-admin trigger (which fires before the CHECK) is not the one that answers
+    const found = getTenantForAccount(db, o.id)!;
+    const pm = createAccount(db, {
+      email: 'pm@example.com',
+      passwordHash: hash,
+      actor: TEST_ACTOR,
+      joinTenant: { tenantId: found.tenant.id, role: 'pm' },
+    });
     expect(() =>
       db
         .prepare("UPDATE tenant_membership SET role = 'owner' WHERE account_id = ?")
-        .run(o.id),
+        .run(pm.id),
     ).toThrow(/CHECK/);
   });
 

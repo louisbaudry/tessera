@@ -89,8 +89,8 @@ export function registerEngineRoutes(app: FastifyInstance, deps: EngineRouteDeps
 
   /**
    * Staff of a tenant only: a vendor has no tenant, hence no clients, and must not be able
-   * to set one up. Consent belongs to the tenant, so any staff member sees and changes the
-   * same consent (which role may is slice 3's rule, backlog #206).
+   * to set one up. Consent belongs to the tenant, and `deps.tenant` is where an admin-only
+   * role check (D5, `tenantFor(req, 'consent')`) turns a pm into a 403.
    */
   const staffOnly = (req: FastifyRequest, reply: FastifyReply): Tenant | null => {
     const tenant = deps.tenant(req);

@@ -88,6 +88,11 @@ function in `core/auth` (`tenantRoleAllows(role, action)`), the shape of
 removed. A reviewer role is the next addition and is a migration, as a project
 scope is.
 
+*Built (slice 3, #293):* `TENANT_ACTIONS` are `work`, `staff`, `consent` and `webhooks`; a pm has only
+`work`. A staff link is its own table, `staff_invitation`, with the tenant and role fixed at invitation, and
+the last admin cannot be removed or demoted (two triggers under the repository's check). Removing staff ends
+their sessions; the account stays, tenantless.
+
 **D6. The tenant comes from the session, never from the request.** A route
 resolves it from the authenticated account's membership. The one place a
 request names a tenant is a grantee opening a project in someone else's tenant
@@ -262,7 +267,7 @@ seen to fail before the code that satisfies it.
 | ----- | ----- | -------------------------------------------------------------------- | ---- |
 | 1     | #291  | `tenant`, `tenant_membership`, backfill, `createTenant`, `create-tenant`, `rename-tenant` | M |
 | 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent (built) | L |
-| 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations                   | M    |
+| 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations (built; its screen is #300) | M    |
 | 4     | #294  | Isolation matrix across every route; tenant-scoped audit view        | M    |
 | 5     | #295  | A portal per tenant (needs O2)                                       | L    |
 
