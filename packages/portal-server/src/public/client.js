@@ -163,7 +163,7 @@ function resourcesSection(resources) {
 
 async function renderHome() {
   if (!token) {
-    app.innerHTML = `<p class="error">No access link found. Use the private link Optime sent you.</p>`;
+    app.innerHTML = `<p class="error">No access link found. Use the private link you were sent.</p>`;
     return;
   }
 

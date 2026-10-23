@@ -439,7 +439,7 @@ over that tenant's own file and folder. What is new is only how a request finds 
   routes by the request's `Host`; an unknown host is a 404 naming nothing, never a fallback. The SPA's
   root-relative `/api/...` calls and a client's `/client.html#token=...` link are untouched.
 - **The registry** (`PORTAL_TENANTS_FILE`, JSON: `{ tenantId, host, dbPath, storageRoot, from?,
-  adminEmail? }` per tenant) is written by `add-portal-tenant`. Reading it refuses entries that share a
+  adminEmail?, displayName? }` per tenant) is written by `add-portal-tenant`. Reading it refuses entries that share a
   number, host, file or folder, or put one folder inside another.
 - **No registry, no change.** Without `PORTAL_TENANTS_FILE` the server is the single portal from
   `PORTAL_DB_PATH` and `PORTAL_STORAGE_ROOT` on any host, as before. The first tenant adopts that file
@@ -447,6 +447,13 @@ over that tenant's own file and folder. What is new is only how a request finds 
 - **An admin per file.** `create-admin`, `link-client-resource` and the seed take `--tenant <id>` (needed
   once a registry has several tenants, so a command never guesses whose file it changes). The same email
   can be an admin of two tenants with two passwords; a session or client link of one is a 401 on the other.
+- **The name a portal shows is the tenant's, and the repo names none** (issue #310, `tenant-spec.md`
+  D12). The shipped pages carry a `{{portalName}}` placeholder in their title and heading, filled by the
+  portal app when it serves `/client.html` and `/admin.html` (HTML-escaped, so a registry value cannot
+  inject markup), from the tenant's `displayName` (registry key, `add-portal-tenant --display-name`),
+  else `PORTAL_DISPLAY_NAME` (the single portal, and the shared default), else `Translation Portal`.
+  Done by the server and not by the page, so there is no pre-login API route to guard and no flash of a
+  neutral name; the two files are read once at start. The page scripts name no one.
 - **Mail is the tenant's.** The SMTP transport is the operator's, shared; `from` and the admin's address
   are per tenant, so a tenant's clients are mailed in its name.
 

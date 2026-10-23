@@ -33,6 +33,8 @@ export interface PortalConfig {
    * registry entry carries its own.
    */
   readonly tenantsFile?: string;
+  /** The name the portal pages show; a tenant's own `displayName` wins (issue #310). */
+  readonly displayName?: string;
   // Set only when PORTAL_SMTP_HOST is configured — absence is the signal
   // to fall back to ConsoleNotificationService (portal-v0-spec.md §5),
   // same "no real email adapter yet" default v0 shipped with.
@@ -45,6 +47,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PortalConfig {
     dbPath: resolve(env.PORTAL_DB_PATH ?? './data/portal.sqlite'),
     storageRoot: resolve(env.PORTAL_STORAGE_ROOT ?? './data/storage'),
     ...(env.PORTAL_TENANTS_FILE ? { tenantsFile: resolve(env.PORTAL_TENANTS_FILE) } : {}),
+    ...(env.PORTAL_DISPLAY_NAME?.trim()
+      ? { displayName: env.PORTAL_DISPLAY_NAME.trim() }
+      : {}),
     smtp: loadSmtpConfig(env),
   };
 }

@@ -118,7 +118,7 @@ wrong and is not swept.
 ## Tenants
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
-one customer LSP (`planning/tenant-spec.md`, Epic 14; slice 6, issue #298, still open). `tenant` and `tenant_membership` (platform schema
+one customer LSP (`planning/tenant-spec.md`, Epic 14, whose slices are all built). `tenant` and `tenant_membership` (platform schema
 v8, backlog #204) own what an owner account used to (backlog #205, schema v9): the
 storage root, the `.ctv` roster, client engine consent, project grants, roster
 membership, invitations and jobs. Where older text below says "owner" it means
@@ -692,6 +692,10 @@ engine, but follows the same discipline:
   always was. A script that touches a portal file takes `--tenant` (`tenant-cli.ts`). The
   credential walk in `gateway.test.ts` lists the routes through `onRoute`, and a new `/api` route
   must sit under `/api/admin` or `/api/client`.
+- **A portal names its tenant's name, never the repo's** (backlog #213, `portal-v0-spec.md` §9a). The pages
+  carry `{{portalName}}`, filled (escaped) by the app from the tenant's `displayName`, else
+  `PORTAL_DISPLAY_NAME`, else `Translation Portal`; no company name is in the code, and there is no
+  default SMTP sender either: `configForTenant` refuses SMTP with no sender at startup.
 - **An uploaded filename never becomes a path.** The API server's rule
   ("no function takes a path from a request") holds here too, and v0
   broke it once: `portal-server/src/storage.ts` stored uploads under

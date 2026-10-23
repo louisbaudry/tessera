@@ -69,6 +69,18 @@ describe('parseTenantRegistry', () => {
     });
   });
 
+  it('carries a tenant’s display name, trimmed, and refuses an empty, long or multi-line one (issue #310)', () => {
+    expect(parse(entry({ displayName: '  Example Portal ' }))[0]).toMatchObject({
+      displayName: 'Example Portal',
+    });
+    for (const bad of ['', '   ', 'x'.repeat(81), 'two\nlines', 'tab\there', 7]) {
+      expect(() => parse(entry({ displayName: bad })), String(bad)).toThrow(
+        TenantRegistryError,
+      );
+    }
+    expect(parse(entry({ displayName: 'x'.repeat(80) }))).toHaveLength(1);
+  });
+
   it('refuses two tenants that would share a number, a host, a database file or a folder', () => {
     const other = {
       dbPath: 't2/portal.sqlite',
@@ -124,6 +136,7 @@ describe('parseTenantRegistry', () => {
         dbPath: 't2/portal.sqlite',
         storageRoot: 't2/storage',
         from: 'x <x@example.com>',
+        displayName: 'Two',
       }),
     );
     expect(parseTenantRegistry(serializeTenantRegistry(tenants), BASE)).toEqual(tenants);
@@ -169,6 +182,19 @@ describe('the legacy single portal', () => {
     expect(scoped.storageRoot).toBe('/d/2');
     expect(scoped.smtp).toEqual({ ...smtp, from: 'Two <two@example.com>' });
     expect(configForTenant(config, t).smtp).toBeUndefined();
+  });
+
+  it('gives a tenant its own display name over the shared one (issue #310)', () => {
+    const t: PortalTenant = {
+      tenantId: 2,
+      host: 'two.portal.test',
+      dbPath: '/d/2.sqlite',
+      storageRoot: '/d/2',
+    };
+    const shared = { ...config, displayName: 'Shared' };
+    expect(configForTenant(shared, t).displayName).toBe('Shared');
+    expect(configForTenant(shared, { ...t, displayName: 'Two' }).displayName).toBe('Two');
+    expect(configForTenant(config, t)).not.toHaveProperty('displayName');
   });
 
   it('refuses a tenant with no sender when SMTP is configured, naming where to set one (issue #306)', () => {
