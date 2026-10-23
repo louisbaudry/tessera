@@ -33,10 +33,10 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
-import type { PortalConfig } from './config.js';
+import type { TenantPortalConfig } from './tenants.js';
 
 let dir: string;
-let config: PortalConfig;
+let config: TenantPortalConfig;
 let app: FastifyInstance;
 let ada: Client;
 let other: Client;

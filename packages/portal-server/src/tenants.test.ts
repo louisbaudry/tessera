@@ -170,6 +170,43 @@ describe('the legacy single portal', () => {
     expect(scoped.smtp).toEqual({ ...smtp, from: 'Two <two@example.com>' });
     expect(configForTenant(config, t).smtp).toBeUndefined();
   });
+
+  it('refuses a tenant with no sender when SMTP is configured, naming where to set one (issue #306)', () => {
+    const { from: _from, ...transport } = {
+      host: 'smtp.example.com',
+      port: 587,
+      secure: false,
+      user: undefined,
+      pass: undefined,
+      from: undefined,
+      adminEmail: 'ops@example.com',
+    };
+    const bare: PortalTenant = {
+      tenantId: 2,
+      host: 'two.portal.test',
+      dbPath: '/d/2.sqlite',
+      storageRoot: '/d/2',
+    };
+    const shared = { ...config, smtp: transport };
+    expect(() => configForTenant(shared, bare)).toThrow(
+      /tenant 2 has no sender.*PORTAL_SMTP_FROM/,
+    );
+    expect(() =>
+      configForTenant(shared, { ...bare, tenantId: null, host: null }),
+    ).toThrow(/the portal has no sender: set PORTAL_SMTP_FROM/);
+    // either source is enough, and the tenant's own wins over the shared one
+    expect(
+      configForTenant(shared, { ...bare, from: 'Two <two@example.com>' }).smtp?.from,
+    ).toBe('Two <two@example.com>');
+    expect(
+      configForTenant(
+        { ...config, smtp: { ...transport, from: 'S <s@example.com>' } },
+        bare,
+      ).smtp?.from,
+    ).toBe('S <s@example.com>');
+    // no SMTP, no sender needed: console notifications
+    expect(configForTenant(config, bare).smtp).toBeUndefined();
+  });
 });
 
 describe('choosing a tenant on the command line', () => {

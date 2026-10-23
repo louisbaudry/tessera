@@ -4740,7 +4740,27 @@ tenant's own subdomain (O7). What it taught:
   a freelancer's combined feed. Buying the domain, the wildcard record and the certificate are the
   operator's, recorded in `INFRASTRUCTURE.md`.
 
-**#212 · The portal's default SMTP sender names a real company · S** · [issue #306]
+**#212 · ~~The portal's default SMTP sender names a real company~~ · DONE — `portal-server/src/{config,tenants}.ts`** (2026-10-23; card #306, Epic 14, `tenant-spec.md` D12)
+
+`config.ts` defaulted `PORTAL_SMTP_FROM` to a company's display name and address, so source in a public
+repo named a company and any tenant without its own `from` would have mailed its clients in that
+company's name. What it taught:
+
+- **A neutral default is still a default.** The fix is not a different string: there is none. The
+  shared `PORTAL_SMTP_FROM` is optional (`SharedSmtpConfig`) because a tenant may bring its own, and
+  `configForTenant` is the one place a sender is settled and refused if missing (`TenantRegistryError`
+  naming `PORTAL_SMTP_FROM` and the registry's `from`). The gateway builds every tenant's app at
+  startup, so the refusal comes before the port opens, never at the first email.
+- **The type carries it.** `buildApp` now takes `TenantPortalConfig`, whose `smtp.from` is a plain
+  `string`, so an app cannot be built from a config whose sender was never settled. The first typecheck
+  failed on a test that passed an unsettled `PortalConfig`, which is the point.
+- Mutation check: removing the refusal fails the unit test and the start-up test.
+- **The running deployment must set `PORTAL_SMTP_FROM` (or each tenant's `from`) before this is
+  deployed**, or the portal will refuse to start. No deployment exists in this repo to check.
+- The test emails in `db/portal/admin.test.ts` used the company's domain; now `example.com`.
+- Not done, filed separately: the same name is in the portal's static pages (`public/*.html`,
+  `client.js`) as page titles and headings, which is per-tenant branding rather than a default, and in
+  one line of this file's Epic 10a entry.
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 

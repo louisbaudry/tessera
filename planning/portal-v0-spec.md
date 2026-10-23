@@ -269,7 +269,9 @@ by-test layer `CLAUDE.md` requires of `@cat-tool/core`. `buildApp` picks
 `PORTAL_SMTP_PORT`, `PORTAL_SMTP_SECURE`, `PORTAL_SMTP_USER`,
 `PORTAL_SMTP_PASS`, `PORTAL_SMTP_FROM`, `PORTAL_ADMIN_EMAIL` — the last is
 required alongside `PORTAL_SMTP_HOST`, since the admin has no address to
-notify without it), otherwise falls back to `ConsoleNotificationService`.
+notify without it; so is a sender, `PORTAL_SMTP_FROM` or, per tenant, `from` in
+the registry: there is no default, and a portal with SMTP and no sender refuses to
+start, issue #306), otherwise falls back to `ConsoleNotificationService`.
 Triggers:
 
 - order submitted -> notify admin

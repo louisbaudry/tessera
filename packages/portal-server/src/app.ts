@@ -83,7 +83,7 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify';
 
-import type { PortalConfig } from './config.js';
+import type { TenantPortalConfig } from './tenants.js';
 import { SmtpNotificationService } from './notification/smtp.js';
 import {
   attachmentDisposition,
@@ -142,7 +142,7 @@ function clientOrderEvent(event: OrderEvent) {
 }
 
 export interface BuildAppOptions {
-  readonly config: PortalConfig;
+  readonly config: TenantPortalConfig;
   readonly notifications?: NotificationService;
   /** Defaults to true; tests pass false. */
   readonly logger?: boolean;
