@@ -85,6 +85,7 @@ import Fastify, {
 
 import type { TenantPortalConfig } from './tenants.js';
 import { SmtpNotificationService } from './notification/smtp.js';
+import { DEFAULT_PORTAL_NAME, renderPortalPage } from './page.js';
 import {
   attachmentDisposition,
   deliveredFilePath,
@@ -256,6 +257,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   }
   app.decorateRequest('admin', null);
   await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
+  // The two pages carry the tenant's name (issue #310); a route of its own, registered before the
+  // static plugin's wildcard, so the raw file with its placeholder is never served.
+  const portalName = config.displayName ?? DEFAULT_PORTAL_NAME;
+  for (const file of ['client.html', 'admin.html']) {
+    const html = renderPortalPage(
+      readFileSync(join(__dirname, 'public', file), 'utf8'),
+      portalName,
+    );
+    app.get(`/${file}`, async (_req, reply) =>
+      reply.type('text/html; charset=utf-8').send(html),
+    );
+  }
   await app.register(staticPlugin, {
     root: join(__dirname, 'public'),
     prefix: '/',

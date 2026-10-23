@@ -31,6 +31,8 @@ export interface PortalTenant {
   readonly from?: string;
   /** Where this tenant's admin is notified; the shared default when omitted. */
   readonly adminEmail?: string;
+  /** The name this tenant's portal pages show; the shared default when omitted (issue #310). */
+  readonly displayName?: string;
 }
 
 /** A registry that cannot be used, or a tenant that is not in it. The message says which. */
@@ -42,7 +44,18 @@ export class TenantRegistryError extends Error {
 }
 
 const HOST = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
-const KEYS = new Set(['tenantId', 'host', 'dbPath', 'storageRoot', 'from', 'adminEmail']);
+const KEYS = new Set([
+  'tenantId',
+  'host',
+  'dbPath',
+  'storageRoot',
+  'from',
+  'adminEmail',
+  'displayName',
+]);
+
+/** The longest name a portal heading takes: a heading, not a paragraph. */
+export const DISPLAY_NAME_MAX_LENGTH = 80;
 
 const isInside = (inner: string, outer: string): boolean =>
   inner === outer || inner.startsWith(outer.endsWith(sep) ? outer : outer + sep);
@@ -53,6 +66,21 @@ function text(entry: Record<string, unknown>, key: string, where: string): strin
     throw new TenantRegistryError(`${where}: ${key} must be a non-empty text`);
   }
   return value;
+}
+
+/**
+ * A name for a portal heading, trimmed.
+ *
+ * @throws {TenantRegistryError} for one over `DISPLAY_NAME_MAX_LENGTH` or holding a control character.
+ */
+export function displayName(value: string, where: string): string {
+  const name = value.trim();
+  if (name.length > DISPLAY_NAME_MAX_LENGTH || /[\u0000-\u001f\u007f]/.test(name)) {
+    throw new TenantRegistryError(
+      `${where}: displayName must be one line of at most ${DISPLAY_NAME_MAX_LENGTH} characters`,
+    );
+  }
+  return name;
 }
 
 /**
@@ -105,6 +133,9 @@ export function parseTenantRegistry(source: string, baseDir: string): PortalTena
       ...(entry.adminEmail === undefined
         ? {}
         : { adminEmail: text(entry, 'adminEmail', where) }),
+      ...(entry.displayName === undefined
+        ? {}
+        : { displayName: displayName(text(entry, 'displayName', where), where) }),
     };
     return tenant;
   });
@@ -168,6 +199,7 @@ export function serializeTenantRegistry(tenants: readonly PortalTenant[]): strin
           storageRoot: t.storageRoot,
           ...(t.from === undefined ? {} : { from: t.from }),
           ...(t.adminEmail === undefined ? {} : { adminEmail: t.adminEmail }),
+          ...(t.displayName === undefined ? {} : { displayName: t.displayName }),
         })),
       },
       null,
@@ -215,7 +247,11 @@ export function configForTenant(
   config: PortalConfig,
   tenant: PortalTenant,
 ): TenantPortalConfig {
-  const { smtp: shared, ...rest } = config;
+  const { smtp: shared, ...base } = config;
+  const rest = {
+    ...base,
+    ...(tenant.displayName === undefined ? {} : { displayName: tenant.displayName }),
+  };
   if (shared === undefined) {
     return {
       ...rest,

@@ -5,6 +5,7 @@
  *
  *   pnpm --filter @cat-tool/portal-server run add-portal-tenant -- <tenant-id> <host>
  *     [--db <path>] [--storage <path>] [--from <sender>] [--admin-email <address>]
+ *     [--display-name <name>]
  *
  * By default the file and folder go beside the registry as `t<id>/portal.sqlite` and
  * `t<id>/storage`. `--db` and `--storage` adopt files that already exist: how the first tenant's
@@ -21,6 +22,7 @@ import { loadConfig } from './config.js';
 import {
   addTenant,
   defaultTenantPaths,
+  displayName,
   readTenantRegistry,
   serializeTenantRegistry,
   TenantRegistryError,
@@ -29,7 +31,7 @@ import {
 
 const USAGE =
   'usage: add-portal-tenant <tenant-id> <host> [--db <path>] [--storage <path>] ' +
-  '[--from <sender>] [--admin-email <address>]';
+  '[--from <sender>] [--admin-email <address>] [--display-name <name>]';
 
 const args = process.argv.slice(2);
 if (args[0] === '--') args.shift();
@@ -50,7 +52,7 @@ for (let i = 0; i < args.length; i++) {
 const [rawId, host] = positional;
 const tenantId = Number(rawId);
 const unknown = [...flags.keys()].filter(
-  (k) => !['db', 'storage', 'from', 'admin-email'].includes(k),
+  (k) => !['db', 'storage', 'from', 'admin-email', 'display-name'].includes(k),
 );
 if (!host || !Number.isSafeInteger(tenantId) || tenantId < 1 || unknown.length > 0) {
   console.error(USAGE);
@@ -81,6 +83,9 @@ try {
       : defaults.storageRoot,
     ...(flags.has('from') ? { from: flags.get('from')! } : {}),
     ...(flags.has('admin-email') ? { adminEmail: flags.get('admin-email')! } : {}),
+    ...(flags.has('display-name')
+      ? { displayName: displayName(flags.get('display-name')!, '--display-name') }
+      : {}),
   };
   const next = addTenant(existing, tenant);
 

@@ -46,4 +46,12 @@ describe('loadConfig', () => {
       /PORTAL_ADMIN_EMAIL/,
     );
   });
+
+  it('reads the portal name from PORTAL_DISPLAY_NAME, trimmed, a blank one meaning none (issue #310)', () => {
+    expect(loadConfig({}).displayName).toBeUndefined();
+    expect(loadConfig({ PORTAL_DISPLAY_NAME: '   ' }).displayName).toBeUndefined();
+    expect(loadConfig({ PORTAL_DISPLAY_NAME: ' Example Portal ' }).displayName).toBe(
+      'Example Portal',
+    );
+  });
 });

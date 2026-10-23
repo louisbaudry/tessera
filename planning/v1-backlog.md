@@ -2807,7 +2807,7 @@ that stays visible.)
 ### Epic 10a — Translation Portal v0 (pulled forward, v0 done 2026-09-11)
 
 Not part of the Ring 0/0.5/1/2/3 (v1 to v4) sequence above — a business need (a
-client-facing intake/delivery surface for Optime Services, one pilot
+client-facing intake/delivery surface for the first tenant, one pilot
 client) pulled forward ahead of Epic 10's real design pass,
 which still waits on the pilot client's actual pain points per `ai-platform-vision.md`
 §7.2. Full design in `planning/portal-v0-spec.md`.
@@ -4758,9 +4758,26 @@ company's name. What it taught:
 - **The running deployment must set `PORTAL_SMTP_FROM` (or each tenant's `from`) before this is
   deployed**, or the portal will refuse to start. No deployment exists in this repo to check.
 - The test emails in `db/portal/admin.test.ts` used the company's domain; now `example.com`.
-- Not done, filed separately: the same name is in the portal's static pages (`public/*.html`,
-  `client.js`) as page titles and headings, which is per-tenant branding rather than a default, and in
-  one line of this file's Epic 10a entry.
+- Not done here, built next as #310 (the entry below): the same name was in the portal's static pages.
+
+**#213 · ~~The portal's pages name a real company~~ · DONE — `portal-server/src/{page,app,tenants,config,add-portal-tenant}.ts`, `public/*.html`** (2026-10-23; card #310, Epic 14, `tenant-spec.md` D12, `portal-v0-spec.md` §9a)
+
+The shipped pages used a real company's name as page title, heading and in one message. What it taught:
+
+- **Fill a name in on the server, not through a new API.** The pages carry `{{portalName}}`; the app serves
+  `/client.html` and `/admin.html` from a route of its own (before the static plugin's wildcard) with the
+  name escaped in. The first idea, a public `/api/portal` the page fetches, would have been a pre-login
+  route outside `/api/admin` and `/api/client`, which the credential walk in `gateway.test.ts` rightly has
+  no place for, and would flash a neutral name first.
+- **One name, three sources, one order:** the tenant's `displayName` (registry key, `add-portal-tenant
+  --display-name`, one line of at most 80 characters), else `PORTAL_DISPLAY_NAME` (the single portal and the
+  shared default), else `Translation Portal`. `configForTenant` settles it, as it does the sender.
+- **Escaped though an operator typed it:** it lands on the page that holds admin sessions. The test uses
+  `Alpha <Portal>`; removing the escape fails it, and removing the route fails the gateway tests.
+- The repo now names no company (a test asserting absence would have to name it, so there is none).
+  **The live portal's heading reads `Translation Portal` until its deployment sets `PORTAL_DISPLAY_NAME` or
+  its registry entry a `displayName`: set one before deploying this.**
+- Not verified: the pages in a browser (the served HTML is asserted, not rendered).
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 

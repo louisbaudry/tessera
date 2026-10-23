@@ -49,6 +49,7 @@ beforeEach(async () => {
       host: HOST_A,
       dbPath: join(dir, 't1', 'portal.sqlite'),
       storageRoot: join(dir, 't1', 'storage'),
+      displayName: 'Alpha <Portal>',
     },
     {
       tenantId: 2,
@@ -62,6 +63,7 @@ beforeEach(async () => {
     dbPath: join(dir, 'unused.sqlite'),
     storageRoot: join(dir, 'unused'),
     smtp: undefined,
+    displayName: 'Shared Portal',
   };
   routes.length = 0;
   // the databases exist before the apps open them: the gateway creates the folders
@@ -278,6 +280,51 @@ describe('two tenants share no file', () => {
       http(host, 'GET', '/api/client/orders', { token });
     expect(JSON.parse((await orders(HOST_A, 'a-client-token')).body)).toHaveLength(1);
     expect(JSON.parse((await orders(HOST_B, 'b-client-token')).body)).toHaveLength(0);
+  });
+});
+
+describe('the name each portal shows (issue #310)', () => {
+  const page = async (host: string, file: string) => {
+    const res = await http(host, 'GET', `/${file}`);
+    expect(res.status, `${host} ${file}`).toBe(200);
+    return res.body;
+  };
+
+  it('is the tenant’s own, escaped, else the shared one, and no placeholder is ever served', async () => {
+    const a = await page(HOST_A, 'client.html');
+    expect(a).toContain('<title>Alpha &lt;Portal&gt;</title>');
+    expect(a).toContain('<h1>Alpha &lt;Portal&gt;</h1>');
+    expect(await page(HOST_A, 'admin.html')).toContain(
+      '<h1>Alpha &lt;Portal&gt; — Admin</h1>',
+    );
+    expect(await page(HOST_B, 'client.html')).toContain('<h1>Shared Portal</h1>');
+    for (const host of [HOST_A, HOST_B]) {
+      for (const file of ['client.html', 'admin.html']) {
+        expect(await page(host, file), `${host} ${file}`).not.toContain('{{');
+      }
+    }
+  });
+
+  it('is a neutral name when nothing names the portal', async () => {
+    const solo = join(dir, 'solo-name');
+    const gw = await buildGateway({
+      config: {
+        port: 0,
+        dbPath: join(solo, 'portal.sqlite'),
+        storageRoot: join(solo, 'storage'),
+        smtp: undefined,
+      },
+      logger: false,
+    });
+    try {
+      const res = await gw
+        .appFor(undefined)!
+        .inject({ method: 'GET', url: '/client.html' });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toContain('<h1>Translation Portal</h1>');
+    } finally {
+      await gw.close();
+    }
   });
 });
 
