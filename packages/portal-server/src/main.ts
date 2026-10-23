@@ -1,12 +1,6 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-
-import { buildApp } from './app.js';
+import { buildGateway } from './gateway.js';
 import { loadConfig } from './config.js';
 
 const config = loadConfig();
-mkdirSync(dirname(config.dbPath), { recursive: true });
-mkdirSync(config.storageRoot, { recursive: true });
-
-const app = await buildApp({ config });
-await app.listen({ port: config.port, host: '0.0.0.0' });
+const gateway = await buildGateway({ config });
+await gateway.listen(config.port, '0.0.0.0');

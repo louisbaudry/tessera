@@ -19,6 +19,12 @@ export interface PortalConfig {
   readonly port: number;
   readonly dbPath: string;
   readonly storageRoot: string;
+  /**
+   * The tenant registry (`tenants.ts`, backlog #208). Absent: the portal is the single one it
+   * always was, from `dbPath` and `storageRoot`. Present: those two are ignored, and each
+   * registry entry carries its own.
+   */
+  readonly tenantsFile?: string;
   // Set only when PORTAL_SMTP_HOST is configured — absence is the signal
   // to fall back to ConsoleNotificationService (portal-v0-spec.md §5),
   // same "no real email adapter yet" default v0 shipped with.
@@ -30,6 +36,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PortalConfig {
     port: Number(env.PORTAL_PORT ?? 3300),
     dbPath: resolve(env.PORTAL_DB_PATH ?? './data/portal.sqlite'),
     storageRoot: resolve(env.PORTAL_STORAGE_ROOT ?? './data/storage'),
+    ...(env.PORTAL_TENANTS_FILE ? { tenantsFile: resolve(env.PORTAL_TENANTS_FILE) } : {}),
     smtp: loadSmtpConfig(env),
   };
 }

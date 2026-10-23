@@ -151,6 +151,29 @@ operator's file, and appears in no fixture, test, doc, issue or commit. Tests
 use invented names. And **the first tenant needs the same paperwork as any
 other** (§7, O4), because nothing in the data model treats it as special.
 
+**D13. The portal is one app per tenant behind a host gateway (decided 2026-10-23, Louis:
+one portal file per tenant, O2; slice 5, #295).** A tenant's portal is its own `portal.sqlite`
+and storage folder, opened by its own instance of the existing app, so isolation is by
+construction: no query, route or upload path can reach another tenant's file, because the
+closure holding it is not there. This is the placement rule of D8 applied to the portal, which
+holds uploaded client files, so a tenant's portal data is a folder that can be copied or deleted.
+A thin gateway (`portal-server/src/gateway.ts`) picks the instance from the request's `Host` and
+answers an unknown host with a 404 that names nothing; it never falls back to a tenant. The
+registry is a JSON file (`PORTAL_TENANTS_FILE`) of `{ tenantId, host, dbPath, storageRoot, from?,
+adminEmail? }`, provisioned by the operator (`add-portal-tenant`), as `create-tenant` is. **With no
+registry the portal runs as it always has**: one portal from `PORTAL_DB_PATH` and
+`PORTAL_STORAGE_ROOT`, any host, so the first tenant's existing file needs no data move and no
+change (D12); a registry entry may name that file by path. Why a host and not a path prefix or a
+tenant in the link: the SPA calls root-relative `/api/...` and a client link is
+`/client.html#token=...`, so a host leaves both unchanged, and a host is what #298 gives each
+tenant anyway (it will derive the hosts from `tenant.slug`; until then the registry names them).
+Why the portal does not read `platform.sqlite`: the CAT server must not reach into the portal's
+file (`CLAUDE.md`), and the portal takes no dependency on the platform's in return; `tenantId` is
+only the number both sides use for the same tenant. A client number is the tenant's own
+(invariant 6), so the same number in two portals is two clients. The SMTP transport is the
+operator's, shared; the sender and the admin's address are per tenant (`from`, `adminEmail`), since
+a tenant's clients are mailed in its name and its admin notified at its address.
+
 ## 4. Data model
 
 ```sql
@@ -259,9 +282,9 @@ seen to fail before the code that satisfies it.
   a data processing agreement with it, the first tenant included. That
   reading is Louis's to confirm with counsel; it is recorded here because it
   is why the first tenant gets no shortcut in the data model.
-- **The portal** (slice 5, #295) is the one surface that is not yet per tenant.
-  It has its own server, database, single admin and client list, so a second
-  LSP would share all of them. §9 O2 says how.
+- **The portal** (slice 5, #295, built) was the one surface that was not per tenant: its own
+  server, database, single admin and client list. D13 makes it one app per tenant behind a host
+  gateway.
 
 ## 8. Slices
 
@@ -271,9 +294,9 @@ seen to fail before the code that satisfies it.
 | 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent (built) | L |
 | 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations (built, with its screen) | M    |
 | 4     | #294, #302 | Isolation matrix across every route; the tenant-scoped audit view and its export (both built) | M    |
-| 5     | #295  | A portal per tenant (needs O2)                                       | L    |
+| 5     | #295  | A portal per tenant: one app per tenant behind a host gateway (built) | L    |
 
-Order: 1, then 2; 3 and 4 follow 2 and are independent; 5 waits on O2. One
+Order: 1, then 2; 3 and 4 follow 2 and are independent; 5 followed O2 (decided). One
 session on one slice at a time: slices 1 and 2 both change `platform/schema.ts`,
 and migration numbers are checked against `main` just before merge.
 
@@ -285,12 +308,10 @@ Each has a recommendation; none blocks slices 1 to 3.
   email and one tenant. A consultant for two LSPs is two accounts. The table
   shape makes yes a later relaxation, not a migration.
 - **O2. One portal file per tenant, or a `tenant_id` across the portal's
-  tables?** Recommended: a file per tenant. The portal holds uploaded client
-  files, so it follows the same placement and deletion rule as D8. Cost: the
-  portal server opens a database by tenant, and a tenant's admin is created per
-  file. Blocks slice 5 only. With D12 the existing portal file simply becomes
-  the first tenant's, with no data move, which favours a file per tenant: the
-  column option would have to back-fill every portal table for that tenant.
+  tables?** **Decided (Louis, 2026-10-23): a file per tenant.** The portal holds uploaded client
+  files, so it follows the same placement and deletion rule as D8. Cost: the portal server opens
+  a database by tenant, and a tenant's admin is created per file. With D12 the existing portal
+  file simply becomes the first tenant's, with no data move. Built in backlog #208 (D13).
 - **O3. Does the platform `audit_event` carry a nullable `tenant_id`, inside the
   hash?** **Decided (Louis, 2026-10-23): yes, inside the hash.** Operator events have none. It
   lets a tenant's admin read their own slice and an operator export one tenant's slice on
