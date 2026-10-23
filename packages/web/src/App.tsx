@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { AccountRole } from '@cat-tool/core';
+import type { AccountRole, TenantRole } from '@cat-tool/core';
 
 import { api, ApiError } from './api.js';
 import { Accept } from './Accept.js';
@@ -15,6 +15,7 @@ import { Memories } from './Memories.js';
 import { Payables } from './Payables.js';
 import { Payments } from './Payments.js';
 import { ProjectFiles, Projects } from './Projects.js';
+import { Staff } from './Staff.js';
 import { parseProjectKey } from './project-key.js';
 import { loadTheme, saveTheme } from './prefs.js';
 import { formatRoute, parseRoute, type Route } from './route.js';
@@ -50,11 +51,18 @@ export function App() {
   // What the account is decides its home and its navigation (backlog #52a): an owner
   // has projects and memories, a vendor has jobs. Unknown until `/api/me` answers.
   const [role, setRole] = useState<AccountRole | null>(null);
+  // Staff only: `admin` sees the staff screen and the webhooks; a `pm` sees neither, because
+  // the server would refuse both (backlog #206). Null for a vendor and until `/api/me` answers.
+  const [staffRole, setStaffRole] = useState<TenantRole | null>(null);
   useEffect(() => {
     if (token === null) return;
     let live = true;
     api.me(token).then(
-      (account) => live && setRole(account.role),
+      (account) => {
+        if (!live) return;
+        setRole(account.role);
+        setStaffRole(account.staffRole);
+      },
       (err: unknown) => {
         if (live && err instanceof ApiError && err.status === 401) signOut();
       },
@@ -67,13 +75,16 @@ export function App() {
   // An invitation link is the one screen reached without a session (backlog #111).
   // Accepting it signs the new vendor in; whoever was signed in before is replaced,
   // and the role is read again from the new session.
-  if (route.screen === 'invite') {
+  // A staff link (backlog #210) is the same: it signs the new colleague in.
+  if (route.screen === 'invite' || route.screen === 'join') {
     return (
       <Accept
         token={route.token}
+        kind={route.screen === 'join' ? 'staff' : 'vendor'}
         onToken={(t) => {
           saveToken(t);
           setRole(null);
+          setStaffRole(null);
           setToken(t);
           window.location.hash = formatRoute({ screen: 'projects' });
         }}
@@ -114,6 +125,7 @@ export function App() {
           {role === 'owner' && <a href={formatRoute({ screen: 'tms' })}>Memories</a>}
           {role === 'owner' && <a href={formatRoute({ screen: 'vendors' })}>Vendors</a>}
           {role === 'owner' && <a href={formatRoute({ screen: 'payables' })}>Pay run</a>}
+          {staffRole === 'admin' && <a href={formatRoute({ screen: 'staff' })}>Staff</a>}
           {role === 'vendor' && (
             <a href={formatRoute({ screen: 'payments' })}>Payments</a>
           )}
@@ -131,7 +143,10 @@ export function App() {
             <JobScreen tenantId={route.tenantId} id={route.id} />
           )}
           {route.screen === 'tms' && role === 'owner' && <Memories />}
-          {route.screen === 'vendors' && role === 'owner' && <Vendors />}
+          {route.screen === 'vendors' && role === 'owner' && (
+            <Vendors canManageWebhooks={staffRole === 'admin'} />
+          )}
+          {route.screen === 'staff' && staffRole === 'admin' && <Staff />}
           {route.screen === 'payables' && role === 'owner' && <Payables />}
           {route.screen === 'payments' && role === 'vendor' && <Payments />}
           {route.screen === 'project' && <ProjectFiles name={route.project} />}
@@ -164,13 +179,15 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
     route.screen === 'tms' ||
     route.screen === 'payables' ||
     route.screen === 'payments' ||
-    route.screen === 'vendors'
+    route.screen === 'vendors' ||
+    route.screen === 'staff'
   ) {
     const here = {
       tms: 'Memories',
       payables: 'Pay run',
       payments: 'Payments',
       vendors: 'Vendors',
+      staff: 'Staff',
     }[route.screen];
     return (
       <nav className="crumbs">
@@ -180,8 +197,9 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       </nav>
     );
   }
-  // The invitation page is shown without the shell, so it has no crumbs.
-  if (route.screen === 'invite') return <nav className="crumbs" />;
+  // The invitation pages are shown without the shell, so they have no crumbs.
+  if (route.screen === 'invite' || route.screen === 'join')
+    return <nav className="crumbs" />;
   // Another account's project (a vendor's job) is a key; the crumb shows its name.
   const shown = parseProjectKey(route.project).name;
   return (

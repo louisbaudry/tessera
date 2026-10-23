@@ -21,7 +21,7 @@ import { Webhooks } from './Webhooks.js';
 import { acceptanceLabel, onTimeLabel, RECORD_CAVEAT } from './vendor-record.js';
 import { useLoad } from './use-load.js';
 
-export function Vendors() {
+export function Vendors({ canManageWebhooks }: { canManageWebhooks: boolean }) {
   // Bumped after a write, which is part of each list's key: the lists are read
   // again from the server instead of patched, so what shows is what is stored.
   const [version, setVersion] = useState(0);
@@ -38,7 +38,7 @@ export function Vendors() {
       {fresh && <FreshLink email={fresh.email} link={fresh.link} />}
       <Invitations key={`i${version}`} onChanged={() => setVersion((v) => v + 1)} />
       <Roster key={`r${version}`} />
-      <Webhooks />
+      {canManageWebhooks && <Webhooks />}
     </div>
   );
 }

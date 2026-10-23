@@ -268,7 +268,7 @@ seen to fail before the code that satisfies it.
 | ----- | ----- | -------------------------------------------------------------------- | ---- |
 | 1     | #291  | `tenant`, `tenant_membership`, backfill, `createTenant`, `create-tenant`, `rename-tenant` | M |
 | 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent (built) | L |
-| 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations (built; its screen is #300) | M    |
+| 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations (built, with its screen) | M    |
 | 4     | #294  | Isolation matrix across every route (built); its audit view is #302, which waits on O3 | M    |
 | 5     | #295  | A portal per tenant (needs O2)                                       | L    |
 

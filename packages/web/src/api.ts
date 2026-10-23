@@ -10,6 +10,7 @@ import type {
   QaIssue,
   QaRule,
   Segment,
+  TenantRole,
   Token,
 } from '@cat-tool/core';
 import type {
@@ -57,6 +58,32 @@ export interface Account {
   /** What the account is: an owner has projects, a vendor has jobs (backlog #52a). */
   readonly role: AccountRole;
   readonly createdAt: string;
+}
+
+/** `/api/me`: the account and, for staff, the role held now. Only used to hide what would be refused. */
+export interface Me extends Account {
+  readonly staffRole: TenantRole | null;
+}
+
+/** One of the tenant's staff (backlog #206): `you` marks the caller's own row. */
+export interface StaffMember {
+  readonly accountId: number;
+  readonly email: string;
+  readonly role: TenantRole;
+  readonly addedAt: string;
+  readonly you: boolean;
+}
+
+/** A staff invitation as an admin sees it: never the token, which only its creation returns. */
+export interface StaffInvitationView {
+  readonly id: number;
+  readonly email: string;
+  readonly role: TenantRole;
+  readonly status: InvitationStatus;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly acceptedAt: string | null;
+  readonly revokedAt: string | null;
 }
 
 /** A job as the vendor sees it: no address, no history, no other vendor (`server/src/assignments.ts`). */
@@ -461,6 +488,49 @@ export const api = {
       method: 'POST',
       body: {},
     }),
+  /** The tenant's staff and its staff invitations (admin only, backlog #206). */
+  staff: (token: string, signal?: AbortSignal) =>
+    call<{ staff: StaffMember[]; invitations: StaffInvitationView[] }>(
+      '/api/staff',
+      token,
+      {
+        signal,
+      },
+    ),
+  /** Invites an address as staff; the one-time link token is in this response and no other. */
+  inviteStaff: (token: string, body: { email: string; role: TenantRole }) =>
+    call<{ invitation: StaffInvitationView; token: string }>(
+      '/api/staff/invitations',
+      token,
+      { method: 'POST', body },
+    ),
+  revokeStaffInvitation: (token: string, id: number) =>
+    call<{ invitation: StaffInvitationView }>(
+      `/api/staff/invitations/${id}/revoke`,
+      token,
+      { method: 'POST', body: {} },
+    ),
+  changeStaffRole: (token: string, accountId: number, role: TenantRole) =>
+    call<{ ok: true }>(`/api/staff/${accountId}`, token, {
+      method: 'PUT',
+      body: { role },
+    }),
+  removeStaff: (token: string, accountId: number) =>
+    call<{ ok: true }>(`/api/staff/${accountId}`, token, { method: 'DELETE' }),
+  /** The address a staff link was made for (no session needed); a 404 for any link that cannot be used. */
+  openStaffInvitation: (inviteToken: string, signal?: AbortSignal) =>
+    call<{ email: string }>('/api/staff-invitations/open', null, {
+      method: 'POST',
+      body: { token: inviteToken },
+      signal,
+    }),
+  /** Uses a staff link: sets the password once and returns the new staff member's session. */
+  acceptStaffInvitation: (inviteToken: string, password: string) =>
+    call<{ token: string; expiresAt: string; account: Account }>(
+      '/api/staff-invitations/accept',
+      null,
+      { method: 'POST', body: { token: inviteToken, password } },
+    ),
   /** The owner's invitations, newest first (backlog #111). */
   invitations: (token: string, signal?: AbortSignal) =>
     call<{ invitations: InvitationView[] }>('/api/invitations', token, { signal }),
@@ -529,8 +599,7 @@ export const api = {
       token,
       { signal },
     ),
-  me: (token: string, signal?: AbortSignal) =>
-    call<Account>('/api/me', token, { signal }),
+  me: (token: string, signal?: AbortSignal) => call<Me>('/api/me', token, { signal }),
   projects: (token: string, signal?: AbortSignal) =>
     call<ProjectSummary[]>('/api/projects', token, { signal }),
   project: (token: string, name: string, signal?: AbortSignal) =>

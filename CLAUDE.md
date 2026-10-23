@@ -119,7 +119,7 @@ wrong and is not swept.
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
 one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 5 and 6, issues #295
-and #298, #300 (a staff screen) and #302 (a tenant audit view, waiting on spec O3) still open). `tenant` and `tenant_membership` (platform schema
+and #298, and #302 (a tenant audit view, waiting on spec O3) still open). `tenant` and `tenant_membership` (platform schema
 v8, backlog #204) own what an owner account used to (backlog #205, schema v9): the
 storage root, the `.ctv` roster, client engine consent, project grants, roster
 membership, invitations and jobs. Where older text below says "owner" it means
@@ -138,7 +138,8 @@ it is now `?tenant=<tenant id>`. Keep true:
   triggers refuse removing or demoting the last one. Staff join by `staff_invitation`, a table
   of its own (tenant and role frozen at invitation, read from the row at acceptance, never from the
   request), through `/api/staff-invitations/open|accept`, not the vendor routes. Removing staff
-  ends their sessions in the same transaction.
+  ends their sessions in the same transaction. The SPA learns the role from `/api/me`'s `staffRole`
+  and uses it only to hide what the server would refuse (`#/staff`, the webhooks panel).
 - **A new server route needs an entry in `server/src/isolation.test.ts`** (backlog #207, spec §6):
   the test lists the app's routes through `buildApp`'s `onRoute` and fails on one it has no entry
   for. A `/api/projects/:name/...` route is probed automatically (B's project against a missing
@@ -934,7 +935,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
