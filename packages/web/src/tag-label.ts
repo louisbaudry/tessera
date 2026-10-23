@@ -123,6 +123,45 @@ function describeXliffTag(xml: string): string {
   }
 }
 
+/** Words for a DrawingML run (`a:r`, PPTX): its attributes and the few child elements that matter. */
+function describeDrawingRun(open: string): string {
+  const tag = /<a:rPr\b[^>]*>/.exec(open)?.[0] ?? '';
+  const value = (name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+  const words: string[] = [];
+  const on = (v: string | undefined) => v === '1' || v === 'true';
+  if (on(value('b'))) words.push('bold');
+  if (on(value('i'))) words.push('italic');
+  const underline = value('u');
+  if (underline !== undefined && underline !== 'none') words.push('underline');
+  const strike = value('strike');
+  if (strike !== undefined && strike !== 'noStrike') words.push('strikethrough');
+  const baseline = Number(value('baseline') ?? '0');
+  if (baseline > 0) words.push('superscript');
+  if (baseline < 0) words.push('subscript');
+  const cap = value('cap');
+  if (cap !== undefined && cap !== 'none') words.push('capitals');
+  if (/<a:hlinkClick\b/.test(open)) words.push('link');
+  if (/<a:highlight\b/.test(open)) words.push('highlight');
+  return words.join(' ');
+}
+
+/** Words for a DrawingML paragraph-level element (PPTX): a break, a field. */
+function describeDrawingPlaceholder(xml: string): string {
+  const element = /^<([\w:]+)/.exec(xml)?.[1] ?? '';
+  switch (element) {
+    case 'a:br':
+      return 'line break';
+    case 'a:fld': {
+      const type = /\stype="([^"]*)"/.exec(xml.slice(0, xml.indexOf('>')))?.[1];
+      return type ? `field ${type}` : 'field';
+    }
+    case 'a:endParaRPr':
+      return 'end of paragraph';
+    default:
+      return element.replace(/^a:/, '') || 'placeholder';
+  }
+}
+
 /**
  * The words for a tag's format: `bold italic`, `link`, `footnote`,
  * `field PAGE`. A tag the table cannot explain is `unknown tag`.
@@ -132,6 +171,10 @@ export function describeFormat(format: FormatEntry | undefined): string {
   if (/^<(?:[\w-]+:)?(?:pc|ph|sc|ec|sm|em|mrk|cp)\b/.test(format.open)) {
     return describeXliffTag(format.open);
   }
+  // PPTX (DrawingML, issue #169): a run is `<a:r>`, a placeholder another `a:` element.
+  if (format.open.startsWith('<a:r>'))
+    return describeDrawingRun(format.open) || format.kind;
+  if (/^<a:/.test(format.open)) return describeDrawingPlaceholder(format.open);
   switch (format.placement) {
     case 'run': {
       const rPr =

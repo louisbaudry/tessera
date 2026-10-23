@@ -34,6 +34,17 @@ export function escapeXmlText(s: string): string {
 }
 
 /**
+ * What differs between the formats that render runs (`v1-spec.md` §3.9): how a
+ * text node is written, and the element a bare run is wrapped in.
+ */
+export interface RenderDialect {
+  /** The XML of one text node holding `value`. */
+  readonly textNode: (value: string) => string;
+  /** A run with no properties around `inner` (a text node or a placeholder). */
+  readonly bareRun: (inner: string) => string;
+}
+
+/**
  * `xml:space="preserve"` is emitted whenever the text has edge
  * whitespace. Without it Word collapses a leading or trailing space, which
  * silently joins words across a formatting boundary — "**bold** text"
@@ -43,6 +54,21 @@ function textNode(value: string): string {
   const preserve = value !== value.trim() ? ' xml:space="preserve"' : '';
   return `<w:t${preserve}>${escapeXmlText(value)}</w:t>`;
 }
+
+/** WordprocessingML: a DOCX. The default. */
+export const WORD_RENDER: RenderDialect = {
+  textNode,
+  bareRun: (inner) => `<w:r>${inner}</w:r>`,
+};
+
+/**
+ * DrawingML text (PPTX). `a:t` keeps edge whitespace as it is, so no
+ * `xml:space` is written.
+ */
+export const DRAWINGML_RENDER: RenderDialect = {
+  textNode: (value) => `<a:t>${escapeXmlText(value)}</a:t>`,
+  bareRun: (inner) => `<a:r>${inner}</a:r>`,
+};
 
 /**
  * Collapses adjacent text and re-merges neighbouring runs that carry
@@ -147,6 +173,7 @@ export function mergeTokens(
 export function renderTokens(
   tokens: readonly Token[],
   formats: readonly FormatEntry[],
+  dialect: RenderDialect = WORD_RENDER,
 ): string {
   const structure = validateTagStructure(tokens);
   if (!structure.ok) {
@@ -194,7 +221,7 @@ export function renderTokens(
     return null;
   };
   const flush = () => {
-    if (text !== '') out += textNode(text);
+    if (text !== '') out += dialect.textNode(text);
     text = '';
   };
   const closeRun = () => {
@@ -217,7 +244,7 @@ export function renderTokens(
     switch (token.t) {
       case 'text': {
         if (enterRun()) text += token.v;
-        else out += `<w:r>${textNode(token.v)}</w:r>`;
+        else out += dialect.bareRun(dialect.textNode(token.v));
         break;
       }
       case 'open': {
@@ -247,7 +274,7 @@ export function renderTokens(
             flush();
             out += entry.open;
           } else {
-            out += `<w:r>${entry.open}</w:r>`;
+            out += dialect.bareRun(entry.open);
           }
         } else {
           closeRun();
@@ -262,8 +289,11 @@ export function renderTokens(
 }
 
 /** Convenience: render a region tokenized by {@link tokenizeRegion}. */
-export function renderRegion(region: TokenizedRegion): string {
-  return renderTokens(region.tokens, region.formats);
+export function renderRegion(
+  region: TokenizedRegion,
+  dialect: RenderDialect = WORD_RENDER,
+): string {
+  return renderTokens(region.tokens, region.formats, dialect);
 }
 
 /**

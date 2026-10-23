@@ -254,7 +254,7 @@ no letter in any script — pure numbers, punctuation, whitespace — is not
 presented as a segment. Uses `\p{L}` rather than an ASCII range, so
 Spanish accents and inverted marks count as content.
 
-**#169 · More file formats · XLIFF 2.x DONE — `core/src/xliff/{scan,inline,document}.ts`, `core/src/project/{assemble-xliff,export-xliff,export-any}.ts`, `file.kind` (project schema v19), `fixtures/xliff/`; PPTX and XLSX still open** · [issue #169]
+**#169 · More file formats · XLIFF 2.x and PPTX DONE — XLIFF: `core/src/xliff/{scan,inline,document}.ts`, `core/src/project/{assemble-xliff,export-xliff,export-any}.ts`, `file.kind` (project schema v19), `fixtures/xliff/`; PPTX: `core/src/pptx/{tokenize,document}.ts`, `core/src/project/{ooxml-format,assemble}.ts`, `fixtures/pptx/`; XLSX still open** · [issue #169]
 (XLIFF phase 2026-10-22; design in `v1-spec.md` §3.8)
 
 Louis lifted the card's "not before the first real job" gate for the XLIFF phase and chose TypeScript over Rust/Wasm.
@@ -267,6 +267,19 @@ Louis lifted the card's "not before the first real job" gate for the XLIFF phase
 - **Seen end to end:** `cat-tool add-file`, `add-tm`, `pretranslate`, `qa`, `export` on `basic.en-de.xlf`: two exact matches and a tag-diff draft placed, the draft's missing tag reported by `tag.missing`, and the export differing from the original by exactly the three targets and two `state` attributes.
 - **Not proven:** the fixtures are hand-written to the specification's shapes, so they encode a belief about other tools' XLIFF, which is the risk this repository's fixture rule names. No Trados, memoQ, Phrase or Smartling file has been read. A real sample is the next check, and the first thing a pilot client's file will show.
 - **Not built:** XLIFF 1.2 (refused by name), the modules (Translation Candidates is not read as a memory, nor the Glossary module as a glossary), `canResegment`, schema validation, the portal taking XLIFF orders, and a segment whose project target was cleared (the file's own target is left, not deleted).
+
+
+(PPTX phase 2026-10-23; design in `v1-spec.md` §3.9)
+
+Louis chose TypeScript over Rust/Wasm again (asked first).
+
+- **The DOCX filter, parameterised, not copied.** `extractSkeleton` takes the paragraph, paragraph-properties and text element names (`SkeletonDialect`: `w:p` or `a:p`), `renderTokens` takes a `RenderDialect` (the text node and the bare run), and `OoxmlFormat` (`project/ooxml-format.ts`) bundles what differs, so `assembleOoxml` and `foldSegments` are written once. The DOCX gate and its 1,200 sibling tests stayed green through the refactor, which is what it is for. Two traps on the way: `regionText` is passed to `Array.map`, so a defaulted `dialect` parameter received the index (a separate `regionTextFor` now), and the first test of the translated decks compared tag counts per segment, which changes when a translated sentence re-splits (it compares the XML's structure instead).
+- **A deck is slides in play order, then notes.** Read from `p:sldIdLst` and the presentation's relationships, not the file numbers; a deck written by another tool, or reordered by one, need not be numbered in order. A part whose order cannot be read falls back to its number (tested by breaking `presentation.xml`). Masters, layouts, charts, SmartArt, comments and alt text are not extracted, and said so in the spec.
+- **A field's text is not a sentence.** LibreOffice writes `&lt;number&gt;` into a slide-number field, and "number" has letters, so a paragraph holding only that field was a translatable segment with no text. The DrawingML dialect skips `a:fld` when it decides whether a paragraph has any (`SkeletonDialect.skip`); PowerPoint's own `‹#›` has no letters and would have passed, so only a real producer's file showed it.
+- **Colour is not formatting.** PowerPoint and LibreOffice put a colour on nearly every run, so `a:solidFill` is incidental (a hidden run tag) and bold, italic, underline, strikethrough, super- and subscript, capitals, a highlight and a hyperlink are what a translator is shown. A hyperlink is a property of its run (`a:hlinkClick`), so its relationship id keeps pointing at the same target because the slide's rels are never touched.
+- **Proved three ways.** The roundtrip gate over two decks (`pnpm test:gate` picks up `pptx/roundtrip.gate.test.ts`): every part byte-identical, idempotent, segments survive. Then both decks translated segment by segment, exported, and **opened by LibreOffice and by python-pptx**: LibreOffice rendered every translated paragraph in place (the slide-number field still counting, the link run, the table cells), which is the check DOCX never had. And the Open XML SDK validator now runs differentially over the decks too (`scripts/ooxml-validate` opens a `.pptx` as a `PresentationDocument`), **in CI only: no .NET SDK in this session, so that part was written blind and is the first thing to read if CI is red.**
+- **Not proven:** **no file written by PowerPoint itself has been read.** One deck is LibreOffice's output, the other hand-built to the schema, so PowerPoint's own habits (`mc:AlternateContent` around shapes, `a14` extensions, `p:extLst`, grouped shapes, SmartArt fallbacks) are only what the edge-case deck guesses. A real sample is the next check and needs Louis. And a deck that validates can still need a repair prompt in PowerPoint.
+- **Not built:** the unextracted parts above, a PPTX in the portal's order intake (its word count stays `null`), `.ppt`, `.potx` and `.ppsx`, and slide context in the editor.
 
 ---
 

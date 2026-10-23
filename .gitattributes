@@ -11,3 +11,4 @@
 # wins for these paths specifically — .gitattributes rules are applied in
 # file order, last match takes precedence.
 *.docx binary
+*.pptx binary

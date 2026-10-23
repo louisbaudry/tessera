@@ -48,4 +48,33 @@ describe('describeFormat', () => {
     expect(describeFormat(pair('<mrk id="m" type="term">'))).toBe('marker term');
     expect(describeFormat(placeholder('<sc id="3"/>'))).toBe('sc');
   });
+
+  it('names a PPTX run by its formatting, and a break or field by what it shows', () => {
+    const run = (rPr: string): FormatEntry => ({
+      id: 1,
+      kind: 'other',
+      visible: true,
+      placement: 'run',
+      open: `<a:r>${rPr}`,
+      close: '</a:r>',
+    });
+    expect(describeFormat(run('<a:rPr lang="en-US" b="1" i="1" u="sng"/>'))).toBe(
+      'bold italic underline',
+    );
+    expect(describeFormat(run('<a:rPr baseline="30000"/>'))).toBe('superscript');
+    expect(describeFormat(run('<a:rPr><a:hlinkClick r:id="rId2"/></a:rPr>'))).toBe(
+      'link',
+    );
+    // Nothing worth naming: the tag's own kind.
+    expect(describeFormat(run('<a:rPr lang="en-US" dirty="0"/>'))).toBe('other');
+    expect(describeFormat(placeholder('<a:br><a:rPr lang="en-US"/></a:br>'))).toBe(
+      'line break',
+    );
+    expect(
+      describeFormat(placeholder('<a:fld id="{X}" type="slidenum"><a:t>1</a:t></a:fld>')),
+    ).toBe('field slidenum');
+    expect(describeFormat(placeholder('<a:endParaRPr lang="en-US"/>'))).toBe(
+      'end of paragraph',
+    );
+  });
 });

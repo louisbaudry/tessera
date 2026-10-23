@@ -18,8 +18,10 @@ import { pipeline } from 'node:stream/promises';
 
 import {
   assembleFile,
+  assemblePptx,
   assembleXliff,
   attachmentDisposition,
+  DocxError,
   DEFAULT_FUZZY_THRESHOLD,
   findMismatches,
   FUZZY_FLOOR,
@@ -341,6 +343,8 @@ const LOGIN_GATE: AuditActor = { actor: { kind: 'system', name: 'login' }, label
 const DOCX_TYPE =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const XLIFF_TYPE = 'application/xliff+xml';
+const PPTX_TYPE =
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
 /** What a client sees of an account: never the password hash or the storage root. */
 function publicAccount(account: Account) {
@@ -665,10 +669,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     }
   });
 
-  // One DOCX or XLIFF 2.x per request, multipart; its filename is the
+  // One DOCX, PPTX or XLIFF 2.x per request, multipart; its filename is the
   // `rel_path` unless a `relPath` field says otherwise, and the name's
-  // extension picks the filter (`fileKindOfName`; anything but `.xlf` and
-  // `.xliff` is read as a DOCX, as before). `assembleFile` or `assembleXliff`
+  // extension picks the filter (`fileKindOfName`; anything but `.xlf`,
+  // `.xliff` and `.pptx` is read as a DOCX, as before). `assembleFile` or `assembleXliff`
   // + `insertFile`, exactly the CLI's `add-file`.
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/files',
@@ -714,7 +718,20 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
               error: `cannot segment ${project.srcLang}: ${err instanceof Error ? err.message : String(err)}`,
             });
           }
-          assembled = assembleFile(bytes, rules);
+          try {
+            assembled =
+              fileKindOfName(relPath) === 'pptx'
+                ? assemblePptx(bytes, rules)
+                : assembleFile(bytes, rules);
+          } catch (err) {
+            // A package that is not a readable ZIP or lacks its main part.
+            if (err instanceof DocxError) {
+              return reply
+                .code(422)
+                .send({ error: `cannot read ${relPath}: ${err.message}` });
+            }
+            throw err;
+          }
         }
         let fileId: number;
         try {
@@ -814,7 +831,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         sha256: exported.sha256,
       });
       return reply
-        .header('content-type', exported.file.kind === 'xliff' ? XLIFF_TYPE : DOCX_TYPE)
+        .header(
+          'content-type',
+          exported.file.kind === 'xliff'
+            ? XLIFF_TYPE
+            : exported.file.kind === 'pptx'
+              ? PPTX_TYPE
+              : DOCX_TYPE,
+        )
         .header('content-disposition', attachmentDisposition(name))
         .send(Buffer.from(exported.bytes));
     },

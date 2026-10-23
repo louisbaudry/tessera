@@ -49,8 +49,36 @@ export class SkeletonError extends Error {
   }
 }
 
-const PARAGRAPH = new Set(['w:p']);
-const PARA_PROPS = new Set(['w:pPr']);
+/**
+ * The three element names that differ between the OOXML formats whose text is
+ * paragraphs (`planning/v1-spec.md` §3.9): the paragraph, its properties
+ * element (first child, never content) and the text node `regionText` reads.
+ */
+export interface SkeletonDialect {
+  readonly paragraph: string;
+  readonly props: string;
+  readonly text: string;
+  /**
+   * Spans of a region whose text is not read: text a field regenerates (a slide
+   * number's `<number>` has letters and is not a sentence).
+   */
+  readonly skip?: RegExp;
+}
+
+/** WordprocessingML: a DOCX. The default everywhere. */
+export const WORD_DIALECT: SkeletonDialect = {
+  paragraph: 'w:p',
+  props: 'w:pPr',
+  text: 'w:t',
+};
+
+/** DrawingML text, as a PPTX slide or notes page holds it. */
+export const DRAWINGML_DIALECT: SkeletonDialect = {
+  paragraph: 'a:p',
+  props: 'a:pPr',
+  text: 'a:t',
+  skip: /<a:fld\b[\s\S]*?<\/a:fld>/g,
+};
 
 const marker = (key: string): string => `<!--cat:${key}-->`;
 const MARKER_RE = /<!--cat:([A-Za-z0-9_]+)-->/g;
@@ -81,12 +109,18 @@ function contentStartOf(
   return own && contains(para, own) ? own.end : para.contentStart;
 }
 
-export function extractSkeleton(part: string, xml: string): PartSkeleton {
-  const paragraphs = scanElements(xml, PARAGRAPH);
+export function extractSkeleton(
+  part: string,
+  xml: string,
+  dialect: SkeletonDialect = WORD_DIALECT,
+): PartSkeleton {
+  const paragraphs = scanElements(xml, new Set([dialect.paragraph]));
   if (paragraphs.length === 0) {
     return { part, skeleton: xml, regions: [] };
   }
-  const propsAt = new Map(scanElements(xml, PARA_PROPS).map((pr) => [pr.start, pr]));
+  const propsAt = new Map(
+    scanElements(xml, new Set([dialect.props])).map((pr) => [pr.start, pr]),
+  );
 
   // Assign keys in document order so `ord` is stable across runs.
   const keyOf = new Map<XmlElement, string>();
@@ -203,10 +237,19 @@ export function renderSkeleton(
  * so it is not part of the document as it currently reads and is not what
  * the translator is being asked to translate (planning/v1-spec.md §3.5).
  */
-export function regionText(region: SkeletonRegion): string {
+export const regionText = (region: SkeletonRegion): string =>
+  regionTextFor(region, WORD_DIALECT);
+
+/**
+ * {@link regionText} for another format's text node. A separate function, not a
+ * defaulted parameter: `regionText` is passed to `Array.map`, which would hand
+ * the index in as the dialect.
+ */
+export function regionTextFor(region: SkeletonRegion, dialect: SkeletonDialect): string {
   let out = '';
-  const re = /<(w:t)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/g;
-  for (const m of region.xml.matchAll(re)) {
+  const re = new RegExp(`<(${dialect.text})(?:\\s[^>]*)?>([\\s\\S]*?)<\\/\\1>`, 'g');
+  const xml = dialect.skip ? region.xml.replace(dialect.skip, '') : region.xml;
+  for (const m of xml.matchAll(re)) {
     out += m[2] ?? '';
   }
   return out
@@ -221,6 +264,13 @@ export function regionText(region: SkeletonRegion): string {
  * True when a region carries no letter in any supported language, so it is
  * not worth presenting as a segment (planning/v1-spec.md §3.5).
  */
-export function isUntranslatable(region: SkeletonRegion): boolean {
-  return !/\p{L}/u.test(regionText(region));
+export const isUntranslatable = (region: SkeletonRegion): boolean =>
+  isUntranslatableFor(region, WORD_DIALECT);
+
+/** {@link isUntranslatable} for another format's text node. */
+export function isUntranslatableFor(
+  region: SkeletonRegion,
+  dialect: SkeletonDialect,
+): boolean {
+  return !/\p{L}/u.test(regionTextFor(region, dialect));
 }

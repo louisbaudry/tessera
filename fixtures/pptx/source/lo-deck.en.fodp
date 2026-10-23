@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic source for fixtures/pptx/lo-deck.en.pptx: every sentence is written for this repository. -->
+<office:document
+  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+  xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+  xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+  xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+  xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+  xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+  office:version="1.3"
+  office:mimetype="application/vnd.oasis.opendocument.presentation">
+  <office:styles>
+    <style:default-style style:family="graphic">
+      <style:text-properties style:font-name="Liberation Sans" fo:font-size="18pt" fo:language="en" fo:country="US"/>
+    </style:default-style>
+    <style:style style:name="Title" style:family="paragraph">
+      <style:text-properties fo:font-size="32pt" fo:font-weight="bold"/>
+    </style:style>
+  </office:styles>
+  <office:automatic-styles>
+    <style:page-layout style:name="PM1">
+      <style:page-layout-properties fo:margin-top="0cm" fo:margin-bottom="0cm" fo:margin-left="0cm" fo:margin-right="0cm" fo:page-width="28cm" fo:page-height="15.75cm" style:print-orientation="landscape"/>
+    </style:page-layout>
+    <style:style style:name="dp1" style:family="drawing-page"/>
+    <style:style style:name="T-bold" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>
+    <style:style style:name="T-italic" style:family="text"><style:text-properties fo:font-style="italic"/></style:style>
+    <style:style style:name="T-sup" style:family="text"><style:text-properties style:text-position="super 58%"/></style:style>
+  </office:automatic-styles>
+  <office:master-styles>
+    <style:master-page style:name="Default" style:page-layout-name="PM1" draw:style-name="dp1"/>
+  </office:master-styles>
+  <office:body>
+    <office:presentation>
+      <draw:page draw:name="page1" draw:style-name="dp1" draw:master-page-name="Default">
+        <draw:frame svg:width="24cm" svg:height="3cm" svg:x="2cm" svg:y="2cm">
+          <draw:text-box><text:p text:style-name="Title">Garden planning workshop</text:p></draw:text-box>
+        </draw:frame>
+        <draw:frame svg:width="24cm" svg:height="3cm" svg:x="2cm" svg:y="6cm">
+          <draw:text-box>
+            <text:p>Spring session. Bring your notes and a pencil.</text:p>
+          </draw:text-box>
+        </draw:frame>
+      </draw:page>
+      <draw:page draw:name="page2" draw:style-name="dp1" draw:master-page-name="Default">
+        <draw:frame svg:width="24cm" svg:height="3cm" svg:x="2cm" svg:y="1cm">
+          <draw:text-box><text:p text:style-name="Title">Soil and water</text:p></draw:text-box>
+        </draw:frame>
+        <draw:frame svg:width="24cm" svg:height="8cm" svg:x="2cm" svg:y="4.5cm">
+          <draw:text-box>
+            <text:p>Test the soil before planting.</text:p>
+            <text:p>Water early in the morning, not at noon.</text:p>
+            <text:p>Use <text:span text:style-name="T-italic">compost</text:span> in <text:span text:style-name="T-bold">every</text:span> bed.</text:p>
+            <text:p>Rain collects in a barrel<text:line-break/>beside the shed. See note 1<text:span text:style-name="T-sup">a</text:span> for sizes.</text:p>
+          </draw:text-box>
+        </draw:frame>
+        <presentation:notes draw:style-name="dp1">
+          <draw:page-thumbnail draw:layer="layout" svg:width="14cm" svg:height="7.9cm" svg:x="3.5cm" svg:y="2.2cm"/>
+          <draw:frame presentation:class="notes" svg:width="16cm" svg:height="10cm" svg:x="2.5cm" svg:y="11cm">
+            <draw:text-box><text:p>Remind the group about mulch &amp; shade cloth.</text:p></draw:text-box>
+          </draw:frame>
+        </presentation:notes>
+      </draw:page>
+      <draw:page draw:name="page3" draw:style-name="dp1" draw:master-page-name="Default">
+        <draw:frame svg:width="24cm" svg:height="3cm" svg:x="2cm" svg:y="1cm">
+          <draw:text-box><text:p text:style-name="Title">Sowing calendar</text:p></draw:text-box>
+        </draw:frame>
+        <draw:frame svg:width="20cm" svg:height="5cm" svg:x="4cm" svg:y="5cm">
+          <table:table table:name="Calendar">
+            <table:table-column table:number-columns-repeated="2"/>
+            <table:table-row>
+              <table:table-cell office:value-type="string"><text:p>Crop</text:p></table:table-cell>
+              <table:table-cell office:value-type="string"><text:p>Sowing time</text:p></table:table-cell>
+            </table:table-row>
+            <table:table-row>
+              <table:table-cell office:value-type="string"><text:p>Tomato</text:p></table:table-cell>
+              <table:table-cell office:value-type="string"><text:p>Early spring, indoors.</text:p></table:table-cell>
+            </table:table-row>
+          </table:table>
+        </draw:frame>
+      </draw:page>
+      <draw:page draw:name="page4" draw:style-name="dp1" draw:master-page-name="Default">
+        <draw:frame svg:width="24cm" svg:height="3cm" svg:x="2cm" svg:y="1cm">
+          <draw:text-box><text:p text:style-name="Title">More reading</text:p></draw:text-box>
+        </draw:frame>
+        <draw:frame svg:width="24cm" svg:height="4cm" svg:x="2cm" svg:y="5cm">
+          <draw:text-box>
+            <text:p>Read more on the <text:a xlink:href="https://example.org/workshop" xlink:type="simple">workshop page</text:a> after class.</text:p>
+            <text:p>Slide <text:page-number>4</text:page-number> of the deck.</text:p>
+          </draw:text-box>
+        </draw:frame>
+      </draw:page>
+    </office:presentation>
+  </office:body>
+</office:document>
