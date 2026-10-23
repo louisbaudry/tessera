@@ -1,0 +1,43 @@
+# Tessera on one VPS: the image from ../Dockerfile behind Caddy, which gets
+# and renews the TLS certificate (the image terminates no HTTPS, backlog
+# #36a). Runbook and the reasons: deploy/README.md.
+#
+#   cp .env.example .env     # set SITE_ADDRESS, then:
+#   docker compose up -d --build
+services:
+  tessera:
+    build:
+      context: ..
+    restart: unless-stopped
+    # No published port: only Caddy reaches the app, over this project's network.
+    expose:
+      - '3400'
+    volumes:
+      # The one volume: platform.sqlite and every account's projects and memories.
+      - tessera_data:/data
+    # ANTHROPIC_API_KEY and DEEPL_API_KEY are deliberately not passed. Unset means
+    # the draft engine is unavailable, which is what a deployment with no
+    # client consent on file must do (CLAUDE.md, "The draft engine").
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - tessera
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account: losing these re-issues, and Let's
+      # Encrypt rate-limits re-issuing.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  tessera_data:
+  caddy_data:
+  caddy_config:
