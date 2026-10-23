@@ -12,6 +12,7 @@
 
 import {
   ACCOUNT_ROLES,
+  TENANT_ROLES,
   DECISION_KINDS,
   DRAFT_ENGINES,
   ENGINE_CHOICES,
@@ -89,6 +90,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'audit_event.action': PLATFORM_AUDIT_ACTIONS,
       'account.role': ACCOUNT_ROLES,
       'project_authorization.scope': PROJECT_SCOPES,
+      'tenant_membership.role': TENANT_ROLES,
       'client_engine_consent.engine': DRAFT_ENGINES,
       'client_engine_default.engine': DRAFT_ENGINES,
     },

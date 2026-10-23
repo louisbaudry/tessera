@@ -25,6 +25,7 @@ import {
 import type Database from 'better-sqlite3';
 
 import { appendAuditEvent } from '../audit/events.js';
+import { insertTenant, TenantError } from './tenants.js';
 
 export interface Account {
   readonly id: number;
@@ -63,6 +64,11 @@ export interface CreateAccountOptions {
   readonly role?: AccountRole;
   /** Who created it — required (audit-spec.md decision 3). */
   readonly actor: AuditActor;
+  /**
+   * The display name of the tenant an `owner` account founds, or `Tenant <id>` when
+   * omitted. Refused for a vendor, which founds none (tenant-spec.md D3).
+   */
+  readonly tenantName?: string;
 }
 
 /** `u/` plus 96 random bits, hex: unguessable, and nothing a path builder needs to escape. */
@@ -77,6 +83,9 @@ export function createAccount(
   const createdAt = new Date().toISOString();
   const storageRoot = newStorageRoot();
   const role = options.role ?? 'owner';
+  if (role === 'vendor' && options.tenantName !== undefined) {
+    throw new TenantError('a vendor is never tenant staff, so it founds no tenant');
+  }
   return db.transaction((): Account => {
     const info = db
       .prepare(
@@ -99,6 +108,18 @@ export function createAccount(
       subjectId: String(id),
       detail: null,
     });
+    // Every owner is the admin of a tenant, always (backlog #204): an owner made after
+    // the migration would otherwise be one the slice 2 backfill never saw. Same
+    // transaction, so there is no owner without a tenant.
+    if (role === 'owner') {
+      insertTenant(db, {
+        ...(options.tenantName !== undefined ? { name: options.tenantName } : {}),
+        storageRoot,
+        adminAccountId: id,
+        now: createdAt,
+        actor: options.actor,
+      });
+    }
     return {
       id,
       email: options.email,

@@ -70,6 +70,16 @@ describe('platform audit_event', () => {
         subject_id: String(account.id),
         detail: null,
       },
+      // an owner founds a tenant in the same transaction (backlog #204); neither the
+      // email nor the tenant's name is in the chain
+      {
+        actor: 'cli:test',
+        actor_label: 'test',
+        action: 'tenant.created',
+        subject_type: 'tenant',
+        subject_id: '1',
+        detail: null,
+      },
     ]);
   });
 

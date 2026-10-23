@@ -51,6 +51,8 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'invitation.accepted',
   'invitation.revoked',
   'client_engine.changed',
+  'tenant.created',
+  'tenant.renamed',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -290,6 +292,16 @@ export interface AuditDetail {
     readonly from: JsonValue;
     readonly to: JsonValue;
   };
+  /**
+   * A tenant and its first admin came into being (`planning/tenant-spec.md` D9,
+   * backlog #204). The subject is the tenant. The tenant's name is a company's
+   * and a detail is hashed, so erasure could never reach it: it is in `tenant`
+   * only. A tenant made by the migration has no event, since nothing recorded
+   * who made it and an author is never invented (`audit-spec.md` §6).
+   */
+  'tenant.created': null;
+  /** The display name changed; the subject is the tenant, and neither name is here. */
+  'tenant.renamed': null;
   /** The file's id and name where it lives, and the digest of the bytes sent. */
   'file.downloaded': {
     readonly file_id: number;

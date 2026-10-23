@@ -115,15 +115,25 @@ status still lives on the card, never in the docs. Write the version in new
 text (`v2 (Ring 1)` where the ring helps); existing "Ring N" text is not
 wrong and is not swept.
 
-## Tenants (spec'd, not built)
+## Tenants (tables built, readers not yet moved)
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
-one customer LSP (`planning/tenant-spec.md`, Epic 14, issues #291 to #295).
-Until slice 2 lands the code still keys everything on the owner account, and
-the invariants below that say "owner account" stay true as written. Two rules
-bind new work now: a new platform table or route that names an owner names
-it in a way slice 2 can re-key (an id column, never a path or a role check
-inlined in a route), and **a vendor is never tenant staff** (spec D3).
+one customer LSP (`planning/tenant-spec.md`, Epic 14, issues #292 to #295 still
+open). `tenant` and `tenant_membership` exist (platform schema v8, backlog #204)
+but nothing reads them: the code still keys everything on the owner account, and
+the invariants below that say "owner account" stay true as written until slice 2.
+Keep true:
+
+- **Every owner account is the admin of exactly one tenant, from creation.**
+  `createAccount` founds it in the same transaction; a vendor founds none. A tenant
+  takes its founding admin's `storage_root` (spec D4), so the one path builder is
+  still right. Provision with `create-tenant`, name it with `rename-tenant`.
+- **A vendor is never tenant staff** (spec D3), refused by a trigger in the schema.
+- **A tenant's name is data, never repo content** (spec D12): this repo is public.
+  No real company or person name in a test, fixture, doc, issue or commit; tests use
+  invented names, and no audit detail carries a name.
+- A new platform table or route that names an owner names it in a way slice 2 can
+  re-key (an id column, never a path or a role check inlined in a route).
 
 ## The working rhythm
 

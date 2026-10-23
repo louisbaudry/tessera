@@ -4421,7 +4421,32 @@ their tenant's root and no file moves. Worth carrying forward:
 - **Signup, plans and billing are not in this epic** (spec §9 O4): the first LSP
   is provisioned by the operator.
 
-**#204 · Tenant and tenant_membership, backfilled from the owner accounts · M** · [issue #291]
+**#204 · ~~Tenant and tenant_membership, backfilled from the owner accounts~~ · DONE — `db/src/platform/tenants.ts` (`insertTenant`, `renameTenant`, `getTenantForAccount`), `db/src/platform/create-tenant.ts`, platform schema v8, `core/src/auth/authorization.ts` (`TENANT_ROLES`), `server/src/{create,rename}-tenant.ts`** (2026-10-23; card #291, Epic 14, `tenant-spec.md` §4, §5, D12)
+
+Nothing reads the new tables yet; slice 2 (#205) moves the readers. What it taught:
+
+- **The migration backfills one tenant per existing owner and takes the account's
+  `storage_root`**, so no file moves. It writes no audit event and no real name
+  (`Tenant <id>`, then `rename-tenant`): an author is never invented, and the first
+  tenant's name is data typed by the operator, never repo content (D12).
+- **`createAccount` founds a tenant for every owner, in its own transaction.** The
+  card said only "backfill", but an owner made after the migration would have had no
+  tenant, and slice 2's backfill would never have seen it. A vendor founds none, and
+  the schema's trigger (`tenant_membership_staff_only`) refuses to make one staff, so
+  D3 holds even for a write that skips the repository. This replaced the
+  `bringTenantLevel` mender the spec first proposed: a tenant and its admin are two
+  rows in one file, so there is nothing to mend.
+- **A tenant takes its founding admin's account root, always**, not a fresh `t/…` one
+  (spec D4 as first written). Until slice 2 the readers still build every path from the
+  account's root; a tenant with a different root would name a directory nothing is in.
+- **Two existing tests changed on purpose**: `audit.test.ts` now sees `tenant.created`
+  after `account.created`, and the v6-migration test writes its v5 fixture with raw SQL
+  because today's `createAccount` needs the v8 tables. The `user_version` checks are 8.
+- Verified: 25 new tests, each seen failing first (repository, trigger, role list, migration backfill on a v7
+  file with owners and a vendor, audit chain intact across the rebuild), the whole suite
+  and `pnpm test:golden`, and a real run of both commands on a scratch file (a duplicate
+  email left no second tenant; a blank name, an unknown tenant and a non-number refused).
+  Not verified: any route or screen (none reads a tenant yet).
 
 **#205 · Key ownership on the tenant, not the owner account · L** · [issue #292]
 

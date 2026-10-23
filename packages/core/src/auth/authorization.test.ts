@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isProjectScope,
+  isTenantRole,
   PROJECT_ACTIONS,
   PROJECT_SCOPES,
   scopeAllows,
+  TENANT_ROLES,
 } from './authorization.js';
 
 describe('scopeAllows', () => {
@@ -28,5 +30,20 @@ describe('isProjectScope', () => {
     expect(isProjectScope('assigned_translator')).toBe(true);
     expect(isProjectScope('owner')).toBe(false);
     expect(isProjectScope(undefined)).toBe(false);
+  });
+});
+
+describe('TENANT_ROLES', () => {
+  it('names the two staff roles of planning/tenant-spec.md D5, and no vendor role', () => {
+    expect(TENANT_ROLES).toEqual(['admin', 'pm']);
+    // a vendor is never tenant staff (spec D3), so it is not a role here
+    expect(isTenantRole('vendor')).toBe(false);
+  });
+
+  it('recognises only members of the closed set', () => {
+    expect(isTenantRole('admin')).toBe(true);
+    expect(isTenantRole('pm')).toBe(true);
+    expect(isTenantRole('owner')).toBe(false);
+    expect(isTenantRole(undefined)).toBe(false);
   });
 });
