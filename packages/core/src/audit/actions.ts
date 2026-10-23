@@ -9,7 +9,7 @@
  * write path nobody reviewed.
  */
 
-import type { ProjectScope } from '../auth/authorization.js';
+import type { ProjectScope, TenantRole } from '../auth/authorization.js';
 import type { QaRule } from '../model/qa.js';
 import type { Origin, SegmentStatus } from '../model/segment.js';
 import type { Token } from '../model/token.js';
@@ -53,6 +53,9 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'client_engine.changed',
   'tenant.created',
   'tenant.renamed',
+  'tenant.member_added',
+  'tenant.member_removed',
+  'tenant.role_changed',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -304,6 +307,19 @@ export interface AuditDetail {
   'tenant.created': null;
   /** The display name changed; the subject is the tenant, and neither name is here. */
   'tenant.renamed': null;
+  /**
+   * Someone became staff of a tenant, in a role (backlog #206): the subject is the tenant,
+   * the account an installation-local id. The address is in `account`, never here.
+   */
+  'tenant.member_added': { readonly account_id: number; readonly role: TenantRole };
+  /** Someone stopped being staff; their sessions ended in the same transaction. */
+  'tenant.member_removed': { readonly account_id: number };
+  /** A staff member's role changed; both roles are here because the log is the history. */
+  'tenant.role_changed': {
+    readonly account_id: number;
+    readonly from: TenantRole;
+    readonly to: TenantRole;
+  };
   /** The file's id and name where it lives, and the digest of the bytes sent. */
   'file.downloaded': {
     readonly file_id: number;

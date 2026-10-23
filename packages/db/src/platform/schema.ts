@@ -512,6 +512,86 @@ const v9: Migration = {
   },
 };
 
+/**
+ * `audit_event.action` since v10: `PLATFORM_AUDIT_ACTIONS` as of backlog #206 (the v8 list
+ * and the three staff events). Frozen, never the live constant.
+ */
+const V10_AUDIT_ACTIONS = [
+  ...V8_AUDIT_ACTIONS,
+  'tenant.member_added',
+  'tenant.member_removed',
+  'tenant.role_changed',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * Staff of a tenant (backlog #206, `planning/tenant-spec.md` D5, §6 invariants 4 and 5).
+ *
+ * **`staff_invitation`** is `vendor_invitation`'s shape and lifecycle for a different grant:
+ * a one-time link, kept only as its hash, whose state is derived from three timestamps and
+ * frozen by trigger once used or withdrawn. It names the tenant and the role the link
+ * confers, so a link can only ever attach an account to the tenant that issued it: there
+ * is no other tenant in the row to attach to. A separate table, not a `kind` column on
+ * the vendor's: the two confer different things, an acceptance makes a different account,
+ * and sharing a table would let a vendor's link be read as a staff one.
+ *
+ * **A tenant keeps an admin**, held by two triggers on `tenant_membership` and not left to
+ * a route: the last admin of a tenant can be neither deleted nor demoted nor moved to
+ * another tenant. Removing a whole tenant (offboarding, not built) will have to drop these
+ * deliberately, which is the point. `audit_event` is rebuilt to admit the three staff
+ * actions.
+ */
+const v10: Migration = {
+  version: 10,
+  description:
+    'staff_invitation, the last-admin triggers and the staff audit actions (backlog #206)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE staff_invitation (
+        id                  INTEGER PRIMARY KEY,
+        tenant_id           INTEGER NOT NULL REFERENCES tenant(id),
+        invited_by          INTEGER NOT NULL REFERENCES account(id),
+        role                TEXT    NOT NULL CHECK (role IN ('admin', 'pm')),
+        email               TEXT    NOT NULL,
+        token_hash          TEXT    NOT NULL UNIQUE,
+        created_at          TEXT    NOT NULL,
+        expires_at          TEXT    NOT NULL,
+        accepted_at         TEXT,
+        accepted_account_id INTEGER REFERENCES account(id),
+        revoked_at          TEXT,
+        CHECK ((accepted_at IS NULL) = (accepted_account_id IS NULL)),
+        CHECK (accepted_at IS NULL OR revoked_at IS NULL)
+      );
+      CREATE INDEX staff_invitation_tenant ON staff_invitation(tenant_id, id);
+      CREATE INDEX staff_invitation_email ON staff_invitation(tenant_id, email);
+      CREATE TRIGGER staff_invitation_final
+      BEFORE UPDATE ON staff_invitation
+      WHEN (OLD.accepted_at IS NOT NULL OR OLD.revoked_at IS NOT NULL)
+        AND (NEW.accepted_at IS NOT OLD.accepted_at
+          OR NEW.accepted_account_id IS NOT OLD.accepted_account_id
+          OR NEW.revoked_at IS NOT OLD.revoked_at
+          OR NEW.token_hash IS NOT OLD.token_hash
+          OR NEW.expires_at IS NOT OLD.expires_at
+          OR NEW.tenant_id IS NOT OLD.tenant_id
+          OR NEW.role IS NOT OLD.role)
+      BEGIN SELECT RAISE(ABORT, 'a used or withdrawn invitation is final'); END;
+
+      CREATE TRIGGER tenant_membership_keep_admin_delete
+      BEFORE DELETE ON tenant_membership
+      WHEN OLD.role = 'admin'
+        AND (SELECT COUNT(*) FROM tenant_membership
+             WHERE tenant_id = OLD.tenant_id AND role = 'admin') = 1
+      BEGIN SELECT RAISE(ABORT, 'a tenant keeps at least one admin'); END;
+      CREATE TRIGGER tenant_membership_keep_admin_update
+      BEFORE UPDATE OF role, tenant_id ON tenant_membership
+      WHEN OLD.role = 'admin' AND (NEW.role <> 'admin' OR NEW.tenant_id <> OLD.tenant_id)
+        AND (SELECT COUNT(*) FROM tenant_membership
+             WHERE tenant_id = OLD.tenant_id AND role = 'admin') = 1
+      BEGIN SELECT RAISE(ABORT, 'a tenant keeps at least one admin'); END;
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V10_AUDIT_ACTIONS));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -522,4 +602,5 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v7,
   v8,
   v9,
+  v10,
 ];

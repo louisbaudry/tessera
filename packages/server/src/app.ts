@@ -33,6 +33,7 @@ import {
   primarySubtag,
   rulesFor,
   scopeAllows,
+  tenantRoleAllows,
   GlossarySessionError,
   SegmentEditError,
   TokenShapeError,
@@ -44,6 +45,7 @@ import {
   type Project,
   type ProjectAction,
   type SegmenterRules,
+  type TenantAction,
 } from '@cat-tool/core';
 import {
   acceptExceptionProposal,
@@ -153,6 +155,11 @@ import {
 } from './invitations.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
 import {
+  ACCEPT_STAFF_INVITATION_PATH,
+  OPEN_STAFF_INVITATION_PATH,
+  registerStaffRoutes,
+} from './staff.js';
+import {
   glossaryPath,
   glossarySlugOf,
   InvalidNameError,
@@ -248,6 +255,27 @@ function sessionTenant(req: FastifyRequest): Tenant {
 /** The tenant's own, or null: for a view that must not fail a vendor, only show it nothing. */
 const ownTenant = (req: FastifyRequest): Tenant | null => req.membership?.tenant ?? null;
 
+/** A staff member's role does not allow the action: an admin's, such as staff, consent or webhooks. */
+class NotAllowedError extends Error {
+  constructor() {
+    super('only an admin can do that');
+    this.name = 'NotAllowedError';
+  }
+}
+
+/**
+ * The session's tenant for an action its role must allow (`tenantRoleAllows`, D5): null for
+ * an account with no tenant (a vendor, who keeps what an empty storage root always gave
+ * it: an empty list, a 404, a 403 where it would create), and `NotAllowedError`, a 403,
+ * for staff whose role does not include the action. One call, so a route cannot check
+ * the role and forget the tenant, or the reverse.
+ */
+function tenantFor(req: FastifyRequest, action: TenantAction): Tenant | null {
+  if (!req.membership) return null;
+  if (!tenantRoleAllows(req.membership.role, action)) throw new NotAllowedError();
+  return req.membership.tenant;
+}
+
 const LOGIN_PATH = '/api/login';
 
 /**
@@ -255,7 +283,13 @@ const LOGIN_PATH = '/api/login';
  * an invitee takes before they have an account (backlog #111). Exact paths, so a
  * route added later is behind the gate unless it is named here.
  */
-const PUBLIC_PATHS = new Set([LOGIN_PATH, OPEN_INVITATION_PATH, ACCEPT_INVITATION_PATH]);
+const PUBLIC_PATHS = new Set([
+  LOGIN_PATH,
+  OPEN_INVITATION_PATH,
+  ACCEPT_INVITATION_PATH,
+  OPEN_STAFF_INVITATION_PATH,
+  ACCEPT_STAFF_INVITATION_PATH,
+]);
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -356,7 +390,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // A vendor on a staff route is a 403 in the app's own `{ error }` shape; any other
   // error goes on to the default handler untouched.
   app.setErrorHandler((error, _req, reply) => {
-    if (error instanceof NotStaffError) {
+    if (error instanceof NotStaffError || error instanceof NotAllowedError) {
       return reply.code(403).send({ error: error.message });
     }
     return reply.send(error);
@@ -1565,7 +1599,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerEngineRoutes(app, {
     platform,
     storageRoot: config.storageRoot,
-    tenant: ownTenant,
+    // consent is an admin's (D5); the project-level override stays a pm's
+    tenant: (req) => tenantFor(req, 'consent'),
     sessionActor,
     openProject,
   });
@@ -2187,7 +2222,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerWebhookRoutes(app, {
     storageRoot: config.storageRoot,
     platform,
-    tenant: ownTenant,
+    tenant: (req) => tenantFor(req, 'webhooks'),
     sessionActor,
     dispatcher,
     ...(webhookOptions.resolve ? { resolve: webhookOptions.resolve } : {}),
@@ -2201,6 +2236,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     platform,
     account: sessionAccount,
     tenant: ownTenant,
+    sessionActor,
+  });
+
+  // --- a tenant's staff (backlog #206, tenant-spec.md D5) ----------------
+  registerStaffRoutes(app, {
+    platform,
+    account: sessionAccount,
+    tenant: (req) => tenantFor(req, 'staff'),
     sessionActor,
   });
 

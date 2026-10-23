@@ -21,11 +21,12 @@ import {
   SESSION_TTL_MS,
   type AccountRole,
   type AuditActor,
+  type TenantRole,
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
 import { appendAuditEvent } from '../audit/events.js';
-import { insertTenant, TenantError } from './tenants.js';
+import { addTenantMember, insertTenant, TenantError } from './tenants.js';
 
 export interface Account {
   readonly id: number;
@@ -69,6 +70,12 @@ export interface CreateAccountOptions {
    * omitted. Refused for a vendor, which founds none (tenant-spec.md D3).
    */
   readonly tenantName?: string;
+  /**
+   * Makes the new `owner` account staff of an existing tenant, in this role, instead
+   * of founding one (a staff invitation accepted, backlog #206). Refused for a vendor
+   * and together with `tenantName`.
+   */
+  readonly joinTenant?: { readonly tenantId: number; readonly role: TenantRole };
 }
 
 /** `u/` plus 96 random bits, hex: unguessable, and nothing a path builder needs to escape. */
@@ -85,6 +92,12 @@ export function createAccount(
   const role = options.role ?? 'owner';
   if (role === 'vendor' && options.tenantName !== undefined) {
     throw new TenantError('a vendor is never tenant staff, so it founds no tenant');
+  }
+  if (options.joinTenant !== undefined) {
+    if (role === 'vendor') throw new TenantError('a vendor is never tenant staff');
+    if (options.tenantName !== undefined) {
+      throw new TenantError('an account joins a tenant or founds one, not both');
+    }
   }
   return db.transaction((): Account => {
     const info = db
@@ -108,10 +121,18 @@ export function createAccount(
       subjectId: String(id),
       detail: null,
     });
-    // Every owner is the admin of a tenant, always (backlog #204): an owner made after
-    // the migration would otherwise be one the slice 2 backfill never saw. Same
-    // transaction, so there is no owner without a tenant.
-    if (role === 'owner') {
+    // Every owner is staff of a tenant, always (backlog #204): the admin of a new one, or
+    // a member of the one that invited them (#206). Same transaction, so there is no
+    // owner without a tenant.
+    if (options.joinTenant !== undefined) {
+      addTenantMember(db, {
+        tenantId: options.joinTenant.tenantId,
+        accountId: id,
+        role: options.joinTenant.role,
+        now: createdAt,
+        actor: options.actor,
+      });
+    } else if (role === 'owner') {
       insertTenant(db, {
         ...(options.tenantName !== undefined ? { name: options.tenantName } : {}),
         storageRoot,

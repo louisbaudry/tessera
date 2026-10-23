@@ -42,7 +42,7 @@ describe('openPlatformDb', () => {
 
   it('carries the shared, append-only audit_event from v3 (backlog #57)', () => {
     const db = openPlatformDb(dbPath());
-    expect(db.pragma('user_version', { simple: true })).toBe(9);
+    expect(db.pragma('user_version', { simple: true })).toBe(10);
     const triggers = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name")
       .all();
@@ -51,6 +51,9 @@ describe('openPlatformDb', () => {
       { name: 'audit_event_no_update' },
       { name: 'project_authorization_not_staff' },
       { name: 'roster_membership_not_staff' },
+      { name: 'staff_invitation_final' },
+      { name: 'tenant_membership_keep_admin_delete' },
+      { name: 'tenant_membership_keep_admin_update' },
       { name: 'tenant_membership_staff_only' },
       { name: 'vendor_invitation_final' },
     ]);
