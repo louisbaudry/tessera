@@ -62,22 +62,23 @@ describe('platform audit_event', () => {
       actor: TEST_ACTOR,
     });
     expect(allEvents()).toEqual([
-      {
-        actor: 'cli:test',
-        actor_label: 'test',
-        action: 'account.created',
-        subject_type: 'account',
-        subject_id: String(account.id),
-        detail: null,
-      },
-      // an owner founds a tenant in the same transaction (backlog #204); neither the
-      // email nor the tenant's name is in the chain
+      // an owner founds a tenant in the same transaction (backlog #204), written first so
+      // `account.created` can name it (backlog #211); neither the email nor the tenant's
+      // name is in the chain
       {
         actor: 'cli:test',
         actor_label: 'test',
         action: 'tenant.created',
         subject_type: 'tenant',
         subject_id: '1',
+        detail: null,
+      },
+      {
+        actor: 'cli:test',
+        actor_label: 'test',
+        action: 'account.created',
+        subject_type: 'account',
+        subject_id: String(account.id),
         detail: null,
       },
     ]);

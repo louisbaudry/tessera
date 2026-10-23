@@ -29,7 +29,7 @@ import {
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
-import { appendAuditEvent } from '../audit/events.js';
+import { appendPlatformEvent } from './audit-write.js';
 
 export class ClientEngineError extends Error {
   constructor(message: string) {
@@ -72,14 +72,16 @@ function checkTarget(db: Database.Database, tenantId: number, clientId: number):
 function logChange(
   db: Database.Database,
   actor: AuditActor,
+  tenantId: number,
   clientId: number,
   key: string,
   from: boolean | string,
   to: boolean | string,
 ): void {
-  appendAuditEvent(db, {
+  appendPlatformEvent(db, {
     actor,
     action: 'client_engine.changed',
+    tenantId,
     subjectType: 'client',
     subjectId: String(clientId),
     detail: { client_id: clientId, key, from, to },
@@ -125,19 +127,19 @@ export function setClientEngineConsent(
         `INSERT INTO client_engine_consent (tenant_id, client_id, engine, consented_at)
          VALUES (?, ?, ?, ?)`,
       ).run(tenantId, clientId, engine, new Date().toISOString());
-      logChange(db, actor, clientId, `consent:${engine}`, false, true);
+      logChange(db, actor, tenantId, clientId, `consent:${engine}`, false, true);
     } else if (!options.consent && has) {
       db.prepare(
         'DELETE FROM client_engine_consent WHERE tenant_id = ? AND client_id = ? AND engine = ?',
       ).run(tenantId, clientId, engine);
-      logChange(db, actor, clientId, `consent:${engine}`, true, false);
+      logChange(db, actor, tenantId, clientId, `consent:${engine}`, true, false);
       const wasDefault = db
         .prepare(
           'DELETE FROM client_engine_default WHERE tenant_id = ? AND client_id = ? AND engine = ?',
         )
         .run(tenantId, clientId, engine);
       if (wasDefault.changes > 0) {
-        logChange(db, actor, clientId, 'default', engine, 'off');
+        logChange(db, actor, tenantId, clientId, 'default', engine, 'off');
       }
     }
   })();
@@ -182,6 +184,6 @@ export function setClientEngineDefault(
          ON CONFLICT (tenant_id, client_id) DO UPDATE SET engine = excluded.engine`,
       ).run(tenantId, clientId, engine);
     }
-    logChange(db, actor, clientId, 'default', from.default, engine);
+    logChange(db, actor, tenantId, clientId, 'default', from.default, engine);
   })();
 }

@@ -12,7 +12,7 @@
 import { isProjectScope, type AuditActor, type ProjectScope } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
-import { appendAuditEvent } from '../audit/events.js';
+import { appendPlatformEvent } from './audit-write.js';
 import { projectSubjectId, type ProjectRef } from './audit.js';
 
 export class AuthorizationError extends Error {
@@ -98,9 +98,10 @@ export function grantProjectAuthorization(
       scope: options.scope,
       granted_at: new Date().toISOString(),
     });
-    appendAuditEvent(db, {
+    appendPlatformEvent(db, {
       actor: options.actor,
       action: 'authorization.granted',
+      tenantId: options.project.tenantId,
       subjectType: 'project',
       subjectId: projectSubjectId(options.project),
       detail: { grantee: options.accountId, scope: options.scope },
@@ -118,9 +119,10 @@ function removeRow(
   db.prepare(
     'DELETE FROM project_authorization WHERE account_id = ? AND tenant_id = ? AND project_name = ?',
   ).run(accountId, project.tenantId, project.name);
-  appendAuditEvent(db, {
+  appendPlatformEvent(db, {
     actor,
     action: 'authorization.revoked',
+    tenantId: project.tenantId,
     subjectType: 'project',
     subjectId: projectSubjectId(project),
     detail: { grantee: accountId, scope },

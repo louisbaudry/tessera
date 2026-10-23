@@ -27,14 +27,15 @@ export type TenantRole = (typeof TENANT_ROLES)[number];
  * What a route asks a staff role about (`planning/tenant-spec.md` D5): `work` is
  * everything a PM does (projects, memories, glossaries, the roster, assignments, payables),
  * and the rest govern the tenant itself: who is staff and in which role, which engines a
- * client consents to, and where webhooks go.
+ * client consents to, where webhooks go, and who may read the tenant's own audit log
+ * (backlog #211): a log names every staff member's acts, so it is an admin's.
  */
-export const TENANT_ACTIONS = ['work', 'staff', 'consent', 'webhooks'] as const;
+export const TENANT_ACTIONS = ['work', 'staff', 'consent', 'webhooks', 'audit'] as const;
 export type TenantAction = (typeof TENANT_ACTIONS)[number];
 
 /** A `Record` over the role union, so a new role fails typecheck until it says what it may do. */
 const TENANT_PERMITTED: Readonly<Record<TenantRole, readonly TenantAction[]>> = {
-  admin: ['work', 'staff', 'consent', 'webhooks'],
+  admin: ['work', 'staff', 'consent', 'webhooks', 'audit'],
   pm: ['work'],
 };
 

@@ -119,8 +119,9 @@ An event is attributed to an account as now (`actor` required, an AI engine is
 an `origin`). New actions, each a frozen literal widened with `rebuildTable`:
 `tenant.created` and `tenant.renamed` (slice 1, built), then `tenant.member_added`,
 `tenant.member_removed` and `tenant.role_changed` (slice 3). No event carries a
-name or an address: a detail is hashed. Whether the platform log also carries a `tenant_id` is
-O3.
+name or an address: a detail is hashed. The platform log also carries a nullable `tenant_id`,
+inside the hash (O3, decided 2026-10-23, built in backlog #211: `audit-spec.md` §3.1), so a
+tenant's admin reads their own slice and the operator can export it.
 
 **D10. Telemetry names a tenant by `pid`.** `HMAC(telemetry_key, "tenant:<id>")`,
 as `telemetry-spec.md` §6.3 does for `account:<id>` today. AI cost is per tenant
@@ -269,7 +270,7 @@ seen to fail before the code that satisfies it.
 | 1     | #291  | `tenant`, `tenant_membership`, backfill, `createTenant`, `create-tenant`, `rename-tenant` | M |
 | 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent (built) | L |
 | 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations (built, with its screen) | M    |
-| 4     | #294  | Isolation matrix across every route (built); its audit view is #302, which waits on O3 | M    |
+| 4     | #294, #302 | Isolation matrix across every route; the tenant-scoped audit view and its export (both built) | M    |
 | 5     | #295  | A portal per tenant (needs O2)                                       | L    |
 
 Order: 1, then 2; 3 and 4 follow 2 and are independent; 5 waits on O2. One
@@ -291,10 +292,10 @@ Each has a recommendation; none blocks slices 1 to 3.
   the first tenant's, with no data move, which favours a file per tenant: the
   column option would have to back-fill every portal table for that tenant.
 - **O3. Does the platform `audit_event` carry a nullable `tenant_id`, inside the
-  hash?** Recommended: yes (operator events have none). It lets a tenant's admin
-  read their own slice and lets an operator export one tenant's slice on
-  offboarding. It changes the hash input, which `audit-spec.md` must record, and
-  is why it is a decision and not a default. Blocks the audit half of slice 4.
+  hash?** **Decided (Louis, 2026-10-23): yes, inside the hash.** Operator events have none. It
+  lets a tenant's admin read their own slice and an operator export one tenant's slice on
+  offboarding. It changes the hash input, recorded in `audit-spec.md` §3.1 (a ninth element,
+  only when set, so every earlier row keeps verifying). Built in backlog #211.
 - **O4. Self-service signup, plans and billing.** Not now. A commercial and
   legal call (price, trial, who is the data controller, the DPA a tenant signs),
   and `ai-platform-vision.md` §5 deferred the paperwork until a client needs it.

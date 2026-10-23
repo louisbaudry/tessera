@@ -25,7 +25,7 @@ import {
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
-import { appendAuditEvent } from '../audit/events.js';
+import { appendPlatformEvent } from './audit-write.js';
 import { addTenantMember, insertTenant, TenantError } from './tenants.js';
 
 export interface Account {
@@ -76,6 +76,13 @@ export interface CreateAccountOptions {
    * and together with `tenantName`.
    */
   readonly joinTenant?: { readonly tenantId: number; readonly role: TenantRole };
+  /**
+   * The tenant a **vendor** account is made for: the one whose invitation made it, so
+   * `account.created` is in that tenant's slice of the log (backlog #211). Not a
+   * membership: a vendor is never staff. Ignored for an owner, whose event is about
+   * the tenant it founds or joins; omitted for an operator's own vendor account.
+   */
+  readonly forTenant?: number;
 }
 
 /** `u/` plus 96 random bits, hex: unguessable, and nothing a path builder needs to escape. */
@@ -113,30 +120,36 @@ export function createAccount(
         created_at: createdAt,
       });
     const id = info.lastInsertRowid as number;
+    // Every owner is staff of a tenant, always (backlog #204): the admin of a new one, or
+    // a member of the one that invited them (#206). Same transaction, so there is no
+    // owner without a tenant. A founded tenant is written first, so `account.created`
+    // can name it: the log reads `tenant.created`, then `account.created`.
+    let tenantId: number | null =
+      options.joinTenant?.tenantId ??
+      (role === 'vendor' ? (options.forTenant ?? null) : null);
+    if (options.joinTenant === undefined && role === 'owner') {
+      tenantId = insertTenant(db, {
+        ...(options.tenantName !== undefined ? { name: options.tenantName } : {}),
+        storageRoot,
+        adminAccountId: id,
+        now: createdAt,
+        actor: options.actor,
+      }).id;
+    }
     // The email stays in `account`, never in the hashed detail (spec §2.5).
-    appendAuditEvent(db, {
+    appendPlatformEvent(db, {
       actor: options.actor,
       action: 'account.created',
+      tenantId,
       subjectType: 'account',
       subjectId: String(id),
       detail: null,
     });
-    // Every owner is staff of a tenant, always (backlog #204): the admin of a new one, or
-    // a member of the one that invited them (#206). Same transaction, so there is no
-    // owner without a tenant.
     if (options.joinTenant !== undefined) {
       addTenantMember(db, {
         tenantId: options.joinTenant.tenantId,
         accountId: id,
         role: options.joinTenant.role,
-        now: createdAt,
-        actor: options.actor,
-      });
-    } else if (role === 'owner') {
-      insertTenant(db, {
-        ...(options.tenantName !== undefined ? { name: options.tenantName } : {}),
-        storageRoot,
-        adminAccountId: id,
         now: createdAt,
         actor: options.actor,
       });
@@ -150,6 +163,18 @@ export function createAccount(
       createdAt,
     };
   })();
+}
+
+/**
+ * The tenant an account is staff of, or `null` for a vendor, whose sessions are on no
+ * tenant's slice of the log (a vendor sits across rosters; a tenant's host will name
+ * the tenant when subdomains land, #298).
+ */
+function tenantOfAccount(db: Database.Database, accountId: number): number | null {
+  const row = db
+    .prepare('SELECT tenant_id FROM tenant_membership WHERE account_id = ?')
+    .get(accountId) as { tenant_id: number } | undefined;
+  return row?.tenant_id ?? null;
 }
 
 export function getAccountById(db: Database.Database, id: number): Account | null {
@@ -196,9 +221,10 @@ export function createAccountSession(
       created_at: createdAt,
       expires_at: expiresAt,
     });
-    appendAuditEvent(db, {
+    appendPlatformEvent(db, {
       actor: options.actor,
       action: 'auth.login',
+      tenantId: tenantOfAccount(db, accountId),
       subjectType: 'account',
       subjectId: String(accountId),
       detail: null,
@@ -240,9 +266,10 @@ export function deleteAccountSession(
     db.prepare('DELETE FROM account_session WHERE token_hash = ?').run(
       hashSessionToken(token),
     );
-    appendAuditEvent(db, {
+    appendPlatformEvent(db, {
       actor: options.actor,
       action: 'auth.logout',
+      tenantId: tenantOfAccount(db, row.account_id),
       subjectType: 'account',
       subjectId: String(row.account_id),
       detail: null,

@@ -73,7 +73,7 @@ describe('createTenant', () => {
     expect(tenant.storageRoot).toMatch(/^u\/[0-9a-f]{24}$/);
   });
 
-  it('logs account.created then tenant.created, naming the actor', () => {
+  it('logs tenant.created then account.created, naming the actor', () => {
     const { tenant } = createTenant(db, {
       name: 'Acme',
       email: 'a@example.com',
@@ -81,8 +81,9 @@ describe('createTenant', () => {
       actor: TEST_ACTOR,
     });
     const log = events();
-    expect(log.map((e) => e.action)).toEqual(['account.created', 'tenant.created']);
-    expect(log[1]).toMatchObject({
+    // the tenant is written first, so account.created can name it (backlog #211)
+    expect(log.map((e) => e.action)).toEqual(['tenant.created', 'account.created']);
+    expect(log[0]).toMatchObject({
       subjectType: 'tenant',
       subjectId: String(tenant.id),
       detail: null,
@@ -147,7 +148,7 @@ describe('createAccount', () => {
     expect(found?.role).toBe('admin');
     expect(found?.tenant.storageRoot).toBe(owner.storageRoot);
     expect(found?.tenant.name).toBe(`Tenant ${found?.tenant.id}`);
-    expect(actions()).toEqual(['account.created', 'tenant.created']);
+    expect(actions()).toEqual(['tenant.created', 'account.created']);
   });
 
   it('gives a vendor none: a vendor is never tenant staff (spec D3)', () => {

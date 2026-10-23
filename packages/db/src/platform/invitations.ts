@@ -26,7 +26,7 @@ import {
 } from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
-import { appendAuditEvent } from '../audit/events.js';
+import { appendPlatformEvent } from './audit-write.js';
 import {
   createAccount,
   getAccountByEmail,
@@ -166,7 +166,7 @@ export function createInvitation(
         )
         .all(options.tenantId, email, now.toISOString()) as Row[];
       for (const old of pending) {
-        withdraw(db, old.id, now, options.actor, { superseded: true });
+        withdraw(db, options.tenantId, old.id, now, options.actor, { superseded: true });
       }
       const info = db
         .prepare(
@@ -184,9 +184,10 @@ export function createInvitation(
           exp: new Date(now.getTime() + INVITATION_TTL_MS).toISOString(),
         });
       const id = info.lastInsertRowid as number;
-      appendAuditEvent(db, {
+      appendPlatformEvent(db, {
         actor: options.actor,
         action: 'invitation.created',
+        tenantId: options.tenantId,
         subjectType: 'invitation',
         subjectId: String(id),
         detail: null,
@@ -222,6 +223,7 @@ export function listInvitations(
 
 function withdraw(
   db: Database.Database,
+  tenantId: number,
   id: number,
   now: Date,
   actor: AuditActor,
@@ -234,9 +236,10 @@ function withdraw(
     )
     .run(now.toISOString(), id).changes;
   if (changed !== 1) throw new InvitationNotPendingError('the invitation is not pending');
-  appendAuditEvent(db, {
+  appendPlatformEvent(db, {
     actor,
     action: 'invitation.revoked',
+    tenantId,
     subjectType: 'invitation',
     subjectId: String(id),
     detail,
@@ -267,7 +270,7 @@ export function revokeInvitation(
         .prepare('SELECT * FROM vendor_invitation WHERE id = ? AND tenant_id = ?')
         .get(options.id, options.tenantId) as Row | undefined;
       if (!row) throw new NoSuchInvitationError(`no invitation #${options.id}`);
-      withdraw(db, row.id, now, options.actor, null);
+      withdraw(db, row.tenant_id, row.id, now, options.actor, null);
       return fromRow(
         db.prepare('SELECT * FROM vendor_invitation WHERE id = ?').get(row.id) as Row,
         now,
@@ -321,6 +324,7 @@ export function acceptInvitation(
         email: row.email,
         passwordHash: options.passwordHash,
         role: 'vendor',
+        forTenant: row.tenant_id,
         actor: { actor: { kind: 'account', id: row.invited_by }, label: null },
       });
       const changed = db
@@ -331,9 +335,10 @@ export function acceptInvitation(
         .run(now.toISOString(), account.id, row.id).changes;
       if (changed !== 1) throw new InvitationUnusableError();
       addRosterMembership(db, { tenantId: row.tenant_id, accountId: account.id, now });
-      appendAuditEvent(db, {
+      appendPlatformEvent(db, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },
         action: 'invitation.accepted',
+        tenantId: row.tenant_id,
         subjectType: 'invitation',
         subjectId: String(row.id),
         detail: { tenant_id: row.tenant_id, account_id: account.id },
@@ -388,9 +393,10 @@ export function joinInvitation(
         .run(now.toISOString(), account.id, row.id).changes;
       if (changed !== 1) throw new InvitationUnusableError();
       addRosterMembership(db, { tenantId: row.tenant_id, accountId: account.id, now });
-      appendAuditEvent(db, {
+      appendPlatformEvent(db, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },
         action: 'invitation.accepted',
+        tenantId: row.tenant_id,
         subjectType: 'invitation',
         subjectId: String(row.id),
         detail: { tenant_id: row.tenant_id, account_id: account.id, existing: true },

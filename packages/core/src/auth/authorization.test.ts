@@ -58,12 +58,12 @@ describe('tenantRoleAllows (planning/tenant-spec.md D5)', () => {
 
   it('lets a pm do the work and nothing that governs the tenant', () => {
     expect(tenantRoleAllows('pm', 'work')).toBe(true);
-    for (const action of ['staff', 'consent', 'webhooks'] as const) {
+    for (const action of ['staff', 'consent', 'webhooks', 'audit'] as const) {
       expect(tenantRoleAllows('pm', action), action).toBe(false);
     }
   });
 
   it('names exactly the actions a route may ask about', () => {
-    expect(TENANT_ACTIONS).toEqual(['work', 'staff', 'consent', 'webhooks']);
+    expect(TENANT_ACTIONS).toEqual(['work', 'staff', 'consent', 'webhooks', 'audit']);
   });
 });

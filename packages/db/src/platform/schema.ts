@@ -592,6 +592,47 @@ const v10: Migration = {
   },
 };
 
+/**
+ * A tenant's slice of the log (backlog #211, `planning/audit-spec.md` §3.1, `tenant-spec.md`
+ * §9 O3, decided 2026-10-23): `audit_event.tenant_id`, nullable, hashed with the row **when
+ * set**. Events written before this migration, and events about no tenant, keep it null and
+ * keep verifying: the canonical form has a ninth element only for a row that has a tenant.
+ * No foreign key: the log outlives a tenant (offboarding is a copy and a removal, never a
+ * rewrite of the log), and a reference would make a tenant impossible to remove.
+ * `rebuildTable` adds the column by recreating the table from `auditEventDdl` with it; the
+ * action list is v10's, unchanged.
+ */
+const v11: Migration = {
+  version: 11,
+  description: 'audit_event.tenant_id, hashed when set',
+  up(db) {
+    rebuildTable(db, 'audit_event', auditEventDdl(V10_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
+/**
+ * `audit_event.action` as of platform v12 (v10's list and `tenant.audit_exported`).
+ * Frozen, never the live constant.
+ */
+const V12_AUDIT_ACTIONS = [
+  ...V10_AUDIT_ACTIONS,
+  'tenant.audit_exported',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * An operator's export of one tenant's slice of the log is itself logged (backlog #211):
+ * content leaving the system is audited (`audit-spec.md` §1), and this is the one export
+ * that carries every staff member's acts. Widens the action CHECK with `rebuildTable`,
+ * keeping the tenant column v11 added.
+ */
+const v12: Migration = {
+  version: 12,
+  description: 'audit action tenant.audit_exported',
+  up(db) {
+    rebuildTable(db, 'audit_event', auditEventDdl(V12_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -603,4 +644,6 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v8,
   v9,
   v10,
+  v11,
+  v12,
 ];

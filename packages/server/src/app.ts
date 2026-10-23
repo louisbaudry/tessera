@@ -154,6 +154,7 @@ import {
   registerInvitationRoutes,
 } from './invitations.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
+import { registerTenantAuditRoutes } from './tenant-audit.js';
 import {
   ACCEPT_STAFF_INVITATION_PATH,
   OPEN_STAFF_INVITATION_PATH,
@@ -2255,6 +2256,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     account: sessionAccount,
     tenant: ownTenant,
     sessionActor,
+  });
+
+  // --- a tenant's own slice of the platform log (backlog #211) -------------
+  registerTenantAuditRoutes(app, {
+    platform,
+    tenant: (req) => tenantFor(req, 'audit'),
   });
 
   // --- a tenant's staff (backlog #206, tenant-spec.md D5) ----------------

@@ -71,6 +71,31 @@ export default tseslint.config(
     },
   },
   {
+    // The platform log holds every tenant's events, so its writes name the tenant
+    // (`platform/audit-write.ts`, backlog #211): the shared writer would let one be
+    // left out. The wrapper and the shared module itself are the only importers.
+    files: ['packages/db/src/platform/**/*.ts'],
+    ignores: [
+      'packages/db/src/platform/audit-write.ts',
+      'packages/db/src/platform/**/*.test.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '/audit/events\\.js$',
+              importNames: ['appendAuditEvent'],
+              message:
+                'Write the platform log through appendPlatformEvent, which requires a tenant id (audit-spec.md §3.1).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // A migration's DDL is a historical snapshot and never reads a live
     // list (`db/migrate.ts`, backlog #64). A CHECK built from one of
     // these constants means one thing in a fresh file and another in

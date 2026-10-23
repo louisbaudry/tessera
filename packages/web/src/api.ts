@@ -24,6 +24,7 @@ import type {
   VendorRecord,
 } from '@cat-tool/vendor-core';
 
+import type { AuditEventView } from './audit-view.js';
 import type {
   ExceptionProposalView,
   MismatchList,
@@ -63,6 +64,12 @@ export interface Account {
 /** `/api/me`: the account and, for staff, the role held now. Only used to hide what would be refused. */
 export interface Me extends Account {
   readonly staffRole: TenantRole | null;
+}
+
+/** A page of the tenant's own audit log, newest first; `next` is the cursor to the page after it (backlog #211). */
+export interface AuditPage {
+  readonly events: AuditEventView[];
+  readonly next: number | null;
 }
 
 /** One of the tenant's staff (backlog #206): `you` marks the caller's own row. */
@@ -488,6 +495,20 @@ export const api = {
       method: 'POST',
       body: {},
     }),
+  /** The tenant's own slice of the platform log (admin only, backlog #211). */
+  audit: (
+    token: string,
+    page: { before?: number; limit?: number },
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams();
+    if (page.before !== undefined) query.set('before', String(page.before));
+    if (page.limit !== undefined) query.set('limit', String(page.limit));
+    const text = query.toString();
+    return call<AuditPage>(`/api/audit${text === '' ? '' : `?${text}`}`, token, {
+      signal,
+    });
+  },
   /** The tenant's staff and its staff invitations (admin only, backlog #206). */
   staff: (token: string, signal?: AbortSignal) =>
     call<{ staff: StaffMember[]; invitations: StaffInvitationView[] }>(

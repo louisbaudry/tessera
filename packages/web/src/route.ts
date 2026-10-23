@@ -9,7 +9,7 @@
  * #113) are `#/payables`, the owner's pay run, and `#/payments`, a vendor's own
  * record; each account sees only its own, whatever a hand-typed link says.
  * `#/vendors` is the owner's roster and invitations, and `#/invite/<token>` the
- * page a vendor's invitation link opens (backlog #111). `#/staff` is an admin's staff
+ * page a vendor's invitation link opens (backlog #111). `#/audit` is an admin's activity log (backlog #211), `#/staff` an admin's staff
  * list and `#/join/<token>` the page a staff link opens (backlog #210). The two link
  * pages are the only screens reached without a session.
  */
@@ -21,6 +21,7 @@ export type Route =
   | { readonly screen: 'payments' }
   | { readonly screen: 'vendors' }
   | { readonly screen: 'staff' }
+  | { readonly screen: 'audit' }
   | { readonly screen: 'join'; readonly token: string }
   | { readonly screen: 'invite'; readonly token: string }
   | { readonly screen: 'job'; readonly tenantId: number; readonly id: number }
@@ -39,6 +40,7 @@ export function parseRoute(hash: string): Route {
   if (parts.length === 1 && parts[0] === 'payments') return { screen: 'payments' };
   if (parts.length === 1 && parts[0] === 'vendors') return { screen: 'vendors' };
   if (parts.length === 1 && parts[0] === 'staff') return { screen: 'staff' };
+  if (parts.length === 1 && parts[0] === 'audit') return { screen: 'audit' };
   if (parts.length === 2 && parts[0] === 'join') {
     // A staff link, like a vendor's, lives in the fragment and is never sent to a server.
     return INVITE_TOKEN.test(parts[1]!) ? { screen: 'join', token: parts[1]! } : HOME;
@@ -82,6 +84,8 @@ export function formatRoute(route: Route): string {
       return '#/vendors';
     case 'staff':
       return '#/staff';
+    case 'audit':
+      return '#/audit';
     case 'join':
       return `#/join/${route.token}`;
     case 'invite':

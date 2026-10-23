@@ -98,7 +98,7 @@ describe('account.role', () => {
 
     const migrated = openPlatformDb(path);
     expect(getAccountByEmail(migrated, 'old@example.com')?.role).toBe('owner');
-    expect(migrated.pragma('user_version', { simple: true })).toBe(10);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(12);
     migrated.close();
     // the migration took a backup first, as every migration does
     expect(

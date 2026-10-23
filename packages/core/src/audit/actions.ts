@@ -56,6 +56,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'tenant.member_added',
   'tenant.member_removed',
   'tenant.role_changed',
+  'tenant.audit_exported',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -320,6 +321,12 @@ export interface AuditDetail {
     readonly from: TenantRole;
     readonly to: TenantRole;
   };
+  /**
+   * The operator exported a tenant's slice of this log (backlog #211, the offboarding
+   * property of `tenant-spec.md` §6 invariant 7). The subject is the tenant; what left is a
+   * count and the digest of the bytes, no event.
+   */
+  'tenant.audit_exported': { readonly events: number; readonly sha256: string };
   /** The file's id and name where it lives, and the digest of the bytes sent. */
   'file.downloaded': {
     readonly file_id: number;
