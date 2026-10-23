@@ -2608,6 +2608,12 @@ plan (three-platform installers) — a web service ships once, to one
 place. Pairs with backlog `#3`'s remaining scope (one build target, a
 smoke test of the built image) — the smoke test is now `#36a`'s.
 
+*Prepared (host chosen: a US-based VPS):* `deploy/` holds the compose file (the image behind
+Caddy, which gets the certificate), the nightly backup script and the runbook
+(`deploy/README.md`). Written without a Docker daemon, so the compose file is validated
+(`docker compose config`) but not run: the first start on the host is the check. Still
+open until the SPA loads over HTTPS there and the volume survives a restart.
+
 **#37 · 🏁 Real job dogfood · L** · [issue #22]
 Translate and deliver one real paid multi-file client job end to end.
 *Done when:* delivered without opening Trados. **This is v1 done.**
