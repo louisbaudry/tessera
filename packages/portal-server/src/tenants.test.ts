@@ -15,7 +15,6 @@ import {
   configForTenant,
   defaultTenantPaths,
   legacyTenant,
-  normaliseHost,
   parseTenantRegistry,
   selectTenant,
   serializeTenantRegistry,
@@ -128,24 +127,6 @@ describe('parseTenantRegistry', () => {
       }),
     );
     expect(parseTenantRegistry(serializeTenantRegistry(tenants), BASE)).toEqual(tenants);
-  });
-});
-
-describe('normaliseHost', () => {
-  it('lowercases, drops a port and a trailing dot, and answers null for nothing usable', () => {
-    expect(normaliseHost('One.Portal.Test:3300')).toBe('one.portal.test');
-    expect(normaliseHost('one.portal.test.')).toBe('one.portal.test');
-    expect(normaliseHost('localhost')).toBe('localhost');
-    for (const bad of [
-      undefined,
-      '',
-      ':80',
-      'a b.test',
-      '[::1]:3300',
-      'a.test, b.test',
-    ]) {
-      expect(normaliseHost(bad), String(bad)).toBeNull();
-    }
   });
 });
 

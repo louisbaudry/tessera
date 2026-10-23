@@ -5,6 +5,8 @@
  */
 import { resolve } from 'node:path';
 
+import { normaliseHost } from '@cat-tool/core';
+
 export interface ServerConfig {
   readonly port: number;
   /** `platform.sqlite` — accounts and sessions, never translation data (§4.1a). */
@@ -17,6 +19,13 @@ export interface ServerConfig {
    * the container image (backlog #36), which has one process to reach.
    */
   readonly webDir?: string;
+  /**
+   * The domain tenants' subdomains live under (`planning/tenant-spec.md` D14): a tenant is reached
+   * at `<slug>.<baseDomain>` and at nothing else, and every other host (the apex included) is a
+   * 404. Unset (development, or a deployment with no domain yet) there is no host check and the
+   * server behaves as it always has; `localhost` works without DNS (`acme.localhost`).
+   */
+  readonly baseDomain?: string;
   /**
    * The Anthropic API key the Tessera draft engine calls with (backlog #136,
    * `translation-engine-spec.md` §5). Read from the environment only, never a
@@ -41,12 +50,21 @@ export interface ServerConfig {
 export const DEFAULT_DRAFT_MODEL = 'claude-sonnet-5-5';
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  // As CAT_WEB_DIR: an empty value is unset. A value that is not a plain host name is refused
+  // at startup rather than turned into a server that answers nothing.
+  const baseDomain = env.CAT_BASE_DOMAIN ? normaliseHost(env.CAT_BASE_DOMAIN) : undefined;
+  if (env.CAT_BASE_DOMAIN && (baseDomain === null || env.CAT_BASE_DOMAIN.includes(':'))) {
+    throw new Error(
+      `CAT_BASE_DOMAIN "${env.CAT_BASE_DOMAIN}" is not a plain domain name (no port, no scheme)`,
+    );
+  }
   return {
     port: Number(env.CAT_PORT ?? 3400),
     dbPath: resolve(env.CAT_DB_PATH ?? './data/platform.sqlite'),
     storageRoot: resolve(env.CAT_STORAGE_ROOT ?? './data/storage'),
     // An empty value is "unset", as `docker run -e CAT_WEB_DIR=` would mean.
     ...(env.CAT_WEB_DIR ? { webDir: resolve(env.CAT_WEB_DIR) } : {}),
+    ...(baseDomain ? { baseDomain } : {}),
     // As CAT_WEB_DIR: an empty value is unset. There is deliberately no
     // base-URL setting: the one outbound host is fixed in code, so no
     // environment value can point a client's text somewhere else.

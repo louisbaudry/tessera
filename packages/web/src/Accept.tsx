@@ -7,7 +7,7 @@
  * and is signed in as a vendor with the owner's roster entry already in place. A link
  * that cannot be used, for any reason, is one plain message. If the address already
  * has an account the server says so (a 409) and the page asks them to sign in with
- * it instead, then joins that owner's roster as themselves (backlog #187).
+ * it instead, which joins that owner's roster as themselves in one step (backlog #187).
  */
 import { useEffect, useState, type FormEvent } from 'react';
 
@@ -89,22 +89,18 @@ export function Accept({
     }
   };
 
-  // The address has an account: its own password signs in, and that session joins.
+  // The address has an account: its own password signs in and joins in one step, because
+  // on a tenant's host the account has no session there until it is on the roster (D14).
   const signInAndJoin = async (event: FormEvent) => {
     event.preventDefault();
     if (opened.state !== 'existing') return;
     setBusy(true);
     setError(null);
-    let session: string | null = null;
     try {
-      session = (await api.login(opened.email, password)).token;
-      await api.joinInvitation(session, token);
-      onToken(session);
+      onToken((await api.joinSignin(token, opened.email, password)).token);
     } catch (err) {
-      if (session !== null) void api.logout(session).catch(() => undefined);
-      if (err instanceof ApiError && err.status === 404 && session !== null) {
-        setOpened({ state: 'invalid' });
-      } else setError(err instanceof Error ? err.message : String(err));
+      if (err instanceof ApiError && err.status === 404) setOpened({ state: 'invalid' });
+      else setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
     }
   };

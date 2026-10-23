@@ -42,7 +42,7 @@ describe('openPlatformDb', () => {
 
   it('carries the shared, append-only audit_event from v3 (backlog #57)', () => {
     const db = openPlatformDb(dbPath());
-    expect(db.pragma('user_version', { simple: true })).toBe(12);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
     const triggers = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name")
       .all();

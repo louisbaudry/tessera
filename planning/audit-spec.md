@@ -241,7 +241,9 @@ their `*_by` columns have always been free text; writers pass the
 (`vendor-spec.md`'s `project_authorization`), `project.created`,
 `project.deleted`, `file.downloaded`, and since backlog #111 `invitation.created`,
 `invitation.accepted` and `invitation.revoked` (an owner's invitation to a vendor,
-`vendor-spec.md` §3; the invitation is the subject and no email is in a detail).
+`vendor-spec.md` §3; the invitation is the subject and no email is in a detail), and
+since backlog #209 `tenant.slug_set` (a tenant's address label, set once; no detail, because a
+slug comes from a company's name).
 
 `vendors.ctv` (backlog #46, `vendor-spec.md` §5): `vendor.added`,
 `vendor.profile_changed` and `vendor.rate_set`, with the shared table and
@@ -365,7 +367,8 @@ invent an author. What the second file to carry the log settled:
   the account the request named: that would record the attacker as
   the victim. The subject is that account when the email matched one,
   `NULL` otherwise. Detail is `{ reason: 'unknown_email' |
-  'wrong_password' }`, which the log keeps but the HTTP response never
+  'wrong_password' | 'not_on_this_host' }` (the last: right password, but the account is not on
+  the tenant whose subdomain it was tried on, `tenant-spec.md` D14; the event carries that tenant), which the log keeps but the HTTP response never
   distinguishes. The email that was tried is not recorded (see the
   first bullet).
 - **Login and logout are the account's own acts**: actor and subject

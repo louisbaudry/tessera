@@ -57,6 +57,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'tenant.member_removed',
   'tenant.role_changed',
   'tenant.audit_exported',
+  'tenant.slug_set',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -252,7 +253,9 @@ export interface AuditDetail {
   // detail: it is hashed, so erasure could never reach it.
   'auth.login': null;
   /** Kept in the log, never told apart in the HTTP response. */
-  'auth.login_failed': { readonly reason: 'unknown_email' | 'wrong_password' };
+  'auth.login_failed': {
+    readonly reason: 'unknown_email' | 'wrong_password' | 'not_on_this_host';
+  };
   'auth.logout': null;
   'account.created': null;
   /**
@@ -308,6 +311,12 @@ export interface AuditDetail {
   'tenant.created': null;
   /** The display name changed; the subject is the tenant, and neither name is here. */
   'tenant.renamed': null;
+  /**
+   * The operator set the tenant's slug, once (backlog #209, `tenant-spec.md` D14). The subject
+   * is the tenant, and the slug is not here: it derives from a company's name, so like the name
+   * it is in `tenant` only.
+   */
+  'tenant.slug_set': null;
   /**
    * Someone became staff of a tenant, in a role (backlog #206): the subject is the tenant,
    * the account an installation-local id. The address is in `account`, never here.

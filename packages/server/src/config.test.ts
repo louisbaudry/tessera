@@ -49,4 +49,15 @@ describe('loadConfig', () => {
     expect(loadConfig({ DEEPL_API_KEY: '' }).deeplApiKey).toBeUndefined();
     expect(loadConfig({ DEEPL_API_KEY: 'd:fx' }).deeplApiKey).toBe('d:fx');
   });
+
+  it('reads the base domain, normalised, and refuses one that is not a bare host name', () => {
+    expect(loadConfig({}).baseDomain).toBeUndefined();
+    expect(loadConfig({ CAT_BASE_DOMAIN: '' }).baseDomain).toBeUndefined();
+    expect(loadConfig({ CAT_BASE_DOMAIN: 'Example.COM.' }).baseDomain).toBe(
+      'example.com',
+    );
+    for (const bad of ['example.com:8080', 'a b', 'https://example.com', '[::1]']) {
+      expect(() => loadConfig({ CAT_BASE_DOMAIN: bad }), bad).toThrow(/CAT_BASE_DOMAIN/);
+    }
+  });
 });

@@ -199,6 +199,11 @@ export interface SessionWriteOptions {
   /** The account itself: logging in and out are its own acts (spec §2.5). */
   readonly actor: AuditActor;
   readonly now?: Date;
+  /**
+   * The tenant whose host the session is on (`tenant-spec.md` D14), so a vendor's sign-in is in that
+   * tenant's slice of the log. Omitted: the account's own tenant, none for a vendor.
+   */
+  readonly tenantId?: number | null;
 }
 
 /** Stores a new session and records `auth.login` with it. */
@@ -224,7 +229,10 @@ export function createAccountSession(
     appendPlatformEvent(db, {
       actor: options.actor,
       action: 'auth.login',
-      tenantId: tenantOfAccount(db, accountId),
+      tenantId:
+        options.tenantId === undefined
+          ? tenantOfAccount(db, accountId)
+          : options.tenantId,
       subjectType: 'account',
       subjectId: String(accountId),
       detail: null,
@@ -256,7 +264,7 @@ export function getAccountBySessionToken(
 export function deleteAccountSession(
   db: Database.Database,
   token: string,
-  options: Pick<SessionWriteOptions, 'actor'>,
+  options: Pick<SessionWriteOptions, 'actor' | 'tenantId'>,
 ): boolean {
   return db.transaction((): boolean => {
     const row = db
@@ -269,7 +277,10 @@ export function deleteAccountSession(
     appendPlatformEvent(db, {
       actor: options.actor,
       action: 'auth.logout',
-      tenantId: tenantOfAccount(db, row.account_id),
+      tenantId:
+        options.tenantId === undefined
+          ? tenantOfAccount(db, row.account_id)
+          : options.tenantId,
       subjectType: 'account',
       subjectId: String(row.account_id),
       detail: null,

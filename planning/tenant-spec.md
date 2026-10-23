@@ -174,6 +174,39 @@ only the number both sides use for the same tenant. A client number is the tenan
 operator's, shared; the sender and the admin's address are per tenant (`from`, `adminEmail`), since
 a tenant's clients are mailed in its name and its admin notified at its address.
 
+**D14. A tenant is reached at its own subdomain; the host pins the request, the session still names the
+tenant (O7, decided 2026-10-23, Louis; slice 6, #298).** `tenant.slug` is the public name, set once by
+the operator (`set-tenant-slug`): a DNS label (lower case, digits, hyphens, at most 40 characters), unique,
+and not on a reserved list (`www`, `app`, `api`, `admin`, `mail`, `portal`, `static`, `status`, `docs`, `help`,
+`support`, `login`, `auth`, `cdn`, `assets`, `staging`, `test`, `demo`, `tessera`, ...). It is not `tenant.name`:
+a slug is in DNS, links and certificates, and a name may be changed freely. **Once set it is not changed**: a
+rename would break every link already sent and needs a redirect rule nobody has designed. With
+`CAT_BASE_DOMAIN` set the server answers `<slug>.<base domain>` for a tenant and **nothing else**: the apex, an
+unknown slug and any other host are a 404 with a fixed body, never a fallback, so one tenant's page is never
+served at an address that names another. Unset (development, and a deployment that has no domain yet) there is
+no host check and the server behaves as it always has; `<slug>.localhost` needs no DNS to test.
+Four rules, each holding the "host is a boundary, never the authority" line of D6:
+
+1. **A session is valid only on its own tenant's host.** The gate pins the request to the host's tenant and
+   refuses a session whose account does not belong there: staff of that tenant, or a vendor on its roster. The
+   answer is the 401 of an invalid session, so the SPA signs out and nothing says whose the session was.
+2. **Login is scoped the same way.** An account that is not on the host's tenant fails exactly as a wrong
+   password does (logged, with its reason, for the operator), so the form cannot be used to ask who works
+   for whom.
+3. **A link is the tenant's.** A staff or vendor invitation opened or accepted on another tenant's host is the
+   identical 404 of a link that cannot be used. A vendor who already has an account joins a second roster on
+   *that* tenant's host with `POST /api/invitations/join-signin` (the link and their password in one step),
+   because they cannot yet hold a session there.
+4. **What spans tenants stops at the host.** The vendor routes that read every roster (`/api/vendor/feed`,
+   `/capacity`, `/payments`) answer for the host's tenant only, and a `?tenant=` naming another is the same
+   404 as a stranger's. A freelancer on three rosters has three logins and no combined feed or payment record;
+   a neutral host remains possible later and would not change the gate.
+
+A platform audit event of a sign-in on a tenant's host is stamped with that tenant, vendors included (the
+column of `audit-spec.md` §3.1). The portal (D13) keeps its own host registry; deriving it from the slug is not
+done here. Buying the domain, the wildcard DNS record and one wildcard certificate (DNS-01, so a customer's name
+is not in a public Certificate Transparency log) are the operator's, recorded in `INFRASTRUCTURE.md`.
+
 ## 4. Data model
 
 ```sql
@@ -295,6 +328,7 @@ seen to fail before the code that satisfies it.
 | 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations (built, with its screen) | M    |
 | 4     | #294, #302 | Isolation matrix across every route; the tenant-scoped audit view and its export (both built) | M    |
 | 5     | #295  | A portal per tenant: one app per tenant behind a host gateway (built) | L    |
+| 6     | #298  | A subdomain per tenant: `tenant.slug`, the host pins the request (D14) | M    |
 
 Order: 1, then 2; 3 and 4 follow 2 and are independent; 5 followed O2 (decided). One
 session on one slice at a time: slices 1 and 2 both change `platform/schema.ts`,
@@ -338,7 +372,7 @@ Each has a recommendation; none blocks slices 1 to 3.
   `/capacity`, `/payments`) answer for the host's tenant only, so one LSP's page never shows
   another LSP's work. The cost is accepted for simplicity: a freelancer on three rosters has
   three logins and no combined feed or payment record. A neutral host remains possible later
-  and would not change the host check.
+  and would not change the host check. **Built** (#298, D14).
 - **O6. What the interface calls it.** Recommended: "organisation" in the UI,
   `tenant` in code; the glossary records the code word. Louis may prefer
   "workspace".

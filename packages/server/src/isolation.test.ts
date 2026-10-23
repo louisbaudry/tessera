@@ -324,6 +324,10 @@ const ROUTES: Record<string, Entry> = {
   'POST /api/login': { kind: 'public', why: 'no session yet' },
   'POST /api/invitations/open': { kind: 'public', why: 'a link, not a session' },
   'POST /api/invitations/accept': { kind: 'public', why: 'a link, not a session' },
+  'POST /api/invitations/join-signin': {
+    kind: 'public',
+    why: 'a link and the invitee’s own password, not a session',
+  },
   'POST /api/staff-invitations/open': { kind: 'public', why: 'a link, not a session' },
   'POST /api/staff-invitations/accept': { kind: 'public', why: 'a link, not a session' },
   'POST /api/invitations/join': {

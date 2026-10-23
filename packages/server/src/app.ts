@@ -33,6 +33,7 @@ import {
   primarySubtag,
   rulesFor,
   scopeAllows,
+  tenantLabelOfHost,
   tenantRoleAllows,
   GlossarySessionError,
   SegmentEditError,
@@ -112,7 +113,9 @@ import {
   recordSegmentException,
   TermError,
   TmRefError,
+  accountBelongsToTenant,
   getTenantById,
+  getTenantBySlug,
   getTenantForAccount,
   type Account,
   type Tenant,
@@ -150,6 +153,7 @@ import {
 } from './webhooks.js';
 import {
   ACCEPT_INVITATION_PATH,
+  JOIN_SIGNIN_PATH,
   OPEN_INVITATION_PATH,
   registerInvitationRoutes,
 } from './invitations.js';
@@ -183,6 +187,13 @@ declare module 'fastify' {
      * an account with none (a vendor, `planning/tenant-spec.md` D3) and before the gate.
      */
     membership: TenantMembership | null;
+    /**
+     * The tenant whose subdomain the request came to (`planning/tenant-spec.md` D14), set before
+     * anything else runs when `CAT_BASE_DOMAIN` is configured; null when it is not. The host
+     * pins the request, and the session still names the tenant: a mismatch is refused, never
+     * resolved in the host's favour.
+     */
+    hostTenant: Tenant | null;
   }
 }
 
@@ -294,6 +305,7 @@ const PUBLIC_PATHS = new Set([
   LOGIN_PATH,
   OPEN_INVITATION_PATH,
   ACCEPT_INVITATION_PATH,
+  JOIN_SIGNIN_PATH,
   OPEN_STAFF_INVITATION_PATH,
   ACCEPT_STAFF_INVITATION_PATH,
 ]);
@@ -363,9 +375,22 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       for (const method of [route.method].flat()) report({ method, url: route.url });
     });
   }
-  await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
   app.decorateRequest('account', null);
   app.decorateRequest('membership', null);
+  app.decorateRequest('hostTenant', null);
+  // The host comes first, before the SPA and every route: with a base domain, the server answers
+  // a tenant's own subdomain and nothing else, so no page of one tenant is served at an address
+  // that names another or none (D14). A host that is not a tenant's is one fixed 404.
+  if (config.baseDomain) {
+    const base = config.baseDomain;
+    app.addHook('onRequest', async (req, reply) => {
+      const label = tenantLabelOfHost(req.headers.host, base);
+      const tenant = label === null ? null : getTenantBySlug(platform, label);
+      if (!tenant) return reply.code(404).send({ error: 'not found' });
+      req.hostTenant = tenant;
+    });
+  }
+  await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
 
   // The built SPA, when the deployment has one (backlog #36). A fixed
   // root, so no request names a path (§2.5); the gate below only guards
@@ -396,6 +421,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (!account) {
       return reply.code(401).send({ error: 'invalid, missing, or expired session' });
     }
+    // A session is valid only on its own tenant's host (D14): staff of it, or a vendor on its
+    // roster. Anything else is the 401 of an invalid session, so the SPA signs out and nothing
+    // says whose the session was.
+    if (
+      req.hostTenant &&
+      !accountBelongsToTenant(platform, account.id, req.hostTenant.id)
+    ) {
+      return reply.code(401).send({ error: 'invalid, missing, or expired session' });
+    }
     req.account = account;
     req.membership = getTenantForAccount(platform, account.id);
   });
@@ -414,18 +448,32 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     async (req, reply) => {
       const { email, password } = req.body ?? {};
       const account = email ? getAccountByEmail(platform, email) : null;
-      if (!account || !password || !verifyPassword(password, account.passwordHash)) {
+      const passwordOk =
+        account !== null && !!password && verifyPassword(password, account.passwordHash);
+      // On a tenant's host the account must belong there too (D14): an account that does not
+      // fails as a wrong password does, so the form cannot be used to ask who works for whom.
+      const host = req.hostTenant;
+      const onHost =
+        host === null ||
+        (account !== null && accountBelongsToTenant(platform, account.id, host.id));
+      if (!account || !passwordOk || !onHost) {
         // Told apart in the log, never in the response.
         recordFailedLogin(platform, {
           actor: LOGIN_GATE,
           accountId: account?.id ?? null,
-          reason: account ? 'wrong_password' : 'unknown_email',
+          reason: !account
+            ? 'unknown_email'
+            : !passwordOk
+              ? 'wrong_password'
+              : 'not_on_this_host',
+          ...(host ? { tenantId: host.id } : {}),
         });
         return reply.code(401).send({ error: 'invalid email or password' });
       }
       const token = generateSessionToken();
       const { expiresAt } = createAccountSession(platform, account.id, token, {
         actor: auditActor(account),
+        ...(host ? { tenantId: host.id } : {}),
       });
       return { token, expiresAt, account: publicAccount(account) };
     },
@@ -434,7 +482,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post('/api/logout', async (req) => {
     const token = bearerToken(req);
     if (token !== null)
-      deleteAccountSession(platform, token, { actor: sessionActor(req) });
+      deleteAccountSession(platform, token, {
+        actor: sessionActor(req),
+        ...(req.hostTenant ? { tenantId: req.hostTenant.id } : {}),
+      });
     return { ok: true };
   });
 
@@ -489,6 +540,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const own = ownTenant(req);
     const id =
       typeof asked === 'string' && /^[1-9]\d{0,14}$/.test(asked) ? Number(asked) : 0;
+    // On a tenant's host the only tenant a request can name is that one (D14): another is the
+    // same 404 as a stranger's, however a grant might otherwise have opened it.
+    if (req.hostTenant && asked !== undefined && id !== req.hostTenant.id)
+      return missing();
     if (asked === undefined || (own !== null && id === own.id)) {
       // An account with no tenant (a vendor) has no projects of its own: the same 404 a
       // missing project gets, as when its own storage root was simply empty.
@@ -2256,6 +2311,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     account: sessionAccount,
     tenant: ownTenant,
     sessionActor,
+    loginGate: LOGIN_GATE,
   });
 
   // --- a tenant's own slice of the platform log (backlog #211) -------------

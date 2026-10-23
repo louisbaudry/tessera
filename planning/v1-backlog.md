@@ -4679,7 +4679,53 @@ app over that tenant's own `portal.sqlite` and storage folder; a gateway finds i
 - Found, not fixed here: the SMTP `from` default in `config.ts` names a company, in a public repo
   (`tenant-spec.md` D12). Filed as issue #306.
 
-**#209 · A subdomain per tenant, with the host checked against the session · M** · [issue #298]
+**#209 · ~~A subdomain per tenant, with the host checked against the session~~ · DONE — `core/src/net/host.ts`, `core/src/auth/tenant-slug.ts`, `db/src/platform/{tenants,membership,schema}.ts` (v13), `server/src/{app,config,invitations,staff,assignments,set-tenant-slug}.ts`** (2026-10-23; card #298, Epic 14, `tenant-spec.md` D14, O7)
+
+Louis decided that a tenant is reached at `<slug>.<base domain>` and that a vendor signs in on each
+tenant's own subdomain (O7). What it taught:
+
+- **The host is a boundary and the session stays the authority.** With `CAT_BASE_DOMAIN` set, an
+  `onRequest` hook turns the `Host` into `req.hostTenant` before anything else runs (before the static
+  page too), and a host that is no tenant's is a fixed 404. The gate then refuses, as an invalid session
+  (401, so the SPA signs out and nothing says whose it was), an account that is not on that tenant:
+  staff of it or a vendor on its roster (`accountBelongsToTenant`). Unset, nothing changes: the second app
+  built without a base domain in `hosts.test.ts` is how the platform behaved before, and it is the control
+  that makes each "refused on the host" assertion mean something.
+- **Login on the wrong host fails as a wrong password does.** The refusal is logged with its own reason
+  (`not_on_this_host`, about the host's tenant) and the response is byte-identical to a wrong password's,
+  so the form cannot be used to ask who works for whom.
+- **A vendor who already has an account cannot be sent through the gate.** On a second tenant's host they
+  have no session until they are on its roster, so the old "sign in, then `join`" order is impossible
+  there. `POST /api/invitations/join-signin` takes the link and the account's own password in one step
+  (same 401 and same log line as login on a wrong password, the one 404 for any unusable or foreign
+  link), and the SPA's Accept page uses it everywhere; the gated `join` stays for any client that holds a
+  session already.
+- **A link is the tenant's.** `peekInvitationTenant` and `peekStaffInvitationTenant` read the tenant of a
+  link in any state, so a link opened on another tenant's host is the same 404 as an unknown one, and the
+  refused accept consumes nothing (the test uses the link again on its own host).
+- **What spanned tenants stops at the host.** `rosterTenantsFor` narrows `/api/vendor/feed`,
+  `/capacity` and `/payments` to the host's tenant; `tenantParam` and `openProject` treat a `?tenant=`
+  naming another as the 404 of a stranger, **even where a project grant would open it** (the test grants
+  a vendor on tenant B's project and asks for it on A's host).
+- **A slug is a public name, set once.** `tenant.slug` (platform v13) is a DNS label with a CHECK and a
+  unique index in the schema itself, a reserved list in `core` (`www`, `api`, `admin`, ...), and
+  `setTenantSlug` refuses to change it (it is in every link already sent); `set-tenant-slug` is the
+  operator's command. `tenant.slug_set` carries no detail: a slug comes from a company's name, which is
+  data and never in a hashed log. The v13 migration also widens `audit_event`'s action list with
+  `rebuildTable`, and a v12 file with tenants and a verifying chain is migrated in a test.
+- **One host normaliser.** `normaliseHost` moved from `portal-server` into `core/net/host.ts` (the portal
+  re-exports it through `portal-core`), so the CAT server and the portal cannot disagree about what a
+  `Host` header means.
+- Mutation checks: each pin removed in turn (the gate, login, `tenantParam`, `rosterTenantsFor`, the
+  `?tenant=` pin in `openProject`, the vendor and staff link pins) fails a named test. The first version of
+  the project-pin test passed without the pin, because a stranger gets a 404 anyway; it now uses a granted
+  vendor, which is what made the pin observable.
+- Verified: `hosts.test.ts` (17), the slug, host and v13 migration tests, the isolation matrix (the new
+  public route has its entry), config tests, the whole gate. Not verified: a real wildcard DNS record and
+  certificate, and the SPA in a browser on two subdomains (no domain exists yet).
+- Not built: the portal's hosts derived from the slug (the registry still names them); a neutral host for
+  a freelancer's combined feed. Buying the domain, the wildcard record and the certificate are the
+  operator's, recorded in `INFRASTRUCTURE.md`.
 
 **#212 · The portal's default SMTP sender names a real company · S** · [issue #306]
 

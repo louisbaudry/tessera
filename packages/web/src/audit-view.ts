@@ -39,6 +39,7 @@ export const ACTION_LABEL: Record<PlatformAuditAction, string> = {
   'tenant.member_removed': 'Someone was removed from the staff',
   'tenant.role_changed': 'A staff role changed',
   'tenant.audit_exported': 'This log was exported by the operator',
+  'tenant.slug_set': 'The organisation’s web address was set',
 };
 
 const isKnown = (action: string): action is PlatformAuditAction => action in ACTION_LABEL;
