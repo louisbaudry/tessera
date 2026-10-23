@@ -281,6 +281,35 @@ describe('two tenants share no file', () => {
   });
 });
 
+describe('a sender is required wherever SMTP is configured (issue #306)', () => {
+  const smtp = {
+    host: 'smtp.example.com',
+    port: 587,
+    secure: false,
+    user: undefined,
+    pass: undefined,
+    adminEmail: 'ops@example.com',
+  };
+  const solo = (): PortalConfig => ({
+    port: 0,
+    dbPath: join(dir, 'solo-smtp', 'portal.sqlite'),
+    storageRoot: join(dir, 'solo-smtp', 'storage'),
+    smtp,
+  });
+
+  it('refuses to start with SMTP and no sender, and says where to set one', async () => {
+    await expect(buildGateway({ config: solo(), logger: false })).rejects.toThrow(
+      /no sender: set PORTAL_SMTP_FROM/,
+    );
+  });
+
+  it('starts once a sender is set', async () => {
+    const config = { ...solo(), smtp: { ...smtp, from: 'Portal <p@example.com>' } };
+    const gw = await buildGateway({ config, logger: false });
+    await gw.close();
+  });
+});
+
 describe('the legacy single portal', () => {
   it('answers every host with its one app, as the portal always has', async () => {
     const solo = join(dir, 'solo');

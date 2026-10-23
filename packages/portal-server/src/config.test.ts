@@ -29,6 +29,18 @@ describe('loadConfig', () => {
     });
   });
 
+  it('has no default sender: an unset or blank PORTAL_SMTP_FROM leaves it absent (issue #306)', () => {
+    const env = {
+      PORTAL_SMTP_HOST: 'smtp.example.com',
+      PORTAL_ADMIN_EMAIL: 'a@example.com',
+    };
+    for (const from of [undefined, '', '   ']) {
+      const smtp = loadConfig({ ...env, PORTAL_SMTP_FROM: from }).smtp;
+      expect(smtp).toBeDefined();
+      expect(smtp).not.toHaveProperty('from');
+    }
+  });
+
   it('rejects PORTAL_SMTP_HOST without PORTAL_ADMIN_EMAIL', () => {
     expect(() => loadConfig({ PORTAL_SMTP_HOST: 'smtp.example.com' })).toThrow(
       /PORTAL_ADMIN_EMAIL/,

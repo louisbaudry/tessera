@@ -29,27 +29,27 @@ afterEach(() => {
 describe('admin_user / admin_session repository', () => {
   it('creates an admin user and looks it up by email', () => {
     const db = openPortalDb(dbPath());
-    const admin = createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
-    expect(getAdminUserByEmail(db, 'admin@optime.services')).toMatchObject({
+    const admin = createAdminUser(db, 'admin@example.com', hashPassword('hunter2'));
+    expect(getAdminUserByEmail(db, 'admin@example.com')).toMatchObject({
       id: admin.id,
-      email: 'admin@optime.services',
+      email: 'admin@example.com',
     });
-    expect(getAdminUserByEmail(db, 'nobody@optime.services')).toBeNull();
+    expect(getAdminUserByEmail(db, 'nobody@example.com')).toBeNull();
     db.close();
   });
 
   it('enforces one admin user per email', () => {
     const db = openPortalDb(dbPath());
-    createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
+    createAdminUser(db, 'admin@example.com', hashPassword('hunter2'));
     expect(() =>
-      createAdminUser(db, 'admin@optime.services', hashPassword('other')),
+      createAdminUser(db, 'admin@example.com', hashPassword('other')),
     ).toThrow();
     db.close();
   });
 
   it('resolves a valid session token to its admin user', () => {
     const db = openPortalDb(dbPath());
-    const admin = createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
+    const admin = createAdminUser(db, 'admin@example.com', hashPassword('hunter2'));
     createAdminSession(db, admin.id, 'a-session-token', { actor: TEST_ACTOR });
     expect(getAdminUserBySessionToken(db, 'a-session-token')).toMatchObject({
       id: admin.id,
@@ -60,7 +60,7 @@ describe('admin_user / admin_session repository', () => {
 
   it('rejects an expired session', () => {
     const db = openPortalDb(dbPath());
-    const admin = createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
+    const admin = createAdminUser(db, 'admin@example.com', hashPassword('hunter2'));
     const past = new Date('2020-01-01T00:00:00Z');
     createAdminSession(db, admin.id, 'a-session-token', {
       actor: TEST_ACTOR,
@@ -74,7 +74,7 @@ describe('admin_user / admin_session repository', () => {
 
   it('revokes a session on logout', () => {
     const db = openPortalDb(dbPath());
-    const admin = createAdminUser(db, 'admin@optime.services', hashPassword('hunter2'));
+    const admin = createAdminUser(db, 'admin@example.com', hashPassword('hunter2'));
     createAdminSession(db, admin.id, 'a-session-token', { actor: TEST_ACTOR });
     deleteAdminSession(db, 'a-session-token');
     expect(getAdminUserBySessionToken(db, 'a-session-token')).toBeNull();

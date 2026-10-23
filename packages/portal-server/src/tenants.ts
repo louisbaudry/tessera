@@ -18,7 +18,7 @@ import { dirname, resolve, sep } from 'node:path';
 
 import { normaliseHost } from '@cat-tool/portal-core';
 
-import type { PortalConfig } from './config.js';
+import type { PortalConfig, SmtpConfig } from './config.js';
 
 export interface PortalTenant {
   /** The CAT platform's number for this tenant; `null` only for the legacy single portal. */
@@ -197,27 +197,48 @@ export function loadTenants(config: PortalConfig): PortalTenant[] {
     : readTenantRegistry(config.tenantsFile);
 }
 
+/** A portal's config once its sender is settled: what `buildApp` takes. */
+export type TenantPortalConfig = Omit<PortalConfig, 'smtp'> & {
+  readonly smtp: SmtpConfig | undefined;
+};
+
 /**
  * The config one tenant's app is built from: its own file and folder, and over the operator's
  * shared SMTP transport its own sender and admin address. Nothing else of one tenant's is
  * reachable from another's config.
+ *
+ * @throws {TenantRegistryError} if SMTP is configured and the tenant has no sender, neither its
+ *   own `from` nor the shared `PORTAL_SMTP_FROM`: there is no default, because a default would
+ *   mail a tenant's clients in someone else's name (issue #306, `tenant-spec.md` D12).
  */
 export function configForTenant(
   config: PortalConfig,
   tenant: PortalTenant,
-): PortalConfig {
+): TenantPortalConfig {
+  const { smtp: shared, ...rest } = config;
+  if (shared === undefined) {
+    return {
+      ...rest,
+      dbPath: tenant.dbPath,
+      storageRoot: tenant.storageRoot,
+      smtp: undefined,
+    };
+  }
+  const from = tenant.from ?? shared.from;
+  if (!from) {
+    throw new TenantRegistryError(
+      `PORTAL_SMTP_HOST is set but ${
+        tenant.tenantId === null ? 'the portal' : `tenant ${tenant.tenantId}`
+      } has no sender: set PORTAL_SMTP_FROM${
+        tenant.tenantId === null ? '' : ` or this tenant's "from" in the registry`
+      }, or unset PORTAL_SMTP_HOST to fall back to console notifications.`,
+    );
+  }
   return {
-    ...config,
+    ...rest,
     dbPath: tenant.dbPath,
     storageRoot: tenant.storageRoot,
-    smtp:
-      config.smtp === undefined
-        ? undefined
-        : {
-            ...config.smtp,
-            from: tenant.from ?? config.smtp.from,
-            adminEmail: tenant.adminEmail ?? config.smtp.adminEmail,
-          },
+    smtp: { ...shared, from, adminEmail: tenant.adminEmail ?? shared.adminEmail },
   };
 }
 

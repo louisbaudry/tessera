@@ -5,6 +5,7 @@
  */
 import { resolve } from 'node:path';
 
+/** What one portal's `SmtpNotificationService` is built from: the sender is always known. */
 export interface SmtpConfig {
   readonly host: string;
   readonly port: number;
@@ -14,6 +15,13 @@ export interface SmtpConfig {
   readonly from: string;
   readonly adminEmail: string;
 }
+
+/**
+ * The operator's shared SMTP settings. The sender is optional here because a tenant may bring its
+ * own (`PortalTenant.from`); `configForTenant` refuses a tenant that ends up with none, so there is
+ * no default sender that could name a company (`tenant-spec.md` D12, issue #306).
+ */
+export type SharedSmtpConfig = Omit<SmtpConfig, 'from'> & { readonly from?: string };
 
 export interface PortalConfig {
   readonly port: number;
@@ -28,7 +36,7 @@ export interface PortalConfig {
   // Set only when PORTAL_SMTP_HOST is configured — absence is the signal
   // to fall back to ConsoleNotificationService (portal-v0-spec.md §5),
   // same "no real email adapter yet" default v0 shipped with.
-  readonly smtp: SmtpConfig | undefined;
+  readonly smtp: SharedSmtpConfig | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): PortalConfig {
@@ -41,7 +49,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PortalConfig {
   };
 }
 
-function loadSmtpConfig(env: NodeJS.ProcessEnv): SmtpConfig | undefined {
+function loadSmtpConfig(env: NodeJS.ProcessEnv): SharedSmtpConfig | undefined {
   const host = env.PORTAL_SMTP_HOST;
   if (!host) return undefined;
   const adminEmail = env.PORTAL_ADMIN_EMAIL;
@@ -52,13 +60,14 @@ function loadSmtpConfig(env: NodeJS.ProcessEnv): SmtpConfig | undefined {
         'to fall back to console notifications.',
     );
   }
+  const from = env.PORTAL_SMTP_FROM?.trim();
   return {
     host,
     port: Number(env.PORTAL_SMTP_PORT ?? 587),
     secure: env.PORTAL_SMTP_SECURE === 'true',
     user: env.PORTAL_SMTP_USER,
     pass: env.PORTAL_SMTP_PASS,
-    from: env.PORTAL_SMTP_FROM ?? 'Optime Translation Portal <no-reply@optime.services>',
+    ...(from ? { from } : {}),
     adminEmail,
   };
 }
