@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
 const PDF = Buffer.from('%PDF-1.7\nsynthetic style guide\n');
@@ -51,7 +52,7 @@ beforeEach(async () => {
   carol = make('carol', 'vendor');
   grantProjectAuthorization(platform, {
     accountId: bob.id,
-    project: { accountId: alice.id, name: 'job' },
+    project: { tenantId: tenantOf(config, alice).id, name: 'job' },
     scope: 'assigned_translator',
     actor: SETUP,
   });
@@ -144,7 +145,7 @@ describe('reference files over the API', () => {
     await upload(token, PDF, 'Acme-confidential.pdf', 'Style guide');
     await upload(token, PDF, 'Acme-other.pdf');
     const asBob = await login('bob');
-    const q = `?owner=${alice.id}`;
+    const q = `?tenant=${tenantOf(config, alice).id}`;
 
     const list = await app.inject({
       method: 'GET',
@@ -175,7 +176,7 @@ describe('reference files over the API', () => {
     await makeProject(token);
     await upload(token, PDF, 'a.pdf');
     const asBob = await login('bob');
-    const q = `?owner=${alice.id}`;
+    const q = `?tenant=${tenantOf(config, alice).id}`;
     const form = new FormData();
     form.append('file', new Blob([PDF]), 'x.pdf');
     const add = await app.inject({

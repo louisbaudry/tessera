@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { projectPath, tmPath } from './storage.js';
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
@@ -80,7 +81,7 @@ async function seed(): Promise<string> {
     payload: { name: 'job', srcLang: 'en', tgtLang: 'de', writeTm: 'mem' },
   });
   expect(made.statusCode, made.body).toBe(201);
-  const tm = openTm(tmPath(config.storageRoot, alice, 'mem'));
+  const tm = openTm(tmPath(config.storageRoot, tenantOf(config, alice), 'mem'));
   const now = new Date().toISOString();
   const add = (en: string, de: string) => {
     const id = tm
@@ -171,17 +172,25 @@ describe('GET /api/projects/:name/concordance', () => {
     const platform = openPlatformDb(config.dbPath);
     grantProjectAuthorization(platform, {
       accountId: bob.id,
-      project: { accountId: alice.id, name: 'job' },
+      project: { tenantId: tenantOf(config, alice).id, name: 'job' },
       scope: 'assigned_translator',
       actor: SETUP,
     });
     platform.close();
 
-    const asBob = await search(await login('bob'), 'q=set', `&owner=${alice.id}`);
+    const asBob = await search(
+      await login('bob'),
+      'q=set',
+      `&tenant=${tenantOf(config, alice).id}`,
+    );
     expect(asBob.statusCode).toBe(403);
     expect(asBob.body).not.toContain('printer');
 
-    const asCarol = await search(await login('carol'), 'q=set', `&owner=${alice.id}`);
+    const asCarol = await search(
+      await login('carol'),
+      'q=set',
+      `&tenant=${tenantOf(config, alice).id}`,
+    );
     expect(asCarol.statusCode).toBe(404);
     // Without ?owner, carol asks for a project of her own that does not exist.
     expect((await search(await login('carol'), 'q=set')).statusCode).toBe(404);
@@ -199,7 +208,9 @@ describe('GET /api/projects/:name/concordance', () => {
   it('writes no event to the project or the memory', async () => {
     const token = await seed();
     const events = () => {
-      const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+      const db = openProjectDb(
+        projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+      );
       try {
         return (
           db.prepare('SELECT COUNT(*) AS n FROM audit_event').get() as { n: number }
@@ -229,7 +240,9 @@ const hitsFor = async (token: string, query: string) =>
 
 /** The project's memory events, with their stored detail parsed. */
 function memoryEvents(): Array<{ action: string; detail: Record<string, unknown> }> {
-  const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+  const db = openProjectDb(
+    projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+  );
   try {
     return (
       db
@@ -291,7 +304,7 @@ describe('correcting and retiring a unit (issue #151)', () => {
     });
     expect(JSON.stringify(events)).not.toContain('Deckel');
     // The old text is in the memory's own history, with who changed it.
-    const tm = openTm(tmPath(config.storageRoot, alice, 'mem'));
+    const tm = openTm(tmPath(config.storageRoot, tenantOf(config, alice), 'mem'));
     const history = tm
       .prepare('SELECT tokens, changed_by FROM tuv_history WHERE tuv_id = ?')
       .all(hit!.tuvId) as Array<{ tokens: string; changed_by: string | null }>;
@@ -335,7 +348,7 @@ describe('correcting and retiring a unit (issue #151)', () => {
   it('refuses a translation that holds tags with a 422, and offers it as not editable', async () => {
     const token = await seed();
     const [hit] = await hitsFor(token, 'q=lid');
-    const tm = openTm(tmPath(config.storageRoot, alice, 'mem'));
+    const tm = openTm(tmPath(config.storageRoot, tenantOf(config, alice), 'mem'));
     tm.prepare('UPDATE tuv SET tokens = ? WHERE id = ?').run(
       JSON.stringify([
         { t: 'open', id: 1, k: 'bold' },
@@ -377,7 +390,7 @@ describe('correcting and retiring a unit (issue #151)', () => {
     const platform = openPlatformDb(config.dbPath);
     grantProjectAuthorization(platform, {
       accountId: bob.id,
-      project: { accountId: alice.id, name: 'job' },
+      project: { tenantId: tenantOf(config, alice).id, name: 'job' },
       scope: 'assigned_translator',
       actor: SETUP,
     });
@@ -385,7 +398,7 @@ describe('correcting and retiring a unit (issue #151)', () => {
 
     const asBob = await login('bob');
     const body = { ref: hit!.ref, tuvId: hit!.tuvId, rev: hit!.rev };
-    const q = `?owner=${alice.id}`;
+    const q = `?tenant=${tenantOf(config, alice).id}`;
     expect((await put(asBob, { ...body, text: 'x' }, q)).statusCode).toBe(403);
     expect((await retire(asBob, body, q)).statusCode).toBe(403);
     const asCarol = await login('carol');

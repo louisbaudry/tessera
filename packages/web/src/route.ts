@@ -4,8 +4,8 @@
  * `#/p/<name>/f/<id>` a file's grid, and `#/tms` the account's memories
  * (§7.5). Anything else is the project list — a stale or hand-typed
  * link lands somewhere, never on a blank page. A vendor's job (backlog
- * #52) is `#/jobs/<owner account>/<assignment>`: the owner is part of the
- * address because a job lives on that owner's roster. The money screens (backlog
+ * #52) is `#/jobs/<tenant>/<assignment>`: the tenant is part of the
+ * address because a job lives on that tenant's roster. The money screens (backlog
  * #113) are `#/payables`, the owner's pay run, and `#/payments`, a vendor's own
  * record; each account sees only its own, whatever a hand-typed link says.
  * `#/vendors` is the owner's roster and invitations, and `#/invite/<token>` the
@@ -20,7 +20,7 @@ export type Route =
   | { readonly screen: 'payments' }
   | { readonly screen: 'vendors' }
   | { readonly screen: 'invite'; readonly token: string }
-  | { readonly screen: 'job'; readonly owner: number; readonly id: number }
+  | { readonly screen: 'job'; readonly tenantId: number; readonly id: number }
   | { readonly screen: 'project'; readonly project: string }
   | { readonly screen: 'grid'; readonly project: string; readonly fileId: number };
 
@@ -40,9 +40,9 @@ export function parseRoute(hash: string): Route {
     return INVITE_TOKEN.test(parts[1]!) ? { screen: 'invite', token: parts[1]! } : HOME;
   }
   if (parts.length === 3 && parts[0] === 'jobs') {
-    const [, owner, id] = parts;
-    if (/^[1-9]\d{0,14}$/.test(owner!) && /^[1-9]\d{0,14}$/.test(id!)) {
-      return { screen: 'job', owner: Number(owner), id: Number(id) };
+    const [, tenant, id] = parts;
+    if (/^[1-9]\d{0,14}$/.test(tenant!) && /^[1-9]\d{0,14}$/.test(id!)) {
+      return { screen: 'job', tenantId: Number(tenant), id: Number(id) };
     }
     return HOME;
   }
@@ -75,7 +75,7 @@ export function formatRoute(route: Route): string {
     case 'invite':
       return `#/invite/${route.token}`;
     case 'job':
-      return `#/jobs/${route.owner}/${route.id}`;
+      return `#/jobs/${route.tenantId}/${route.id}`;
     case 'project':
       return `#/p/${encodeURIComponent(route.project)}`;
     case 'grid':

@@ -132,7 +132,7 @@ describe('platform audit_event', () => {
   });
 
   it('rolls a project event back with a change that throws', () => {
-    const project = { accountId: 3, name: 'acme' };
+    const project = { tenantId: 3, name: 'acme' };
     const path = join(dir, 'acme.catdb');
     recordProjectChange(db, 'project.created', { actor: TEST_ACTOR, project }, () =>
       writeFileSync(path, ''),
@@ -148,14 +148,14 @@ describe('platform audit_event', () => {
       subjectId: projectSubjectId(project),
     });
     expect(events.map((e) => [e.action, e.subjectId])).toEqual([
-      ['project.created', '3/acme'],
+      ['project.created', 't3/acme'],
     ]);
   });
 
   it('records a download with the digest of the bytes sent, and the chain verifies', () => {
     recordDownload(db, {
       actor: TEST_ACTOR,
-      project: { accountId: 3, name: 'acme' },
+      project: { tenantId: 3, name: 'acme' },
       fileId: 2,
       name: 'brochure.docx',
       sha256: 'ab'.repeat(32),
@@ -166,7 +166,7 @@ describe('platform audit_event', () => {
         actor_label: 'test',
         action: 'file.downloaded',
         subject_type: 'project',
-        subject_id: '3/acme',
+        subject_id: 't3/acme',
         detail: `{"file_id":2,"name":"brochure.docx","sha256":"${'ab'.repeat(32)}"}`,
       },
     ]);

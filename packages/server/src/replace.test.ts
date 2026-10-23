@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { projectPath } from './storage.js';
 
 const FIXTURE = join(
@@ -103,7 +104,9 @@ async function seed(targets: string[]): Promise<{ token: string; ids: number[] }
     payload: form,
   });
   expect(up.statusCode, up.body).toBe(201);
-  const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+  const db = openProjectDb(
+    projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+  );
   const segments = listSegments(db, 1).filter((s) => !s.locked);
   const ids = targets.map((t, i) => {
     setSegmentTarget(db, segments[i]!.id, {
@@ -157,7 +160,9 @@ async function run(
 }
 
 const targetOf = (id: number) => {
-  const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+  const db = openProjectDb(
+    projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+  );
   try {
     return plainText(getSegment(db, id)!.targetTokens ?? []);
   } finally {
@@ -165,7 +170,9 @@ const targetOf = (id: number) => {
   }
 };
 const batches = () => {
-  const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+  const db = openProjectDb(
+    projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+  );
   try {
     return db
       .prepare("SELECT detail FROM audit_event WHERE action = 'project.replaced'")
@@ -250,7 +257,9 @@ describe('POST /api/projects/:name/replace/scan and /apply', () => {
       proposals: Array<{ segmentId: number; updatedAt: string }>;
     };
     // The translator edits it between the preview and the apply.
-    const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const db = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
     setSegmentTarget(db, ids[0]!, {
       targetTokens: [text('Texto nuevo de la tapa.')],
       status: 'translated',
@@ -308,7 +317,9 @@ describe('POST /api/projects/:name/replace/scan and /apply', () => {
     expect(scanned.state).toBe('failed');
     expect(scanned.error).toMatch(/took too long/);
 
-    const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const db = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
     const updatedAt = getSegment(db, ids[0]!)!.updatedAt;
     db.close();
     const applied = await run(token, 'apply', {
@@ -352,13 +363,13 @@ describe('POST /api/projects/:name/replace/scan and /apply', () => {
     const platform = openPlatformDb(config.dbPath);
     grantProjectAuthorization(platform, {
       accountId: bob.id,
-      project: { accountId: alice.id, name: 'job' },
+      project: { tenantId: tenantOf(config, alice).id, name: 'job' },
       scope: 'assigned_translator',
       actor: SETUP,
     });
     platform.close();
     const asBob = await login('bob');
-    const q = `?owner=${alice.id}`;
+    const q = `?tenant=${tenantOf(config, alice).id}`;
     expect((await post(asBob, 'scan', { pattern: 'tapa' }, q)).statusCode).toBe(403);
     expect(
       (

@@ -36,7 +36,8 @@ import { useLoad } from './use-load.js';
 export function ResourcesPanel({ project }: { project: string }) {
   // Another account's project (a vendor's job) shows the same panel without names
   // and without the link to a page the grantee cannot manage (backlog #124).
-  if (parseProjectKey(project).owner !== null) return <GranteePanel project={project} />;
+  if (parseProjectKey(project).tenantId !== null)
+    return <GranteePanel project={project} />;
   return <OwnerPanel project={project} />;
 }
 

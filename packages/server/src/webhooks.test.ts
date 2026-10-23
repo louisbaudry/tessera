@@ -30,6 +30,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { createWebhookSender, vetHost } from './webhook-send.js';
 
 const FIXTURE = join(
@@ -97,7 +98,10 @@ beforeEach(async () => {
   alice = make('alice');
   bob = make('bob', 'vendor');
   erin = make('erin');
-  addRosterMembership(platform, { ownerId: alice.id, accountId: bob.id });
+  addRosterMembership(platform, {
+    tenantId: tenantOf(config, alice).id,
+    accountId: bob.id,
+  });
   platform.close();
   const rosterPath = join(config.storageRoot, alice.storageRoot, 'vendors.ctv');
   mkdirSync(dirname(rosterPath), { recursive: true });
@@ -272,7 +276,7 @@ describe('delivery', () => {
     const b = await login('bob');
     const accepted = await app.inject({
       method: 'POST',
-      url: `/api/assignments/${id}/accept?owner=${alice.id}`,
+      url: `/api/assignments/${id}/accept?tenant=${tenantOf(config, alice).id}`,
       headers: as(b),
     });
     expect(accepted.statusCode, accepted.body).toBe(200);

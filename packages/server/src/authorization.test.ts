@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 
 const FIXTURE = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -111,7 +112,7 @@ function grant(accountId: number, owner: Account = alice, name = 'job'): void {
   try {
     grantProjectAuthorization(platform, {
       accountId,
-      project: { accountId: owner.id, name },
+      project: { tenantId: tenantOf(config, owner).id, name },
       scope: 'assigned_translator',
       actor: SETUP,
     });
@@ -129,7 +130,7 @@ describe('a project nobody granted', () => {
     const b = await login('bob');
     const { fileId, segment } = await projectWithFile(a);
     const base = `/api/projects/job`;
-    const q = `owner=${alice.id}`;
+    const q = `tenant=${tenantOf(config, alice).id}`;
     const probes = [
       ['GET', `${base}?${q}`],
       ['GET', `${base}/files/${fileId}/segments?${q}`],
@@ -153,12 +154,13 @@ describe('a project nobody granted', () => {
     expect(nothing.body).toBe(JSON.stringify({ error: 'no project named "nope"' }));
   });
 
-  it('is not reached without ?owner either: the account’s own namespace holds no such project', async () => {
+  it('is not reached without ?tenant either: a vendor has no projects of its own, so the route is a 404 whether or not the project exists', async () => {
     const a = await login('alice');
     await projectWithFile(a);
     grant(bob.id);
     const b = await login('bob');
     expect((await get(b, '/api/projects/job')).statusCode).toBe(404);
+    expect((await get(b, '/api/projects/ghost')).statusCode).toBe(404);
   });
 
   it('is not made reachable by a grant on another project, or by another owner’s project of the same name', async () => {
@@ -168,19 +170,23 @@ describe('a project nobody granted', () => {
     await projectWithFile(c);
     grant(bob.id, alice, 'some-other-project');
     const b = await login('bob');
-    expect((await get(b, `/api/projects/job?owner=${alice.id}`)).statusCode).toBe(404);
-    expect((await get(b, `/api/projects/job?owner=${carol.id}`)).statusCode).toBe(404);
+    expect(
+      (await get(b, `/api/projects/job?tenant=${tenantOf(config, alice).id}`)).statusCode,
+    ).toBe(404);
+    expect(
+      (await get(b, `/api/projects/job?tenant=${tenantOf(config, carol).id}`)).statusCode,
+    ).toBe(404);
   });
 
-  it('is a 404 for an owner that is not a number or not an account', async () => {
+  it('is a 404 for a tenant that is not a number or not a tenant', async () => {
     const a = await login('alice');
     await projectWithFile(a);
     grant(bob.id);
     const b = await login('bob');
-    for (const owner of ['abc', '0', '-1', '9999', '1.5', '1e3', '']) {
+    for (const tenant of ['abc', '0', '-1', '9999', '1.5', '1e3', '']) {
       expect(
-        (await get(b, `/api/projects/job?owner=${owner}`)).statusCode,
-        `owner=${owner}`,
+        (await get(b, `/api/projects/job?tenant=${tenant}`)).statusCode,
+        `tenant=${tenant}`,
       ).toBe(404);
     }
   });
@@ -192,7 +198,7 @@ describe('an assigned translator', () => {
     const { fileId } = await projectWithFile(a);
     grant(bob.id);
     const b = await login('bob');
-    const q = `owner=${alice.id}`;
+    const q = `tenant=${tenantOf(config, alice).id}`;
 
     const detail = await get(b, `/api/projects/job?${q}`);
     expect(detail.statusCode, detail.body).toBe(200);
@@ -212,7 +218,7 @@ describe('an assigned translator', () => {
     const { fileId, segment } = await projectWithFile(a);
     grant(bob.id);
     const b = await login('bob');
-    const q = `owner=${alice.id}`;
+    const q = `tenant=${tenantOf(config, alice).id}`;
 
     const saved = await app.inject({
       method: 'PUT',
@@ -269,7 +275,7 @@ describe('an assigned translator', () => {
     const { fileId } = await projectWithFile(a);
     grant(bob.id);
     const b = await login('bob');
-    const q = `owner=${alice.id}`;
+    const q = `tenant=${tenantOf(config, alice).id}`;
     const probes: Array<[string, string]> = [
       ['DELETE', `/api/projects/job?${q}`],
       ['POST', `/api/projects/job/files?${q}`],
@@ -318,7 +324,10 @@ describe('an assigned translator', () => {
     expect(attached.statusCode, attached.body).toBe(201);
     grant(bob.id);
     const b = await login('bob');
-    const res = await get(b, `/api/projects/job/resources?owner=${alice.id}`);
+    const res = await get(
+      b,
+      `/api/projects/job/resources?tenant=${tenantOf(config, alice).id}`,
+    );
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json()).toEqual({
       memories: [{ writeTarget: true, enabled: true }],
@@ -332,8 +341,14 @@ describe('an assigned translator', () => {
     const a = await login('alice');
     await projectWithFile(a);
     const c = await login('carol');
-    const real = await get(c, `/api/projects/job/resources?owner=${alice.id}`);
-    const missing = await get(c, `/api/projects/nope/resources?owner=${alice.id}`);
+    const real = await get(
+      c,
+      `/api/projects/job/resources?tenant=${tenantOf(config, alice).id}`,
+    );
+    const missing = await get(
+      c,
+      `/api/projects/nope/resources?tenant=${tenantOf(config, alice).id}`,
+    );
     expect(real.statusCode).toBe(404);
     expect(real.body).toBe(missing.body.replace('nope', 'job'));
   });
@@ -343,15 +358,19 @@ describe('an assigned translator', () => {
     await projectWithFile(a);
     grant(bob.id);
     const b = await login('bob');
-    expect((await get(b, `/api/projects/job?owner=${alice.id}`)).statusCode).toBe(200);
+    expect(
+      (await get(b, `/api/projects/job?tenant=${tenantOf(config, alice).id}`)).statusCode,
+    ).toBe(200);
     const platform = openPlatformDb(config.dbPath);
     revokeProjectAuthorization(platform, {
       accountId: bob.id,
-      project: { accountId: alice.id, name: 'job' },
+      project: { tenantId: tenantOf(config, alice).id, name: 'job' },
       actor: SETUP,
     });
     platform.close();
-    expect((await get(b, `/api/projects/job?owner=${alice.id}`)).statusCode).toBe(404);
+    expect(
+      (await get(b, `/api/projects/job?tenant=${tenantOf(config, alice).id}`)).statusCode,
+    ).toBe(404);
   });
 });
 
@@ -359,10 +378,13 @@ describe('the owner', () => {
   it('may name themselves with ?owner, and still manages their own', async () => {
     const a = await login('alice');
     await projectWithFile(a);
-    expect((await get(a, `/api/projects/job?owner=${alice.id}`)).statusCode).toBe(200);
-    expect((await get(a, `/api/projects/job/tms?owner=${alice.id}`)).statusCode).toBe(
-      200,
-    );
+    expect(
+      (await get(a, `/api/projects/job?tenant=${tenantOf(config, alice).id}`)).statusCode,
+    ).toBe(200);
+    expect(
+      (await get(a, `/api/projects/job/tms?tenant=${tenantOf(config, alice).id}`))
+        .statusCode,
+    ).toBe(200);
   });
 
   it('takes the grants with a project when deleting it, so a new project of that name is not the grantee’s', async () => {
@@ -370,7 +392,9 @@ describe('the owner', () => {
     await projectWithFile(a);
     grant(bob.id);
     const b = await login('bob');
-    expect((await get(b, `/api/projects/job?owner=${alice.id}`)).statusCode).toBe(200);
+    expect(
+      (await get(b, `/api/projects/job?tenant=${tenantOf(config, alice).id}`)).statusCode,
+    ).toBe(200);
 
     const del = await app.inject({
       method: 'DELETE',
@@ -379,13 +403,15 @@ describe('the owner', () => {
     });
     expect(del.statusCode).toBe(204);
     await projectWithFile(a); // the same name again, new work
-    expect((await get(b, `/api/projects/job?owner=${alice.id}`)).statusCode).toBe(404);
+    expect(
+      (await get(b, `/api/projects/job?tenant=${tenantOf(config, alice).id}`)).statusCode,
+    ).toBe(404);
 
     const platform = openPlatformDb(config.dbPath);
     try {
       const log = listEvents(platform, {
         subjectType: 'project',
-        subjectId: `${alice.id}/job`,
+        subjectId: `t${tenantOf(config, alice).id}/job`,
       }).map((e) => [e.action, e.actor]);
       expect(log).toEqual([
         ['project.created', `account:${alice.id}`],

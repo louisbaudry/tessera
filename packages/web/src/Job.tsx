@@ -24,15 +24,15 @@ import { formatRoute } from './route.js';
 import { useAction } from './use-action.js';
 import { useLoad } from './use-load.js';
 
-export function JobScreen({ owner, id }: { owner: number; id: number }) {
+export function JobScreen({ tenantId, id }: { tenantId: number; id: number }) {
   // Bumped after an answer, so the screen reads what the server now says.
   const [version, setVersion] = useState(0);
   const offer = useLoad(
     useCallback(
-      (token, signal) => api.offer(token, owner, id, signal),
+      (token, signal) => api.offer(token, tenantId, id, signal),
       // `version` is not read inside: bumping it is what reloads the offer after an answer.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [owner, id, version],
+      [tenantId, id, version],
     ),
   );
   if (offer.state === 'loading') return <p className="muted">Loading the job{'…'}</p>;
@@ -48,7 +48,7 @@ export function JobScreen({ owner, id }: { owner: number; id: number }) {
   }
   return (
     <Job
-      owner={owner}
+      tenantId={tenantId}
       id={id}
       detail={offer.data}
       onAnswered={() => setVersion((v) => v + 1)}
@@ -57,12 +57,12 @@ export function JobScreen({ owner, id }: { owner: number; id: number }) {
 }
 
 function Job({
-  owner,
+  tenantId,
   id,
   detail,
   onAnswered,
 }: {
-  owner: number;
+  tenantId: number;
   id: number;
   detail: OfferDetail;
   onAnswered: () => void;
@@ -161,11 +161,11 @@ function Job({
 
       <Answers
         key={job.status}
-        owner={owner}
+        tenantId={tenantId}
         id={id}
         verbs={verbs}
         workable={isWorkable(job.status)}
-        project={projectKey(job.project, owner)}
+        project={projectKey(job.project, tenantId)}
         onAnswered={onAnswered}
       />
     </div>
@@ -240,14 +240,14 @@ function Payable({ payable }: { payable: LockedPayable }) {
 
 /** The answers the lifecycle allows, with a second step before the one that cannot be undone. */
 function Answers({
-  owner,
+  tenantId,
   id,
   verbs,
   workable,
   project,
   onAnswered,
 }: {
-  owner: number;
+  tenantId: number;
   id: number;
   verbs: VendorVerb[];
   workable: boolean;
@@ -258,7 +258,7 @@ function Answers({
   const [confirmDecline, setConfirmDecline] = useState(false);
 
   const answer = async (verb: VendorVerb) => {
-    const done = await action.run((token) => api.answerJob(token, owner, id, verb));
+    const done = await action.run((token) => api.answerJob(token, tenantId, id, verb));
     if (done) onAnswered();
   };
 

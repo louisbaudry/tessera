@@ -37,9 +37,12 @@ import { addRosterMembership } from './membership.js';
 
 export interface Invitation {
   readonly id: number;
-  readonly ownerId: number;
+  /** The tenant whose roster the invitee joins. */
+  readonly tenantId: number;
+  /** The staff account that sent it, and so vouched for the new account. */
+  readonly invitedBy: number;
   readonly email: string;
-  /** What the owner calls the invitee; becomes the roster entry's display name. */
+  /** What the tenant calls the invitee; becomes the roster entry's display name. */
   readonly displayName: string | null;
   readonly createdAt: string;
   readonly expiresAt: string;
@@ -51,7 +54,8 @@ export interface Invitation {
 
 interface Row {
   id: number;
-  owner_id: number;
+  tenant_id: number;
+  invited_by: number;
   email: string;
   display_name: string | null;
   token_hash: string;
@@ -64,7 +68,8 @@ interface Row {
 
 const fromRow = (row: Row, now: Date): Invitation => ({
   id: row.id,
-  ownerId: row.owner_id,
+  tenantId: row.tenant_id,
+  invitedBy: row.invited_by,
   email: row.email,
   displayName: row.display_name,
   createdAt: row.created_at,
@@ -111,20 +116,27 @@ function rowByToken(db: Database.Database, token: string): Row | undefined {
     .get(hashToken(token)) as Row | undefined;
 }
 
-/** Opens an owner-only action: the inviter must be an `owner` account. */
-function requireOwner(db: Database.Database, ownerId: number): void {
-  const owner = getAccountById(db, ownerId);
-  if (!owner || owner.role !== 'owner') {
-    throw new InvalidInvitationError('only an owner can invite a vendor');
+/**
+ * Opens a staff-only action: the tenant must exist and the inviter must be staff of it
+ * (a vendor never is, spec D3). Which staff role may invite is slice 3's rule (#206).
+ */
+function requireStaff(db: Database.Database, tenantId: number, accountId: number): void {
+  const member = db
+    .prepare('SELECT 1 FROM tenant_membership WHERE tenant_id = ? AND account_id = ?')
+    .get(tenantId, accountId);
+  if (!member) {
+    throw new InvalidInvitationError('only staff of a tenant can invite a vendor');
   }
 }
 
 export interface CreateInvitationOptions {
-  readonly ownerId: number;
+  readonly tenantId: number;
+  /** The staff account inviting; must belong to `tenantId`. */
+  readonly invitedBy: number;
   /** As typed; normalised here (trimmed, lower-cased). */
   readonly email: string;
   readonly displayName?: string | null;
-  /** The owner, from their session: required (audit-spec.md decision 3). */
+  /** The staff member, from their session: required (audit-spec.md decision 3). */
   readonly actor: AuditActor;
   readonly now?: Date;
 }
@@ -145,25 +157,26 @@ export function createInvitation(
   const token = generateSessionToken();
   return db
     .transaction((): { invitation: Invitation; token: string } => {
-      requireOwner(db, options.ownerId);
+      requireStaff(db, options.tenantId, options.invitedBy);
       const pending = db
         .prepare(
           `SELECT * FROM vendor_invitation
-            WHERE owner_id = ? AND email = ? AND accepted_at IS NULL
+            WHERE tenant_id = ? AND email = ? AND accepted_at IS NULL
               AND revoked_at IS NULL AND expires_at > ?`,
         )
-        .all(options.ownerId, email, now.toISOString()) as Row[];
+        .all(options.tenantId, email, now.toISOString()) as Row[];
       for (const old of pending) {
         withdraw(db, old.id, now, options.actor, { superseded: true });
       }
       const info = db
         .prepare(
           `INSERT INTO vendor_invitation
-             (owner_id, email, display_name, token_hash, created_at, expires_at)
-           VALUES (@owner, @email, @name, @hash, @at, @exp)`,
+             (tenant_id, invited_by, email, display_name, token_hash, created_at, expires_at)
+           VALUES (@tenant, @by, @email, @name, @hash, @at, @exp)`,
         )
         .run({
-          owner: options.ownerId,
+          tenant: options.tenantId,
+          by: options.invitedBy,
           email,
           name: displayName,
           hash: hashToken(token),
@@ -194,16 +207,16 @@ const cleanName = (name: string | null | undefined): string | null => {
   return text;
 };
 
-/** The owner's invitations, newest first, each with its derived status. */
+/** The tenant's invitations, newest first, each with its derived status. */
 export function listInvitations(
   db: Database.Database,
-  ownerId: number,
+  tenantId: number,
   now: Date = new Date(),
 ): Invitation[] {
   return (
     db
-      .prepare('SELECT * FROM vendor_invitation WHERE owner_id = ? ORDER BY id DESC')
-      .all(ownerId) as Row[]
+      .prepare('SELECT * FROM vendor_invitation WHERE tenant_id = ? ORDER BY id DESC')
+      .all(tenantId) as Row[]
   ).map((r) => fromRow(r, now));
 }
 
@@ -231,14 +244,14 @@ function withdraw(
 }
 
 export interface RevokeInvitationOptions {
-  readonly ownerId: number;
+  readonly tenantId: number;
   readonly id: number;
   readonly actor: AuditActor;
   readonly now?: Date;
 }
 
 /**
- * Withdraws a pending invitation. One that is another owner's or does not exist is a
+ * Withdraws a pending invitation. One that is another tenant's or does not exist is a
  * `NoSuchInvitationError`; one already used or withdrawn, a
  * `InvitationNotPendingError`. An expired one is withdrawn like any other: its link
  * is already dead, and the record then says the owner closed it.
@@ -251,8 +264,8 @@ export function revokeInvitation(
   return db
     .transaction((): Invitation => {
       const row = db
-        .prepare('SELECT * FROM vendor_invitation WHERE id = ? AND owner_id = ?')
-        .get(options.id, options.ownerId) as Row | undefined;
+        .prepare('SELECT * FROM vendor_invitation WHERE id = ? AND tenant_id = ?')
+        .get(options.id, options.tenantId) as Row | undefined;
       if (!row) throw new NoSuchInvitationError(`no invitation #${options.id}`);
       withdraw(db, row.id, now, options.actor, null);
       return fromRow(
@@ -308,7 +321,7 @@ export function acceptInvitation(
         email: row.email,
         passwordHash: options.passwordHash,
         role: 'vendor',
-        actor: { actor: { kind: 'account', id: row.owner_id }, label: null },
+        actor: { actor: { kind: 'account', id: row.invited_by }, label: null },
       });
       const changed = db
         .prepare(
@@ -317,13 +330,13 @@ export function acceptInvitation(
         )
         .run(now.toISOString(), account.id, row.id).changes;
       if (changed !== 1) throw new InvitationUnusableError();
-      addRosterMembership(db, { ownerId: row.owner_id, accountId: account.id, now });
+      addRosterMembership(db, { tenantId: row.tenant_id, accountId: account.id, now });
       appendAuditEvent(db, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },
         action: 'invitation.accepted',
         subjectType: 'invitation',
         subjectId: String(row.id),
-        detail: { owner_id: row.owner_id, account_id: account.id },
+        detail: { tenant_id: row.tenant_id, account_id: account.id },
       });
       return {
         account,
@@ -374,13 +387,13 @@ export function joinInvitation(
         )
         .run(now.toISOString(), account.id, row.id).changes;
       if (changed !== 1) throw new InvitationUnusableError();
-      addRosterMembership(db, { ownerId: row.owner_id, accountId: account.id, now });
+      addRosterMembership(db, { tenantId: row.tenant_id, accountId: account.id, now });
       appendAuditEvent(db, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },
         action: 'invitation.accepted',
         subjectType: 'invitation',
         subjectId: String(row.id),
-        detail: { owner_id: row.owner_id, account_id: account.id, existing: true },
+        detail: { tenant_id: row.tenant_id, account_id: account.id, existing: true },
       });
       return {
         account,
@@ -393,16 +406,21 @@ export function joinInvitation(
     .immediate();
 }
 
-/** Accepted invitations of an owner, for the server to bring each roster file level with. */
+/** Accepted invitations of a tenant, for the server to bring its roster file level with. */
 export function listAcceptedInvitations(
   db: Database.Database,
-  ownerId: number,
-): Array<{ accountId: number; displayName: string | null }> {
+  tenantId: number,
+): Array<{ accountId: number; displayName: string | null; invitedBy: number }> {
   return db
     .prepare(
-      `SELECT accepted_account_id AS accountId, display_name AS displayName
+      `SELECT accepted_account_id AS accountId, display_name AS displayName,
+              invited_by AS invitedBy
            FROM vendor_invitation
-          WHERE owner_id = ? AND accepted_account_id IS NOT NULL ORDER BY id`,
+          WHERE tenant_id = ? AND accepted_account_id IS NOT NULL ORDER BY id`,
     )
-    .all(ownerId) as Array<{ accountId: number; displayName: string | null }>;
+    .all(tenantId) as Array<{
+    accountId: number;
+    displayName: string | null;
+    invitedBy: number;
+  }>;
 }

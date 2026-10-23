@@ -32,7 +32,7 @@ for those), because they are commercial calls that are Louis's (§9, O4).
 - **Client.** A tenant's customer. Still a number the tenant typed, never an
   account, never checked against `portal.sqlite` (`CLAUDE.md`, backlog #130).
 
-## 2. Where it stands (read from the code, 2026-10-23)
+## 2. Where it stood (read from the code, 2026-10-23, before slice 2 landed)
 
 - `account` has `storage_root` (`u/<96 bits hex>`) and a `role` of `owner` or
   `vendor`. The role classifies and permits nothing.
@@ -91,9 +91,11 @@ scope is.
 **D6. The tenant comes from the session, never from the request.** A route
 resolves it from the authenticated account's membership. The one place a
 request names a tenant is a grantee opening a project in someone else's tenant
-(`?tenant=<id>`, today `?owner=<account id>`), and that opens only through a
-grant; no grant is the same 404 as a missing project. A path built afterwards
-uses the opened tenant, never the session's.
+(`?tenant=<id>`; it was `?owner=<account id>` before slice 2, #292), and that opens only
+through a grant; no grant is the same 404 as a missing project. A path built afterwards
+uses the opened tenant, never the session's. An account with no tenant (a vendor) is not
+refused on a read: it is shown what its empty storage root always showed it, an empty list
+or the 404 of a missing object, and is refused (403) only where it would create something.
 
 **D7. Tenants are provisioned by the operator.** `create-tenant` on the command
 line, beside `create-account`. There is no signup route, no trial, no plan.
@@ -169,13 +171,19 @@ WHEN COALESCE((SELECT role FROM account WHERE id = NEW.account_id), 'owner') <> 
 BEGIN SELECT RAISE(ABORT, 'a vendor is never tenant staff'); END;
 ```
 
-Slice 2 (#292) re-keys the five owner tables: add `tenant_id`, backfill through
-the membership, rebuild without `owner_id`. Each becomes `REFERENCES tenant(id)`.
-`project_authorization.CHECK (account_id <> owner_id)` goes, since the grantee
-is an account and the owner a tenant; its place is taken by "the grantee is not
-staff of that tenant", enforced where a grant is written, because SQL cannot see
-across the two tables without a trigger. A project is named by
-`(tenant_id, slug)` in `ProjectRef` and in every audit `detail`.
+Slice 2 (#292, built; platform schema v9) re-keys the five owner tables: each is
+replaced by a table keyed on `tenant_id REFERENCES tenant(id)`, its rows copied through
+`tenant_membership` (`rekeyTable`: `rebuildTable` cannot do it, because it copies the old
+columns by name and the old column is the point). A row naming an owner that has no tenant
+fails the migration and rolls it back, discarding nothing. `project_authorization`'s
+`CHECK (account_id <> owner_id)` and `roster_membership`'s are replaced by triggers
+(`project_authorization_not_staff`, `roster_membership_not_staff`): staff of a tenant already
+have its projects and are not on its roster. `vendor_invitation` also records `invited_by`
+(backfilled from the old `owner_id`, which was that one person), because the tenant is not a
+person and the vendor account an acceptance creates is still attributed to the staff member
+who vouched for it. A project is named by `(tenant_id, slug)` in `ProjectRef`, and in a log as
+`t<tenant id>/<slug>`: events written earlier keep `<owner account id>/<slug>`, and the prefix
+is what stops the two being mistaken.
 
 `account.storage_root` stays, `NOT NULL UNIQUE`, and is never read for staff
 once slice 2 lands. Dropping it needs a table rebuild that `account` cannot take
@@ -253,7 +261,7 @@ seen to fail before the code that satisfies it.
 | Slice | Issue | What                                                                 | Size |
 | ----- | ----- | -------------------------------------------------------------------- | ---- |
 | 1     | #291  | `tenant`, `tenant_membership`, backfill, `createTenant`, `create-tenant`, `rename-tenant` | M |
-| 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent | L |
+| 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent (built) | L |
 | 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations                   | M    |
 | 4     | #294  | Isolation matrix across every route; tenant-scoped audit view        | M    |
 | 5     | #295  | A portal per tenant (needs O2)                                       | L    |
@@ -289,14 +297,28 @@ Each has a recommendation; none blocks slices 1 to 3.
 - **O5. The region unit.** `worldwide-and-compliance-spec.md` §3.1 leaves it
   open. Recommended: the tenant, with a `region` column added when a second
   region exists, not before.
+- **O7. A subdomain per tenant (#298).** Louis, 2026-10-23: a domain for the platform and a
+  subdomain per LSP. It fits: it is the usual pattern, it gives each tenant its own browser
+  origin (a token is kept per origin, so a login on one is not on another), and D8 makes the
+  tenant the region unit, so a subdomain can later point at a region. Conditions: the host is
+  a hint, never the authority (the session still names the tenant, D6; a mismatch is refused);
+  the slug is a public name and is not `tenant.name`; one wildcard certificate so customer
+  names stay out of Certificate Transparency logs. **Decided (Louis, 2026-10-23): a vendor
+  signs in on each tenant's subdomain**, not on a neutral host. So the host check applies to
+  every session: a vendor session is valid on tenant T's host only if the account is on T's
+  roster, and the vendor routes that today span every roster (`/api/vendor/feed`,
+  `/capacity`, `/payments`) answer for the host's tenant only, so one LSP's page never shows
+  another LSP's work. The cost is accepted for simplicity: a freelancer on three rosters has
+  three logins and no combined feed or payment record. A neutral host remains possible later
+  and would not change the host check.
 - **O6. What the interface calls it.** Recommended: "organisation" in the UI,
   `tenant` in code; the glossary records the code word. Louis may prefer
   "workspace".
 
 ## 10. What this teaches the existing specs
 
-On landing, slice 2 updates `CLAUDE.md`'s vendor, glossary and draft-engine
-invariants that say "owner account" (the `.ctv` is "one per owner account", a
-consent is "scoped by owner"). They are true of a tenant in the same words with
-that one noun changed, which is why this is a re-keying and not a redesign.
-This slice (the spec) changes none of them, because nothing in the code has.
+Slice 2 landed 2026-10-23. `CLAUDE.md`'s invariants that said "owner account" (the `.ctv` is
+one per tenant, a consent is the tenant's, a path is built from the tenant's root) now say
+tenant, and `vendor-spec.md` carries a note at the top that its "owner" is the tenant and
+its `?owner=` is `?tenant=`. They were true in the same words with that one noun changed,
+which is why this was a re-keying and not a redesign.

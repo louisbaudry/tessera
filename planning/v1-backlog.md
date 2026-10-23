@@ -4448,13 +4448,69 @@ Nothing reads the new tables yet; slice 2 (#205) moves the readers. What it taug
   email left no second tenant; a blank name, an unknown tenant and a non-number refused).
   Not verified: any route or screen (none reads a tenant yet).
 
-**#205 · Key ownership on the tenant, not the owner account · L** · [issue #292]
+**#205 · ~~Key ownership on the tenant, not the owner account~~ · DONE — platform schema v9 (`rekeyTable`), `db/src/platform/{authorization,membership,invitations,client-engine,audit}.ts`, `db/src/vendor/reconcile.ts`, `server/src/{app,storage,assignments,invitations,webhooks,engine,draft,jobs,roster}.ts` (`sessionAccount`, `sessionTenant`, `ownTenant`, `req.membership`), `web/src/{api,route,project-key}.ts` and the components that carry the id** (2026-10-23; card #292, Epic 14, `tenant-spec.md` §4, D6)
+
+The tenant, not the owner account, owns the files, the roster, the consents and the grants.
+Translations between the two vocabularies, for reading the older entries below: `?owner=<account id>`
+is `?tenant=<tenant id>`; `owner_id` is `tenant_id`; `ProjectRef.accountId` is `tenantId`;
+`listRosterOwners` is `listRosterTenants`; `listAuthorizationsByOwner` is `listAuthorizationsByTenant`;
+a feed row's `owner` is `tenantId`; `openProject` returns `tenant`, not `owner`. What it taught:
+
+- **The compiler found the paths, not the keys.** `storage.ts` took an `Account`, so the first
+  pass compiled with the account's root still flowing everywhere. Changing its parameter to a
+  `Tenant` turned every call site into an error; the `owner(req).id` uses that are plain numbers (a
+  job's key, a glossary session's, an audit project ref, a nudge) had to be found by reading. Each
+  now says tenant.
+- **Ids that are not account ids.** A tenant's id equals its founder's account id only until a vendor
+  sits between two owners, so code that confuses them passes every simple test. The new tests make
+  accounts so that no tenant id equals its founder's (`tenancy.test.ts`; `tenant.fixture.ts`), and
+  the migration test uses owners 1 and 3 around a vendor. A mutation check (job lookup keyed on
+  the account again) fails the jobs test, so it is not green by luck.
+- **`rebuildTable` cannot re-key.** It copies the old table's columns by name, and the old column is
+  the point. `rekeyTable` (in the migration) creates the new table, copies through
+  `tenant_membership`, and swaps. A row whose owner has no tenant aborts the whole migration with a
+  message and discards nothing; the runner's backup is the way back. The five tables are leaves, so
+  the swap needs no foreign-keys-off step.
+- **A dropped CHECK is a lost invariant unless something replaces it.** `account_id <> owner_id` on
+  grants and on the roster index meant "you do not grant yourself your own project". With a tenant on
+  the other side it became two triggers (`*_not_staff`), because SQL cannot compare an account to a
+  tenant by column. Left out, the repository would have been the only guard.
+- **A vendor's reads stayed what they were.** A vendor has no tenant, and on every owner-only read the
+  old behaviour was its own empty storage root: an empty list, or the identical 404. Turning that
+  into a 403 would have told a vendor what it is and would have broken the documented "a stranger and
+  a vendor get one 404" contract (CLAUDE.md, vendor routes). So reads use `ownTenant` and answer as
+  before; only a route that would create something refuses (403). One real change: a vendor can
+  no longer create a project, memory or glossary in its own root, which it could by accident.
+- **An invitation needs a person.** The vendor account an acceptance creates was attributed to the
+  owner who vouched for it. A tenant is not an actor, so `vendor_invitation` gained `invited_by`
+  (backfilled from the old `owner_id`), and `bringRosterLevel` attributes each added vendor to it.
+- **Subject ids in a log.** `projectSubjectId` is now `t<tenant>/<slug>`; earlier events keep
+  `<account>/<slug>` and `owner_id` in an `invitation.accepted` detail. No reader keys on either.
+- **Jobs and glossary sessions are the tenant's.** A colleague polls or cancels an import another
+  staff member started, which is the point of a tenant; the tests insert a second membership by SQL
+  until slice 3 (#206) lets an admin add one.
+- Verified: 3 new migration tests (all five tables re-keyed with owners 1 and 3 around a vendor, the
+  invitation trigger and the indexes kept, an orphan refused with a rollback) and 9 new isolation tests
+  (`tenancy.test.ts`: staff share a tenant's projects, memories, jobs and root; a vendor has no tenant;
+  a grant opens one project by tenant id and the account id opens nothing; a second staff member is a
+  membership inserted by SQL until #206). Seen failing before the change: the migration tests and
+  the staff-sharing, vendor and grant tests; the stranger-gets-the-same-404 and memories-apart
+  tests passed before too (account scoping gave them), and stay as regression guards. The jobs test
+  was checked by mutation (job lookup keyed on the account again fails it). The old tests were
+  converted to tenant ids, and the two new triggers are asserted in the authorization and membership
+  tests. Then the whole suite (198 files, 2942 tests) and `pnpm test:golden`. Not verified: any screen
+  in a browser. Not run: `pnpm test:ooxml`, `test:gate` (nothing under `core/docx`, `core/model`,
+  `core/project` or `db/project` changed).
+- Not built: staff roles and adding staff (#206), the route-by-route isolation matrix (#207), a portal
+  per tenant (#208), a subdomain per tenant (#209).
 
 **#206 · Staff roles inside a tenant, and inviting staff · M** · [issue #293]
 
 **#207 · Isolation test matrix and a tenant-scoped audit view · M** · [issue #294]
 
 **#208 · A portal per tenant · L** · [issue #295]
+
+**#209 · A subdomain per tenant, with the host checked against the session · M** · [issue #298]
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 

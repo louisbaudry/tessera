@@ -20,7 +20,7 @@ import type {
   DraftEngineAdapter,
   ProjectAction,
 } from '@cat-tool/core';
-import { type Account, type openPlatformDb, type openProjectDb } from '@cat-tool/db';
+import { type Tenant, type openPlatformDb, type openProjectDb } from '@cat-tool/db';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { createAnthropicAdapter } from './anthropic-engine.js';
@@ -56,7 +56,8 @@ export interface DraftRouteDeps {
   readonly platform: ReturnType<typeof openPlatformDb>;
   readonly config: ServerConfig;
   readonly jobs: JobRegistry;
-  readonly owner: (req: FastifyRequest) => Account;
+  /** The session's tenant, or null for an account with none (a vendor). */
+  readonly tenant: (req: FastifyRequest) => Tenant | null;
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
   /** `openProject` of `app.ts`: answers 404/403 itself and returns null. */
   readonly openProject: (
@@ -64,7 +65,7 @@ export interface DraftRouteDeps {
     reply: FastifyReply,
     name: string,
     action: ProjectAction,
-  ) => { db: ReturnType<typeof openProjectDb>; path: string; owner: Account } | null;
+  ) => { db: ReturnType<typeof openProjectDb>; path: string; tenant: Tenant } | null;
   readonly adapterFor?: AdapterFor;
 }
 
@@ -76,15 +77,15 @@ export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps):
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/draft',
     async (req, reply) => {
-      const me = deps.owner(req);
-      if (me.role !== 'owner') {
+      const own = deps.tenant(req);
+      if (own === null) {
         return reply.code(403).send({ error: 'only an owner can do that' });
       }
       const opened = deps.openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       let decision;
       try {
-        decision = engineFor(platform, opened.owner.id, opened.db);
+        decision = engineFor(platform, opened.tenant.id, opened.db);
       } finally {
         opened.db.close();
       }
@@ -100,7 +101,7 @@ export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps):
           .code(503)
           .send({ error: 'the draft engine is not configured on this server' });
       }
-      if (jobs.runningFor(me.id, 'draft') >= 1) {
+      if (jobs.runningFor(own.id, 'draft') >= 1) {
         return reply
           .code(409)
           .send({ error: 'a drafting run is already going — wait for it, or cancel it' });
@@ -113,13 +114,13 @@ export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps):
 
       const handle = startDraftRun({
         platform,
-        ownerId: opened.owner.id,
+        tenantId: opened.tenant.id,
         projectPath: opened.path,
         adapter,
         actor: deps.sessionActor(req),
       });
       const job = jobs.start({
-        accountId: me.id,
+        tenantId: own.id,
         kind: 'draft',
         tm: req.params.name,
         handle,

@@ -48,7 +48,7 @@ export interface JobView {
 
 interface Entry {
   readonly id: string;
-  readonly accountId: number;
+  readonly tenantId: number;
   readonly kind: JobKind;
   readonly tm: string;
   readonly handle: JobHandle<unknown>;
@@ -70,9 +70,9 @@ export class JobRegistry {
    * How many of this account's jobs of a kind are running; imports allow one and
    * scans allow one, counted apart, so a scan never blocks an import.
    */
-  runningFor(accountId: number, kind: JobKind): number {
+  runningFor(tenantId: number, kind: JobKind): number {
     return [...this.entries.values()].filter(
-      (e) => e.accountId === accountId && e.kind === kind && e.state === 'running',
+      (e) => e.tenantId === tenantId && e.kind === kind && e.state === 'running',
     ).length;
   }
 
@@ -86,7 +86,7 @@ export class JobRegistry {
    * and says what the client sees. A throw from it is a failed job.
    */
   start(params: {
-    accountId: number;
+    tenantId: number;
     kind: JobKind;
     tm: string;
     handle: JobHandle<unknown>;
@@ -95,7 +95,7 @@ export class JobRegistry {
     this.prune();
     const entry: Entry = {
       id: randomBytes(16).toString('hex'),
-      accountId: params.accountId,
+      tenantId: params.tenantId,
       kind: params.kind,
       tm: params.tm,
       handle: params.handle,
@@ -130,14 +130,14 @@ export class JobRegistry {
   }
 
   /** The account's own job, or undefined — another account's id is the same as none. */
-  get(accountId: number, id: string): JobView | undefined {
+  get(tenantId: number, id: string): JobView | undefined {
     const entry = this.entries.get(id);
-    return entry && entry.accountId === accountId ? this.view(entry) : undefined;
+    return entry && entry.tenantId === tenantId ? this.view(entry) : undefined;
   }
 
   /** The account's own jobs, running first, then the most recently started. */
-  list(accountId: number): JobView[] {
-    const own = [...this.entries.values()].filter((e) => e.accountId === accountId);
+  list(tenantId: number): JobView[] {
+    const own = [...this.entries.values()].filter((e) => e.tenantId === tenantId);
     // Map order is start order, so reversing puts the newest first and the
     // stable sort keeps that within each group.
     return own
@@ -147,9 +147,9 @@ export class JobRegistry {
   }
 
   /** Asks the account's job to stop; returns its view, or undefined if it is not theirs. */
-  cancel(accountId: number, id: string): JobView | undefined {
+  cancel(tenantId: number, id: string): JobView | undefined {
     const entry = this.entries.get(id);
-    if (!entry || entry.accountId !== accountId) return undefined;
+    if (!entry || entry.tenantId !== tenantId) return undefined;
     if (entry.state === 'running') entry.handle.cancel();
     return this.view(entry);
   }

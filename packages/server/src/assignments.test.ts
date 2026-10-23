@@ -24,7 +24,7 @@ import {
   createVendorFile,
   dismissQaIssue,
   listEvents,
-  listRosterOwners,
+  listRosterTenants,
   grantProjectAuthorization,
   listSegments,
   openPlatformDb,
@@ -41,6 +41,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { projectPath } from './storage.js';
 
 const FIXTURE = join(
@@ -144,19 +145,19 @@ const act = (
   token: string,
   id: number,
   verb: string,
-  owner: number | string = alice.id,
+  tenant: number | string = tenantOf(config, alice).id,
 ) =>
   app.inject({
     method: 'POST',
-    url: `/api/assignments/${id}/${verb}?owner=${owner}`,
+    url: `/api/assignments/${id}/${verb}?tenant=${tenant}`,
     headers: as(token),
     payload: {},
   });
 
-const get = (token: string, id: number | string, owner?: number | string) =>
+const get = (token: string, id: number | string, tenant?: number | string) =>
   app.inject({
     method: 'GET',
-    url: `/api/assignments/${id}${owner === undefined ? '' : `?owner=${owner}`}`,
+    url: `/api/assignments/${id}${tenant === undefined ? '' : `?tenant=${tenant}`}`,
     headers: as(token),
   });
 
@@ -182,7 +183,7 @@ describe('the owner offers a project', () => {
 
   it('reads an attached memory into the frozen analysis: an exact hit is exact, with no pre-translate', async () => {
     const a = await aliceWithProject();
-    const path = projectPath(config.storageRoot, alice, 'job');
+    const path = projectPath(config.storageRoot, tenantOf(config, alice), 'job');
     const projectDb = openProjectDb(path);
     const target = listSegments(projectDb, 1).find((s) => segmentWords(s) > 0)!;
     const memory = join(dirname(path), 'offer-memory.ctm');
@@ -214,7 +215,9 @@ describe('the owner offers a project', () => {
 
   it('freezes the project’s tier analysis with the offer, and the owner sees it', async () => {
     const a = await aliceWithProject();
-    const projectDb = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const projectDb = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
     const now = analyseTierWords(projectDb);
     projectDb.close();
     expect(Object.values(now).reduce((n, w) => n + (w ?? 0), 0)).toBeGreaterThan(0);
@@ -228,7 +231,9 @@ describe('the owner offers a project', () => {
 
     // The project moves on (every segment now reads as an exact match): the
     // frozen analysis does not.
-    const edited = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const edited = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
     edited.prepare("UPDATE segment SET origin = 'tm_exact'").run();
     expect(analyseTierWords(edited)).not.toEqual(now);
     edited.close();
@@ -311,7 +316,7 @@ describe('a vendor answers an offer', () => {
       (
         await app.inject({
           method: 'GET',
-          url: `/api/projects/job?owner=${alice.id}`,
+          url: `/api/projects/job?tenant=${tenantOf(config, alice).id}`,
           headers: as(b),
         })
       ).statusCode,
@@ -323,7 +328,7 @@ describe('a vendor answers an offer', () => {
 
     const editor = await app.inject({
       method: 'GET',
-      url: `/api/projects/job?owner=${alice.id}`,
+      url: `/api/projects/job?tenant=${tenantOf(config, alice).id}`,
       headers: as(b),
     });
     expect(editor.statusCode, editor.body).toBe(200);
@@ -332,7 +337,7 @@ describe('a vendor answers an offer', () => {
       (
         await app.inject({
           method: 'DELETE',
-          url: `/api/projects/job?owner=${alice.id}`,
+          url: `/api/projects/job?tenant=${tenantOf(config, alice).id}`,
           headers: as(b),
         })
       ).statusCode,
@@ -341,7 +346,10 @@ describe('a vendor answers an offer', () => {
     const platform = openPlatformDb(config.dbPath);
     try {
       expect(
-        listEvents(platform, { subjectType: 'project', subjectId: `${alice.id}/job` })
+        listEvents(platform, {
+          subjectType: 'project',
+          subjectId: `t${tenantOf(config, alice).id}/job`,
+        })
           .filter((e) => e.action === 'authorization.granted')
           .map((e) => [e.actor, JSON.parse(e.detail!)]),
       ).toEqual([
@@ -358,7 +366,7 @@ describe('a vendor answers an offer', () => {
     const b = await login('bob');
     const res = await app.inject({
       method: 'POST',
-      url: `/api/assignments/1/decline?owner=${alice.id}`,
+      url: `/api/assignments/1/decline?tenant=${tenantOf(config, alice).id}`,
       headers: as(b),
       payload: { note: 'on leave' },
     });
@@ -368,7 +376,7 @@ describe('a vendor answers an offer', () => {
       (
         await app.inject({
           method: 'GET',
-          url: `/api/projects/job?owner=${alice.id}`,
+          url: `/api/projects/job?tenant=${tenantOf(config, alice).id}`,
           headers: as(b),
         })
       ).statusCode,
@@ -414,8 +422,8 @@ describe('a vendor answers an offer', () => {
       expect(res.statusCode, `${verb} owner=${owner}`).toBe(404);
       expect(res.body).toBe(nothing.body);
     }
-    expect((await get(c, 1, alice.id)).statusCode).toBe(404);
-    expect((await get(d, 1, alice.id)).statusCode).toBe(404);
+    expect((await get(c, 1, tenantOf(config, alice).id)).statusCode).toBe(404);
+    expect((await get(d, 1, tenantOf(config, alice).id)).statusCode).toBe(404);
     // nothing changed
     expect((await get(a, 1)).json()).toMatchObject({ assignment: { status: 'offered' } });
   });
@@ -423,7 +431,7 @@ describe('a vendor answers an offer', () => {
   it('is not an owner’s move: the owner’s own id as ?owner is no vendor’s answer', async () => {
     const a = await aliceWithProject();
     await post(a, offerBody());
-    expect((await act(a, 1, 'accept', alice.id)).statusCode).toBe(404);
+    expect((await act(a, 1, 'accept', tenantOf(config, alice).id)).statusCode).toBe(404);
   });
 });
 
@@ -468,9 +476,9 @@ describe('the pool', () => {
     await post(a, offerBody({ channel: 'pool', vendors: [bob.id] }));
     const c = await login('carol');
     expect((await act(c, 1, 'claim')).statusCode).toBe(404);
-    expect((await get(c, 1, alice.id)).statusCode).toBe(404);
+    expect((await get(c, 1, tenantOf(config, alice).id)).statusCode).toBe(404);
     const b = await login('bob');
-    expect((await get(b, 1, alice.id)).statusCode).toBe(200);
+    expect((await get(b, 1, tenantOf(config, alice).id)).statusCode).toBe(200);
   });
 
   it('reposts a declined claim to the rest of the pool, and not to the one who declined', async () => {
@@ -481,12 +489,12 @@ describe('the pool', () => {
     await act(b, 1, 'claim');
     expect((await act(b, 1, 'decline')).statusCode).toBe(200);
 
-    const again = await get(c, 2, alice.id);
+    const again = await get(c, 2, tenantOf(config, alice).id);
     expect(again.statusCode, again.body).toBe(200);
     expect(again.json()).toMatchObject({
       assignment: { id: 2, status: 'pool_open', reopenedFrom: 1, project: 'job' },
     });
-    expect((await get(b, 2, alice.id)).statusCode).toBe(404);
+    expect((await get(b, 2, tenantOf(config, alice).id)).statusCode).toBe(404);
     expect((await act(c, 2, 'claim')).statusCode).toBe(200);
   });
 });
@@ -496,7 +504,7 @@ describe('what each side sees', () => {
     const a = await aliceWithProject();
     await post(a, offerBody({ channel: 'pool', vendors: [bob.id, carol.id] }));
     const b = await login('bob');
-    const res = await get(b, 1, alice.id);
+    const res = await get(b, 1, tenantOf(config, alice).id);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       assignment: {
@@ -560,17 +568,21 @@ interface FeedBody {
   delivered: Array<{ id: number }>;
 }
 
-const feedOf = (token: string, owner: number | string = alice.id) =>
+const feedOf = (token: string, tenant: number | string = tenantOf(config, alice).id) =>
   app.inject({
     method: 'GET',
-    url: `/api/assignments?owner=${owner}`,
+    url: `/api/assignments?tenant=${tenant}`,
     headers: as(token),
   });
 
-const offerOf = (token: string, id: number, owner: number | string = alice.id) =>
+const offerOf = (
+  token: string,
+  id: number,
+  tenant: number | string = tenantOf(config, alice).id,
+) =>
   app.inject({
     method: 'GET',
-    url: `/api/assignments/${id}/offer?owner=${owner}`,
+    url: `/api/assignments/${id}/offer?tenant=${tenant}`,
     headers: as(token),
   });
 
@@ -609,8 +621,12 @@ describe('a vendor’s job feed', () => {
     expect((await feedOf(b, 'abc')).statusCode).toBe(404);
     expect((await feedOf(b, 99999)).statusCode).toBe(404);
     expect(
-      (await app.inject({ method: 'GET', url: `/api/assignments?owner=${alice.id}` }))
-        .statusCode,
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/assignments?tenant=${tenantOf(config, alice).id}`,
+        })
+      ).statusCode,
     ).toBe(401);
   });
 });
@@ -663,17 +679,23 @@ describe('opening an offer', () => {
   it('says there is no preview, not an error, when the project has since been deleted', async () => {
     const a = await aliceWithProject();
     await post(a, offerBody());
-    rmSync(projectPath(config.storageRoot, alice, 'job'), { force: true });
+    rmSync(projectPath(config.storageRoot, tenantOf(config, alice), 'job'), {
+      force: true,
+    });
     const res = await offerOf(await login('bob'), 1);
     expect(res.statusCode, res.body).toBe(200);
     expect((res.json() as { offer: { source: unknown } }).offer.source).toBeNull();
   });
 });
 
-const jobOf = (token: string, project = 'job', owner: number | string = alice.id) =>
+const jobOf = (
+  token: string,
+  project = 'job',
+  tenant: number | string = tenantOf(config, alice).id,
+) =>
   app.inject({
     method: 'GET',
-    url: `/api/vendor/job?owner=${owner}&project=${project}`,
+    url: `/api/vendor/job?tenant=${tenant}&project=${project}`,
     headers: as(token),
   });
 
@@ -706,10 +728,14 @@ describe('the job a vendor is working on a project', () => {
 const capacityOf = (token: string) =>
   app.inject({ method: 'GET', url: '/api/vendor/capacity', headers: as(token) });
 
-const setCapacityAs = (token: string, body: unknown, owner: number | string = alice.id) =>
+const setCapacityAs = (
+  token: string,
+  body: unknown,
+  tenant: number | string = tenantOf(config, alice).id,
+) =>
   app.inject({
     method: 'PUT',
-    url: `/api/vendor/capacity?owner=${owner}`,
+    url: `/api/vendor/capacity?tenant=${tenant}`,
     headers: as(token),
     payload: body as object,
   });
@@ -718,7 +744,10 @@ const setCapacityAs = (token: string, body: unknown, owner: number | string = al
 function indexBobOnAlice(): void {
   const platform = openPlatformDb(config.dbPath);
   try {
-    addRosterMembership(platform, { ownerId: alice.id, accountId: bob.id });
+    addRosterMembership(platform, {
+      tenantId: tenantOf(config, alice).id,
+      accountId: bob.id,
+    });
   } finally {
     platform.close();
   }
@@ -730,12 +759,14 @@ describe('a vendor’s capacity (#54)', () => {
     indexBobOnAlice();
     const b = await login('bob');
     expect((await capacityOf(b)).json()).toEqual({
-      rosters: [{ owner: alice.id, status: null, note: null, setAt: null }],
+      rosters: [
+        { tenantId: tenantOf(config, alice).id, status: null, note: null, setAt: null },
+      ],
     });
     const set = await setCapacityAs(b, { status: 'busy', note: ' Back Monday ' });
     expect(set.statusCode, set.body).toBe(200);
     expect(set.json()).toMatchObject({
-      owner: alice.id,
+      tenantId: tenantOf(config, alice).id,
       status: 'busy',
       note: 'Back Monday',
     });
@@ -786,7 +817,9 @@ const review = (token: string, id: number, payload: Record<string, unknown> = {}
 
 /** A blocking QA issue on the first segment of alice's project. */
 function blockProject(): number {
-  const project = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+  const project = openProjectDb(
+    projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+  );
   try {
     const segmentId = listSegments(project, 1)[0]!.id;
     addQaIssue(project, {
@@ -804,7 +837,7 @@ function blockProject(): number {
 const openedBy = (token: string) =>
   app.inject({
     method: 'GET',
-    url: `/api/projects/job?owner=${alice.id}`,
+    url: `/api/projects/job?tenant=${tenantOf(config, alice).id}`,
     headers: as(token),
   });
 
@@ -846,7 +879,9 @@ describe('the owner reviews a delivered job', () => {
     const b = await login('bob');
     expect((await openedBy(b)).statusCode).toBe(200); // still working: nothing was closed
 
-    const project = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const project = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
     dismissQaIssue(project, { segmentId, rule: 'tag.missing' }, { actor: SETUP });
     project.close();
     expect((await review(a, 1)).statusCode).toBe(200);
@@ -878,7 +913,9 @@ describe('the owner reviews a delivered job', () => {
     const a = await aliceWithProject();
     await post(a, offerBody());
     await deliveredByBob();
-    rmSync(projectPath(config.storageRoot, alice, 'job'), { force: true });
+    rmSync(projectPath(config.storageRoot, tenantOf(config, alice), 'job'), {
+      force: true,
+    });
     const res = await review(a, 1);
     expect(res.statusCode).toBe(409);
     expect(res.json<{ error: string }>().error).toMatch(/is gone/);
@@ -1077,7 +1114,9 @@ describe('a vendor starts and delivers, and the payable locks', () => {
     await post(a, offerBody());
     const b = await login('bob');
     const words = (() => {
-      const project = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+      const project = openProjectDb(
+        projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+      );
       try {
         return analyseTierWords(project).no_match ?? 0;
       } finally {
@@ -1135,7 +1174,9 @@ describe('a vendor starts and delivers, and the payable locks', () => {
     const b = await login('bob');
     await act(b, 1, 'accept');
     await act(b, 1, 'start');
-    rmSync(projectPath(config.storageRoot, alice, 'job'), { force: true });
+    rmSync(projectPath(config.storageRoot, tenantOf(config, alice), 'job'), {
+      force: true,
+    });
     const res = await act(b, 1, 'deliver');
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json()).toMatchObject({ assignment: { status: 'delivered' } });
@@ -1157,7 +1198,7 @@ describe('reconciling grants with the roster', () => {
       platform.close();
     }
   }
-  const project = () => ({ accountId: alice.id, name: 'job' });
+  const project = () => ({ tenantId: tenantOf(config, alice).id, name: 'job' });
 
   it('gives a vendor back the access a failed grant left out, once', async () => {
     const a = await aliceWithProject();
@@ -1435,7 +1476,7 @@ describe('a vendor’s feed across owners (#52a)', () => {
     app.inject({ method: 'GET', url: '/api/vendor/feed', headers: as(token) });
   interface Item {
     id: number;
-    owner: number;
+    tenantId: number;
     project: string;
     offeredAt: string;
   }
@@ -1511,7 +1552,7 @@ describe('a vendor’s feed across owners (#52a)', () => {
     const { erin } = await erinOffersBob();
     const platform = openPlatformDb(config.dbPath);
     try {
-      expect(listRosterOwners(platform, bob.id)).toEqual([erin.id]);
+      expect(listRosterTenants(platform, bob.id)).toEqual([tenantOf(config, erin).id]);
     } finally {
       platform.close();
     }
@@ -1525,7 +1566,9 @@ describe('a vendor’s feed across owners (#52a)', () => {
 
     // alice's roster was written without the index: bob sees only erin's job until she reconciles
     const before = (await myFeed(b)).json() as Feed;
-    expect(before.needsResponse.map((x) => x.owner)).toEqual([erin.id]);
+    expect(before.needsResponse.map((x) => x.tenantId)).toEqual([
+      tenantOf(config, erin).id,
+    ]);
     expect(before.needsResponse[0]).toMatchObject({ project: 'erins' });
 
     expect(
@@ -1538,8 +1581,8 @@ describe('a vendor’s feed across owners (#52a)', () => {
       ).statusCode,
     ).toBe(200);
     const after = (await myFeed(b)).json() as Feed;
-    expect(after.needsResponse.map((x) => x.owner).sort()).toEqual(
-      [alice.id, erin.id].sort(),
+    expect(after.needsResponse.map((x) => x.tenantId).sort()).toEqual(
+      [tenantOf(config, alice).id, tenantOf(config, erin).id].sort(),
     );
     const times = after.needsResponse.map((x) => x.offeredAt);
     expect(times).toEqual([...times].sort().reverse()); // newest first
@@ -1551,11 +1594,17 @@ describe('a vendor’s feed across owners (#52a)', () => {
     ]);
 
     // answering one of them moves it between groups, whichever owner it is
-    const mine = after.needsResponse.find((x) => x.owner === erin.id)!;
-    expect((await act(b, mine.id, 'accept', erin.id)).statusCode).toBe(200);
+    const mine = after.needsResponse.find(
+      (x) => x.tenantId === tenantOf(config, erin).id,
+    )!;
+    expect((await act(b, mine.id, 'accept', tenantOf(config, erin).id)).statusCode).toBe(
+      200,
+    );
     const moved = (await myFeed(b)).json() as Feed;
-    expect(moved.active.map((x) => x.owner)).toEqual([erin.id]);
-    expect(moved.needsResponse.map((x) => x.owner)).toEqual([alice.id]);
+    expect(moved.active.map((x) => x.tenantId)).toEqual([tenantOf(config, erin).id]);
+    expect(moved.needsResponse.map((x) => x.tenantId)).toEqual([
+      tenantOf(config, alice).id,
+    ]);
     void erinToken;
   });
 
@@ -1570,8 +1619,14 @@ describe('a vendor’s feed across owners (#52a)', () => {
     const dave2 = newOwner('dave2');
     const platform = openPlatformDb(config.dbPath);
     try {
-      addRosterMembership(platform, { ownerId: dave2.id, accountId: carol.id });
-      addRosterMembership(platform, { ownerId: alice.id, accountId: dave.id });
+      addRosterMembership(platform, {
+        tenantId: tenantOf(config, dave2).id,
+        accountId: carol.id,
+      });
+      addRosterMembership(platform, {
+        tenantId: tenantOf(config, alice).id,
+        accountId: dave.id,
+      });
     } finally {
       platform.close();
     }
@@ -1596,7 +1651,10 @@ describe('payments against locked payables (#112)', () => {
     await deliveredByBob();
     const platform = openPlatformDb(config.dbPath);
     try {
-      addRosterMembership(platform, { ownerId: alice.id, accountId: bob.id });
+      addRosterMembership(platform, {
+        tenantId: tenantOf(config, alice).id,
+        accountId: bob.id,
+      });
     } finally {
       platform.close();
     }
@@ -1848,7 +1906,7 @@ describe('payments against locked payables (#112)', () => {
     };
     expect(before.payments).toHaveLength(1);
     expect(before.payments[0]).toMatchObject({
-      owner: alice.id,
+      tenantId: tenantOf(config, alice).id,
       assignment: 1,
       project: 'job',
       currency: 'EUR',
@@ -1875,7 +1933,10 @@ describe('payments against locked payables (#112)', () => {
     // carol is on the roster with no job; dave is on nobody's.
     const platform = openPlatformDb(config.dbPath);
     try {
-      addRosterMembership(platform, { ownerId: alice.id, accountId: carol.id });
+      addRosterMembership(platform, {
+        tenantId: tenantOf(config, alice).id,
+        accountId: carol.id,
+      });
     } finally {
       platform.close();
     }

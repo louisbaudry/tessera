@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { JobRegistry } from './jobs.js';
 import { glossaryPath, tmPath } from './storage.js';
 
@@ -71,7 +72,7 @@ const as = (token: string) => ({ authorization: `Bearer ${token}` });
 
 /** Alice's memory `mem`: three units, one of which uses the old rendering. */
 function seed(): void {
-  const memPath = tmPath(config.storageRoot, alice, 'mem');
+  const memPath = tmPath(config.storageRoot, tenantOf(config, alice), 'mem');
   mkdirSync(dirname(memPath), { recursive: true });
   const tm = createTm(memPath, { name: 'mem', generator: 'test' });
   const now = new Date().toISOString();
@@ -104,7 +105,7 @@ function seed(): void {
   unit('u-other', 'Open the door.', 'Öffnen Sie die Tür.');
   tm.close();
 
-  const gPath = glossaryPath(config.storageRoot, alice, 'terms');
+  const gPath = glossaryPath(config.storageRoot, tenantOf(config, alice), 'terms');
   mkdirSync(dirname(gPath), { recursive: true });
   const g = createGlossary(gPath, { name: 'terms', generator: 'test' });
   const term = insertTerm(g);
@@ -242,9 +243,9 @@ describe('the job registry counts a kind apart', () => {
 
   it('lets a scan run beside an import, and one of each per account', () => {
     const jobs = new JobRegistry();
-    const start = (kind: 'import' | 'scan', accountId = 1) =>
+    const start = (kind: 'import' | 'scan', tenantId = 1) =>
       jobs.start({
-        accountId,
+        tenantId,
         kind,
         tm: 'm',
         handle: handle as never,

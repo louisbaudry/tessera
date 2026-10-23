@@ -27,7 +27,7 @@ import {
 } from '@cat-tool/core';
 import {
   startJob,
-  type Account,
+  type Tenant,
   type JobHandle,
   type openProjectDb,
   type ReplaceChoice,
@@ -45,9 +45,9 @@ export interface ReplaceRouteDeps {
     reply: FastifyReply,
     name: string,
     action: ProjectAction,
-  ) => { db: ReturnType<typeof openProjectDb>; path: string; owner: Account } | null;
+  ) => { db: ReturnType<typeof openProjectDb>; path: string; tenant: Tenant } | null;
   /** The account a request is made as, for the registry's per-account count. */
-  readonly accountId: (req: FastifyRequest) => number;
+  readonly tenantId: (req: FastifyRequest) => number;
   /** Time limits in ms; `core`'s when omitted. Shortened only by a test of a hanging pattern. */
   readonly limitsMs?: { readonly scan?: number; readonly apply?: number };
 }
@@ -106,7 +106,7 @@ export function registerReplaceRoutes(
     limitMs: number,
     kind: 'scan' | 'apply',
   ) {
-    const me = deps.accountId(req);
+    const me = deps.tenantId(req);
     if (deps.jobs.runningFor(me, 'replace') >= 1) {
       return reply.code(409).send({
         error: 'a find and replace is already running: wait for it, or cancel it',
@@ -125,7 +125,7 @@ export function registerReplaceRoutes(
     }, limitMs);
     void handle.done.finally(() => clearTimeout(timer)).catch(() => undefined);
     const job = deps.jobs.start({
-      accountId: me,
+      tenantId: me,
       kind: 'replace',
       tm: project,
       handle,

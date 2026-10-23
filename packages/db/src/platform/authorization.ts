@@ -1,8 +1,8 @@
 /**
  * `project_authorization` (vendor-spec.md §3 implementation note; backlog
- * #45): what an owner has granted another account on one of their
- * projects. A project is named as `audit.ts` names it, by its owner and
- * slug; the owner's own access is the path and has no row.
+ * #45): what a tenant has granted an account outside it on one of its
+ * projects. A project is named as `audit.ts` names it, by its tenant and
+ * slug; staff's own access is the path and has no row.
  *
  * Every write records its `authorization.granted` / `.revoked` event in
  * the same transaction, with a required actor (audit-spec.md §2.5). Nothing
@@ -32,7 +32,7 @@ export interface ProjectAuthorization {
 
 interface Row {
   account_id: number;
-  owner_id: number;
+  tenant_id: number;
   project_name: string;
   scope: ProjectScope;
   granted_at: string;
@@ -40,7 +40,7 @@ interface Row {
 
 const fromRow = (r: Row): ProjectAuthorization => ({
   accountId: r.account_id,
-  project: { accountId: r.owner_id, name: r.project_name },
+  project: { tenantId: r.tenant_id, name: r.project_name },
   scope: r.scope,
   grantedAt: r.granted_at,
 });
@@ -56,8 +56,11 @@ export interface GrantOptions {
 /**
  * Gives `accountId` a scope on a project. Granting what the account
  * already has changes and records nothing; granting a different scope
- * replaces the old one, as a revoke and a grant in the log. The owner
- * cannot be granted their own project, and neither account may be missing.
+ * replaces the old one, as a revoke and a grant in the log. A member of the
+ * tenant cannot be granted its projects (their access is the tenant's), and
+ * neither the account nor the tenant may be missing. That rule lives here and
+ * not in the schema, which cannot see across `tenant_membership` and the grant
+ * without a trigger.
  */
 export function grantProjectAuthorization(
   db: Database.Database,
@@ -66,14 +69,19 @@ export function grantProjectAuthorization(
   if (!isProjectScope(options.scope)) {
     throw new AuthorizationError(`unknown scope "${String(options.scope)}"`);
   }
-  if (options.accountId === options.project.accountId) {
-    throw new AuthorizationError('an owner already has their own project');
-  }
   db.transaction(() => {
-    for (const id of [options.accountId, options.project.accountId]) {
-      if (!db.prepare('SELECT 1 FROM account WHERE id = ?').get(id)) {
-        throw new AuthorizationError(`no account #${id}`);
-      }
+    if (!db.prepare('SELECT 1 FROM account WHERE id = ?').get(options.accountId)) {
+      throw new AuthorizationError(`no account #${options.accountId}`);
+    }
+    if (!db.prepare('SELECT 1 FROM tenant WHERE id = ?').get(options.project.tenantId)) {
+      throw new AuthorizationError(`no tenant #${options.project.tenantId}`);
+    }
+    if (
+      db
+        .prepare('SELECT 1 FROM tenant_membership WHERE tenant_id = ? AND account_id = ?')
+        .get(options.project.tenantId, options.accountId)
+    ) {
+      throw new AuthorizationError('staff of a tenant already have its projects');
     }
     const existing = scopeOf(db, options.accountId, options.project);
     if (existing === options.scope) return;
@@ -81,11 +89,11 @@ export function grantProjectAuthorization(
       removeRow(db, options.accountId, options.project, existing, options.actor);
     db.prepare(
       `INSERT INTO project_authorization
-         (account_id, owner_id, project_name, scope, granted_at)
-       VALUES (@account_id, @owner_id, @project_name, @scope, @granted_at)`,
+         (account_id, tenant_id, project_name, scope, granted_at)
+       VALUES (@account_id, @tenant_id, @project_name, @scope, @granted_at)`,
     ).run({
       account_id: options.accountId,
-      owner_id: options.project.accountId,
+      tenant_id: options.project.tenantId,
       project_name: options.project.name,
       scope: options.scope,
       granted_at: new Date().toISOString(),
@@ -108,8 +116,8 @@ function removeRow(
   actor: AuditActor,
 ): void {
   db.prepare(
-    'DELETE FROM project_authorization WHERE account_id = ? AND owner_id = ? AND project_name = ?',
-  ).run(accountId, project.accountId, project.name);
+    'DELETE FROM project_authorization WHERE account_id = ? AND tenant_id = ? AND project_name = ?',
+  ).run(accountId, project.tenantId, project.name);
   appendAuditEvent(db, {
     actor,
     action: 'authorization.revoked',
@@ -144,9 +152,9 @@ export function revokeAllProjectAuthorizations(
   return db.transaction((): number => {
     const rows = db
       .prepare(
-        'SELECT * FROM project_authorization WHERE owner_id = ? AND project_name = ? ORDER BY id',
+        'SELECT * FROM project_authorization WHERE tenant_id = ? AND project_name = ? ORDER BY id',
       )
-      .all(options.project.accountId, options.project.name) as Row[];
+      .all(options.project.tenantId, options.project.name) as Row[];
     for (const r of rows) {
       removeRow(db, r.account_id, options.project, r.scope, options.actor);
     }
@@ -162,9 +170,9 @@ export function scopeOf(
 ): ProjectScope | null {
   const row = db
     .prepare(
-      'SELECT scope FROM project_authorization WHERE account_id = ? AND owner_id = ? AND project_name = ?',
+      'SELECT scope FROM project_authorization WHERE account_id = ? AND tenant_id = ? AND project_name = ?',
     )
-    .get(accountId, project.accountId, project.name) as
+    .get(accountId, project.tenantId, project.name) as
     { scope: ProjectScope } | undefined;
   return row?.scope ?? null;
 }
@@ -181,15 +189,15 @@ export function listAuthorizationsFor(
   ).map(fromRow);
 }
 
-/** Everything granted on any of one owner's projects, oldest first. */
-export function listAuthorizationsByOwner(
+/** Everything granted on any of one tenant's projects, oldest first. */
+export function listAuthorizationsByTenant(
   db: Database.Database,
-  ownerId: number,
+  tenantId: number,
 ): ProjectAuthorization[] {
   return (
     db
-      .prepare('SELECT * FROM project_authorization WHERE owner_id = ? ORDER BY id')
-      .all(ownerId) as Row[]
+      .prepare('SELECT * FROM project_authorization WHERE tenant_id = ? ORDER BY id')
+      .all(tenantId) as Row[]
   ).map(fromRow);
 }
 
@@ -201,8 +209,8 @@ export function listAuthorizationsOn(
   return (
     db
       .prepare(
-        'SELECT * FROM project_authorization WHERE owner_id = ? AND project_name = ? ORDER BY id',
+        'SELECT * FROM project_authorization WHERE tenant_id = ? AND project_name = ? ORDER BY id',
       )
-      .all(project.accountId, project.name) as Row[]
+      .all(project.tenantId, project.name) as Row[]
   ).map(fromRow);
 }

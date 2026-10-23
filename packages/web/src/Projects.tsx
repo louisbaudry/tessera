@@ -162,7 +162,7 @@ function NewProject({ taken }: { taken: readonly string[] }) {
 export function ProjectFiles({ name }: { name: string }) {
   const [version, setVersion] = useState(0);
   // Another account's project (a vendor's job): the files to work on, nothing to manage.
-  const foreign = parseProjectKey(name).owner !== null;
+  const foreign = parseProjectKey(name).tenantId !== null;
   const detail = useLoad(
     // `version` reloads the list after an upload.
     // eslint-disable-next-line react-hooks/exhaustive-deps

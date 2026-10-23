@@ -13,14 +13,14 @@ import { api } from './api.js';
 import { forecast, formatMicros } from './jobs.js';
 import { useLoad } from './use-load.js';
 
-export function JobPayable({ owner, project }: { owner: number; project: string }) {
+export function JobPayable({ tenantId, project }: { tenantId: number; project: string }) {
   const job = useLoad(
     useCallback(
       async (token, signal) => {
-        const { id } = await api.vendorJob(token, owner, project, signal);
-        return api.offer(token, owner, id, signal);
+        const { id } = await api.vendorJob(token, tenantId, project, signal);
+        return api.offer(token, tenantId, id, signal);
       },
-      [owner, project],
+      [tenantId, project],
     ),
   );
   if (job.state !== 'done') return null;

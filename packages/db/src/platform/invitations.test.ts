@@ -31,7 +31,8 @@ import {
   openInvitation,
   revokeInvitation,
 } from './invitations.js';
-import { listRosterOwners } from './membership.js';
+import { listRosterTenants } from './membership.js';
+import { getTenantForAccount } from './tenants.js';
 import { PLATFORM_APPLICATION_ID, PLATFORM_MIGRATIONS } from './schema.js';
 
 let dir: string;
@@ -40,6 +41,10 @@ let alice: Account;
 let dave: Account;
 let aliceActor: AuditActor;
 
+/** The tenant an account is staff of; its id is not the account's (a vendor comes first). */
+const tenantOf = (account: Account): number =>
+  getTenantForAccount(db, account.id)!.tenant.id;
+
 const T0 = new Date('2026-10-09T10:00:00.000Z');
 const later = (ms: number) => new Date(T0.getTime() + ms);
 const PASSWORD_HASH = hashPassword('a long enough password');
@@ -47,6 +52,13 @@ const PASSWORD_HASH = hashPassword('a long enough password');
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cat-invitations-'));
   db = openPlatformDb(join(dir, 'platform.sqlite'));
+  // A vendor first, so no tenant's id equals its founder's account id.
+  createAccount(db, {
+    email: 'spare@example.com',
+    passwordHash: 'h',
+    role: 'vendor',
+    actor: TEST_ACTOR,
+  });
   alice = createAccount(db, {
     email: 'alice@example.com',
     passwordHash: 'h',
@@ -66,7 +78,8 @@ afterEach(() => {
 
 const invite = (email = 'Bob@Example.com', name?: string, now = T0) =>
   createInvitation(db, {
-    ownerId: alice.id,
+    tenantId: tenantOf(alice),
+    invitedBy: alice.id,
     email,
     displayName: name,
     actor: aliceActor,
@@ -77,7 +90,8 @@ describe('inviting', () => {
   it('returns the token once and stores only its hash', () => {
     const { invitation, token } = invite('Bob@Example.com', '  Bob  ');
     expect(invitation).toMatchObject({
-      ownerId: alice.id,
+      tenantId: tenantOf(alice),
+      invitedBy: alice.id,
       email: 'bob@example.com',
       displayName: 'Bob',
       status: 'pending',
@@ -92,7 +106,7 @@ describe('inviting', () => {
     expect(String(stored.token_hash)).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('refuses a bad address, and an inviter who is not an owner', () => {
+  it('refuses a bad address, and an inviter who is not staff of the tenant', () => {
     expect(() => invite('not-an-address')).toThrow(InvalidInvitationError);
     const vendor = createAccount(db, {
       email: 'v@example.com',
@@ -102,7 +116,8 @@ describe('inviting', () => {
     });
     expect(() =>
       createInvitation(db, {
-        ownerId: vendor.id,
+        tenantId: tenantOf(alice),
+        invitedBy: vendor.id,
         email: 'x@example.com',
         actor: TEST_ACTOR,
       }),
@@ -146,17 +161,19 @@ describe('inviting', () => {
     invite('a@example.com');
     invite('b@example.com', undefined, later(1000));
     createInvitation(db, {
-      ownerId: dave.id,
+      tenantId: tenantOf(dave),
+      invitedBy: dave.id,
       email: 'c@example.com',
       actor: TEST_ACTOR,
       now: T0,
     });
-    expect(listInvitations(db, alice.id, later(1000)).map((i) => i.email)).toEqual([
-      'b@example.com',
-      'a@example.com',
-    ]);
+    expect(listInvitations(db, tenantOf(alice), later(1000)).map((i) => i.email)).toEqual(
+      ['b@example.com', 'a@example.com'],
+    );
     expect(
-      listInvitations(db, alice.id, later(INVITATION_TTL_MS + 1001)).map((i) => i.status),
+      listInvitations(db, tenantOf(alice), later(INVITATION_TTL_MS + 1001)).map(
+        (i) => i.status,
+      ),
     ).toEqual(['expired', 'expired']);
   });
 });
@@ -172,14 +189,14 @@ describe('accepting', () => {
     expect(account).toMatchObject({ email: 'bob@example.com', role: 'vendor' });
     expect(verifyPassword('a long enough password', account.passwordHash)).toBe(true);
     expect(getAccountByEmail(db, 'bob@example.com')?.id).toBe(account.id);
-    expect(listRosterOwners(db, account.id)).toEqual([alice.id]);
-    expect(listInvitations(db, alice.id, later(60_000))[0]).toMatchObject({
+    expect(listRosterTenants(db, account.id)).toEqual([tenantOf(alice)]);
+    expect(listInvitations(db, tenantOf(alice), later(60_000))[0]).toMatchObject({
       id: invitation.id,
       status: 'accepted',
       acceptedAccountId: account.id,
     });
-    expect(listAcceptedInvitations(db, alice.id)).toEqual([
-      { accountId: account.id, displayName: null },
+    expect(listAcceptedInvitations(db, tenantOf(alice))).toEqual([
+      { accountId: account.id, displayName: null, invitedBy: alice.id },
     ]);
   });
 
@@ -189,14 +206,14 @@ describe('accepting', () => {
     expect(() =>
       acceptInvitation(db, { token, passwordHash: PASSWORD_HASH, now: later(2) }),
     ).toThrow(InvitationUnusableError);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual({ n: 3 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual({ n: 4 });
   });
 
   it('refuses a link that is expired, withdrawn or unknown, all with one error', () => {
     const expired = invite('e@example.com');
     const withdrawn = invite('w@example.com');
     revokeInvitation(db, {
-      ownerId: alice.id,
+      tenantId: tenantOf(alice),
       id: withdrawn.invitation.id,
       actor: aliceActor,
       now: later(5),
@@ -208,7 +225,7 @@ describe('accepting', () => {
     );
     expect(accept(withdrawn.token, later(10))).toThrow(InvitationUnusableError);
     expect(accept('no-such-token', later(10))).toThrow(InvitationUnusableError);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual({ n: 2 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual({ n: 3 });
   });
 
   it('leaves the link pending when the address already has an account', () => {
@@ -217,7 +234,7 @@ describe('accepting', () => {
       acceptInvitation(db, { token, passwordHash: PASSWORD_HASH, now: later(1) }),
     ).toThrow(EmailTakenError);
     expect(openInvitation(db, token, later(2))).toEqual({ email: 'dave@example.com' });
-    expect(listRosterOwners(db, dave.id)).toEqual([]);
+    expect(listRosterTenants(db, dave.id)).toEqual([]);
   });
 
   it('records the account by the owner who vouched and the acceptance by the new account', () => {
@@ -246,7 +263,7 @@ describe('accepting', () => {
     ]);
     expect(events[1]).toMatchObject({ actor: `account:${account.id}` });
     expect(JSON.parse(events[1]!.detail ?? 'null')).toEqual({
-      owner_id: alice.id,
+      tenant_id: tenantOf(alice),
       account_id: account.id,
     });
     expect(verifyAudit(db).brokenAt).toBeNull();
@@ -281,7 +298,7 @@ describe('opening and revoking', () => {
   it('withdraws a pending link, logged with the owner, and refuses a second withdrawal', () => {
     const { invitation, token } = invite();
     const done = revokeInvitation(db, {
-      ownerId: alice.id,
+      tenantId: tenantOf(alice),
       id: invitation.id,
       actor: aliceActor,
       now: later(5),
@@ -289,7 +306,11 @@ describe('opening and revoking', () => {
     expect(done.status).toBe('revoked');
     expect(openInvitation(db, token, later(6))).toBeNull();
     expect(() =>
-      revokeInvitation(db, { ownerId: alice.id, id: invitation.id, actor: aliceActor }),
+      revokeInvitation(db, {
+        tenantId: tenantOf(alice),
+        id: invitation.id,
+        actor: aliceActor,
+      }),
     ).toThrow(InvitationNotPendingError);
     expect(
       listEvents(db, { subjectType: 'invitation', subjectId: String(invitation.id) }).map(
@@ -305,19 +326,23 @@ describe('opening and revoking', () => {
     const { invitation } = invite();
     const actor: AuditActor = { actor: { kind: 'account', id: dave.id }, label: null };
     expect(() =>
-      revokeInvitation(db, { ownerId: dave.id, id: invitation.id, actor }),
+      revokeInvitation(db, { tenantId: tenantOf(dave), id: invitation.id, actor }),
     ).toThrow(NoSuchInvitationError);
     expect(() =>
-      revokeInvitation(db, { ownerId: alice.id, id: 9999, actor: aliceActor }),
+      revokeInvitation(db, { tenantId: tenantOf(alice), id: 9999, actor: aliceActor }),
     ).toThrow(NoSuchInvitationError);
-    expect(listInvitations(db, alice.id, T0)[0]!.status).toBe('pending');
+    expect(listInvitations(db, tenantOf(alice), T0)[0]!.status).toBe('pending');
   });
 
   it('cannot withdraw a link already used', () => {
     const { invitation, token } = invite();
     acceptInvitation(db, { token, passwordHash: PASSWORD_HASH, now: later(1) });
     expect(() =>
-      revokeInvitation(db, { ownerId: alice.id, id: invitation.id, actor: aliceActor }),
+      revokeInvitation(db, {
+        tenantId: tenantOf(alice),
+        id: invitation.id,
+        actor: aliceActor,
+      }),
     ).toThrow(InvitationNotPendingError);
   });
 });
@@ -342,9 +367,9 @@ describe('an existing vendor joins a second roster (backlog #187)', () => {
       status: 'accepted',
       acceptedAccountId: v.id,
     });
-    expect(listRosterOwners(db, v.id)).toEqual([alice.id]);
-    expect(listAcceptedInvitations(db, alice.id)).toEqual([
-      { accountId: v.id, displayName: 'Vera' },
+    expect(listRosterTenants(db, v.id)).toEqual([tenantOf(alice)]);
+    expect(listAcceptedInvitations(db, tenantOf(alice))).toEqual([
+      { accountId: v.id, displayName: 'Vera', invitedBy: alice.id },
     ]);
   });
 
@@ -353,13 +378,14 @@ describe('an existing vendor joins a second roster (backlog #187)', () => {
     const first = invite('vera@example.com');
     joinInvitation(db, { token: first.token, accountId: v.id, now: later(1) });
     const second = createInvitation(db, {
-      ownerId: dave.id,
+      tenantId: tenantOf(dave),
+      invitedBy: dave.id,
       email: 'vera@example.com',
       actor: { actor: { kind: 'account', id: dave.id }, label: null },
       now: T0,
     });
     joinInvitation(db, { token: second.token, accountId: v.id, now: later(2) });
-    expect(listRosterOwners(db, v.id)).toEqual([alice.id, dave.id]);
+    expect(listRosterTenants(db, v.id)).toEqual([tenantOf(alice), tenantOf(dave)]);
   });
 
   it('is single-use, like any link', () => {
@@ -386,7 +412,7 @@ describe('an existing vendor joins a second roster (backlog #187)', () => {
     expect(() => joinInvitation(db, { token, accountId: 9999, now: later(1) })).toThrow(
       InvitationUnusableError,
     );
-    expect(listRosterOwners(db, stranger.id)).toEqual([]);
+    expect(listRosterTenants(db, stranger.id)).toEqual([]);
     expect(openInvitation(db, token, later(2))).toEqual({ email: 'vera@example.com' }); // still pending
   });
 
@@ -395,7 +421,7 @@ describe('an existing vendor joins a second roster (backlog #187)', () => {
     expect(() =>
       joinInvitation(db, { token, accountId: dave.id, now: later(1) }),
     ).toThrow(InvitationRoleError);
-    expect(listRosterOwners(db, dave.id)).toEqual([]);
+    expect(listRosterTenants(db, dave.id)).toEqual([]);
     expect(openInvitation(db, token, later(2))).toEqual({ email: 'dave@example.com' });
   });
 
@@ -403,13 +429,14 @@ describe('an existing vendor joins a second roster (backlog #187)', () => {
     const v = vera();
     const withdrawn = invite('vera@example.com');
     revokeInvitation(db, {
-      ownerId: alice.id,
+      tenantId: tenantOf(alice),
       id: withdrawn.invitation.id,
       actor: aliceActor,
       now: later(1),
     });
     const expired = createInvitation(db, {
-      ownerId: dave.id,
+      tenantId: tenantOf(dave),
+      invitedBy: dave.id,
       email: 'vera@example.com',
       actor: TEST_ACTOR,
       now: T0,
@@ -421,7 +448,7 @@ describe('an existing vendor joins a second roster (backlog #187)', () => {
       InvitationUnusableError,
     );
     expect(join('never-issued', later(2))).toThrow(InvitationUnusableError);
-    expect(listRosterOwners(db, v.id)).toEqual([]);
+    expect(listRosterTenants(db, v.id)).toEqual([]);
   });
 
   it('logs invitation.accepted with the vendor as actor and marks it as an existing account', () => {
@@ -438,7 +465,7 @@ describe('an existing vendor joins a second roster (backlog #187)', () => {
     ]);
     expect(events[1]).toMatchObject({ actor: `account:${v.id}` });
     expect(JSON.parse(events[1]!.detail ?? 'null')).toEqual({
-      owner_id: alice.id,
+      tenant_id: tenantOf(alice),
       account_id: v.id,
       existing: true,
     });
@@ -489,7 +516,8 @@ describe('the v6 migration', () => {
       expect(events(upgraded)).toEqual(before);
       const owner = getAccountByEmail(upgraded, 'o@example.com')!;
       createInvitation(upgraded, {
-        ownerId: owner.id,
+        tenantId: getTenantForAccount(upgraded, owner.id)!.tenant.id,
+        invitedBy: owner.id,
         email: 'v@example.com',
         actor: TEST_ACTOR,
       });

@@ -13,7 +13,7 @@ describe('parseRoute / formatRoute', () => {
       { screen: 'invite', token: 'AbC_-123456789AbC_-123456789AbC_-1234' },
       { screen: 'project', project: 'job-2026' },
       { screen: 'grid', project: 'job-2026', fileId: 12 },
-      { screen: 'job', owner: 7, id: 3 },
+      { screen: 'job', tenantId: 7, id: 3 },
       // another account's project is a key (project-key.ts), through the same routes
       { screen: 'project', project: 'job@7' },
       { screen: 'grid', project: 'job@7', fileId: 2 },

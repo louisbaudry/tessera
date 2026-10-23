@@ -28,8 +28,8 @@ import { engineFor } from './engine.js';
 
 export interface DraftRunParams {
   readonly platform: ReturnType<typeof openPlatformDb>;
-  /** The project owner's account id: whose consent applies. */
-  readonly ownerId: number;
+  /** The project's tenant: whose consent applies. */
+  readonly tenantId: number;
   readonly projectPath: string;
   readonly adapter: DraftEngineAdapter;
   /** Who started it. The engine is an origin, never an actor. */
@@ -50,7 +50,7 @@ export function startDraftRun(
       const summary = await draftSuggestions(db, {
         actor: params.actor,
         adapter: params.adapter,
-        gate: () => engineFor(params.platform, params.ownerId, db),
+        gate: () => engineFor(params.platform, params.tenantId, db),
         shouldStop: () => stopRequested,
         ...(params.tokenCeiling === undefined
           ? {}

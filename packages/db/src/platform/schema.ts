@@ -11,9 +11,10 @@
  */
 
 import type { PlatformAuditAction } from '@cat-tool/core';
+import type Database from 'better-sqlite3';
 
 import { auditEventDdl } from '../audit/events.js';
-import { rebuildTable, type Migration } from '../migrate.js';
+import { MigrationError, rebuildTable, type Migration } from '../migrate.js';
 
 /** "CATL" — platform bookkeeping, distinct from project ("CATP") and TM ("CATM"). */
 export const PLATFORM_APPLICATION_ID = 0x4341544c;
@@ -313,4 +314,212 @@ const v8: Migration = {
   },
 };
 
-export const PLATFORM_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7, v8];
+/**
+ * Replaces a leaf table with one keyed on the tenant instead of the owner account
+ * (v9). `rebuildTable` cannot do this: it copies the old table's columns by name, and
+ * the column being replaced is the point. The copy joins the old `owner_id` through
+ * `tenant_membership`, so each row names the tenant its owner was founded as.
+ *
+ * Refuses, and rolls the whole migration back, when any row names an owner with no
+ * tenant: such a row is a grant, roster entry, invitation or consent for an account
+ * nothing made a tenant for (a vendor used as an owner), and the choice is to guess a
+ * tenant for it or to drop it. Neither is a migration's to make silently. The runner's
+ * pre-migration backup is the way back.
+ *
+ * Only for a table nothing references and that references nothing but `account` and
+ * `tenant`; its own indexes and triggers are the caller's, created after the swap.
+ */
+function rekeyTable(
+  db: Database.Database,
+  table: string,
+  newDdl: string,
+  columns: { readonly old: string; readonly new: string },
+): void {
+  const orphan = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM "${table}" t
+       LEFT JOIN tenant_membership m ON m.account_id = t.owner_id
+       WHERE m.account_id IS NULL`,
+    )
+    .get() as { n: number };
+  if (orphan.n > 0) {
+    throw new MigrationError(
+      `${table}: ${orphan.n} row(s) name an owner account with no tenant; ` +
+        'resolve them before migrating (tenant-spec.md §5)',
+    );
+  }
+  const before = (
+    db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }
+  ).n;
+  const staged = `${table}__rekey`;
+  db.exec(newDdl.replace(`CREATE TABLE ${table} `, `CREATE TABLE ${staged} `));
+  db.exec(
+    `INSERT INTO "${staged}" (${columns.new})
+     SELECT ${columns.old} FROM "${table}" t JOIN tenant_membership m ON m.account_id = t.owner_id`,
+  );
+  const after = (
+    db.prepare(`SELECT COUNT(*) AS n FROM "${staged}"`).get() as { n: number }
+  ).n;
+  if (after !== before) {
+    throw new MigrationError(`${table}: re-keying lost rows (${before} → ${after})`);
+  }
+  db.exec(`DROP TABLE "${table}"`);
+  db.exec(`ALTER TABLE "${staged}" RENAME TO "${table}"`);
+}
+
+/**
+ * The tenant, not the owner account, owns what an owner owned (backlog #205,
+ * `planning/tenant-spec.md` §4, D6): the five tables that named an `owner_id` now name
+ * a `tenant_id` that references `tenant`. The values change (a tenant's id is not its
+ * founder's account id once a vendor sits between two owners), and so do the
+ * constraints: a grant's `account_id <> owner_id` goes, since the grantee is an account
+ * and the owner a tenant, and a trigger (`project_authorization_not_staff`) takes its
+ * place: staff of a tenant already have its projects, so a grant to one is refused.
+ *
+ * An invitation also records who sent it (`invited_by`), backfilled from the old
+ * `owner_id`, which was that one person: the tenant is not a person, and the vendor
+ * account an acceptance creates is still attributed to the staff member who vouched
+ * for it (audit-spec.md §2.1). Every other column, id and index is as it was, and
+ * `vendor_invitation_final` is recreated exactly. No audit event is written (nothing here is a decision), and
+ * historical events keep the account ids they were written with: new project events
+ * carry a `t<tenant>` prefix so the two can never be mistaken (`projectSubjectId`).
+ */
+const v9: Migration = {
+  version: 9,
+  description: 'key ownership on the tenant, not the owner account (backlog #205)',
+  up: (db) => {
+    rekeyTable(
+      db,
+      'project_authorization',
+      `CREATE TABLE project_authorization (
+        id           INTEGER PRIMARY KEY,
+        account_id   INTEGER NOT NULL REFERENCES account(id),
+        tenant_id    INTEGER NOT NULL REFERENCES tenant(id),
+        project_name TEXT NOT NULL,
+        scope        TEXT NOT NULL CHECK (scope IN ('assigned_translator')),
+        granted_at   TEXT NOT NULL,
+        UNIQUE (account_id, tenant_id, project_name)
+      )`,
+      {
+        old: 't.id, t.account_id, m.tenant_id, t.project_name, t.scope, t.granted_at',
+        new: 'id, account_id, tenant_id, project_name, scope, granted_at',
+      },
+    );
+    db.exec(`
+      CREATE INDEX project_authorization_project
+        ON project_authorization(tenant_id, project_name);
+      -- What \`CHECK (account_id <> owner_id)\` was, now that the owner is a tenant: staff of a
+      -- tenant already have its projects, so a grant to one is a write that means nothing.
+      CREATE TRIGGER project_authorization_not_staff
+      BEFORE INSERT ON project_authorization
+      WHEN EXISTS (SELECT 1 FROM tenant_membership
+                   WHERE tenant_id = NEW.tenant_id AND account_id = NEW.account_id)
+      BEGIN SELECT RAISE(ABORT, 'staff of a tenant already have its projects'); END;
+    `);
+
+    rekeyTable(
+      db,
+      'roster_membership',
+      `CREATE TABLE roster_membership (
+        tenant_id  INTEGER NOT NULL REFERENCES tenant(id),
+        account_id INTEGER NOT NULL REFERENCES account(id),
+        added_at   TEXT    NOT NULL,
+        PRIMARY KEY (tenant_id, account_id)
+      ) WITHOUT ROWID`,
+      {
+        old: 'm.tenant_id, t.account_id, t.added_at',
+        new: 'tenant_id, account_id, added_at',
+      },
+    );
+    db.exec(`
+      CREATE INDEX roster_membership_account ON roster_membership(account_id);
+      -- What \`CHECK (account_id <> owner_id)\` was: staff are not on their own tenant's roster.
+      CREATE TRIGGER roster_membership_not_staff
+      BEFORE INSERT ON roster_membership
+      WHEN EXISTS (SELECT 1 FROM tenant_membership
+                   WHERE tenant_id = NEW.tenant_id AND account_id = NEW.account_id)
+      BEGIN SELECT RAISE(ABORT, 'staff of a tenant are not on its roster'); END;
+    `);
+
+    rekeyTable(
+      db,
+      'vendor_invitation',
+      `CREATE TABLE vendor_invitation (
+        id                  INTEGER PRIMARY KEY,
+        tenant_id           INTEGER NOT NULL REFERENCES tenant(id),
+        invited_by          INTEGER NOT NULL REFERENCES account(id),
+        email               TEXT    NOT NULL,
+        display_name        TEXT,
+        token_hash          TEXT    NOT NULL UNIQUE,
+        created_at          TEXT    NOT NULL,
+        expires_at          TEXT    NOT NULL,
+        accepted_at         TEXT,
+        accepted_account_id INTEGER REFERENCES account(id),
+        revoked_at          TEXT,
+        CHECK ((accepted_at IS NULL) = (accepted_account_id IS NULL)),
+        CHECK (accepted_at IS NULL OR revoked_at IS NULL)
+      )`,
+      {
+        old: `t.id, m.tenant_id, t.owner_id, t.email, t.display_name, t.token_hash,
+              t.created_at, t.expires_at, t.accepted_at, t.accepted_account_id, t.revoked_at`,
+        new: `id, tenant_id, invited_by, email, display_name, token_hash,
+              created_at, expires_at, accepted_at, accepted_account_id, revoked_at`,
+      },
+    );
+    db.exec(`
+      CREATE INDEX vendor_invitation_tenant ON vendor_invitation(tenant_id, id);
+      CREATE INDEX vendor_invitation_email ON vendor_invitation(tenant_id, email);
+      CREATE TRIGGER vendor_invitation_final
+      BEFORE UPDATE ON vendor_invitation
+      WHEN (OLD.accepted_at IS NOT NULL OR OLD.revoked_at IS NOT NULL)
+        AND (NEW.accepted_at IS NOT OLD.accepted_at
+          OR NEW.accepted_account_id IS NOT OLD.accepted_account_id
+          OR NEW.revoked_at IS NOT OLD.revoked_at
+          OR NEW.token_hash IS NOT OLD.token_hash
+          OR NEW.expires_at IS NOT OLD.expires_at)
+      BEGIN SELECT RAISE(ABORT, 'a used or withdrawn invitation is final'); END;
+    `);
+
+    rekeyTable(
+      db,
+      'client_engine_consent',
+      `CREATE TABLE client_engine_consent (
+        tenant_id    INTEGER NOT NULL REFERENCES tenant(id),
+        client_id    INTEGER NOT NULL CHECK (client_id >= 1),
+        engine       TEXT    NOT NULL CHECK (engine IN ('tessera', 'deepl')),
+        consented_at TEXT    NOT NULL,
+        PRIMARY KEY (tenant_id, client_id, engine)
+      ) WITHOUT ROWID`,
+      {
+        old: 'm.tenant_id, t.client_id, t.engine, t.consented_at',
+        new: 'tenant_id, client_id, engine, consented_at',
+      },
+    );
+    rekeyTable(
+      db,
+      'client_engine_default',
+      `CREATE TABLE client_engine_default (
+        tenant_id INTEGER NOT NULL REFERENCES tenant(id),
+        client_id INTEGER NOT NULL CHECK (client_id >= 1),
+        engine    TEXT    NOT NULL CHECK (engine IN ('tessera', 'deepl')),
+        PRIMARY KEY (tenant_id, client_id)
+      ) WITHOUT ROWID`,
+      {
+        old: 'm.tenant_id, t.client_id, t.engine',
+        new: 'tenant_id, client_id, engine',
+      },
+    );
+  },
+};
+
+export const PLATFORM_MIGRATIONS: readonly Migration[] = [
+  v1,
+  v2,
+  v3,
+  v4,
+  v5,
+  v6,
+  v7,
+  v8,
+  v9,
+];

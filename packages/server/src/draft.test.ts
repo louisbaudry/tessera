@@ -39,6 +39,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { projectPath } from './storage.js';
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
@@ -128,7 +129,9 @@ async function setup(
   expect(made.statusCode, made.body).toBe(201);
   const set = await put(token, '/api/projects/job/portal-client', { clientId: CLIENT });
   expect(set.statusCode, set.body).toBe(200);
-  const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+  const db = openProjectDb(
+    projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+  );
   insertFile(
     db,
     'prose-short.docx',
@@ -163,7 +166,8 @@ async function settled(token: string, id: string): Promise<JobBody> {
 const jobIdOf = (res: { json(): unknown }) =>
   (res.json() as { job: { id: string } }).job.id;
 
-const projectDb = () => openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+const projectDb = () =>
+  openProjectDb(projectPath(config.storageRoot, tenantOf(config, alice), 'job'));
 
 /** An adapter that waits at each call until the test lets it go. */
 function gated(): DraftEngineAdapter & {
@@ -245,21 +249,23 @@ describe('POST /api/projects/:name/draft', () => {
     const platform = openPlatformDb(config.dbPath);
     grantProjectAuthorization(platform, {
       accountId: bob.id,
-      project: { accountId: alice.id, name: 'job' },
+      project: { tenantId: tenantOf(config, alice).id, name: 'job' },
       scope: 'assigned_translator',
       actor: SETUP,
     });
     platform.close();
     const b = await login('bob');
     expect((await post(b, '/api/projects/job/draft')).statusCode).toBe(403);
-    expect((await post(b, `/api/projects/job/draft?owner=${alice.id}`)).statusCode).toBe(
-      403,
-    );
+    expect(
+      (await post(b, `/api/projects/job/draft?tenant=${tenantOf(config, alice).id}`))
+        .statusCode,
+    ).toBe(403);
     const c = await login('carol');
     expect((await post(c, '/api/projects/job/draft')).statusCode).toBe(404);
-    expect((await post(c, `/api/projects/job/draft?owner=${alice.id}`)).statusCode).toBe(
-      404,
-    );
+    expect(
+      (await post(c, `/api/projects/job/draft?tenant=${tenantOf(config, alice).id}`))
+        .statusCode,
+    ).toBe(404);
     expect(
       (await app.inject({ method: 'POST', url: '/api/projects/job/draft' })).statusCode,
     ).toBe(401);
@@ -472,7 +478,9 @@ describe('withdrawing a client’s consent purges what its engine drafted (D15)'
     const a = await login('alice');
     await drafted(a);
     const one = (root: Account, name: string) => {
-      const db = openProjectDb(projectPath(config.storageRoot, root, name));
+      const db = openProjectDb(
+        projectPath(config.storageRoot, tenantOf(config, root), name),
+      );
       const [segment] = listAllSegments(db);
       putDraftSuggestion(db, {
         segmentId: segment!.id,
@@ -497,7 +505,9 @@ describe('withdrawing a client’s consent purges what its engine drafted (D15)'
     expect(
       (await put(a, '/api/projects/other/portal-client', { clientId: 9 })).statusCode,
     ).toBe(200);
-    const db = openProjectDb(projectPath(config.storageRoot, alice, 'other'));
+    const db = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'other'),
+    );
     insertFile(
       db,
       'prose-short.docx',
@@ -518,7 +528,9 @@ describe('withdrawing a client’s consent purges what its engine drafted (D15)'
     expect(
       (await put(c, '/api/projects/job/portal-client', { clientId: CLIENT })).statusCode,
     ).toBe(200);
-    const carolDb = openProjectDb(projectPath(config.storageRoot, carol, 'job'));
+    const carolDb = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, carol), 'job'),
+    );
     insertFile(
       carolDb,
       'prose-short.docx',
@@ -540,7 +552,9 @@ describe('withdrawing a client’s consent purges what its engine drafted (D15)'
     expect(res.statusCode, res.body).toBe(200);
 
     const left = (root: Account, name: string) => {
-      const d = openProjectDb(projectPath(config.storageRoot, root, name));
+      const d = openProjectDb(
+        projectPath(config.storageRoot, tenantOf(config, root), name),
+      );
       try {
         return listDraftSuggestions(d).length;
       } finally {
@@ -570,7 +584,10 @@ describe('withdrawing a client’s consent purges what its engine drafted (D15)'
     const a = await login('alice');
     const stored = await drafted(a);
     // A file in the owner's projects that is not a project database at all.
-    writeFileSync(projectPath(config.storageRoot, alice, 'broken'), 'not a database');
+    writeFileSync(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'broken'),
+      'not a database',
+    );
 
     const res = await put(a, `/api/clients/${CLIENT}/engine`, {
       consent: { tessera: false },

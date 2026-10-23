@@ -22,11 +22,16 @@ import {
   setClientEngineDefault,
 } from './client-engine.js';
 import { openPlatformDb } from './index.js';
+import { getTenantForAccount } from './tenants.js';
 
 let dir: string;
 let db: Database.Database;
 let owner: Account;
 let otherOwner: Account;
+
+/** The tenant an account is staff of; its id is not the account's. */
+const tenantOf = (account: Account): number =>
+  getTenantForAccount(db, account.id)!.tenant.id;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cat-client-engine-'));
@@ -51,10 +56,10 @@ const consent = (
   engine: 'tessera' | 'deepl',
   on: boolean,
   clientId = 7,
-  ownerId = owner.id,
+  tenantId = tenantOf(owner),
 ) =>
   setClientEngineConsent(db, {
-    ownerId,
+    tenantId,
     clientId,
     engine,
     consent: on,
@@ -68,11 +73,14 @@ const changes = () =>
 
 describe('a client nobody has set anything for', () => {
   it('has consented to nothing and defaults to off', () => {
-    expect(getClientEngine(db, owner.id, 7)).toEqual({ default: 'off', consented: [] });
+    expect(getClientEngine(db, tenantOf(owner), 7)).toEqual({
+      default: 'off',
+      consented: [],
+    });
   });
 
   it('writes nothing to the audit log just by being read', () => {
-    getClientEngine(db, owner.id, 7);
+    getClientEngine(db, tenantOf(owner), 7);
     expect(changes()).toHaveLength(0);
   });
 });
@@ -80,7 +88,7 @@ describe('a client nobody has set anything for', () => {
 describe('setClientEngineConsent', () => {
   it('records consent per engine and logs from and to', () => {
     consent('tessera', true);
-    expect(getClientEngine(db, owner.id, 7).consented).toEqual(['tessera']);
+    expect(getClientEngine(db, tenantOf(owner), 7).consented).toEqual(['tessera']);
     const [e] = changes();
     expect(e!.action).toBe('client_engine.changed');
     expect(JSON.parse(e!.detail!)).toEqual({
@@ -95,7 +103,7 @@ describe('setClientEngineConsent', () => {
 
   it('does not let consent to one engine stand for another', () => {
     consent('tessera', true);
-    expect(getClientEngine(db, owner.id, 7).consented).not.toContain('deepl');
+    expect(getClientEngine(db, tenantOf(owner), 7).consented).not.toContain('deepl');
   });
 
   it('is a no-op, writing and logging nothing, when nothing changes', () => {
@@ -105,9 +113,9 @@ describe('setClientEngineConsent', () => {
     expect(changes()).toHaveLength(1);
   });
 
-  it('keeps one owner’s client apart from another owner’s same number', () => {
-    consent('tessera', true, 7, owner.id);
-    expect(getClientEngine(db, otherOwner.id, 7).consented).toEqual([]);
+  it('keeps one tenant’s client apart from another tenant’s same number', () => {
+    consent('tessera', true, 7, tenantOf(owner));
+    expect(getClientEngine(db, tenantOf(otherOwner), 7).consented).toEqual([]);
   });
 
   it('names who did it, from the actor it was given', () => {
@@ -125,7 +133,7 @@ describe('setClientEngineConsent', () => {
   it('refuses an engine that sends nothing out, or an unknown one', () => {
     expect(() =>
       setClientEngineConsent(db, {
-        ownerId: owner.id,
+        tenantId: tenantOf(owner),
         clientId: 7,
         engine: 'off' as never,
         consent: true,
@@ -134,7 +142,7 @@ describe('setClientEngineConsent', () => {
     ).toThrow(ClientEngineError);
     expect(() =>
       setClientEngineConsent(db, {
-        ownerId: owner.id,
+        tenantId: tenantOf(owner),
         clientId: 7,
         engine: 'claude' as never,
         consent: true,
@@ -143,7 +151,7 @@ describe('setClientEngineConsent', () => {
     ).toThrow(ClientEngineError);
   });
 
-  it('refuses an owner that does not exist', () => {
+  it('refuses a tenant that does not exist', () => {
     expect(() => consent('tessera', true, 7, 9999)).toThrow(ClientEngineError);
   });
 });
@@ -152,25 +160,25 @@ describe('setClientEngineDefault', () => {
   it('needs consent first: a default can never name an engine nobody agreed to', () => {
     expect(() =>
       setClientEngineDefault(db, {
-        ownerId: owner.id,
+        tenantId: tenantOf(owner),
         clientId: 7,
         engine: 'tessera',
         actor: TEST_ACTOR,
       }),
     ).toThrow(ClientEngineError);
-    expect(getClientEngine(db, owner.id, 7).default).toBe('off');
+    expect(getClientEngine(db, tenantOf(owner), 7).default).toBe('off');
     expect(changes()).toHaveLength(0);
   });
 
   it('sets the default once consented, and logs it', () => {
     consent('deepl', true);
     setClientEngineDefault(db, {
-      ownerId: owner.id,
+      tenantId: tenantOf(owner),
       clientId: 7,
       engine: 'deepl',
       actor: TEST_ACTOR,
     });
-    expect(getClientEngine(db, owner.id, 7)).toEqual({
+    expect(getClientEngine(db, tenantOf(owner), 7)).toEqual({
       default: 'deepl',
       consented: ['deepl'],
     });
@@ -186,18 +194,18 @@ describe('setClientEngineDefault', () => {
   it('turns back to off without needing anything', () => {
     consent('tessera', true);
     setClientEngineDefault(db, {
-      ownerId: owner.id,
+      tenantId: tenantOf(owner),
       clientId: 7,
       engine: 'tessera',
       actor: TEST_ACTOR,
     });
     setClientEngineDefault(db, {
-      ownerId: owner.id,
+      tenantId: tenantOf(owner),
       clientId: 7,
       engine: 'off',
       actor: TEST_ACTOR,
     });
-    expect(getClientEngine(db, owner.id, 7).default).toBe('off');
+    expect(getClientEngine(db, tenantOf(owner), 7).default).toBe('off');
   });
 });
 
@@ -205,14 +213,17 @@ describe('withdrawing consent', () => {
   it('takes the default with it, in the same transaction, and logs both', () => {
     consent('tessera', true);
     setClientEngineDefault(db, {
-      ownerId: owner.id,
+      tenantId: tenantOf(owner),
       clientId: 7,
       engine: 'tessera',
       actor: TEST_ACTOR,
     });
     const before = changes().length;
     consent('tessera', false);
-    expect(getClientEngine(db, owner.id, 7)).toEqual({ default: 'off', consented: [] });
+    expect(getClientEngine(db, tenantOf(owner), 7)).toEqual({
+      default: 'off',
+      consented: [],
+    });
     const added = changes()
       .slice(before)
       .map((e) => JSON.parse(e.detail!).key);
@@ -223,13 +234,13 @@ describe('withdrawing consent', () => {
     consent('tessera', true);
     consent('deepl', true);
     setClientEngineDefault(db, {
-      ownerId: owner.id,
+      tenantId: tenantOf(owner),
       clientId: 7,
       engine: 'deepl',
       actor: TEST_ACTOR,
     });
     consent('tessera', false);
-    expect(getClientEngine(db, owner.id, 7)).toEqual({
+    expect(getClientEngine(db, tenantOf(owner), 7)).toEqual({
       default: 'deepl',
       consented: ['deepl'],
     });
@@ -238,7 +249,7 @@ describe('withdrawing consent', () => {
   it('makes the gate refuse at once', () => {
     consent('tessera', true);
     setClientEngineDefault(db, {
-      ownerId: owner.id,
+      tenantId: tenantOf(owner),
       clientId: 7,
       engine: 'tessera',
       actor: TEST_ACTOR,
@@ -246,7 +257,7 @@ describe('withdrawing consent', () => {
     const open = () =>
       resolveEngine({
         hasClient: true,
-        client: getClientEngine(db, owner.id, 7),
+        client: getClientEngine(db, tenantOf(owner), 7),
         projectOverride: null,
       });
     expect(open()).toEqual({ engine: 'tessera' });
@@ -259,7 +270,7 @@ describe('the audit log', () => {
   it('still verifies after a run of changes', () => {
     consent('tessera', true);
     setClientEngineDefault(db, {
-      ownerId: owner.id,
+      tenantId: tenantOf(owner),
       clientId: 7,
       engine: 'tessera',
       actor: TEST_ACTOR,

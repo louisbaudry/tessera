@@ -12,17 +12,25 @@ import type Database from 'better-sqlite3';
 import { appendAuditEvent } from '../audit/events.js';
 
 /**
- * A project as this file names it: its owner and its slug, the two
+ * A project as this file names it: its tenant and its slug, the two
  * coordinates its path is built from — never the storage root, which is
- * a capability, not a name (spec §2.5).
+ * a capability, not a name (spec §2.5). The tenant owns it, not whoever of
+ * its staff made it (`planning/tenant-spec.md` D1).
  */
 export interface ProjectRef {
-  readonly accountId: number;
+  readonly tenantId: number;
   readonly name: string;
 }
 
+/**
+ * The `subject_id` of an event about a project: `t<tenant id>/<slug>`. Before
+ * backlog #205 it was `<owner account id>/<slug>`, and those events are immutable
+ * and hash-chained, so they keep it. The `t` prefix is what stops an old
+ * `3/job` (an account) being read as a new one (a tenant): a tenant's id is not its
+ * founder's account id once a vendor sits between two owners.
+ */
 export const projectSubjectId = (project: ProjectRef): string =>
-  `${project.accountId}/${project.name}`;
+  `t${project.tenantId}/${project.name}`;
 
 export interface FailedLoginOptions {
   /** The gate that refused it — never the account it named (spec §2.5). */

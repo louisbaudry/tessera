@@ -26,7 +26,7 @@ import {
   listReferenceFiles,
   ReferenceFileError,
   removeReferenceFile,
-  type Account,
+  type Tenant,
   type openProjectDb,
   type ReferenceFile,
 } from '@cat-tool/db';
@@ -35,13 +35,14 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 export interface ReferenceFileRouteDeps {
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
   /** The session's own account id: the owner is who the project belongs to. */
-  readonly accountId: (req: FastifyRequest) => number;
+  /** The session's tenant, or null for an account with none (a vendor). */
+  readonly tenantId: (req: FastifyRequest) => number | null;
   readonly openProject: (
     req: FastifyRequest,
     reply: FastifyReply,
     name: string,
     action: ProjectAction,
-  ) => { db: ReturnType<typeof openProjectDb>; path: string; owner: Account } | null;
+  ) => { db: ReturnType<typeof openProjectDb>; path: string; tenant: Tenant } | null;
 }
 
 /** What the owner is told of a file. */
@@ -80,7 +81,7 @@ export function registerReferenceFileRoutes(
       const opened = deps.openProject(req, reply, req.params.name, 'read');
       if (!opened) return reply;
       try {
-        const isOwner = opened.owner.id === deps.accountId(req);
+        const isOwner = opened.tenant.id === deps.tenantId(req);
         const files = listReferenceFiles(opened.db);
         return { files: files.map(isOwner ? ownerView : workerView) };
       } finally {
@@ -101,7 +102,7 @@ export function registerReferenceFileRoutes(
         const found = Number.isInteger(id) ? getReferenceFile(opened.db, id) : null;
         if (!found) return reply.code(404).send({ error: 'no such reference file' });
         // A grantee's download must not carry the owner's file name either.
-        const isOwner = opened.owner.id === deps.accountId(req);
+        const isOwner = opened.tenant.id === deps.tenantId(req);
         const extension =
           found.file.mediaType === 'application/pdf'
             ? 'pdf'

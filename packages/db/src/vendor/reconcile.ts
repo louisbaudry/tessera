@@ -1,7 +1,7 @@
 /**
  * Reconciling project grants with assignment status (vendor-spec.md and its
  * #121 note). The accept and the review each change two files, the
- * assignment in the owner's `.ctv` and the grant in `platform.sqlite`, with
+ * assignment in the tenant's `.ctv` and the grant in `platform.sqlite`, with
  * no transaction between them; this derives the grants that should exist from
  * the roster and fixes any difference.
  */
@@ -14,13 +14,13 @@ import { addRosterMembership } from '../platform/membership.js';
 import {
   AuthorizationError,
   grantProjectAuthorization,
-  listAuthorizationsByOwner,
+  listAuthorizationsByTenant,
   revokeProjectAuthorization,
 } from '../platform/authorization.js';
 import { listAssignments } from './assignments.js';
 import { getVendor, listVendors } from './vendors.js';
 
-/** While an assignment is in one of these, its vendor works in the owner's project. */
+/** While an assignment is in one of these, its vendor works in the tenant's project. */
 const ACTIVE: readonly AssignmentStatus[] = ['accepted', 'in_progress', 'delivered'];
 
 export interface GrantRef {
@@ -38,8 +38,8 @@ export interface ReconcileResult {
 }
 
 export interface ReconcileOptions {
-  /** The owner whose roster and projects these are. */
-  readonly ownerId: number;
+  /** The tenant whose roster and projects these are. */
+  readonly tenantId: number;
   /** Who is running it: required, as for every grant (audit-spec.md decision 3). */
   readonly actor: AuditActor;
 }
@@ -47,7 +47,7 @@ export interface ReconcileOptions {
 const key = (r: GrantRef): string => `${r.accountId}\u0000${r.project}`;
 
 /**
- * Makes the `assigned_translator` grants on an owner's projects match their
+ * Makes the `assigned_translator` grants on a tenant's projects match its
  * roster: a grant for every vendor with an active assignment, none for a
  * vendor whose assignments on the project have all ended. Governs only the
  * (account, project) pairs the roster has an assignment for, so a grant made
@@ -72,7 +72,7 @@ export function reconcileAssignmentGrants(
 
   const result: ReconcileResult = { granted: [], revoked: [], skipped: [] };
   const held = new Set(
-    listAuthorizationsByOwner(platform, options.ownerId)
+    listAuthorizationsByTenant(platform, options.tenantId)
       .filter((g) => g.scope === 'assigned_translator')
       .map((g) => key({ accountId: g.accountId, project: g.project.name })),
   );
@@ -82,7 +82,7 @@ export function reconcileAssignmentGrants(
     try {
       grantProjectAuthorization(platform, {
         accountId: ref.accountId,
-        project: { accountId: options.ownerId, name: ref.project },
+        project: { tenantId: options.tenantId, name: ref.project },
         scope: 'assigned_translator',
         actor: options.actor,
       });
@@ -99,7 +99,7 @@ export function reconcileAssignmentGrants(
     const ref = { accountId: Number(accountId), project };
     revokeProjectAuthorization(platform, {
       accountId: ref.accountId,
-      project: { accountId: options.ownerId, name: ref.project },
+      project: { tenantId: options.tenantId, name: ref.project },
       actor: options.actor,
     });
     result.revoked.push(ref);
@@ -108,7 +108,7 @@ export function reconcileAssignmentGrants(
 }
 
 /**
- * Makes the membership index match an owner's roster: a row for every vendor on
+ * Makes the membership index match a tenant's roster: a row for every vendor on
  * it (`roster_membership`, backlog #52a). Backfills rosters written before the
  * index existed, and mends one a failed step left short. Never removes a row:
  * a membership the roster does not back shows its account nothing, so a spare
@@ -118,12 +118,12 @@ export function reconcileAssignmentGrants(
 export function reconcileMemberships(
   roster: Database.Database,
   platform: Database.Database,
-  ownerId: number,
+  tenantId: number,
 ): number[] {
   const added: number[] = [];
   for (const vendor of listVendors(roster)) {
     try {
-      if (addRosterMembership(platform, { ownerId, accountId: vendor.accountId })) {
+      if (addRosterMembership(platform, { tenantId, accountId: vendor.accountId })) {
         added.push(vendor.accountId);
       }
     } catch {

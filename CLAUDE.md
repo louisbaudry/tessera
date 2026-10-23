@@ -115,25 +115,42 @@ status still lives on the card, never in the docs. Write the version in new
 text (`v2 (Ring 1)` where the ring helps); existing "Ring N" text is not
 wrong and is not swept.
 
-## Tenants (tables built, readers not yet moved)
+## Tenants
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
-one customer LSP (`planning/tenant-spec.md`, Epic 14, issues #292 to #295 still
-open). `tenant` and `tenant_membership` exist (platform schema v8, backlog #204)
-but nothing reads them: the code still keys everything on the owner account, and
-the invariants below that say "owner account" stay true as written until slice 2.
-Keep true:
+one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 3 to 6, issues #293
+to #295 and #298, still open). `tenant` and `tenant_membership` (platform schema
+v8, backlog #204) own what an owner account used to (backlog #205, schema v9): the
+storage root, the `.ctv` roster, client engine consent, project grants, roster
+membership, invitations and jobs. Where older text below says "owner" it means
+the tenant (or the staff member acting for it); where it says `?owner=<account id>`
+it is now `?tenant=<tenant id>`. Keep true:
 
 - **Every owner account is the admin of exactly one tenant, from creation.**
   `createAccount` founds it in the same transaction; a vendor founds none. A tenant
-  takes its founding admin's `storage_root` (spec D4), so the one path builder is
-  still right. Provision with `create-tenant`, name it with `rename-tenant`.
+  takes its founding admin's `storage_root` (spec D4). Provision with `create-tenant`,
+  name it with `rename-tenant`.
 - **A vendor is never tenant staff** (spec D3), refused by a trigger in the schema.
 - **A tenant's name is data, never repo content** (spec D12): this repo is public.
   No real company or person name in a test, fixture, doc, issue or commit; tests use
   invented names, and no audit detail carries a name.
-- A new platform table or route that names an owner names it in a way slice 2 can
-  re-key (an id column, never a path or a role check inlined in a route).
+- **The tenant comes from the session, never the request** (spec D6): `req.membership`,
+  set by the gate beside `req.account`; `sessionTenant(req)` for a write (a 403, in the
+  app's `{ error }` shape, for an account with none), `ownTenant(req)` for a read. The one
+  thing a request names is another tenant's id, `?tenant=`, and that opens a project only
+  through a grant. **A tenantless session (a vendor) gets what its empty storage root always
+  gave it** on a read or a list (an empty list, or the 404 of a missing object) and a 403 only
+  where it would create something; don't turn a vendor's 404 into a 403 on an owner-only route.
+- **A tenant's id is not its founder's account id**, and no code or test may rely on the two
+  being equal: they differ the moment a vendor sits between two owners. A test that makes
+  accounts makes a vendor first (`server/src/tenant.fixture.ts`, `tenantOf`).
+- **A project is named `t<tenant id>/<slug>` in a log** (`projectSubjectId`). Events written
+  before backlog #205 carry `<owner account id>/<slug>` and `owner_id` in an
+  `invitation.accepted` detail: a log is never rewritten, and the `t` prefix is what keeps the
+  two from being mistaken.
+- A grant or a roster row for staff of the same tenant is refused by a trigger
+  (`project_authorization_not_staff`, `roster_membership_not_staff`), as a vendor on staff is
+  (D3): the schema, not a route, holds each.
 
 ## The working rhythm
 
@@ -402,7 +419,7 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
 (the assignment state machine, the rate-tier and capacity vocabularies),
 `db/vendor` the `.ctv` through the shared migration runner. Keep true:
 
-- **A `.ctv` is the owner's roster, one per owner account** (backlog #46):
+- **A `.ctv` is the tenant's roster, one per tenant** (backlog #46, #205):
   never per vendor, never shop-wide. A vendor is a roster entry keyed by
   its platform account id; the email stays in the account.
 - **A rate is a row, never an edit** (`rate_card_entry` is append-only by
@@ -417,7 +434,7 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   vendors claiming one pool job resolve to one claim and one 409, and a deferred
   transaction would fail the loser with a raw `SQLITE_BUSY`. `assignment_event`
   is the log (append-only, actor required). The vendor routes are on
-  `@cat-tool/server` (`server/src/assignments.ts`), addressed `?owner=`; a
+  `@cat-tool/server` (`server/src/assignments.ts`), addressed `?tenant=`; a
   stranger, a non-member and a missing assignment are one identical 404.
 - **A job's match-tier words are frozen at offer** (backlog #49b):
   `assignment_analysis`, immutable by trigger. A segment's tier can't be
@@ -520,7 +537,7 @@ the Anthropic and DeepL adapters, the drafting job, the suggestion store and the
 editor strip. The benchmark (slice 5) is not. Keep true:
 
 - **A client's content leaves only through `engineFor`** (`server/src/engine.ts`),
-  which reads the project's client and override and the owner's consent and
+  which reads the project's client and override and the tenant's consent and
   hands them to `resolveEngine` (`core/src/draft/engine.ts`). That function fails
   closed: no client number, no consent row, an override to an engine the client
   did not consent to, or a default that outlived its consent is `off`. A new
@@ -809,7 +826,7 @@ log, never translation data) and the storage volume, with `core` and
 `db` in-process and JSON to the SPA. Five things to keep true:
 
 - **No function takes a path from a request.** `server/src/storage.ts`
-  builds every path from the account's minted `storage_root` and a
+  builds every path from the tenant's `storage_root` (minted for its founding admin) and a
   project slug it validates; that alphabet is the whole defence against
   traversal, and there is nothing to sanitise because nothing arrives.
   A new route that reads or writes a file goes through `projectPath`
@@ -833,7 +850,7 @@ log, never translation data) and the storage volume, with `core` and
   or origin.
 - **Bulk work is a job, never a request** (backlog #16a, `tm-format-spec.md`
   §1.1). A memory import is `startJob` on a worker thread, kept in
-  `server/src/jobs.ts` by an unguessable id the account alone can poll or
+  `server/src/jobs.ts` by an unguessable id the tenant alone can poll or
   cancel; the memory is built in a staging file and renamed into place only
   once whole. **Never `openTm` on the request thread to describe a
   memory:** it runs `integrity_check`, 7.9 s at 500,000 units, and the first
@@ -848,10 +865,10 @@ log, never translation data) and the storage volume, with `core` and
 - **A project route opens its project with `openProject(req, reply, name,
 action)`, and names the action** (`read`, `edit` or `manage`,
   `core/auth/authorization.ts`; backlog #45). A project is the session's own
-  unless `?owner=<account id>` names another's, which only a grant
+  tenant's unless `?tenant=<tenant id>` names another's, which only a grant
   (`project_authorization`) opens: no grant is a 404 identical to a missing
   project, a scope that lacks the action a 403. **A path built afterwards
-  uses `opened.owner`, never the session's account**: a grantee's storage
+  uses `opened.tenant`, never the session's own tenant**: a grantee's storage
   root holds none of the owner's files. Only `read`/`edit` routes may be
   reached by a grantee; a route that builds a memory or glossary path from
   the session stays `manage`. What a grantee may see of the memories and

@@ -897,8 +897,9 @@ changes: they stay scoped to one project file, exactly as designed.
 **Tenants (2026-10-23).** Selling to other LSPs makes the owner account a tenant's
 admin and adds `tenant` and `tenant_membership` beside `account`
 (`planning/tenant-spec.md`; platform schema v8, backlog #204). A tenant takes its
-founding admin's `storage_root`, so the paths above are unchanged; slice 2 (#205)
-moves the readers from the account to the tenant.
+founding admin's `storage_root`, so the paths above are unchanged. Since backlog #205
+(schema v9) the server builds every path from the session's tenant, and a project of
+another tenant is reached only through a grant, by `?tenant=<tenant id>`.
 
 ### 4.2 TM database — own format
 

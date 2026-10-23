@@ -65,7 +65,7 @@ export function Payments() {
             </thead>
             <tbody>
               {payments.map((row) => (
-                <PaymentLine key={`${row.owner}/${row.assignment}`} row={row} />
+                <PaymentLine key={`${row.tenantId}/${row.assignment}`} row={row} />
               ))}
             </tbody>
           </table>
@@ -80,7 +80,13 @@ function PaymentLine({ row }: { row: VendorPaymentRow }) {
   return (
     <tr>
       <td>
-        <a href={formatRoute({ screen: 'job', owner: row.owner, id: row.assignment })}>
+        <a
+          href={formatRoute({
+            screen: 'job',
+            tenantId: row.tenantId,
+            id: row.assignment,
+          })}
+        >
           {row.project}
         </a>
       </td>
