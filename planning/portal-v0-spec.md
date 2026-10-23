@@ -426,6 +426,28 @@ them whenever they like, as TMX and CSV, from their page. Decided
   100,000 units a 413. Each download is logged as `resource.exported` before
   the first byte goes out.
 
+## 9a. One portal per tenant (backlog #208, 2026-10-23)
+
+The portal serves several Language Service Providers from one server, each with its own
+`portal.sqlite`, storage folder, admin, clients and rates (`tenant-spec.md` D13, O2). Nothing in
+the v0 design above changes for a tenant: **a tenant's portal is this portal, unchanged**, built
+over that tenant's own file and folder. What is new is only how a request finds its tenant.
+
+- **A host picks the tenant.** `portal-server/src/gateway.ts` builds one app per registry entry and
+  routes by the request's `Host`; an unknown host is a 404 naming nothing, never a fallback. The SPA's
+  root-relative `/api/...` calls and a client's `/client.html#token=...` link are untouched.
+- **The registry** (`PORTAL_TENANTS_FILE`, JSON: `{ tenantId, host, dbPath, storageRoot, from?,
+  adminEmail? }` per tenant) is written by `add-portal-tenant`. Reading it refuses entries that share a
+  number, host, file or folder, or put one folder inside another.
+- **No registry, no change.** Without `PORTAL_TENANTS_FILE` the server is the single portal from
+  `PORTAL_DB_PATH` and `PORTAL_STORAGE_ROOT` on any host, as before. The first tenant adopts that file
+  by `add-portal-tenant -- <id> <host> --db <path> --storage <path>`: no data moves.
+- **An admin per file.** `create-admin`, `link-client-resource` and the seed take `--tenant <id>` (needed
+  once a registry has several tenants, so a command never guesses whose file it changes). The same email
+  can be an admin of two tenants with two passwords; a session or client link of one is a 401 on the other.
+- **Mail is the tenant's.** The SMTP transport is the operator's, shared; `from` and the admin's address
+  are per tenant, so a tenant's clients are mailed in its name.
+
 ## 10. A client plan: a monthly word allowance (idea #220, designed, not built)
 
 Decided 2026-10-11 (Louis): this feature is written down now and built when

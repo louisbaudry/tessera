@@ -146,6 +146,12 @@ export interface BuildAppOptions {
   readonly notifications?: NotificationService;
   /** Defaults to true; tests pass false. */
   readonly logger?: boolean;
+  /**
+   * Called once for every route this app registers (Fastify's `onRoute`). A deployment passes
+   * nothing; the tenant isolation test lists the routes through it, so a route added later is
+   * probed without anyone remembering to (backlog #208).
+   */
+  readonly onRoute?: (route: { readonly method: string; readonly url: string }) => void;
 }
 
 function serializeOrder(order: TranslationOrder) {
@@ -242,6 +248,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const db = openPortalDb(config.dbPath);
 
   const app = Fastify({ logger: options.logger ?? true });
+  if (options.onRoute) {
+    const report = options.onRoute;
+    app.addHook('onRoute', (route) => {
+      for (const method of [route.method].flat()) report({ method, url: route.url });
+    });
+  }
   app.decorateRequest('admin', null);
   await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
   await app.register(staticPlugin, {

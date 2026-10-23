@@ -4,7 +4,7 @@
  * job, not an HTTP endpoint, on purpose: the path is typed by the operator
  * who owns the file, and nothing a request sends is ever a path.
  *
- *   pnpm --filter @cat-tool/portal-server run link-client-resource -- link <client-id> tm|glossary <absolute-path>
+ *   pnpm --filter @cat-tool/portal-server run link-client-resource -- [--tenant <id>] link <client-id> tm|glossary <absolute-path>
  *   pnpm --filter @cat-tool/portal-server run link-client-resource -- unlink <client-id> tm|glossary
  *   pnpm --filter @cat-tool/portal-server run link-client-resource -- list <client-id>
  *
@@ -23,7 +23,7 @@ import {
 } from '@cat-tool/db';
 import { isClientResourceKind, type AuditActor } from '@cat-tool/portal-core';
 
-import { loadConfig } from './config.js';
+import { tenantCommand } from './tenant-cli.js';
 
 const OPERATOR: AuditActor = {
   actor: { kind: 'system', name: 'link-client-resource' },
@@ -31,13 +31,12 @@ const OPERATOR: AuditActor = {
 };
 
 const USAGE =
-  'usage: link-client-resource link <client-id> tm|glossary <absolute-path>\n' +
-  '       link-client-resource unlink <client-id> tm|glossary\n' +
-  '       link-client-resource list <client-id>';
+  'usage: link-client-resource [--tenant <id>] link <client-id> tm|glossary <absolute-path>\n' +
+  '       link-client-resource [--tenant <id>] unlink <client-id> tm|glossary\n' +
+  '       link-client-resource [--tenant <id>] list <client-id>';
 
-// `pnpm run <script> -- <args>` forwards the `--` itself (CLAUDE.md, gotchas).
-const args = process.argv.slice(2);
-if (args[0] === '--') args.shift();
+// `--tenant <id>` picks a tenant's portal when a registry names several (backlog #208).
+const { tenant, args } = tenantCommand(process.argv.slice(2));
 const [command, clientArg, kindArg, pathArg] = args;
 
 function fail(message: string): never {
@@ -48,7 +47,7 @@ function fail(message: string): never {
 const clientId = Number(clientArg);
 if (!command || !Number.isInteger(clientId) || clientId < 1) fail(USAGE);
 
-const db = openPortalDb(loadConfig().dbPath);
+const db = openPortalDb(tenant.dbPath);
 try {
   const client = getClient(db, clientId);
   if (!client) fail(`no client #${clientId}`);

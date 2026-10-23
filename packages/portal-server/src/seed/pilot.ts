@@ -9,11 +9,12 @@ import { dirname } from 'node:path';
 
 import { createClient, openPortalDb, setRate } from '@cat-tool/db';
 
-import { loadConfig } from '../config.js';
+import { tenantCommand } from '../tenant-cli.js';
 
-const config = loadConfig();
-mkdirSync(dirname(config.dbPath), { recursive: true });
-const db = openPortalDb(config.dbPath);
+// `--tenant <id>` picks a tenant's portal when a registry names several (backlog #208).
+const { tenant } = tenantCommand(process.argv.slice(2));
+mkdirSync(dirname(tenant.dbPath), { recursive: true });
+const db = openPortalDb(tenant.dbPath);
 
 // The access token is the client's whole credential (portal-v0-spec.md
 // §7), so it is minted per seed, never written into source.

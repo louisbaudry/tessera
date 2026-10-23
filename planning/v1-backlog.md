@@ -4638,9 +4638,50 @@ is in the hash. What it taught:
 - Not built: showing events from before the column; offboarding itself (`tenant-spec.md` §6 invariant 7,
   which this export serves).
 
-**#208 · A portal per tenant · L** · [issue #295]
+**#208 · ~~A portal per tenant~~ · DONE — `portal-server/src/{gateway,tenants,tenant-cli,add-portal-tenant}.ts`, `config.ts` (`PORTAL_TENANTS_FILE`), `app.ts` (`onRoute`)** (2026-10-23; card #295, Epic 14, `tenant-spec.md` D13, `portal-v0-spec.md` §9a)
+
+Louis chose one portal file per tenant (O2) on 2026-10-23. A tenant's portal is the existing portal
+app over that tenant's own `portal.sqlite` and storage folder; a gateway finds it by host. What it taught:
+
+- **The cheapest isolation is not filtering.** The portal app is a closure over one database
+  and one storage root. Building it once per tenant, instead of threading a tenant through about forty
+  routes and the repository, means no query can reach another tenant's rows because the connection is not
+  there, and the existing 1,400 lines of portal tests are untouched. The gateway is about eighty lines and
+  decides one thing: which app. A `tenant_id` column would have meant a back-fill and a filter on every
+  query, with one missed filter a cross-tenant leak.
+- **A host, not a path or a token.** The SPA calls root-relative `/api/...` and a client link is a
+  fragment, so a path prefix would have changed both, and a token alone cannot say whose file to open
+  without trying them all. A host leaves everything as it is and is what #298 will derive from
+  `tenant.slug`; until then the registry names it. An unknown host is a 404 with a fixed body, and not even
+  the static page is served to it.
+- **The registry is where overlap is refused.** Reading it rejects two entries sharing a number, a
+  host, a database file or a folder, a folder inside another, or a database inside any folder, and
+  `add-portal-tenant` runs the same check before it creates anything (seen: a refused add left no folder
+  behind). A typo in a key is an error rather than a silently ignored setting.
+- **No registry, no change.** Without `PORTAL_TENANTS_FILE` the server is the single portal from
+  `PORTAL_DB_PATH` and `PORTAL_STORAGE_ROOT` on any host. The first tenant adopts that file with
+  `add-portal-tenant -- <id> <host> --db <path> --storage <path>`, so nothing moves (D12). Scripts that
+  touch a file (`create-admin`, `link-client-resource`, the seed) take `--tenant`, needed once a registry has
+  several, so a command never guesses whose file it is about to change.
+- **A walk, not a list.** `gateway.test.ts` collects every route the portal registers (`onRoute`) and
+  requires tenant A's admin session and client link to be a 401 on tenant B's host on every `/api` route,
+  with a control that the same credential reaches the handler on its own host. Its first run reported ten
+  failures that were the test's: `logout` revokes the session it is sent with, so the controls after it were
+  refused for the wrong reason; each route now gets a fresh session. A mutation that routes every host to
+  the first tenant fails five of the seven tests.
+- Verified: 12 registry tests and 7 gateway tests; the add, create-admin and serve commands run by hand on
+  a scratch registry (a duplicate number and host refused, an unknown host 404, tenant A's password
+  refused by tenant B); the existing portal suite and the whole gate. Not verified: real SMTP per tenant (the
+  sender and admin address are per tenant in the config and covered by a unit test only), and the portal SPA
+  in a browser on two hosts.
+- Not built: hosts derived from `tenant.slug` and a certificate per host (#298); a tenant's portal on
+  the CAT server's own tenant list (the two share only the number); moving a tenant's portal between regions.
+- Found, not fixed here: the SMTP `from` default in `config.ts` names a company, in a public repo
+  (`tenant-spec.md` D12). Filed as issue #306.
 
 **#209 · A subdomain per tenant, with the host checked against the session · M** · [issue #298]
+
+**#212 · The portal's default SMTP sender names a real company · S** · [issue #306]
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 

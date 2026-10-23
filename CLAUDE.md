@@ -118,8 +118,7 @@ wrong and is not swept.
 ## Tenants
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
-one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 5 and 6, issues #295
-and #298 still open). `tenant` and `tenant_membership` (platform schema
+one customer LSP (`planning/tenant-spec.md`, Epic 14; slice 6, issue #298, still open). `tenant` and `tenant_membership` (platform schema
 v8, backlog #204) own what an owner account used to (backlog #205, schema v9): the
 storage root, the `.ctv` roster, client engine consent, project grants, roster
 membership, invitations and jobs. Where older text below says "owner" it means
@@ -665,6 +664,15 @@ engine, but follows the same discipline:
   not the core.
 - Its `.sqlite` file goes through the same shared migration runner as
   everything else — no bespoke portal migration path.
+- **A tenant's portal is its own file, folder and app** (backlog #208, `tenant-spec.md` D13,
+  `portal-v0-spec.md` §9a). `portal-server/src/gateway.ts` builds one `buildApp` per entry of the
+  tenant registry (`PORTAL_TENANTS_FILE`, written by `add-portal-tenant`) and routes by `Host`; an
+  unknown host is a 404 that names nothing. Isolation is by construction (the closure that holds one
+  tenant's database is not in another's), so route code never filters by tenant: **don't add a
+  `tenant_id` to a portal table or query**. Without a registry the portal is the single one it
+  always was. A script that touches a portal file takes `--tenant` (`tenant-cli.ts`). The
+  credential walk in `gateway.test.ts` lists the routes through `onRoute`, and a new `/api` route
+  must sit under `/api/admin` or `/api/client`.
 - **An uploaded filename never becomes a path.** The API server's rule
   ("no function takes a path from a request") holds here too, and v0
   broke it once: `portal-server/src/storage.ts` stored uploads under
