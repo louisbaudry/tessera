@@ -230,7 +230,8 @@ seen to fail before the code that satisfies it.
    against tenant B's project, memory, glossary, reference file, job, roster,
    assignment, payable, webhook, consent and download, gets the response a
    missing object gets (404, identical body). One test walks the routes the app
-   registers, so a route added later without an entry fails it (slice 4, #294).
+   registers, so a route added later without an entry fails it (slice 4, #294, built:
+   `server/src/isolation.test.ts`).
 2. **A path is built from the tenant's minted root and a validated slug.** No
    function takes a path from a request; a tenant id in a request selects a row,
    never a directory.
@@ -268,7 +269,7 @@ seen to fail before the code that satisfies it.
 | 1     | #291  | `tenant`, `tenant_membership`, backfill, `createTenant`, `create-tenant`, `rename-tenant` | M |
 | 2     | #292  | Key ownership on the tenant: paths, grants, roster, invitations, consent (built) | L |
 | 3     | #293  | Staff roles, `tenantRoleAllows`, staff invitations (built; its screen is #300) | M    |
-| 4     | #294  | Isolation matrix across every route; tenant-scoped audit view        | M    |
+| 4     | #294  | Isolation matrix across every route (built); its audit view is #302, which waits on O3 | M    |
 | 5     | #295  | A portal per tenant (needs O2)                                       | L    |
 
 Order: 1, then 2; 3 and 4 follow 2 and are independent; 5 waits on O2. One

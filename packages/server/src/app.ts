@@ -210,6 +210,12 @@ export interface BuildAppOptions {
    * a pattern that hangs shortens them, so it need not wait ten real seconds.
    */
   readonly replaceLimitsMs?: { readonly scan?: number; readonly apply?: number };
+  /**
+   * Called once for every route the app registers (Fastify's `onRoute`). A deployment
+   * passes nothing; the isolation matrix (`isolation.test.ts`, backlog #207) lists the
+   * app's routes through it, so a route added later is found by the test and not by hand.
+   */
+  readonly onRoute?: (route: { readonly method: string; readonly url: string }) => void;
   readonly webhooks?: {
     readonly send?: WebhookSender;
     readonly resolve?: Resolver;
@@ -350,6 +356,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const platform = openPlatformDb(config.dbPath);
 
   const app = Fastify({ logger: options.logger ?? true });
+  if (options.onRoute) {
+    const report = options.onRoute;
+    app.addHook('onRoute', (route) => {
+      for (const method of [route.method].flat()) report({ method, url: route.url });
+    });
+  }
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
   app.decorateRequest('account', null);
   app.decorateRequest('membership', null);

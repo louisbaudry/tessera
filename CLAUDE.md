@@ -118,8 +118,8 @@ wrong and is not swept.
 ## Tenants
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
-one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 4 to 6, issues #294,
-#295 and #298, and #300 (a staff screen) still open). `tenant` and `tenant_membership` (platform schema
+one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 5 and 6, issues #295
+and #298, #300 (a staff screen) and #302 (a tenant audit view, waiting on spec O3) still open). `tenant` and `tenant_membership` (platform schema
 v8, backlog #204) own what an owner account used to (backlog #205, schema v9): the
 storage root, the `.ctv` roster, client engine consent, project grants, roster
 membership, invitations and jobs. Where older text below says "owner" it means
@@ -139,6 +139,11 @@ it is now `?tenant=<tenant id>`. Keep true:
   of its own (tenant and role frozen at invitation, read from the row at acceptance, never from the
   request), through `/api/staff-invitations/open|accept`, not the vendor routes. Removing staff
   ends their sessions in the same transaction.
+- **A new server route needs an entry in `server/src/isolation.test.ts`** (backlog #207, spec §6):
+  the test lists the app's routes through `buildApp`'s `onRoute` and fails on one it has no entry
+  for. A `/api/projects/:name/...` route is probed automatically (B's project against a missing
+  one, plain and with `?tenant=`); any other is `public`, `list`, `own` or an `object` pair. An
+  object probe's control must itself be a 404, so give it a body that gets past validation.
 - **A vendor is never tenant staff** (spec D3), refused by a trigger in the schema.
 - **A tenant's name is data, never repo content** (spec D12): this repo is public.
   No real company or person name in a test, fixture, doc, issue or commit; tests use
