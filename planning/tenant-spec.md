@@ -303,10 +303,14 @@ Each has a recommendation; none blocks slices 1 to 3.
   tenant the region unit, so a subdomain can later point at a region. Conditions: the host is
   a hint, never the authority (the session still names the tenant, D6; a mismatch is refused);
   the slug is a public name and is not `tenant.name`; one wildcard certificate so customer
-  names stay out of Certificate Transparency logs. **Open:** where a vendor signs in. A vendor
-  belongs to no tenant (D3) and is on several rosters, so recommended: a neutral host
-  (`app.<domain>`) that lists every tenant that engages them, not a separate login on each
-  tenant's subdomain.
+  names stay out of Certificate Transparency logs. **Decided (Louis, 2026-10-23): a vendor
+  signs in on each tenant's subdomain**, not on a neutral host. So the host check applies to
+  every session: a vendor session is valid on tenant T's host only if the account is on T's
+  roster, and the vendor routes that today span every roster (`/api/vendor/feed`,
+  `/capacity`, `/payments`) answer for the host's tenant only, so one LSP's page never shows
+  another LSP's work. The cost is accepted for simplicity: a freelancer on three rosters has
+  three logins and no combined feed or payment record. A neutral host remains possible later
+  and would not change the host check.
 - **O6. What the interface calls it.** Recommended: "organisation" in the UI,
   `tenant` in code; the glossary records the code word. Louis may prefer
   "workspace".
