@@ -122,16 +122,22 @@ access rules, with no hot kernel and nothing a benchmark has pointed at; the
 existing vitest suites and `inject` tests cover all of it. A plugin sandbox for
 LSP extensions is a different product question and would be its own card.
 
-**D12. The first tenant is the operator's own company (decided 2026-10-23,
-Louis).** The business that built Tessera is its first customer, so every
-choice here is proven on a real LSP before another is sold to. Two
-consequences. The one existing install is not a throwaway: its owner account
-becomes that company's first `admin`, its root becomes that tenant's root, and
-the portal it already runs becomes that tenant's portal (§9 O2). And **the
-company's name is data, never repo content**: this repo is public and `NOTICE`
-keeps any company name out of it, so the name is typed when the tenant is
-provisioned or renamed, lives in `tenant.name` in the operator's file, and
-appears in no fixture, test, doc, issue or commit. Tests use invented names.
+**D12. The first tenant is a company the owner already runs, and the operator
+is a separate legal entity (decided 2026-10-23, Louis).** The first customer is
+a real LSP that is the owner's own business, so every choice here is proven on
+one before another is sold to. Louis intends a separate company to run Tessera
+as a service; the first tenant is then a customer of it like any later one. That
+is a legal and commercial matter for Louis and his advisers, not settled here;
+the design only has to hold whichever way it goes, and it does, because the
+operator is never a tenant (§7). Three consequences. The one existing install is
+not a throwaway: its owner account becomes the first tenant's first `admin`, its
+root becomes that tenant's root, and the portal it already runs becomes that
+tenant's portal (§9 O2). **The tenant's name is data, never repo content**: this
+repo is public and `NOTICE` keeps any company name out of it, so the name is
+typed when the tenant is provisioned or renamed, lives in `tenant.name` in the
+operator's file, and appears in no fixture, test, doc, issue or commit. Tests
+use invented names. And **the first tenant needs the same paperwork as any
+other** (§7, O4), because nothing in the data model treats it as special.
 
 ## 4. Data model
 
@@ -218,6 +224,12 @@ seen to fail before the code that satisfies it.
   the ops stack (`telemetry-spec.md` §10); a tenant sees neither. There is no
   operator account in the product yet and none is added here: the operator is
   the command line and the server's own file system.
+  The operator is not a tenant and has no membership in one. If a separate
+  company runs the service (D12), it is expected to act as processor of each
+  tenant's client data, with the tenant as controller, and each tenant signs
+  a data processing agreement with it, the first tenant included. That
+  reading is Louis's to confirm with counsel; it is recorded here because it
+  is why the first tenant gets no shortcut in the data model.
 - **The portal** (slice 5, #295) is the one surface that is not yet per tenant.
   It has its own server, database, single admin and client list, so a second
   LSP would share all of them. §9 O2 says how.
@@ -258,7 +270,8 @@ Each has a recommendation; none blocks slices 1 to 3.
 - **O4. Self-service signup, plans and billing.** Not now. A commercial and
   legal call (price, trial, who is the data controller, the DPA a tenant signs),
   and `ai-platform-vision.md` §5 deferred the paperwork until a client needs it.
-  The first LSP is the operator's own company (D12), provisioned by hand.
+  The first LSP is a company the owner already runs (D12), provisioned by hand;
+  its agreement with the operating entity is still a document to write.
 - **O5. The region unit.** `worldwide-and-compliance-spec.md` §3.1 leaves it
   open. Recommended: the tenant, with a `region` column added when a second
   region exists, not before.
