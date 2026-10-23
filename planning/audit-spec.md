@@ -485,6 +485,8 @@ prev_chain_hash of the first row = SHA-256('CATA:' ‖ application_id)
 canonical(row) = JSON of [id, at, actor, action, subject_type,
                           subject_id, batch_id, detail] — fixed order,
                           no whitespace, detail as stored
+                 plus, in platform.sqlite only and only when set,
+                          a ninth element: tenant_id (§3.1)
 ```
 
 `actor_label` is deliberately **outside** the canonical form (§5).
@@ -520,6 +522,26 @@ them, and this is their record:
   could reorder its keys, and the chain must depend only on bytes that
   are actually in the file. The writer hashes the exact string it
   stores.
+- **`tenant_id` is a ninth element, only when there is one** (backlog #211, `tenant-spec.md`
+  §9 O3, decided 2026-10-23). `platform.sqlite` is the one log that holds many tenants'
+  events, so from platform v11 its `audit_event` has a nullable `tenant_id`: the tenant the
+  event is about, `null` for an event about none (a refused login, an operator's own vendor
+  account, a vendor's own session). It is **inside the hash** because a tenant's admin
+  reads their slice by it and an operator hands it over on offboarding: a column outside
+  the chain could be edited to move an event into or out of a slice without a trace. It
+  is appended to the array **only when set**, so every row written before the column, and
+  every project, portal and roster event, still has the eight elements it was hashed with and
+  keeps verifying (`chain.test.ts` pins this, and `tenant-audit.test.ts` runs the v10 → v11
+  migration over a log). What it cannot do is reach back: an event written before v11 has no
+  tenant and cannot be given one (it is immutable and hashed), so a tenant's slice starts
+  where the column does. There is no foreign key: the log outlives a tenant. **Which tenant**
+  is the one the event is about, decided at the write: the project's for a project, its grant
+  and its download (never the actor's), the founded or joined tenant for the account that
+  founded or joined it, the inviting tenant for an invitation and the vendor account it makes,
+  the staff member's tenant for a sign-in or sign-out (a vendor's session is on no tenant's
+  slice), the client's tenant for a consent. `appendPlatformEvent` makes it a required argument
+  (`null` is an answer, leaving it out does not compile) and an ESLint rule keeps the platform
+  files off the shared writer.
 - **`verifyAuditChain` reads rows in ascending `id`** and reports the
   first row whose stored `chain_hash` differs from the recomputed one,
   or whose `id` does not exceed the previous row's. An edited row is
@@ -605,6 +627,14 @@ The minimum, so a log is not write-only:
 
 The editor's per-segment history panel and a PM-facing audit view are UI
 work, gated behind Epic 6 like every other screen.
+
+A tenant's own slice of the platform log (backlog #211): `GET /api/audit` for its admin
+(`listTenantEvents`, newest first, paged by id; a pm is refused), the SPA's `#/audit`, and for
+the operator `pnpm --filter @cat-tool/server run export-tenant-audit -- <tenant-id> <file>`:
+JSON lines, rows as stored with a header saying whether the **whole** log verified when it was
+cut, since a slice has gaps and cannot verify alone. That export is itself logged
+(`tenant.audit_exported`: a count and a digest, no event) before the file is written, because
+content leaving the system is audited (decision 9).
 
 ## 8. Open, deliberately deferred
 

@@ -7,6 +7,11 @@
  * `actor_label` is deliberately not hashed: erasing a person's label
  * (spec §5) is the one permitted change, and it must not look like
  * tampering.
+ *
+ * `tenantId` is hashed, but only when there is one (spec §3.1, backlog #211): a
+ * tenant's slice of the platform log is only trustworthy if moving an event to
+ * another tenant is a break, while every row written before the column existed has
+ * none and must keep verifying.
  */
 
 import { createHash } from 'node:crypto';
@@ -22,6 +27,12 @@ export interface AuditEventRow {
   readonly subjectId: string | null;
   readonly batchId: number | null;
   readonly detail: string | null;
+  /**
+   * The tenant the event is about: only `platform.sqlite` has the column, and an event
+   * that concerns no tenant (the operator's, a refused login) has `null`. Absent and
+   * `null` are the same fact, and hash the same.
+   */
+  readonly tenantId?: number | null;
   readonly chainHash: string;
 }
 
@@ -40,9 +51,12 @@ export function genesisHash(applicationId: number): string {
 /**
  * The fixed-order array that is hashed. `detail` goes in as the stored
  * string, never re-parsed — a re-serialised object could reorder keys.
+ * The tenant id is a ninth element **only when set**, so an eight-element row (every
+ * row written before the column, and every project, portal and roster event) hashes
+ * byte for byte as it always did.
  */
 export function canonicalAuditRow(row: ChainedFields): string {
-  return JSON.stringify([
+  const fields: Array<string | number | null> = [
     row.id,
     row.at,
     row.actor,
@@ -51,7 +65,9 @@ export function canonicalAuditRow(row: ChainedFields): string {
     row.subjectId,
     row.batchId,
     row.detail,
-  ]);
+  ];
+  if (row.tenantId !== undefined && row.tenantId !== null) fields.push(row.tenantId);
+  return JSON.stringify(fields);
 }
 
 /** `SHA-256(prev ‖ canonical(row))`, lowercase hex. */

@@ -30,7 +30,13 @@ import { sqlList } from '../migrate.js';
  * A migration passes its own frozen list, never the live constant
  * (`db/migrate.ts`, backlog #64).
  */
-export function auditEventDdl(actions: readonly AuditAction[]): string {
+export function auditEventDdl(
+  actions: readonly AuditAction[],
+  options: { readonly tenantId?: boolean } = {},
+): string {
+  // Only `platform.sqlite` (v11) has the column: it is the one log that holds many
+  // tenants' events. A project, portal or roster file is one tenant's already.
+  const tenant = options.tenantId === true;
   return `
     CREATE TABLE audit_event (
       id           INTEGER PRIMARY KEY,
@@ -42,9 +48,10 @@ export function auditEventDdl(actions: readonly AuditAction[]): string {
       subject_id   TEXT,
       batch_id     INTEGER REFERENCES audit_event(id),
       detail       TEXT,
-      chain_hash   TEXT    NOT NULL
+      ${tenant ? 'tenant_id    INTEGER,\n      ' : ''}chain_hash   TEXT    NOT NULL
     );
     CREATE INDEX audit_event_subject ON audit_event(subject_type, subject_id, id);
+    ${tenant ? 'CREATE INDEX audit_event_tenant ON audit_event(tenant_id, id) WHERE tenant_id IS NOT NULL;' : ''}
     CREATE INDEX audit_event_batch   ON audit_event(batch_id) WHERE batch_id IS NOT NULL;
 
     CREATE TRIGGER audit_event_no_delete BEFORE DELETE ON audit_event
@@ -57,6 +64,7 @@ export function auditEventDdl(actions: readonly AuditAction[]): string {
       OR NEW.actor IS NOT OLD.actor OR NEW.action IS NOT OLD.action
       OR NEW.subject_type IS NOT OLD.subject_type OR NEW.subject_id IS NOT OLD.subject_id
       OR NEW.batch_id IS NOT OLD.batch_id OR NEW.detail IS NOT OLD.detail
+      ${tenant ? 'OR NEW.tenant_id IS NOT OLD.tenant_id' : ''}
       OR NEW.chain_hash IS NOT OLD.chain_hash
       OR NEW.actor_label IS NOT '[erased]'
     BEGIN SELECT RAISE(ABORT, 'audit_event is append-only'); END;
@@ -71,6 +79,12 @@ export interface NewAuditEvent<A extends AuditAction> {
   /** The batch-level parent event (spec §2.3), if this row is one of its children. */
   readonly batchId?: number | null;
   readonly detail: AuditDetail[A];
+  /**
+   * The tenant the event is about, hashed with it (audit-spec.md §3.1). Only
+   * `platform.sqlite` has the column, and its writes go through `appendPlatformEvent`,
+   * which makes this required there; a project, portal or roster write leaves it out.
+   */
+  readonly tenantId?: number | null;
 }
 
 interface EventRow {
@@ -83,6 +97,8 @@ interface EventRow {
   subject_id: string | null;
   batch_id: number | null;
   detail: string | null;
+  /** Absent on a database whose log has no tenant column. */
+  tenant_id?: number | null;
   chain_hash: string;
 }
 
@@ -96,6 +112,7 @@ const fromRow = (row: EventRow): AuditEventRow => ({
   subjectId: row.subject_id,
   batchId: row.batch_id,
   detail: row.detail,
+  ...(row.tenant_id === undefined ? {} : { tenantId: row.tenant_id }),
   chainHash: row.chain_hash,
 });
 
@@ -127,19 +144,22 @@ export function appendAuditEvent<A extends AuditAction>(
       batchId: event.batchId ?? null,
       // Hashed as the exact string stored (spec §3.1).
       detail: event.detail === null ? null : JSON.stringify(event.detail),
+      // Present only for a log with the column; hashed as a ninth element when set.
+      ...(event.tenantId === undefined ? {} : { tenantId: event.tenantId }),
     };
     const row: AuditEventRow = {
       ...fields,
       actorLabel: event.actor.label,
       chainHash: chainHash(last?.chain_hash ?? genesisHash(applicationId(db)), fields),
     };
+    const withTenant = event.tenantId !== undefined;
     db.prepare(
       `INSERT INTO audit_event
          (id, at, actor, actor_label, action, subject_type, subject_id, batch_id,
-          detail, chain_hash)
+          detail, ${withTenant ? 'tenant_id, ' : ''}chain_hash)
        VALUES
          (@id, @at, @actor, @actorLabel, @action, @subjectType, @subjectId, @batchId,
-          @detail, @chainHash)`,
+          @detail, ${withTenant ? '@tenantId, ' : ''}@chainHash)`,
     ).run(row);
     return row;
   })();

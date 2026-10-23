@@ -16,6 +16,7 @@ import { Payables } from './Payables.js';
 import { Payments } from './Payments.js';
 import { ProjectFiles, Projects } from './Projects.js';
 import { Staff } from './Staff.js';
+import { Audit } from './Audit.js';
 import { parseProjectKey } from './project-key.js';
 import { loadTheme, saveTheme } from './prefs.js';
 import { formatRoute, parseRoute, type Route } from './route.js';
@@ -126,6 +127,9 @@ export function App() {
           {role === 'owner' && <a href={formatRoute({ screen: 'vendors' })}>Vendors</a>}
           {role === 'owner' && <a href={formatRoute({ screen: 'payables' })}>Pay run</a>}
           {staffRole === 'admin' && <a href={formatRoute({ screen: 'staff' })}>Staff</a>}
+          {staffRole === 'admin' && (
+            <a href={formatRoute({ screen: 'audit' })}>Activity</a>
+          )}
           {role === 'vendor' && (
             <a href={formatRoute({ screen: 'payments' })}>Payments</a>
           )}
@@ -147,6 +151,7 @@ export function App() {
             <Vendors canManageWebhooks={staffRole === 'admin'} />
           )}
           {route.screen === 'staff' && staffRole === 'admin' && <Staff />}
+          {route.screen === 'audit' && staffRole === 'admin' && <Audit />}
           {route.screen === 'payables' && role === 'owner' && <Payables />}
           {route.screen === 'payments' && role === 'vendor' && <Payments />}
           {route.screen === 'project' && <ProjectFiles name={route.project} />}
@@ -180,7 +185,8 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
     route.screen === 'payables' ||
     route.screen === 'payments' ||
     route.screen === 'vendors' ||
-    route.screen === 'staff'
+    route.screen === 'staff' ||
+    route.screen === 'audit'
   ) {
     const here = {
       tms: 'Memories',
@@ -188,6 +194,7 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       payments: 'Payments',
       vendors: 'Vendors',
       staff: 'Staff',
+      audit: 'Activity',
     }[route.screen];
     return (
       <nav className="crumbs">

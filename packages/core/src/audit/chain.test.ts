@@ -83,6 +83,62 @@ function buildLog(): AuditEventRow[] {
   return log;
 }
 
+describe('the tenant id in the hash (audit-spec.md §3.1, backlog #211)', () => {
+  const base: ChainedFields = {
+    id: 7,
+    at: '2026-10-23T12:00:00.000Z',
+    actor: 'account:3',
+    action: 'project.created',
+    subjectType: 'project',
+    subjectId: 't2/job',
+    batchId: null,
+    detail: null,
+  };
+
+  it('leaves a row with no tenant hashing exactly as it did before the column existed', () => {
+    // Every row written before the column is such a row, and its stored hash must still verify.
+    const legacy =
+      '[7,"2026-10-23T12:00:00.000Z","account:3","project.created","project","t2/job",null,null]';
+    expect(canonicalAuditRow(base)).toBe(legacy);
+    expect(canonicalAuditRow({ ...base, tenantId: null })).toBe(legacy);
+    const prev = genesisHash(APP_ID);
+    expect(chainHash(prev, { ...base, tenantId: null })).toBe(chainHash(prev, base));
+    expect(chainHash(prev, base)).toBe(
+      createHash('sha256')
+        .update(prev + legacy, 'utf8')
+        .digest('hex'),
+    );
+  });
+
+  it('adds the tenant as the ninth element when there is one, so it changes the hash', () => {
+    expect(canonicalAuditRow({ ...base, tenantId: 2 })).toBe(
+      '[7,"2026-10-23T12:00:00.000Z","account:3","project.created","project","t2/job",null,null,2]',
+    );
+    const prev = genesisHash(APP_ID);
+    expect(chainHash(prev, { ...base, tenantId: 2 })).not.toBe(chainHash(prev, base));
+    expect(chainHash(prev, { ...base, tenantId: 2 })).not.toBe(
+      chainHash(prev, { ...base, tenantId: 3 }),
+    );
+  });
+
+  it('reports a tenant id that was edited, added or removed as a break of its row', () => {
+    const log: AuditEventRow[] = [];
+    append(log, { ...base, id: 1, tenantId: 2 });
+    append(log, { ...base, id: 2, tenantId: null });
+    append(log, { ...base, id: 3, tenantId: 3 });
+    expect(verifyAuditChain(log, APP_ID)).toBeNull();
+    const moved = log.map((r) => ({ ...r }));
+    moved[0] = { ...moved[0]!, tenantId: 3 };
+    expect(verifyAuditChain(moved, APP_ID)).toBe(1);
+    const added = log.map((r) => ({ ...r }));
+    added[1] = { ...added[1]!, tenantId: 2 };
+    expect(verifyAuditChain(added, APP_ID)).toBe(2);
+    const removed = log.map((r) => ({ ...r }));
+    removed[2] = { ...removed[2]!, tenantId: null };
+    expect(verifyAuditChain(removed, APP_ID)).toBe(3);
+  });
+});
+
 describe('the audit hash chain', () => {
   it('fixes the bytes spec §3.1 records', () => {
     expect(genesisHash(APP_ID)).toBe(

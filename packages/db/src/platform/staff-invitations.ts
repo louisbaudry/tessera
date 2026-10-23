@@ -32,7 +32,7 @@ import {
 } from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
-import { appendAuditEvent } from '../audit/events.js';
+import { appendPlatformEvent } from './audit-write.js';
 import { createAccount, getAccountByEmail, type Account } from './accounts.js';
 import { EmailTakenError, InvitationUnusableError } from './invitations.js';
 
@@ -159,7 +159,7 @@ export function createStaffInvitation(
         )
         .all(options.tenantId, email, now.toISOString()) as Array<{ id: number }>;
       for (const old of pending)
-        withdraw(db, old.id, now, options.actor, { superseded: true });
+        withdraw(db, options.tenantId, old.id, now, options.actor, { superseded: true });
       const info = db
         .prepare(
           `INSERT INTO staff_invitation
@@ -176,9 +176,10 @@ export function createStaffInvitation(
           exp: new Date(now.getTime() + INVITATION_TTL_MS).toISOString(),
         });
       const id = info.lastInsertRowid as number;
-      appendAuditEvent(db, {
+      appendPlatformEvent(db, {
         actor: options.actor,
         action: 'invitation.created',
+        tenantId: options.tenantId,
         subjectType: 'staff_invitation',
         subjectId: String(id),
         detail: null,
@@ -203,6 +204,7 @@ export function listStaffInvitations(
 
 function withdraw(
   db: Database.Database,
+  tenantId: number,
   id: number,
   now: Date,
   actor: AuditActor,
@@ -215,9 +217,10 @@ function withdraw(
     )
     .run(now.toISOString(), id).changes;
   if (changed !== 1) throw new StaffInvitationError(NO_SUCH);
-  appendAuditEvent(db, {
+  appendPlatformEvent(db, {
     actor,
     action: 'invitation.revoked',
+    tenantId,
     subjectType: 'staff_invitation',
     subjectId: String(id),
     detail,
@@ -248,7 +251,7 @@ export function revokeStaffInvitation(
         .prepare('SELECT * FROM staff_invitation WHERE id = ? AND tenant_id = ?')
         .get(options.id, options.tenantId) as Row | undefined;
       if (!row) throw new StaffInvitationError(NO_SUCH);
-      withdraw(db, row.id, now, options.actor, null);
+      withdraw(db, row.tenant_id, row.id, now, options.actor, null);
       return fromRow(rowById(db, row.id), now);
     })
     .immediate();
@@ -316,9 +319,10 @@ export function acceptStaffInvitation(
         )
         .run(now.toISOString(), account.id, row.id).changes;
       if (changed !== 1) throw new InvitationUnusableError();
-      appendAuditEvent(db, {
+      appendPlatformEvent(db, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },
         action: 'invitation.accepted',
+        tenantId: row.tenant_id,
         subjectType: 'staff_invitation',
         subjectId: String(row.id),
         detail: { tenant_id: row.tenant_id, account_id: account.id },

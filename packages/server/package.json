@@ -11,7 +11,8 @@
     "start": "node dist/main.js",
     "create-account": "node dist/create-account.js",
     "create-tenant": "node dist/create-tenant.js",
-    "rename-tenant": "node dist/rename-tenant.js"
+    "rename-tenant": "node dist/rename-tenant.js",
+    "export-tenant-audit": "node dist/export-tenant-audit.js"
   },
   "dependencies": {
     "@cat-tool/core": "workspace:*",

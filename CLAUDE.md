@@ -119,7 +119,7 @@ wrong and is not swept.
 
 Tessera is to be sold to other Language Service Providers, so a **tenant** is
 one customer LSP (`planning/tenant-spec.md`, Epic 14; slices 5 and 6, issues #295
-and #298, and #302 (a tenant audit view, waiting on spec O3) still open). `tenant` and `tenant_membership` (platform schema
+and #298 still open). `tenant` and `tenant_membership` (platform schema
 v8, backlog #204) own what an owner account used to (backlog #205, schema v9): the
 storage root, the `.ctv` roster, client engine consent, project grants, roster
 membership, invitations and jobs. Where older text below says "owner" it means
@@ -384,6 +384,13 @@ writing any new write path, know these three rules:
 - **Actor and `origin` are separate facts.** An AI engine or a TM match
   is an `origin`, never an actor. The accountable human (or a named
   `system:` job) is the actor.
+- **A platform write names its tenant** (backlog #211, `audit-spec.md` §3.1):
+  `appendPlatformEvent` (`db/platform/audit-write.ts`) takes `tenantId: number | null` as required
+  as the actor is, and a lint rule keeps `db/platform` off `appendAuditEvent`. The column is hashed as a
+  ninth element **only when set**, so every older row still verifies; the tenant is the one the event is
+  about (a project's, a grant's and a download's own, never the actor's; none for a refused login or a
+  vendor's session). A tenant's admin reads `GET /api/audit` (`audit` in `tenantRoleAllows`), and the
+  operator cuts a slice with `export-tenant-audit`, which logs `tenant.audit_exported` first.
 
 ## The smart glossary (`.ctg`)
 

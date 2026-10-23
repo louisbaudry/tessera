@@ -22,7 +22,7 @@
 import { isTenantRole, type AuditActor, type TenantRole } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
-import { appendAuditEvent } from '../audit/events.js';
+import { appendPlatformEvent } from './audit-write.js';
 
 export interface Tenant {
   readonly id: number;
@@ -173,9 +173,10 @@ export function insertTenant(
   db.prepare(
     "INSERT INTO tenant_membership (tenant_id, account_id, role, added_at) VALUES (?, ?, 'admin', ?)",
   ).run(id, options.adminAccountId, options.now);
-  appendAuditEvent(db, {
+  appendPlatformEvent(db, {
     actor: options.actor,
     action: 'tenant.created',
+    tenantId: id,
     subjectType: 'tenant',
     subjectId: String(id),
     detail: null,
@@ -247,9 +248,10 @@ export function addTenantMember(
   db.prepare(
     'INSERT INTO tenant_membership (tenant_id, account_id, role, added_at) VALUES (?, ?, ?, ?)',
   ).run(options.tenantId, options.accountId, options.role, options.now);
-  appendAuditEvent(db, {
+  appendPlatformEvent(db, {
     actor: options.actor,
     action: 'tenant.member_added',
+    tenantId: options.tenantId,
     subjectType: 'tenant',
     subjectId: String(options.tenantId),
     detail: { account_id: options.accountId, role: options.role },
@@ -310,9 +312,10 @@ export function changeTenantRole(
     db.prepare(
       'UPDATE tenant_membership SET role = ? WHERE tenant_id = ? AND account_id = ?',
     ).run(options.role, options.tenantId, options.accountId);
-    appendAuditEvent(db, {
+    appendPlatformEvent(db, {
       actor: options.actor,
       action: 'tenant.role_changed',
+      tenantId: options.tenantId,
       subjectType: 'tenant',
       subjectId: String(options.tenantId),
       detail: { account_id: options.accountId, from, to: options.role },
@@ -347,9 +350,10 @@ export function removeTenantStaff(
     db.prepare(
       'DELETE FROM tenant_membership WHERE tenant_id = ? AND account_id = ?',
     ).run(options.tenantId, options.accountId);
-    appendAuditEvent(db, {
+    appendPlatformEvent(db, {
       actor: options.actor,
       action: 'tenant.member_removed',
+      tenantId: options.tenantId,
       subjectType: 'tenant',
       subjectId: String(options.tenantId),
       detail: { account_id: options.accountId },
@@ -382,9 +386,10 @@ export function renameTenant(
     if (!current) throw new TenantError(`no tenant #${options.tenantId}`);
     if (current.name === name) return current;
     db.prepare('UPDATE tenant SET name = ? WHERE id = ?').run(name, current.id);
-    appendAuditEvent(db, {
+    appendPlatformEvent(db, {
       actor: options.actor,
       action: 'tenant.renamed',
+      tenantId: current.id,
       subjectType: 'tenant',
       subjectId: String(current.id),
       detail: null,

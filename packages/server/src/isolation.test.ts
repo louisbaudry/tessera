@@ -341,6 +341,7 @@ const ROUTES: Record<string, Entry> = {
   'GET /api/jobs': { kind: 'list' },
   'GET /api/invitations': { kind: 'list' },
   'GET /api/staff': { kind: 'list' },
+  'GET /api/audit': { kind: 'list' },
   'GET /api/webhooks': { kind: 'list' },
   'GET /api/webhooks/reminders': { kind: 'list' },
   'GET /api/vendors': { kind: 'list' },

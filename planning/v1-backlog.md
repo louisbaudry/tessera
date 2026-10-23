@@ -4598,7 +4598,45 @@ someone from `#/staff`; a colleague opens the link at `#/join/<token>`. What it 
   and removed the pm, whose next page load was the login screen; no console error. Not verified:
   a narrow window or a screen reader.
 
-**#211 · A tenant-scoped audit view, with `tenant_id` in the platform audit hash · S** · [issue #302]
+**#211 · ~~A tenant-scoped audit view, with `tenant_id` in the platform audit hash~~ · DONE — `core/src/audit/chain.ts`, platform schema v11 and v12, `db/src/platform/{audit,audit-write}.ts`, `server/src/{tenant-audit,export-tenant-audit}.ts`, `web/src/{Audit.tsx,audit-view.ts}`** (2026-10-23; card #302, Epic 14, `audit-spec.md` §3.1, `tenant-spec.md` O3)
+
+A tenant's admin reads their own slice of the platform log (`GET /api/audit`, `#/audit`), and the
+operator can cut one tenant's slice to a file. Louis decided O3 on 2026-10-23: yes, the tenant id
+is in the hash. What it taught:
+
+- **The hash input changed without changing a single old hash.** `tenant_id` is a ninth
+  element of the canonical array only when it is set, so every row written before the column, and
+  every project, portal and roster event, still hashes as eight elements. `chain.test.ts` pins that
+  a null tenant hashes exactly as before and a set one does not; `tenant-audit.test.ts` runs the v10
+  to v11 migration over a real chain and checks it verifies before, after and with a new tenant event
+  chained on. Moving an event between tenants by editing the column (the trigger dropped, as someone with the file
+  could) is a break found by `verifyAudit`; seen failing when the element was left out.
+- **A tenant's slice starts where the column does.** An event written before v11 is immutable
+  and hashed, so it has no tenant and never will; the screen says so. The first tenant is not live yet, so
+  nothing real is lost.
+- **A tenant is named at every write, or the write does not compile.** `appendPlatformEvent` takes
+  `tenantId: number | null` as required as the actor is, and an ESLint rule keeps the platform files off
+  `appendAuditEvent`. Going through every platform call site gave a rule per event: the project's tenant for
+  a project, its grant and its download (never the actor's); the founded or joined tenant for the account
+  that founded or joined it; the inviting tenant for an invitation and for the vendor account it makes;
+  the staff member's tenant for a sign-in and sign-out, and none for a vendor's, which sits across
+  rosters; a refused login none. `createAccount` now writes `tenant.created` before
+  `account.created` (the second needs the tenant's id), so the two tests that read that order changed on
+  purpose.
+- **The log is an admin's.** `audit` is a fifth `TenantAction`, admin only (`tenantFor`), because the
+  log names every staff member's acts and the label each was written with. A vendor gets an empty
+  list as on every tenant-only read; `GET /api/audit` is a `list` entry in the isolation matrix.
+- **An export is content leaving, so it is logged first.** `tenant.audit_exported` (schema v12, a
+  count and a digest, never an event) is written in the export's transaction before the text is
+  returned, and the command refuses an existing file before logging anything. The header of the file says
+  whether the **whole** log verified when it was cut: a slice has gaps by nature and cannot verify alone.
+- Verified: 16 db tests, 5 server tests, 3 core tests and 5 web tests; mutations seen failing (the
+  ninth element left out of the hash, a rename written with no tenant, the route reading the wrong
+  tenant, which also fails the isolation matrix); the CLI run on a scratch file (a second run, an existing
+  file and an unknown tenant refused); and a real run in a browser (the admin's invite showed in
+  Activity, and a pm saw neither the link nor the page). Not verified: a very large log paged in a browser.
+- Not built: showing events from before the column; offboarding itself (`tenant-spec.md` §6 invariant 7,
+  which this export serves).
 
 **#208 · A portal per tenant · L** · [issue #295]
 
