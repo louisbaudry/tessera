@@ -1,4 +1,5 @@
 export * from './auth.js';
+export { normaliseHost } from '@cat-tool/core';
 export * from './order.js';
 export * from './pricing.js';
 export * from './word-count.js';

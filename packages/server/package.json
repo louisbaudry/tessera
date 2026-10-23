@@ -12,6 +12,7 @@
     "create-account": "node dist/create-account.js",
     "create-tenant": "node dist/create-tenant.js",
     "rename-tenant": "node dist/rename-tenant.js",
+    "set-tenant-slug": "node dist/set-tenant-slug.js",
     "export-tenant-audit": "node dist/export-tenant-audit.js"
   },
   "dependencies": {

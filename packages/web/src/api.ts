@@ -581,14 +581,17 @@ export const api = {
       { method: 'POST', body: { token: inviteToken, password } },
     ),
   /**
-   * A vendor who already has an account joins the owner's roster from a link,
-   * signed in as themselves (backlog #187): the session is the proof of who joins.
+   * A vendor who already has an account joins a tenant's roster from a link with that
+   * account's own password (backlog #187, `tenant-spec.md` D14): on the tenant's subdomain
+   * they cannot hold a session before they are on its roster, so the password is the proof
+   * of who joins and the response is their session there.
    */
-  joinInvitation: (token: string, inviteToken: string) =>
-    call<{ ok: true }>('/api/invitations/join', token, {
-      method: 'POST',
-      body: { token: inviteToken },
-    }),
+  joinSignin: (inviteToken: string, email: string, password: string) =>
+    call<{ token: string; expiresAt: string; account: Account }>(
+      '/api/invitations/join-signin',
+      null,
+      { method: 'POST', body: { token: inviteToken, email, password } },
+    ),
   /** The owner's pay run (backlog #112/#113); `query` is `payablesQuery` of the filters. */
   payables: (token: string, query: string, signal?: AbortSignal) =>
     call<PayablesList>(`/api/payables${query}`, token, { signal }),

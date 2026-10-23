@@ -262,7 +262,19 @@ export function registerAssignmentRoutes(
   function tenantParam(req: FastifyRequest): Tenant | null {
     const asked = (req.query as { tenant?: unknown } | undefined)?.tenant;
     if (typeof asked !== 'string' || !/^[1-9]\d{0,14}$/.test(asked)) return null;
+    // On a tenant's host (D14) only that tenant can be named: another's is a missing one.
+    if (req.hostTenant && Number(asked) !== req.hostTenant.id) return null;
     return getTenantById(platform, Number(asked));
+  }
+
+  /**
+   * The tenants whose roster the vendor is on that this request may reach: all of them on the
+   * bare host, and on a tenant's host (D14) that tenant alone, so a vendor's page there shows
+   * that tenant's work and none of another's.
+   */
+  function rosterTenantsFor(req: FastifyRequest, accountId: number): number[] {
+    const all = listRosterTenants(platform, accountId);
+    return req.hostTenant ? all.filter((id) => id === req.hostTenant!.id) : all;
   }
 
   /** Whether `tenant` is the session's own: the staff side of a route that serves both. */
@@ -408,7 +420,7 @@ export function registerAssignmentRoutes(
       'needsResponse' | 'claimable' | 'active' | 'delivered',
       Array<ReturnType<typeof vendorView> & { tenantId: number }>
     >;
-    for (const tenantId of listRosterTenants(platform, me.id)) {
+    for (const tenantId of rosterTenantsFor(req, me.id)) {
       const tenant = getTenantById(platform, tenantId);
       if (!tenant) continue;
       const roster = openRoster(tenant);
@@ -436,7 +448,7 @@ export function registerAssignmentRoutes(
   app.get('/api/vendor/capacity', async (req) => {
     const me = deps.account(req);
     const rosters: Array<{ tenantId: number } & CapacityView> = [];
-    for (const tenantId of listRosterTenants(platform, me.id)) {
+    for (const tenantId of rosterTenantsFor(req, me.id)) {
       const tenant = getTenantById(platform, tenantId);
       if (!tenant) continue;
       const roster = openRoster(tenant);
@@ -877,7 +889,7 @@ export function registerAssignmentRoutes(
     const me = deps.account(req);
     const items: Array<ReturnType<typeof vendorPaymentView>> = [];
     const rows: LedgerEntry[] = [];
-    for (const tenantId of listRosterTenants(platform, me.id)) {
+    for (const tenantId of rosterTenantsFor(req, me.id)) {
       const tenant = getTenantById(platform, tenantId);
       if (!tenant) continue;
       const roster = openRoster(tenant);

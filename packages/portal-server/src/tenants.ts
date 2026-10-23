@@ -16,6 +16,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 
+import { normaliseHost } from '@cat-tool/portal-core';
+
 import type { PortalConfig } from './config.js';
 
 export interface PortalTenant {
@@ -41,18 +43,6 @@ export class TenantRegistryError extends Error {
 
 const HOST = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
 const KEYS = new Set(['tenantId', 'host', 'dbPath', 'storageRoot', 'from', 'adminEmail']);
-
-/**
- * The host a request is for: its `Host` header lower-cased, without a port or a trailing dot.
- * `null` for anything that is not a plain host name (empty, a list, a bracketed address), so a
- * strange header is no tenant's.
- */
-export function normaliseHost(raw: string | undefined): string | null {
-  if (raw === undefined) return null;
-  const withoutPort = raw.includes(':') ? raw.slice(0, raw.lastIndexOf(':')) : raw;
-  const host = withoutPort.toLowerCase().replace(/\.$/, '');
-  return HOST.test(host) && !raw.startsWith('[') ? host : null;
-}
 
 const isInside = (inner: string, outer: string): boolean =>
   inner === outer || inner.startsWith(outer.endsWith(sep) ? outer : outer + sep);
@@ -311,3 +301,6 @@ export function defaultTenantPaths(
     storageRoot: resolve(base, 'storage'),
   };
 }
+
+/** Re-exported: the one definition is `@cat-tool/core`'s (`net/host.ts`), shared with the CAT server. */
+export { normaliseHost };

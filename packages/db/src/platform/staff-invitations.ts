@@ -275,6 +275,17 @@ export function openStaffInvitation(
   return invitation.status === 'pending' ? { email: invitation.email } : null;
 }
 
+/** The tenant a staff link was made for, or `null` for an unknown token, whatever its state (`tenant-spec.md` D14). */
+export function peekStaffInvitationTenant(
+  db: Database.Database,
+  token: string,
+): number | null {
+  const row = db
+    .prepare('SELECT tenant_id FROM staff_invitation WHERE token_hash = ?')
+    .get(hashToken(token)) as { tenant_id: number } | undefined;
+  return row?.tenant_id ?? null;
+}
+
 export interface AcceptStaffInvitationOptions {
   readonly token: string;
   /** From `hashPassword`: never a raw password. */

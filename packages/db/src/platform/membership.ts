@@ -26,6 +26,28 @@ export function addRosterMembership(
   );
 }
 
+/**
+ * Whether an account belongs on `tenantId`'s host (`planning/tenant-spec.md` D14): staff of that
+ * tenant, or a vendor on its roster. The one definition the gate, the login and the invitation
+ * routes all ask, so no route decides it for itself. A vendor never has a tenant membership and
+ * staff never have a roster row (both triggers), so the two cases cannot overlap.
+ */
+export function accountBelongsToTenant(
+  db: Database.Database,
+  accountId: number,
+  tenantId: number,
+): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM tenant_membership WHERE account_id = @a AND tenant_id = @t
+         UNION ALL
+         SELECT 1 FROM roster_membership WHERE account_id = @a AND tenant_id = @t`,
+      )
+      .get({ a: accountId, t: tenantId }) !== undefined
+  );
+}
+
 /** The tenants whose rosters an account is on, by tenant id. */
 export function listRosterTenants(db: Database.Database, accountId: number): number[] {
   return (

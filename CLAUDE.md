@@ -129,7 +129,16 @@ it is now `?tenant=<tenant id>`. Keep true:
   `createAccount` founds a tenant in the same transaction (its first admin), or with
   `joinTenant` joins an existing one in a role; a vendor does neither. A tenant
   takes its founding admin's `storage_root` (spec D4). Provision with `create-tenant`,
-  name it with `rename-tenant`.
+  name it with `rename-tenant`, give it an address with `set-tenant-slug`.
+- **A tenant is reached at `<slug>.<CAT_BASE_DOMAIN>`, and the host pins the request, never names it**
+  (backlog #209, spec D14). `req.hostTenant` is set by an `onRequest` hook; a host that is no tenant's is a
+  fixed 404, and unset `CAT_BASE_DOMAIN` means no host check at all. The gate refuses a session whose
+  account is not staff of, or on the roster of, the host's tenant (a 401), login there fails as a wrong
+  password, a link for another tenant is the one 404, and `?tenant=` naming another is a stranger's 404
+  even through a grant. **A new route that reads across tenants (a vendor's roster list) goes through
+  `rosterTenantsFor`, never `listRosterTenants` directly.** A slug is a public name set once
+  (`setTenantSlug`), never in an audit detail; a vendor who already has an account joins a second tenant
+  with `POST /api/invitations/join-signin`, since they hold no session on its host yet.
 - **Two roles, one table** (backlog #206, spec D5). `tenantRoleAllows(role, action)` in
   `core/auth` over `work`, `staff`, `consent`, `webhooks`: an admin may all, a pm only `work`. A
   server route gets its tenant from `tenantFor(req, action)`, never `ownTenant` plus a hand-written

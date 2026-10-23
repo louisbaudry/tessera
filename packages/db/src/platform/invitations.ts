@@ -117,6 +117,18 @@ function rowByToken(db: Database.Database, token: string): Row | undefined {
 }
 
 /**
+ * The tenant a link was made for, or `null` for an unknown token, **whatever its state**: the
+ * routes that open or accept a link on a tenant's host use it to tell a link of another tenant,
+ * which is the identical 404 of any link that cannot be used (`tenant-spec.md` D14).
+ */
+export function peekInvitationTenant(
+  db: Database.Database,
+  token: string,
+): number | null {
+  return rowByToken(db, token)?.tenant_id ?? null;
+}
+
+/**
  * Opens a staff-only action: the tenant must exist and the inviter must be staff of it
  * (a vendor never is, spec D3). Which staff role may invite is slice 3's rule (#206).
  */

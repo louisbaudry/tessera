@@ -633,6 +633,39 @@ const v12: Migration = {
   },
 };
 
+/**
+ * `audit_event.action` as of platform v13 (v12's list and `tenant.slug_set`). Frozen, never
+ * the live constant.
+ */
+const V13_AUDIT_ACTIONS = [
+  ...V12_AUDIT_ACTIONS,
+  'tenant.slug_set',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * A tenant's slug (backlog #209, `planning/tenant-spec.md` D14): the public name its subdomain,
+ * links and certificate are built from. Nullable, so every tenant that exists keeps working with
+ * none until the operator sets one; unique among those that have one, and a DNS label by CHECK
+ * (lower case, digits, inner hyphens, at most 40), so a raw write cannot put a name in that no
+ * host could carry. The list of names the platform keeps is `core`'s and is the repository's to
+ * refuse: a list that grows must not turn an existing slug invalid in a file's CHECK. Setting it
+ * is logged (`tenant.slug_set`), which widens the action list with `rebuildTable`, keeping the
+ * tenant column v11 added.
+ */
+const v13: Migration = {
+  version: 13,
+  description: 'tenant.slug, and the audit action tenant.slug_set',
+  up(db) {
+    db.exec(`
+      ALTER TABLE tenant ADD COLUMN slug TEXT
+        CHECK (slug IS NULL OR (length(slug) BETWEEN 1 AND 40
+          AND slug NOT GLOB '*[^a-z0-9-]*' AND slug NOT GLOB '-*' AND slug NOT GLOB '*-'));
+      CREATE UNIQUE INDEX tenant_slug ON tenant(slug) WHERE slug IS NOT NULL;
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V13_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -646,4 +679,5 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v10,
   v11,
   v12,
+  v13,
 ];

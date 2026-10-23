@@ -33,6 +33,7 @@ import {
   listTenantStaff,
   NoSuchMemberError,
   openStaffInvitation,
+  peekStaffInvitationTenant,
   removeTenantStaff,
   revokeStaffInvitation,
   StaffInvitationError,
@@ -202,10 +203,18 @@ export function registerStaffRoutes(app: FastifyInstance, deps: StaffRouteDeps):
       : null;
   };
 
+  // On a tenant's host (D14) a link made for another tenant is the same 404 as an unknown one.
+  const wrongHost = (req: FastifyRequest, token: string): boolean =>
+    req.hostTenant !== null &&
+    peekStaffInvitationTenant(platform, token) !== req.hostTenant.id;
+
   // The address the link was made for. Any link that cannot be used is the same 404.
   app.post(OPEN_STAFF_INVITATION_PATH, async (req, reply) => {
     const token = tokenOf(req.body);
-    const opened = token === null ? null : openStaffInvitation(platform, token);
+    const opened =
+      token === null || wrongHost(req, token)
+        ? null
+        : openStaffInvitation(platform, token);
     return opened ?? reply.code(404).send(NOT_VALID);
   });
 
@@ -213,7 +222,7 @@ export function registerStaffRoutes(app: FastifyInstance, deps: StaffRouteDeps):
   app.post(ACCEPT_STAFF_INVITATION_PATH, async (req, reply) => {
     const token = tokenOf(req.body);
     const password = (req.body as { password?: unknown } | undefined)?.password;
-    if (token === null) return reply.code(404).send(NOT_VALID);
+    if (token === null || wrongHost(req, token)) return reply.code(404).send(NOT_VALID);
     if (typeof password !== 'string')
       return reply.code(400).send({ error: 'password must be text' });
     const problem = passwordProblem(password);

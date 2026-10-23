@@ -19,7 +19,12 @@
  * actor (`audit-spec.md` §2.5).
  */
 
-import { isTenantRole, type AuditActor, type TenantRole } from '@cat-tool/core';
+import {
+  isTenantRole,
+  tenantSlugProblem,
+  type AuditActor,
+  type TenantRole,
+} from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
 import { appendPlatformEvent } from './audit-write.js';
@@ -30,6 +35,12 @@ export interface Tenant {
   readonly name: string;
   /** Relative to the server's storage volume, e.g. `u/3f9a2c…` (D4). */
   readonly storageRoot: string;
+  /**
+   * The public name its address is built from (`<slug>.<base domain>`, D14), set once by the
+   * operator; `null` until then. A company's name in effect, so like `name` it is data and in
+   * no log detail.
+   */
+  readonly slug: string | null;
   readonly createdAt: string;
 }
 
@@ -87,6 +98,7 @@ interface TenantRow {
   id: number;
   name: string;
   storage_root: string;
+  slug: string | null;
   created_at: string;
 }
 
@@ -94,11 +106,19 @@ const fromRow = (row: TenantRow): Tenant => ({
   id: row.id,
   name: row.name,
   storageRoot: row.storage_root,
+  slug: row.slug,
   createdAt: row.created_at,
 });
 
 export function getTenantById(db: Database.Database, id: number): Tenant | null {
   const row = db.prepare('SELECT * FROM tenant WHERE id = ?').get(id) as
+    TenantRow | undefined;
+  return row ? fromRow(row) : null;
+}
+
+/** The tenant that holds `slug`, or `null`: how a host is turned into a tenant (D14). */
+export function getTenantBySlug(db: Database.Database, slug: string): Tenant | null {
+  const row = db.prepare('SELECT * FROM tenant WHERE slug = ?').get(slug) as
     TenantRow | undefined;
   return row ? fromRow(row) : null;
 }
@@ -126,7 +146,7 @@ export function getTenantForAccount(
 ): TenantMembership | null {
   const row = db
     .prepare(
-      `SELECT t.id, t.name, t.storage_root, t.created_at, m.role
+      `SELECT t.id, t.name, t.storage_root, t.slug, t.created_at, m.role
        FROM tenant_membership m JOIN tenant t ON t.id = m.tenant_id
        WHERE m.account_id = ?`,
     )
@@ -185,6 +205,7 @@ export function insertTenant(
     id,
     name: given ?? `Tenant ${id}`,
     storageRoot: options.storageRoot,
+    slug: null,
     createdAt: options.now,
   };
 }
@@ -396,4 +417,51 @@ export function renameTenant(
     });
     return { ...current, name };
   })();
+}
+
+export interface SetTenantSlugOptions {
+  readonly tenantId: number;
+  readonly slug: string;
+  /** The operator: required (audit-spec.md decision 3). */
+  readonly actor: AuditActor;
+}
+
+/**
+ * Sets a tenant's slug and logs `tenant.slug_set` (no slug in the event). **Once**: a slug is in
+ * every link and certificate already sent, so changing one would break them and needs a redirect rule
+ * nobody has designed (`tenant-spec.md` D14); the same slug again changes and logs nothing.
+ *
+ * @throws {TenantError} for an unknown tenant, a slug that is not a label or that the platform keeps,
+ *   one another tenant holds, or a tenant that already has a different one.
+ */
+export function setTenantSlug(
+  db: Database.Database,
+  options: SetTenantSlugOptions,
+): Tenant {
+  const problem = tenantSlugProblem(options.slug);
+  if (problem !== null) throw new TenantError(problem);
+  return db
+    .transaction((): Tenant => {
+      const current = getTenantById(db, options.tenantId);
+      if (!current) throw new TenantError(`no tenant #${options.tenantId}`);
+      if (current.slug === options.slug) return current;
+      if (current.slug !== null) {
+        throw new TenantError(
+          "the tenant's slug is set and is not changed: its links and certificate carry it",
+        );
+      }
+      const taken = getTenantBySlug(db, options.slug);
+      if (taken) throw new TenantError(`the slug "${options.slug}" is taken`);
+      db.prepare('UPDATE tenant SET slug = ? WHERE id = ?').run(options.slug, current.id);
+      appendPlatformEvent(db, {
+        actor: options.actor,
+        action: 'tenant.slug_set',
+        tenantId: current.id,
+        subjectType: 'tenant',
+        subjectId: String(current.id),
+        detail: null,
+      });
+      return { ...current, slug: options.slug };
+    })
+    .immediate();
 }
