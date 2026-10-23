@@ -11,6 +11,7 @@
     "start": "node dist/main.js",
     "seed": "node dist/seed/pilot.js",
     "create-admin": "node dist/create-admin.js",
+    "add-portal-tenant": "node dist/add-portal-tenant.js",
     "link-client-resource": "node dist/link-client-resource.js"
   },
   "dependencies": {
