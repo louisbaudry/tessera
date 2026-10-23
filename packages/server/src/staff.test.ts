@@ -163,6 +163,24 @@ describe('a pm does the work and is refused the admin’s routes', () => {
   });
 });
 
+describe('what an account is told of its own staff role', () => {
+  it('names the role an admin and a pm hold, and none for a vendor, so a screen can hide what it would refuse', async () => {
+    const me = async (name: string) =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/me',
+          headers: as(await login(name)),
+        })
+      ).json() as {
+        staffRole: string | null;
+      };
+    expect((await me('alice')).staffRole).toBe('admin');
+    expect((await me('dave')).staffRole).toBe('pm');
+    expect((await me('bob')).staffRole).toBeNull();
+  });
+});
+
 describe('inviting staff', () => {
   it('lists staff with the caller marked, and invitations without any token', async () => {
     const admin = as(await login('alice'));

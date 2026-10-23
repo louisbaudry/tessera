@@ -4574,7 +4574,29 @@ number, and requires what a missing object gets: the same status and the same bo
 - Verified: 3 tests; the whole suite and the gate (see the PR). The audit half of this card moved
   to its own entry (#211) because it needs Louis's answer to spec §9 O3.
 
-**#210 · A staff screen in the SPA · S** · [issue #300]
+**#210 · ~~A staff screen in the SPA~~ · DONE — `web/src/{Staff.tsx,staff.ts,Accept.tsx,App.tsx,route.ts,api.ts}`, `server/src/app.ts` (`/api/me` `staffRole`)** (2026-10-23; card #300, Epic 14, `tenant-spec.md` D5)
+
+An admin lists staff, invites by a one-time link, withdraws a link, changes a role and removes
+someone from `#/staff`; a colleague opens the link at `#/join/<token>`. What it taught:
+
+- **The shell has to be told the role.** `/api/me` now carries `staffRole` (`admin`, `pm` or null for
+  a vendor), read from the membership on every request so a changed or removed role shows at
+  once. It exists only to hide what the server would refuse: the Staff link and screen, and the
+  webhooks panel on the Vendors page, which a pm would otherwise see fail with a 403. The login
+  response does not carry it, so the shell reads `/api/me` after every sign-in as it already did.
+- **One accept page, two links.** `Accept` takes `kind="staff"`: another endpoint pair and
+  wording, and no "already has an account, sign in to join" path, because a person is staff of one
+  tenant and the server answers 409 with the plain message. Its route is `#/join/` and the vendor
+  one stays `#/invite/`; a token of one kind is a 404 on the other's page, as on the server.
+- **Grey out what is known to be refused, say why.** `memberControls` (pure, tested in node)
+  turns off the demote select and the Remove button for the only admin and shows the reason, since the
+  schema would refuse it with a message nobody wants to meet by clicking. Everything else is the
+  server's to refuse.
+- Verified: 7 new web tests (link, routes, the controls), 1 server test (seen failing first), and a
+  real run in a browser against the built SPA: the admin invited a pm, the link opened the accept page and
+  signed the pm in, who saw no Staff link, an empty `#/staff` and no webhooks panel; the admin promoted
+  and removed the pm, whose next page load was the login screen; no console error. Not verified:
+  a narrow window or a screen reader.
 
 **#211 · A tenant-scoped audit view, with `tenant_id` in the platform audit hash · S** · [issue #302]
 

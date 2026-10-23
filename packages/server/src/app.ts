@@ -437,7 +437,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return { ok: true };
   });
 
-  app.get('/api/me', async (req) => publicAccount(sessionAccount(req)));
+  // The staff role rides here, not on the login response, because it is read from the
+  // membership at every request: a role changed or removed shows at once. A screen uses it
+  // only to hide what the server would refuse; the refusal itself is `tenantFor`'s.
+  app.get('/api/me', async (req) => ({
+    ...publicAccount(sessionAccount(req)),
+    staffRole: req.membership?.role ?? null,
+  }));
 
   // --- projects: one `.catdb` each, under the account's root ----------
 

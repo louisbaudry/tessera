@@ -1,6 +1,9 @@
 /**
- * The page an invitation link opens (backlog #111): the one screen reached without a
- * session. The invitee sees the address the link was made for, chooses a password,
+ * The page an invitation link opens (backlog #111): one of the two screens reached
+ * without a session. With `kind="staff"` (backlog #210) it is the page a staff link
+ * opens: the same form, a different endpoint and wording, and no "already has an
+ * account" path, because a person is staff of one tenant and joining as an existing
+ * account is not offered. The invitee sees the address the link was made for, chooses a password,
  * and is signed in as a vendor with the owner's roster entry already in place. A link
  * that cannot be used, for any reason, is one plain message. If the address already
  * has an account the server says so (a 409) and the page asks them to sign in with
@@ -22,11 +25,15 @@ type Opened =
 export function Accept({
   token,
   onToken,
+  kind = 'vendor',
 }: {
   token: string;
+  /** Whose link this is: a vendor's roster link or a colleague's staff link. */
+  kind?: 'vendor' | 'staff';
   /** Called with the new vendor's session; the shell stores it and goes home. */
   onToken: (session: string) => void;
 }) {
+  const staff = kind === 'staff';
   const [opened, setOpened] = useState<Opened>({ state: 'loading' });
   const [password, setPassword] = useState('');
   const [repeat, setRepeat] = useState('');
@@ -35,7 +42,10 @@ export function Accept({
 
   useEffect(() => {
     const controller = new AbortController();
-    api.openInvitation(token, controller.signal).then(
+    (staff
+      ? api.openStaffInvitation(token, controller.signal)
+      : api.openInvitation(token, controller.signal)
+    ).then(
       ({ email }) => setOpened({ state: 'open', email }),
       (err: unknown) => {
         if (controller.signal.aborted) return;
@@ -50,7 +60,7 @@ export function Accept({
       },
     );
     return () => controller.abort();
-  }, [token]);
+  }, [token, staff]);
 
   const problem = acceptProblem(password, repeat);
   const submit = async (event: FormEvent) => {
@@ -59,11 +69,18 @@ export function Accept({
     setBusy(true);
     setError(null);
     try {
-      const done = await api.acceptInvitation(token, password);
+      const done = await (staff
+        ? api.acceptStaffInvitation(token, password)
+        : api.acceptInvitation(token, password));
       onToken(done.token);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setOpened({ state: 'invalid' });
-      else if (err instanceof ApiError && err.status === 409 && opened.state === 'open') {
+      else if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        opened.state === 'open' &&
+        !staff
+      ) {
         setOpened({ state: 'existing', email: opened.email });
         setPassword('');
         setRepeat('');
@@ -138,7 +155,8 @@ export function Accept({
         <form onSubmit={(e) => void submit(e)}>
           <h1>Tessera</h1>
           <p>
-            You are joining as <strong>{opened.email}</strong>. Choose a password.
+            You are joining {staff ? 'the staff as' : 'as'}{' '}
+            <strong>{opened.email}</strong>. Choose a password.
           </p>
           <label>
             Password
