@@ -61,7 +61,6 @@ import {
   editSegmentTarget,
   exportFile,
   getAccountByEmail,
-  getAccountById,
   getAccountBySessionToken,
   getFileSummary,
   getProject,
@@ -111,7 +110,11 @@ import {
   recordSegmentException,
   TermError,
   TmRefError,
+  getTenantById,
+  getTenantForAccount,
   type Account,
+  type Tenant,
+  type TenantMembership,
   type TmSummary,
 } from '@cat-tool/db';
 import multipart from '@fastify/multipart';
@@ -167,6 +170,11 @@ declare module 'fastify' {
   interface FastifyRequest {
     /** Set by the auth hook for every authenticated `/api/` request; null before it. */
     account: Account | null;
+    /**
+     * The tenant the account is staff of and its role there, set beside `account`; null for
+     * an account with none (a vendor, `planning/tenant-spec.md` D3) and before the gate.
+     */
+    membership: TenantMembership | null;
   }
 }
 
@@ -206,14 +214,39 @@ export interface BuildAppOptions {
 }
 
 /**
- * The account the gate authenticated. Every `/api/` handler but login
- * runs behind the gate, so this never throws in practice; it exists so
- * a handler never reads a nullable field it cannot explain.
+ * The account the gate authenticated: the person, for the actor of a write and for
+ * what a vendor sees of themselves. Every `/api/` handler but login runs behind the
+ * gate, so this never throws in practice; it exists so a handler never reads a
+ * nullable field it cannot explain.
  */
-function owner(req: FastifyRequest): Account {
+function sessionAccount(req: FastifyRequest): Account {
   if (!req.account) throw new Error('request reached a handler without passing the gate');
   return req.account;
 }
+
+/** A route that needs a tenant was reached by an account that has none: a vendor. */
+class NotStaffError extends Error {
+  constructor() {
+    super('this needs an account that belongs to a tenant');
+    this.name = 'NotStaffError';
+  }
+}
+
+/**
+ * The tenant the session is staff of: what owns the files, the roster and the consents
+ * (`planning/tenant-spec.md` D1, D6). Resolved from the session's membership, never from
+ * the request; the one thing a request may name is another tenant's id, and that only
+ * opens a project through a grant (`openProject`). Throws `NotStaffError`, which the
+ * error handler answers with a 403, for an account with no tenant, so a vendor can
+ * never reach a staff route by it.
+ */
+function sessionTenant(req: FastifyRequest): Tenant {
+  if (!req.membership) throw new NotStaffError();
+  return req.membership.tenant;
+}
+
+/** The tenant's own, or null: for a view that must not fail a vendor, only show it nothing. */
+const ownTenant = (req: FastifyRequest): Tenant | null => req.membership?.tenant ?? null;
 
 const LOGIN_PATH = '/api/login';
 
@@ -256,7 +289,7 @@ function auditActor(account: Account): AuditActor {
   return { actor: { kind: 'account', id: account.id }, label: account.email };
 }
 
-const sessionActor = (req: FastifyRequest): AuditActor => auditActor(owner(req));
+const sessionActor = (req: FastifyRequest): AuditActor => auditActor(sessionAccount(req));
 
 /**
  * A refused login has no authenticated principal: the gate that refused
@@ -285,6 +318,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const app = Fastify({ logger: options.logger ?? true });
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
   app.decorateRequest('account', null);
+  app.decorateRequest('membership', null);
 
   // The built SPA, when the deployment has one (backlog #36). A fixed
   // root, so no request names a path (§2.5); the gate below only guards
@@ -316,6 +350,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return reply.code(401).send({ error: 'invalid, missing, or expired session' });
     }
     req.account = account;
+    req.membership = getTenantForAccount(platform, account.id);
+  });
+
+  // A vendor on a staff route is a 403 in the app's own `{ error }` shape; any other
+  // error goes on to the default handler untouched.
+  app.setErrorHandler((error, _req, reply) => {
+    if (error instanceof NotStaffError) {
+      return reply.code(403).send({ error: error.message });
+    }
+    return reply.send(error);
   });
 
   app.post<{ Body: { email?: string; password?: string } }>(
@@ -347,23 +391,27 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return { ok: true };
   });
 
-  app.get('/api/me', async (req) => publicAccount(owner(req)));
+  app.get('/api/me', async (req) => publicAccount(sessionAccount(req)));
 
   // --- projects: one `.catdb` each, under the account's root ----------
 
   /**
    * Resolves a project name to an open database, or answers the request
    * with the right refusal. The name is validated before any path is
-   * built. A project is the session's own unless `?owner=<account id>`
+   * built. A project is the session's own tenant's unless `?tenant=<tenant id>`
    * names another's, in which case it is reachable only through a grant
    * (`project_authorization`, backlog #45): **no grant is a 404, the same
    * as a project that does not exist**, and a grant whose scope does not
    * allow `action` is a 403. Every caller names the `action` it needs
    * (`read`, `edit` or `manage`, `core/auth/authorization.ts`), so a new
-   * route cannot be added without deciding it. An owner may do anything to
-   * their own.
+   * route cannot be added without deciding it. Staff of a tenant may do
+   * anything to its projects (what each staff role may do is slice 3's, #206).
    *
-   * `owner` is the account the project lives under, which is what any
+   * An account with no tenant (a vendor) and no `?tenant=` gets the 404 of a project that
+   * does not exist: it has none of its own. With `?tenant=` naming a tenant it was not
+   * granted into it gets the 404 a stranger gets.
+   *
+   * `tenant` is the tenant the project lives under, which is what any
    * path built for it afterwards must use: a grantee's own storage root
    * holds none of it.
    */
@@ -376,35 +424,41 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     db: ReturnType<typeof openProjectDb>;
     project: Project;
     path: string;
-    owner: Account;
+    tenant: Tenant;
   } | null {
-    const me = owner(req);
+    const me = sessionAccount(req);
     const missing = () => {
       void reply.code(404).send({ error: `no project named "${name}"` });
       return null;
     };
-    let projectOwner = me;
-    const asked = (req.query as { owner?: unknown } | undefined)?.owner;
-    if (asked !== undefined) {
-      const id =
-        typeof asked === 'string' && /^[1-9]\d{0,14}$/.test(asked) ? Number(asked) : 0;
-      if (id !== me.id) {
-        const found = id === 0 ? null : getAccountById(platform, id);
-        if (found === null || !isSlug(name)) return missing();
-        const scope = scopeOf(platform, me.id, { accountId: found.id, name });
-        if (scope === null) return missing();
-        if (!scopeAllows(scope, action)) {
-          void reply
-            .code(403)
-            .send({ error: 'your access to this project does not allow that' });
-          return null;
-        }
-        projectOwner = found;
+    const asked = (req.query as { tenant?: unknown } | undefined)?.tenant;
+    let projectTenant: Tenant;
+    const own = ownTenant(req);
+    const id =
+      typeof asked === 'string' && /^[1-9]\d{0,14}$/.test(asked) ? Number(asked) : 0;
+    if (asked === undefined || (own !== null && id === own.id)) {
+      // An account with no tenant (a vendor) has no projects of its own: the same 404 a
+      // missing project gets, as when its own storage root was simply empty.
+      if (own === null) return missing();
+      projectTenant = own;
+    } else {
+      // Another tenant's, by a grant alone. A malformed id and a missing tenant are
+      // the same 404 as a missing grant, so the answer never says which was wrong.
+      const found = id === 0 ? null : getTenantById(platform, id);
+      if (found === null || !isSlug(name)) return missing();
+      const scope = scopeOf(platform, me.id, { tenantId: found.id, name });
+      if (scope === null) return missing();
+      if (!scopeAllows(scope, action)) {
+        void reply
+          .code(403)
+          .send({ error: 'your access to this project does not allow that' });
+        return null;
       }
+      projectTenant = found;
     }
     let path: string;
     try {
-      path = projectPath(config.storageRoot, projectOwner, name);
+      path = projectPath(config.storageRoot, projectTenant, name);
     } catch (err) {
       if (err instanceof InvalidNameError) {
         void reply.code(400).send({ error: err.message });
@@ -420,13 +474,29 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       void reply.code(500).send({ error: `project "${name}" has no identity row` });
       return null;
     }
-    return { db, project, path, owner: projectOwner };
+    return { db, project, path, tenant: projectTenant };
   }
 
+  /**
+   * The memory or glossary slug a stored path names, **in the session's own tenant**, or
+   * null: a path in another tenant's directory (a grantee's view of a project) and any
+   * path for a session with no tenant are shown no slug, never the path (spec D6).
+   */
+  const tmSlugFor = (req: FastifyRequest, path: string): string | null => {
+    const tenant = ownTenant(req);
+    return tenant === null ? null : tmSlugOf(config.storageRoot, tenant, path);
+  };
+  const glossarySlugFor = (req: FastifyRequest, path: string): string | null => {
+    const tenant = ownTenant(req);
+    return tenant === null ? null : glossarySlugOf(config.storageRoot, tenant, path);
+  };
+
   app.get('/api/projects', async (req) => {
-    const account = owner(req);
-    return listProjectNames(config.storageRoot, account).map((name) => {
-      const db = openProjectDb(projectPath(config.storageRoot, account, name));
+    // No tenant (a vendor) is no projects, not an error: what its empty storage root was.
+    const tenant = ownTenant(req);
+    if (!tenant) return [];
+    return listProjectNames(config.storageRoot, tenant).map((name) => {
+      const db = openProjectDb(projectPath(config.storageRoot, tenant, name));
       try {
         return {
           name,
@@ -462,8 +532,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     let path: string;
     let memory: string | null;
     try {
-      path = projectPath(config.storageRoot, owner(req), name);
-      memory = writeTm ? tmPath(config.storageRoot, owner(req), writeTm) : null;
+      path = projectPath(config.storageRoot, sessionTenant(req), name);
+      memory = writeTm ? tmPath(config.storageRoot, sessionTenant(req), writeTm) : null;
     } catch (err) {
       if (err instanceof InvalidNameError) {
         return reply.code(400).send({ error: err.message });
@@ -477,7 +547,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const project = recordProjectChange(
       platform,
       'project.created',
-      { actor, project: { accountId: owner(req).id, name } },
+      { actor, project: { tenantId: sessionTenant(req).id, name } },
       () => {
         mkdirSync(dirname(path), { recursive: true });
         const db = openProjectDb(path);
@@ -511,7 +581,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       'project.deleted',
       {
         actor: sessionActor(req),
-        project: { accountId: owner(req).id, name: req.params.name },
+        project: { tenantId: sessionTenant(req).id, name: req.params.name },
       },
       () => {
         for (const suffix of ['', '-wal', '-shm'])
@@ -520,7 +590,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         // name would belong, in its grantee's eyes, to them (#45).
         revokeAllProjectAuthorizations(platform, {
           actor: sessionActor(req),
-          project: { accountId: owner(req).id, name: req.params.name },
+          project: { tenantId: sessionTenant(req).id, name: req.params.name },
         });
       },
     );
@@ -685,7 +755,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       const name = exported.file.relPath.split(/[\\/]/).pop() || exported.file.relPath;
       recordDownload(platform, {
         actor,
-        project: { accountId: owner(req).id, name: req.params.name },
+        project: { tenantId: opened.tenant.id, name: req.params.name },
         fileId: exported.file.id,
         name: exported.file.relPath,
         sha256: exported.sha256,
@@ -962,9 +1032,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   }
 
   app.get('/api/tms', async (req) => {
-    const account = owner(req);
-    return listTmSlugs(config.storageRoot, account).map((slug) =>
-      memorySummary(slug, tmPath(config.storageRoot, account, slug)),
+    const tenant = ownTenant(req);
+    if (!tenant) return [];
+    return listTmSlugs(config.storageRoot, tenant).map((slug) =>
+      memorySummary(slug, tmPath(config.storageRoot, tenant, slug)),
     );
   });
 
@@ -980,7 +1051,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // exists is a whole one, and a failed or cancelled import leaves
   // nothing — not a prefix, not a half-attached file.
   app.post<{ Body: { name?: unknown } }>('/api/tms', async (req, reply) => {
-    const account = owner(req);
+    const tenant = sessionTenant(req);
     const slugOf = (value: unknown): string | null => {
       if (typeof value !== 'string' || value === '') {
         void reply.code(400).send({ error: 'a memory name is required' });
@@ -991,7 +1062,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const claim = (slug: string): string | null => {
       let path: string;
       try {
-        path = tmPath(config.storageRoot, account, slug);
+        path = tmPath(config.storageRoot, tenant, slug);
       } catch (err) {
         if (err instanceof InvalidNameError) {
           void reply.code(400).send({ error: err.message });
@@ -1042,11 +1113,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       part.file.resume();
       return reply;
     }
-    // One import at a time per account, and a ceiling on the whole server:
+    // One import at a time per tenant, and a ceiling on the whole server:
     // each is a thread and a connection. Checked again once the upload has
     // landed (below), which is what actually decides; this saves the wait.
     const busy = (): { code: number; error: string } | null =>
-      jobs.runningFor(account.id, 'import') >= 1
+      jobs.runningFor(tenant.id, 'import') >= 1
         ? { code: 409, error: 'an import is already running — wait for it, or cancel it' }
         : jobs.running() >= MAX_RUNNING_JOBS
           ? {
@@ -1060,7 +1131,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return reply.code(early.code).send({ error: early.error });
     }
 
-    const upload = uploadTempPath(config.storageRoot, account);
+    const upload = uploadTempPath(config.storageRoot, tenant);
     const staging = `${upload}.ctm`;
     /** Everything this request has put on disk but the memory itself. */
     const discard = (): void => {
@@ -1096,7 +1167,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         : startJob('tm.importSdltm', { tmPath: staging, sourcePath: upload });
     const filename = part.filename;
     const job = jobs.start({
-      accountId: account.id,
+      tenantId: tenant.id,
       kind: 'import',
       tm: slug,
       handle,
@@ -1151,7 +1222,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     Params: { slug: string };
     Body: { glossary?: unknown; srcLang?: unknown; tgtLang?: unknown } | undefined;
   }>('/api/tms/:slug/stale-scan', async (req, reply) => {
-    const account = owner(req);
+    const tenant = ownTenant(req);
+    // No tenant (a vendor) has no memories: the same 404 a missing one gets.
+    if (!tenant)
+      return reply.code(404).send({ error: `no memory named "${req.params.slug}"` });
     const { glossary, srcLang, tgtLang } = req.body ?? {};
     if (typeof glossary !== 'string') {
       return reply.code(400).send({ error: 'glossary must be a glossary name' });
@@ -1169,8 +1243,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     let tmFile: string;
     let glossaryFile: string;
     try {
-      tmFile = tmPath(config.storageRoot, account, req.params.slug);
-      glossaryFile = glossaryPath(config.storageRoot, account, glossary);
+      tmFile = tmPath(config.storageRoot, tenant, req.params.slug);
+      glossaryFile = glossaryPath(config.storageRoot, tenant, glossary);
     } catch (err) {
       if (err instanceof InvalidNameError)
         return reply.code(400).send({ error: err.message });
@@ -1182,7 +1256,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (!existsSync(glossaryFile)) {
       return reply.code(404).send({ error: `no glossary named "${glossary}"` });
     }
-    if (jobs.runningFor(account.id, 'scan') >= 1) {
+    if (jobs.runningFor(tenant.id, 'scan') >= 1) {
       return reply
         .code(409)
         .send({ error: 'a scan is already running — wait for it, or cancel it' });
@@ -1199,7 +1273,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       tgtLang,
     });
     const job = jobs.start({
-      accountId: account.id,
+      tenantId: tenant.id,
       kind: 'scan',
       tm: req.params.slug,
       handle,
@@ -1218,12 +1292,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   // The account's own jobs, running first: how a screen that was left
   // (or a tab that was reloaded) finds an import still going.
-  app.get('/api/jobs', async (req) => ({ jobs: jobs.list(owner(req).id) }));
+  app.get('/api/jobs', async (req) => {
+    const tenant = ownTenant(req);
+    return { jobs: tenant ? jobs.list(tenant.id) : [] };
+  });
 
   // A bulk job, by the id the call that started it returned. The account's
   // own only: another's is "no such job", as another's project is.
   app.get<{ Params: { id: string } }>('/api/jobs/:id', async (req, reply) => {
-    const job = jobs.get(owner(req).id, req.params.id);
+    const tenant = ownTenant(req);
+    const job = tenant ? jobs.get(tenant.id, req.params.id) : undefined;
     return job ?? reply.code(404).send({ error: 'no such job' });
   });
 
@@ -1232,7 +1310,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // polls until the state is no longer `running`. A finished job is
   // returned as it is.
   app.delete<{ Params: { id: string } }>('/api/jobs/:id', async (req, reply) => {
-    const job = jobs.cancel(owner(req).id, req.params.id);
+    const tenant = ownTenant(req);
+    const job = tenant ? jobs.cancel(tenant.id, req.params.id) : undefined;
     if (!job) return reply.code(404).send({ error: 'no such job' });
     return reply.code(job.state === 'running' ? 202 : 200).send(job);
   });
@@ -1241,7 +1320,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   function tmRefsView(req: FastifyRequest, db: ReturnType<typeof openProjectDb>) {
     return listTmRefs(db).map((ref) => ({
       id: ref.id,
-      tm: tmSlugOf(config.storageRoot, owner(req), ref.path),
+      tm: tmSlugFor(req, ref.path),
       priority: ref.priority,
       writeTarget: ref.isWriteTarget,
       enabled: ref.enabled,
@@ -1290,7 +1369,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         }
         let path: string;
         try {
-          path = tmPath(config.storageRoot, owner(req), tm);
+          path = tmPath(config.storageRoot, sessionTenant(req), tm);
         } catch (err) {
           if (err instanceof InvalidNameError) {
             return reply.code(400).send({ error: err.message });
@@ -1486,7 +1565,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerEngineRoutes(app, {
     platform,
     storageRoot: config.storageRoot,
-    owner,
+    tenant: ownTenant,
     sessionActor,
     openProject,
   });
@@ -1495,7 +1574,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     platform,
     config,
     jobs,
-    owner,
+    tenant: ownTenant,
     sessionActor,
     openProject,
     adapterFor,
@@ -1505,33 +1584,37 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerReferenceFileRoutes(app, {
     openProject,
     sessionActor,
-    accountId: (req) => owner(req).id,
+    // null for a vendor, who is never "the owner" of a project they were granted into
+    tenantId: (req) => ownTenant(req)?.id ?? null,
   });
   registerReplaceRoutes(app, {
     jobs,
     openProject,
     sessionActor,
-    accountId: (req) => owner(req).id,
+    tenantId: (req) => sessionTenant(req).id,
     ...(options.replaceLimitsMs ? { limitsMs: options.replaceLimitsMs } : {}),
   });
 
   // --- glossaries (smart-glossary-spec.md §5a.1; backlog #43a) --------
 
-  app.get('/api/glossaries', async (req) =>
-    listGlossarySlugs(config.storageRoot, owner(req)).map((slug) => ({ slug })),
-  );
+  app.get('/api/glossaries', async (req) => {
+    const tenant = ownTenant(req);
+    return tenant
+      ? listGlossarySlugs(config.storageRoot, tenant).map((slug) => ({ slug }))
+      : [];
+  });
 
   // A glossary is created empty from JSON `{ name }`, the name its slug.
   // It carries no language pair: its variants do (§3.3).
   app.post<{ Body: { name?: unknown } }>('/api/glossaries', async (req, reply) => {
-    const account = owner(req);
+    const tenant = sessionTenant(req);
     const slug = req.body?.name;
     if (typeof slug !== 'string' || slug === '') {
       return reply.code(400).send({ error: 'a glossary name is required' });
     }
     let path: string;
     try {
-      path = glossaryPath(config.storageRoot, account, slug);
+      path = glossaryPath(config.storageRoot, tenant, slug);
     } catch (err) {
       if (err instanceof InvalidNameError) {
         return reply.code(400).send({ error: err.message });
@@ -1550,7 +1633,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   function glossaryRefsView(req: FastifyRequest, db: ReturnType<typeof openProjectDb>) {
     return listGlossaryRefs(db).map((ref) => ({
       id: ref.id,
-      glossary: glossarySlugOf(config.storageRoot, owner(req), ref.path),
+      glossary: glossarySlugFor(req, ref.path),
       priority: ref.priority,
       writeTarget: ref.isWriteTarget,
       enabled: ref.enabled,
@@ -1621,7 +1704,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }
       let path: string;
       try {
-        path = glossaryPath(config.storageRoot, owner(req), glossary);
+        path = glossaryPath(config.storageRoot, sessionTenant(req), glossary);
       } catch (err) {
         if (err instanceof InvalidNameError) {
           return reply.code(400).send({ error: err.message });
@@ -1703,7 +1786,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         target = openGlossary(targetPath);
         const langs = { srcLang: project.srcLang, tgtLang: project.tgtLang };
         return {
-          glossary: glossarySlugOf(config.storageRoot, owner(req), targetPath),
+          glossary: glossarySlugFor(req, targetPath),
           mismatches: findMismatches(
             listTermEntries(target, langs),
             listSegments(db, fileId),
@@ -1859,7 +1942,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
               )?.text ?? null,
           }));
         return {
-          glossary: glossarySlugOf(config.storageRoot, owner(req), targetPath),
+          glossary: glossarySlugFor(req, targetPath),
           proposals,
         };
       } finally {
@@ -1913,7 +1996,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   const heldFor = (req: FastifyRequest, name: string, fileId: string) =>
-    glossarySessions.get(sessionKey(owner(req).id, name, Number(fileId)));
+    glossarySessions.get(sessionKey(sessionTenant(req).id, name, Number(fileId)));
 
   app.post<{ Params: { name: string; fileId: string } }>(
     SESSION_URL,
@@ -1943,7 +2026,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           }
           throw err;
         }
-        const key = sessionKey(owner(req).id, req.params.name, fileId);
+        const key = sessionKey(sessionTenant(req).id, req.params.name, fileId);
         const replaced = glossarySessions.has(key);
         glossarySessions.set(key, held);
         return reply.code(201).send({ replaced, session: sessionView(held) });
@@ -2042,7 +2125,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         } finally {
           target.close();
         }
-        glossarySessions.delete(sessionKey(owner(req).id, req.params.name, held.fileId));
+        glossarySessions.delete(
+          sessionKey(sessionTenant(req).id, req.params.name, held.fileId),
+        );
         return { written, session: sessionView(held) };
       } finally {
         db.close();
@@ -2057,7 +2142,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       if (!held)
         return reply.code(404).send({ error: 'no glossary session for this file' });
       held.session.discard();
-      glossarySessions.delete(sessionKey(owner(req).id, req.params.name, held.fileId));
+      glossarySessions.delete(
+        sessionKey(sessionTenant(req).id, req.params.name, held.fileId),
+      );
       return { session: sessionView(held) };
     },
   );
@@ -2066,13 +2153,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerAssignmentRoutes(app, {
     storageRoot: config.storageRoot,
     platform,
-    owner,
+    account: sessionAccount,
+    tenant: sessionTenant,
+    ownTenant,
     sessionActor,
   });
 
   // --- signed webhooks for the vendor events (backlog #125) ---------------
-  // The queue is in each owner's roster, written with the event it reports; this
-  // drains it. A route that moves an assignment nudges its roster's owner.
+  // The queue is in each tenant's roster, written with the event it reports; this
+  // drains it. A route that moves an assignment nudges its roster's tenant.
   const webhookOptions = options.webhooks ?? {};
   const dispatcher = new WebhookDispatcher({
     storageRoot: config.storageRoot,
@@ -2087,15 +2176,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.addHook('onResponse', async (req, reply) => {
     if (req.method === 'GET' || reply.statusCode >= 400) return;
     if (!req.url.startsWith('/api/assignments')) return;
-    const asked = (req.query as { owner?: unknown } | undefined)?.owner;
+    const asked = (req.query as { tenant?: unknown } | undefined)?.tenant;
     const named =
       typeof asked === 'string' && /^[1-9]\d{0,14}$/.test(asked) ? Number(asked) : null;
-    dispatcher.nudge(named ?? owner(req).id);
+    // A vendor names the roster's tenant; staff move their own. An account with neither
+    // moved nothing.
+    const target = named ?? ownTenant(req)?.id ?? null;
+    if (target !== null) dispatcher.nudge(target);
   });
   registerWebhookRoutes(app, {
     storageRoot: config.storageRoot,
     platform,
-    owner,
+    tenant: ownTenant,
     sessionActor,
     dispatcher,
     ...(webhookOptions.resolve ? { resolve: webhookOptions.resolve } : {}),
@@ -2103,11 +2195,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
   dispatcher.start();
 
-  // --- an owner invites a vendor (backlog #111) -------------------------
+  // --- a tenant invites a vendor (backlog #111) -------------------------
   registerInvitationRoutes(app, {
     storageRoot: config.storageRoot,
     platform,
-    owner,
+    account: sessionAccount,
+    tenant: ownTenant,
     sessionActor,
   });
 

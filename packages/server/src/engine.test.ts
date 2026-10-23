@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { engineFor } from './engine.js';
 import { projectPath } from './storage.js';
 
@@ -316,7 +317,9 @@ describe('a project’s engine and the gate', () => {
     const a = await login('alice');
     await makeProject(a, 7);
     await put(a, '/api/projects/job/engine', { override: 'off' });
-    const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const db = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
     try {
       const events = listEvents(db, { subjectType: 'project' }).filter(
         (e) =>
@@ -341,12 +344,12 @@ describe('a project’s engine and the gate', () => {
     const platform = openPlatformDb(config.dbPath);
     grantProjectAuthorization(platform, {
       accountId: bob.id,
-      project: { accountId: alice.id, name: 'job' },
+      project: { tenantId: tenantOf(config, alice).id, name: 'job' },
       scope: 'assigned_translator',
       actor: SETUP,
     });
     platform.close();
-    const q = `?owner=${alice.id}`;
+    const q = `?tenant=${tenantOf(config, alice).id}`;
     // A vendor account is not an owner at all, and a grantee's scope lacks `manage`.
     expect((await get(b, `/api/projects/job/engine${q}`)).statusCode).toBe(403);
     expect(
@@ -362,7 +365,10 @@ describe('a project’s engine and the gate', () => {
     const a = await login('alice');
     const c = await login('carol');
     await makeProject(a, 7);
-    const res = await get(c, `/api/projects/job/engine?owner=${alice.id}`);
+    const res = await get(
+      c,
+      `/api/projects/job/engine?tenant=${tenantOf(config, alice).id}`,
+    );
     expect(res.statusCode).toBe(404);
   });
 });
@@ -372,7 +378,9 @@ describe('engineFor, the gate later slices call', () => {
     const a = await login('alice');
     await makeProject(a, 7);
     const platform = openPlatformDb(config.dbPath);
-    const db = openProjectDb(projectPath(config.storageRoot, alice, 'job'));
+    const db = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
     try {
       expect(engineFor(platform, alice.id, db)).toEqual({
         engine: 'off',

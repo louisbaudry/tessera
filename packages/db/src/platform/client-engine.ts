@@ -5,7 +5,7 @@
  * The consent that must exist before any client content can be sent to an
  * engine. A client is the number an owner types on a project
  * (`portal_client_setting`), never checked against `portal.sqlite`; here it is
- * scoped by the owner's account, so two owners' client #7 are two clients.
+ * scoped by the tenant (backlog #205), so two tenants' client #7 are two clients.
  *
  * **Absence-based.** No consent row is "not consented"; no default row is
  * `off`. A new client, and every client that exists today, sends nothing.
@@ -41,31 +41,31 @@ export class ClientEngineError extends Error {
 /** What a client has set, `off` and no consent when nothing is stored. */
 export function getClientEngine(
   db: Database.Database,
-  ownerId: number,
+  tenantId: number,
   clientId: number,
 ): ClientEngineSettings {
   const consented = (
     db
       .prepare(
         `SELECT engine FROM client_engine_consent
-         WHERE owner_id = ? AND client_id = ? ORDER BY engine`,
+         WHERE tenant_id = ? AND client_id = ? ORDER BY engine`,
       )
-      .all(ownerId, clientId) as Array<{ engine: DraftEngine }>
+      .all(tenantId, clientId) as Array<{ engine: DraftEngine }>
   ).map((r) => r.engine);
   const row = db
     .prepare(
-      'SELECT engine FROM client_engine_default WHERE owner_id = ? AND client_id = ?',
+      'SELECT engine FROM client_engine_default WHERE tenant_id = ? AND client_id = ?',
     )
-    .get(ownerId, clientId) as { engine: DraftEngine } | undefined;
+    .get(tenantId, clientId) as { engine: DraftEngine } | undefined;
   return { default: row?.engine ?? 'off', consented };
 }
 
-function checkTarget(db: Database.Database, ownerId: number, clientId: number): void {
+function checkTarget(db: Database.Database, tenantId: number, clientId: number): void {
   if (!Number.isSafeInteger(clientId) || clientId < 1) {
     throw new ClientEngineError('a client is a positive whole number');
   }
-  if (!db.prepare('SELECT 1 FROM account WHERE id = ?').get(ownerId)) {
-    throw new ClientEngineError(`no account #${ownerId}`);
+  if (!db.prepare('SELECT 1 FROM tenant WHERE id = ?').get(tenantId)) {
+    throw new ClientEngineError(`no tenant #${tenantId}`);
   }
 }
 
@@ -87,7 +87,7 @@ function logChange(
 }
 
 export interface ConsentOptions {
-  readonly ownerId: number;
+  readonly tenantId: number;
   readonly clientId: number;
   /** An engine that sends client content out; `off` has nothing to consent to. */
   readonly engine: DraftEngine;
@@ -107,35 +107,35 @@ export function setClientEngineConsent(
   db: Database.Database,
   options: ConsentOptions,
 ): void {
-  const { ownerId, clientId, engine, actor } = options;
+  const { tenantId, clientId, engine, actor } = options;
   if (!isDraftEngine(engine)) {
     throw new ClientEngineError(
       `"${String(engine)}" is not an engine a client consents to`,
     );
   }
-  checkTarget(db, ownerId, clientId);
+  checkTarget(db, tenantId, clientId);
   db.transaction(() => {
     const has = db
       .prepare(
-        'SELECT 1 FROM client_engine_consent WHERE owner_id = ? AND client_id = ? AND engine = ?',
+        'SELECT 1 FROM client_engine_consent WHERE tenant_id = ? AND client_id = ? AND engine = ?',
       )
-      .get(ownerId, clientId, engine);
+      .get(tenantId, clientId, engine);
     if (options.consent && !has) {
       db.prepare(
-        `INSERT INTO client_engine_consent (owner_id, client_id, engine, consented_at)
+        `INSERT INTO client_engine_consent (tenant_id, client_id, engine, consented_at)
          VALUES (?, ?, ?, ?)`,
-      ).run(ownerId, clientId, engine, new Date().toISOString());
+      ).run(tenantId, clientId, engine, new Date().toISOString());
       logChange(db, actor, clientId, `consent:${engine}`, false, true);
     } else if (!options.consent && has) {
       db.prepare(
-        'DELETE FROM client_engine_consent WHERE owner_id = ? AND client_id = ? AND engine = ?',
-      ).run(ownerId, clientId, engine);
+        'DELETE FROM client_engine_consent WHERE tenant_id = ? AND client_id = ? AND engine = ?',
+      ).run(tenantId, clientId, engine);
       logChange(db, actor, clientId, `consent:${engine}`, true, false);
       const wasDefault = db
         .prepare(
-          'DELETE FROM client_engine_default WHERE owner_id = ? AND client_id = ? AND engine = ?',
+          'DELETE FROM client_engine_default WHERE tenant_id = ? AND client_id = ? AND engine = ?',
         )
-        .run(ownerId, clientId, engine);
+        .run(tenantId, clientId, engine);
       if (wasDefault.changes > 0) {
         logChange(db, actor, clientId, 'default', engine, 'off');
       }
@@ -144,7 +144,7 @@ export function setClientEngineConsent(
 }
 
 export interface DefaultOptions {
-  readonly ownerId: number;
+  readonly tenantId: number;
   readonly clientId: number;
   readonly engine: EngineChoice;
   readonly actor: AuditActor;
@@ -159,13 +159,13 @@ export function setClientEngineDefault(
   db: Database.Database,
   options: DefaultOptions,
 ): void {
-  const { ownerId, clientId, engine, actor } = options;
+  const { tenantId, clientId, engine, actor } = options;
   if (!isEngineChoice(engine)) {
     throw new ClientEngineError(`"${String(engine)}" is not an engine`);
   }
-  checkTarget(db, ownerId, clientId);
+  checkTarget(db, tenantId, clientId);
   db.transaction(() => {
-    const from = getClientEngine(db, ownerId, clientId);
+    const from = getClientEngine(db, tenantId, clientId);
     if (engine !== 'off' && !from.consented.includes(engine)) {
       throw new ClientEngineError(
         `the client has not consented to "${engine}", so it cannot be the default`,
@@ -174,13 +174,13 @@ export function setClientEngineDefault(
     if (from.default === engine) return;
     if (engine === 'off') {
       db.prepare(
-        'DELETE FROM client_engine_default WHERE owner_id = ? AND client_id = ?',
-      ).run(ownerId, clientId);
+        'DELETE FROM client_engine_default WHERE tenant_id = ? AND client_id = ?',
+      ).run(tenantId, clientId);
     } else {
       db.prepare(
-        `INSERT INTO client_engine_default (owner_id, client_id, engine) VALUES (?, ?, ?)
-         ON CONFLICT (owner_id, client_id) DO UPDATE SET engine = excluded.engine`,
-      ).run(ownerId, clientId, engine);
+        `INSERT INTO client_engine_default (tenant_id, client_id, engine) VALUES (?, ?, ?)
+         ON CONFLICT (tenant_id, client_id) DO UPDATE SET engine = excluded.engine`,
+      ).run(tenantId, clientId, engine);
     }
     logChange(db, actor, clientId, 'default', from.default, engine);
   })();

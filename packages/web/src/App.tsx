@@ -127,7 +127,9 @@ export function App() {
           {role !== null &&
             route.screen === 'projects' &&
             (role === 'vendor' ? <VendorFeed /> : <Projects />)}
-          {route.screen === 'job' && <JobScreen owner={route.owner} id={route.id} />}
+          {route.screen === 'job' && (
+            <JobScreen tenantId={route.tenantId} id={route.id} />
+          )}
           {route.screen === 'tms' && role === 'owner' && <Memories />}
           {route.screen === 'vendors' && role === 'owner' && <Vendors />}
           {route.screen === 'payables' && role === 'owner' && <Payables />}

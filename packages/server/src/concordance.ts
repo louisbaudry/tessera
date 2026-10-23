@@ -29,7 +29,7 @@ import {
   retireMemoryUnit,
   searchConcordance,
   UnitEditError,
-  type Account,
+  type Tenant,
   type openProjectDb,
 } from '@cat-tool/db';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -43,7 +43,7 @@ export interface ConcordanceRouteDeps {
     reply: FastifyReply,
     name: string,
     action: ProjectAction,
-  ) => { db: ReturnType<typeof openProjectDb>; path: string; owner: Account } | null;
+  ) => { db: ReturnType<typeof openProjectDb>; path: string; tenant: Tenant } | null;
 }
 
 export function registerConcordanceRoutes(

@@ -272,9 +272,11 @@ export interface AuditDetail {
   /**
    * Both ids are installation-local and not personal. The actor is the new account,
    * or, with `existing`, a vendor who already had one and signed in to join (#187).
+   * `tenant_id` since backlog #205; events written before it carry `owner_id` (the
+   * founding account's id) instead, and keep it: a log is never rewritten.
    */
   'invitation.accepted': {
-    readonly owner_id: number;
+    readonly tenant_id: number;
     readonly account_id: number;
     readonly existing?: true;
   };

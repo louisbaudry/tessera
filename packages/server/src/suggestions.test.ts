@@ -39,6 +39,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 import { projectPath } from './storage.js';
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
@@ -110,8 +111,9 @@ const post = (token: string, url: string, payload?: unknown) =>
 const put = (token: string, url: string, payload: unknown) =>
   app.inject({ method: 'PUT', url, headers: as(token), payload: payload as object });
 
-const dbOf = () => openProjectDb(projectPath(config.storageRoot, alice, 'job'));
-const Q = () => `?owner=${alice.id}`;
+const dbOf = () =>
+  openProjectDb(projectPath(config.storageRoot, tenantOf(config, alice), 'job'));
+const Q = () => `?tenant=${tenantOf(config, alice).id}`;
 
 /** alice's project with a file, consent as asked, and bob granted as a translator. */
 async function setup(consent = true): Promise<{ a: string; b: string; ids: number[] }> {
@@ -147,7 +149,7 @@ async function setup(consent = true): Promise<{ a: string; b: string; ids: numbe
   const platform = openPlatformDb(config.dbPath);
   grantProjectAuthorization(platform, {
     accountId: bob.id,
-    project: { accountId: alice.id, name: 'job' },
+    project: { tenantId: tenantOf(config, alice).id, name: 'job' },
     scope: 'assigned_translator',
     actor: SETUP,
   });

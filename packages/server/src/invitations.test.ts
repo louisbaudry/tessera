@@ -22,6 +22,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
+import { tenantOf } from './tenant.fixture.js';
 import type { ServerConfig } from './config.js';
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
@@ -183,7 +184,9 @@ describe('the invitee follows the link', () => {
       url: '/api/vendor/capacity',
       headers: bob,
     });
-    expect(capacity.json()).toMatchObject({ rosters: [{ owner: alice.id }] });
+    expect(capacity.json()).toMatchObject({
+      rosters: [{ tenantId: tenantOf(config, alice).id }],
+    });
     const feed = await app.inject({
       method: 'GET',
       url: '/api/vendor/feed',
@@ -253,7 +256,8 @@ describe('the invitee follows the link', () => {
   it('refuses an expired link', async () => {
     const platform = openPlatformDb(config.dbPath);
     const { token } = createInvitation(platform, {
-      ownerId: alice.id,
+      tenantId: tenantOf(config, alice).id,
+      invitedBy: alice.id,
       email: 'old@example.com',
       actor: SETUP,
       now: new Date(Date.now() - INVITATION_TTL_MS - 1000),
@@ -310,7 +314,9 @@ describe('an existing vendor joins a second owner’s roster (backlog #187)', ()
       url: '/api/vendor/capacity',
       headers: as(vera),
     });
-    expect(capacity.json()).toMatchObject({ rosters: [{ owner: alice.id }] });
+    expect(capacity.json()).toMatchObject({
+      rosters: [{ tenantId: tenantOf(config, alice).id }],
+    });
     const roster = await app.inject({
       method: 'GET',
       url: '/api/vendors',
@@ -431,7 +437,8 @@ describe('a roster file the accept could not reach', () => {
     // The platform half happened (account, index row, used link); the roster file did not.
     const platform = openPlatformDb(config.dbPath);
     const { token } = createInvitation(platform, {
-      ownerId: alice.id,
+      tenantId: tenantOf(config, alice).id,
+      invitedBy: alice.id,
       email: 'late@example.com',
       displayName: 'Late',
       actor: SETUP,

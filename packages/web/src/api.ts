@@ -71,9 +71,9 @@ export interface VendorJob {
   readonly offeredAt: string;
 }
 
-/** One entry of the cross-owner feed: the job and whose it is (an account id). */
+/** One entry of the cross-tenant feed: the job and whose it is (a tenant id). */
 export interface FeedJob extends VendorJob {
-  readonly owner: number;
+  readonly tenantId: number;
 }
 
 export interface VendorFeed {
@@ -99,9 +99,9 @@ export interface LockedPayable {
   }>;
 }
 
-/** A vendor's capacity on one owner's roster (decision 8): null until they set one. */
+/** A vendor's capacity on one tenant's roster (decision 8): null until they set one. */
 export interface RosterCapacity {
-  readonly owner: number;
+  readonly tenantId: number;
   readonly status: CapacityStatus | null;
   readonly note: string | null;
   readonly setAt: string | null;
@@ -152,7 +152,7 @@ export interface PayablesList {
 
 /** A vendor's own row in their payment record (`GET /api/vendor/payments`). */
 export interface VendorPaymentRow {
-  readonly owner: number;
+  readonly tenantId: number;
   readonly assignment: number;
   readonly project: string;
   readonly currency: string | null;
@@ -370,13 +370,13 @@ export interface GlossaryRefView {
 }
 
 /**
- * `/api/projects/<name><suffix>`, with `?owner=` when the key names another
- * account's project (`project-key.ts`; backlog #45, #52). The query goes last,
+ * `/api/projects/<name><suffix>`, with `?tenant=` when the key names another
+ * tenant's project (`project-key.ts`; backlog #45, #52). The query goes last,
  * after the suffix, which is why a path is built here and never by the caller.
  */
 function projectUrl(key: string, suffix = ''): string {
-  const { name, owner } = parseProjectKey(key);
-  return `/api/projects/${encodeURIComponent(name)}${suffix}${owner === null ? '' : `?owner=${owner}`}`;
+  const { name, tenantId } = parseProjectKey(key);
+  return `/api/projects/${encodeURIComponent(name)}${suffix}${tenantId === null ? '' : `?tenant=${tenantId}`}`;
 }
 
 const glossaryUrl = (name: string, fileId: number) =>
@@ -389,39 +389,41 @@ export const api = {
       body: { email, password },
     }),
   logout: (token: string) => call<{ ok: true }>('/api/logout', token, { method: 'POST' }),
-  /** The signed-in vendor's feed across every owner who engages them (backlog #52a). */
+  /** The signed-in vendor's feed across every tenant that engages them (backlog #52a). */
   vendorFeed: (token: string, signal?: AbortSignal) =>
     call<VendorFeed>('/api/vendor/feed', token, { signal }),
-  offer: (token: string, owner: number, id: number, signal?: AbortSignal) =>
-    call<OfferDetail>(`/api/assignments/${id}/offer?owner=${owner}`, token, { signal }),
+  offer: (token: string, tenantId: number, id: number, signal?: AbortSignal) =>
+    call<OfferDetail>(`/api/assignments/${id}/offer?tenant=${tenantId}`, token, {
+      signal,
+    }),
   /** The vendor's capacity on every roster that lists them (backlog #54). */
   vendorCapacity: (token: string, signal?: AbortSignal) =>
     call<{ rosters: RosterCapacity[] }>('/api/vendor/capacity', token, { signal }),
   setCapacity: (
     token: string,
-    owner: number,
+    tenantId: number,
     body: { status: CapacityStatus; note: string | null },
   ) =>
-    call<RosterCapacity>(`/api/vendor/capacity?owner=${owner}`, token, {
+    call<RosterCapacity>(`/api/vendor/capacity?tenant=${tenantId}`, token, {
       method: 'PUT',
       body,
     }),
   /** The vendor's job on a project they were granted, if any (backlog #53). */
-  vendorJob: (token: string, owner: number, project: string, signal?: AbortSignal) =>
+  vendorJob: (token: string, tenantId: number, project: string, signal?: AbortSignal) =>
     call<{ id: number; status: string }>(
-      `/api/vendor/job?owner=${owner}&project=${encodeURIComponent(project)}`,
+      `/api/vendor/job?tenant=${tenantId}&project=${encodeURIComponent(project)}`,
       token,
       { signal },
     ),
   /** A vendor's answer to a job: claim, accept, decline, start or deliver (vendor-spec §4). */
   answerJob: (
     token: string,
-    owner: number,
+    tenantId: number,
     id: number,
     verb: 'claim' | 'accept' | 'decline' | 'start' | 'deliver',
   ) =>
     call<{ assignment: VendorJob }>(
-      `/api/assignments/${id}/${verb}?owner=${owner}`,
+      `/api/assignments/${id}/${verb}?tenant=${tenantId}`,
       token,
       {
         method: 'POST',

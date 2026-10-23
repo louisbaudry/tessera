@@ -373,7 +373,9 @@ invent an author. What the second file to carry the log settled:
   as the session row it creates or deletes. A logout that finds no
   session writes nothing.
 - **A project in this file is `subject_type` `project`, `subject_id`
-  `<account id>/<name>`**: the two coordinates its path is built from.
+  `t<tenant id>/<name>`**: the two coordinates its path is built from. (Before backlog #205
+  it was `<owner account id>/<name>`; those events are immutable and keep it, and the `t`
+  keeps an old account id from being read as a tenant's.)
   It is never the storage root, which is a capability, not a name. A
   name reused after a deletion is the same subject by design: it is
   the history of that slot.
@@ -405,7 +407,7 @@ invent an author. What the second file to carry the log settled:
   and asserts the target's text is absent from every line.
 - **`authorization.granted` / `.revoked`** are written by `#45`
   (`project_authorization`, `vendor-spec.md` §3): subject the project
-  (`<owner id>/<name>`, as `project.created`), detail `{ grantee, scope }`,
+  (`t<tenant id>/<name>`, as `project.created`), detail `{ grantee, scope }`,
   in the transaction of the grant. A re-grant of the same scope writes
   nothing; deleting a project writes one `.revoked` per grant it removes.
   The grantee is an account id, installation-local and not personal.

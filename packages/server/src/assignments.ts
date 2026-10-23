@@ -30,6 +30,7 @@ import {
   declineAssignment,
   deliverAssignment,
   getAccountById,
+  getTenantById,
   getAssignment,
   getAssignmentAnalysis,
   getAssignmentPayable,
@@ -46,7 +47,7 @@ import {
   listLedger,
   listPaymentEvents,
   listPoolMembers,
-  listRosterOwners,
+  listRosterTenants,
   assessRoster,
   getClientPool,
   getPortalClient,
@@ -77,6 +78,7 @@ import {
   vendorRateCardAt,
   VendorError,
   type Account,
+  type Tenant,
   type Assignment,
   type Capacity,
   type LedgerEntry,
@@ -108,8 +110,12 @@ type Platform = ReturnType<typeof openPlatformDb>;
 export interface AssignmentRouteDeps {
   readonly storageRoot: string;
   readonly platform: Platform;
-  /** The session's account. */
-  readonly owner: (req: FastifyRequest) => Account;
+  /** The session's account: the person, a vendor's own identity on a roster. */
+  readonly account: (req: FastifyRequest) => Account;
+  /** The session's tenant; throws (a 403) for an account with none, a vendor. */
+  readonly tenant: (req: FastifyRequest) => Tenant;
+  /** The session's tenant, or null for an account with none (a vendor). */
+  readonly ownTenant: (req: FastifyRequest) => Tenant | null;
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
 }
 
@@ -203,9 +209,19 @@ export function registerAssignmentRoutes(
 ): void {
   const { storageRoot, platform } = deps;
 
-  const openRoster = (ownerAccount: Account) => openRosterFile(storageRoot, ownerAccount);
-  const openOrCreateRoster = (ownerAccount: Account) =>
-    openOrCreateRosterFile(storageRoot, ownerAccount);
+  const openRoster = (tenant: Tenant) => openRosterFile(storageRoot, tenant);
+  const openOrCreateRoster = (tenant: Tenant) =>
+    openOrCreateRosterFile(storageRoot, tenant);
+
+  /**
+   * The session's own tenant's roster, or null: none yet, or no tenant at all. A vendor has
+   * no tenant, so on every staff-only read they get what an empty roster of their own always
+   * gave them (a 404 or an empty list), never an error that tells them what they are.
+   */
+  const ownRoster = (req: FastifyRequest): Roster | null => {
+    const tenant = deps.ownTenant(req);
+    return tenant === null ? null : openRoster(tenant);
+  };
 
   /** What the owner sees: the whole assignment, its pool by account id and its history. */
   function ownerView(roster: Roster, a: Assignment) {
@@ -242,12 +258,16 @@ export function registerAssignmentRoutes(
     };
   }
 
-  /** The owner named by `?owner=`, or null if it is not a valid account. */
-  function ownerParam(req: FastifyRequest): Account | null {
-    const asked = (req.query as { owner?: unknown } | undefined)?.owner;
+  /** The tenant named by `?tenant=`, or null if it is not a valid tenant id. */
+  function tenantParam(req: FastifyRequest): Tenant | null {
+    const asked = (req.query as { tenant?: unknown } | undefined)?.tenant;
     if (typeof asked !== 'string' || !/^[1-9]\d{0,14}$/.test(asked)) return null;
-    return getAccountById(platform, Number(asked));
+    return getTenantById(platform, Number(asked));
   }
+
+  /** Whether `tenant` is the session's own: the staff side of a route that serves both. */
+  const isOwn = (req: FastifyRequest, tenant: Tenant): boolean =>
+    deps.ownTenant(req)?.id === tenant.id;
 
   function mapError(err: unknown, reply: FastifyReply) {
     if (err instanceof AssignmentAccessError || err instanceof NoPayableError) {
@@ -282,7 +302,7 @@ export function registerAssignmentRoutes(
       instructions?: unknown;
     };
   }>('/api/assignments', async (req, reply) => {
-    const me = deps.owner(req);
+    const tenant = deps.ownTenant(req);
     const body = req.body ?? {};
     const { project, channel, vendors, deadline, instructions } = body;
     if (typeof project !== 'string' || !isSlug(project)) {
@@ -308,11 +328,11 @@ export function registerAssignmentRoutes(
         return reply.code(400).send({ error: `${field} must be text` });
       }
     }
-    if (!existsSync(projectPath(storageRoot, me, project))) {
+    if (!tenant || !existsSync(projectPath(storageRoot, tenant, project))) {
       return reply.code(404).send({ error: `no project named "${project}"` });
     }
 
-    const roster = openOrCreateRoster(me);
+    const roster = openOrCreateRoster(tenant);
     try {
       const vendorIds: number[] = [];
       for (const accountId of vendors as number[]) {
@@ -330,7 +350,7 @@ export function registerAssignmentRoutes(
         instructions: (instructions as string | null | undefined) ?? null,
         // The project's words by tier as they stand now, frozen with the offer
         // (backlog #116): a tier cannot be read from a segment later.
-        analysis: await analyseProject(projectPath(storageRoot, me, project)),
+        analysis: await analyseProject(projectPath(storageRoot, tenant, project)),
         actor: deps.sessionActor(req),
       };
       const assignment =
@@ -345,21 +365,21 @@ export function registerAssignmentRoutes(
     }
   });
 
-  // One assignment. The owner (no `?owner`, or their own id) sees all of
-  // it on their roster; a vendor (`?owner=<the owner's id>`) sees the job
+  // One assignment. Staff (no `?tenant`, or their own tenant's id) see all of
+  // it on their tenant's roster; a vendor (`?tenant=<the tenant's id>`) sees the job
   // if it is theirs or they are in its pool.
   app.get<{ Params: { id: string } }>('/api/assignments/:id', async (req, reply) => {
-    const me = deps.owner(req);
+    const me = deps.account(req);
     const id = /^[1-9]\d{0,14}$/.test(req.params.id) ? Number(req.params.id) : 0;
-    const asked = (req.query as { owner?: unknown } | undefined)?.owner;
-    const ownerAccount = asked === undefined ? me : ownerParam(req);
-    if (!ownerAccount || id === 0) return noSuch(reply);
-    const roster = openRoster(ownerAccount);
+    const asked = (req.query as { tenant?: unknown } | undefined)?.tenant;
+    const tenant = asked === undefined ? deps.ownTenant(req) : tenantParam(req);
+    if (!tenant || id === 0) return noSuch(reply);
+    const roster = openRoster(tenant);
     if (!roster) return noSuch(reply);
     try {
       const assignment = getAssignment(roster, id);
       if (!assignment) return noSuch(reply);
-      if (ownerAccount.id === me.id) {
+      if (isOwn(req, tenant)) {
         return { assignment: ownerView(roster, assignment) };
       }
       const vendor = getVendorByAccount(roster, me.id);
@@ -373,12 +393,12 @@ export function registerAssignmentRoutes(
     }
   });
 
-  // One feed across every owner whose roster lists the signed-in account (#52a): the
-  // vendor cannot be asked to name the owners who engage them. Each assignment carries
-  // its owner and when it was offered, newest first. An owner with no roster file, or
+  // One feed across every tenant whose roster lists the signed-in account (#52a): the
+  // vendor cannot be asked to name the tenants who engage them. Each assignment carries
+  // its tenant and when it was offered, newest first. A tenant with no roster file, or
   // whose roster no longer lists the account, is skipped, never an error.
   app.get('/api/vendor/feed', async (req) => {
-    const me = deps.owner(req);
+    const me = deps.account(req);
     const groups = {
       needsResponse: [],
       claimable: [],
@@ -386,20 +406,19 @@ export function registerAssignmentRoutes(
       delivered: [],
     } as Record<
       'needsResponse' | 'claimable' | 'active' | 'delivered',
-      Array<ReturnType<typeof vendorView> & { owner: number }>
+      Array<ReturnType<typeof vendorView> & { tenantId: number }>
     >;
-    for (const ownerId of listRosterOwners(platform, me.id)) {
-      const ownerAccount = getAccountById(platform, ownerId);
-      if (!ownerAccount) continue;
-      const roster = openRoster(ownerAccount);
+    for (const tenantId of listRosterTenants(platform, me.id)) {
+      const tenant = getTenantById(platform, tenantId);
+      if (!tenant) continue;
+      const roster = openRoster(tenant);
       if (!roster) continue;
       try {
         const vendor = getVendorByAccount(roster, me.id);
         if (!vendor) continue;
         const feed = vendorFeed(roster, vendor.id);
         for (const key of Object.keys(groups) as Array<keyof typeof groups>) {
-          for (const a of feed[key])
-            groups[key].push({ ...vendorView(a), owner: ownerId });
+          for (const a of feed[key]) groups[key].push({ ...vendorView(a), tenantId });
         }
       } finally {
         roster.close();
@@ -412,20 +431,20 @@ export function registerAssignmentRoutes(
   });
 
   // A vendor's capacity on every roster that lists them (backlog #54, decision 8): one row
-  // per roster, current only, null where they have never set one. The rows are the owners'
+  // per roster, current only, null where they have never set one. The rows are the tenants'
   // files, so a vendor on two rosters has two statuses and each is set on its own.
   app.get('/api/vendor/capacity', async (req) => {
-    const me = deps.owner(req);
-    const rosters: Array<{ owner: number } & CapacityView> = [];
-    for (const ownerId of listRosterOwners(platform, me.id)) {
-      const ownerAccount = getAccountById(platform, ownerId);
-      if (!ownerAccount) continue;
-      const roster = openRoster(ownerAccount);
+    const me = deps.account(req);
+    const rosters: Array<{ tenantId: number } & CapacityView> = [];
+    for (const tenantId of listRosterTenants(platform, me.id)) {
+      const tenant = getTenantById(platform, tenantId);
+      if (!tenant) continue;
+      const roster = openRoster(tenant);
       if (!roster) continue;
       try {
         const vendor = getVendorByAccount(roster, me.id);
         if (!vendor) continue;
-        rosters.push({ owner: ownerId, ...capacityView(getCapacity(roster, vendor.id)) });
+        rosters.push({ tenantId, ...capacityView(getCapacity(roster, vendor.id)) });
       } finally {
         roster.close();
       }
@@ -436,9 +455,9 @@ export function registerAssignmentRoutes(
   app.put<{ Body: { status?: unknown; note?: unknown } | undefined }>(
     '/api/vendor/capacity',
     async (req, reply) => {
-      const me = deps.owner(req);
-      const ownerAccount = ownerParam(req);
-      if (!ownerAccount || ownerAccount.id === me.id) return noSuch(reply);
+      const me = deps.account(req);
+      const tenant = tenantParam(req);
+      if (!tenant || isOwn(req, tenant)) return noSuch(reply);
       const { status, note } = req.body ?? {};
       if (!isCapacityStatus(status)) {
         return reply.code(400).send({ error: 'status must be available, busy or away' });
@@ -446,7 +465,7 @@ export function registerAssignmentRoutes(
       if (note !== undefined && note !== null && typeof note !== 'string') {
         return reply.code(400).send({ error: 'note must be text' });
       }
-      const roster = openRoster(ownerAccount);
+      const roster = openRoster(tenant);
       if (!roster) return noSuch(reply);
       try {
         const vendor = getVendorByAccount(roster, me.id);
@@ -457,7 +476,7 @@ export function registerAssignmentRoutes(
           note: note ?? null,
           setBy: me.id,
         });
-        return { owner: ownerAccount.id, ...capacityView(saved) };
+        return { tenantId: tenant.id, ...capacityView(saved) };
       } catch (err) {
         return mapError(err, reply);
       } finally {
@@ -470,15 +489,14 @@ export function registerAssignmentRoutes(
   // show their payable. The newest assignment of the vendor's own on that project that is
   // past the answer (accepted, in progress or delivered); the same identical 404 as the
   // offer when there is none, the roster does not list them, or the project is not named.
-  app.get<{ Querystring: { owner?: string; project?: string } }>(
+  app.get<{ Querystring: { tenant?: string; project?: string } }>(
     '/api/vendor/job',
     async (req, reply) => {
-      const me = deps.owner(req);
-      const ownerAccount = ownerParam(req);
+      const me = deps.account(req);
+      const tenant = tenantParam(req);
       const project = req.query.project;
-      if (!ownerAccount || ownerAccount.id === me.id || !isSlug(project ?? ''))
-        return noSuch(reply);
-      const roster = openRoster(ownerAccount);
+      if (!tenant || isOwn(req, tenant) || !isSlug(project ?? '')) return noSuch(reply);
+      const roster = openRoster(tenant);
       if (!roster) return noSuch(reply);
       try {
         const vendor = getVendorByAccount(roster, me.id);
@@ -497,14 +515,16 @@ export function registerAssignmentRoutes(
     },
   );
 
-  // A vendor's job feed, on the roster `?owner=` names. The owner's own id is
-  // not a vendor's feed (the owner's list is #51), and a roster the caller is
+  // A vendor's job feed, on the roster `?tenant=` names. The session's own tenant is
+  // not a vendor's feed (the tenant's list is #51), and a roster the caller is
   // not on is the same 404.
   app.get('/api/assignments', async (req, reply) => {
-    const me = deps.owner(req);
-    // No `?owner`: the owner's own list (backlog #51), newest first.
-    if ((req.query as { owner?: unknown } | undefined)?.owner === undefined) {
-      const own = openRoster(me);
+    const me = deps.account(req);
+    // No `?tenant`: the tenant's own list (backlog #51), newest first. A vendor has no
+    // tenant, so theirs is empty, as it always was.
+    if ((req.query as { tenant?: unknown } | undefined)?.tenant === undefined) {
+      const mine = deps.ownTenant(req);
+      const own = mine === null ? null : openRoster(mine);
       if (!own) return { assignments: [] };
       try {
         return { assignments: listAssignments(own).map((a) => ownerView(own, a)) };
@@ -512,9 +532,9 @@ export function registerAssignmentRoutes(
         own.close();
       }
     }
-    const ownerAccount = ownerParam(req);
-    if (!ownerAccount || ownerAccount.id === me.id) return noSuch(reply);
-    const roster = openRoster(ownerAccount);
+    const tenant = tenantParam(req);
+    if (!tenant || isOwn(req, tenant)) return noSuch(reply);
+    const roster = openRoster(tenant);
     if (!roster) return noSuch(reply);
     try {
       const vendor = getVendorByAccount(roster, me.id);
@@ -537,11 +557,11 @@ export function registerAssignmentRoutes(
   app.get<{ Params: { id: string } }>(
     '/api/assignments/:id/offer',
     async (req, reply) => {
-      const me = deps.owner(req);
-      const ownerAccount = ownerParam(req);
+      const me = deps.account(req);
+      const tenant = tenantParam(req);
       const id = /^[1-9]\d{0,14}$/.test(req.params.id) ? Number(req.params.id) : 0;
-      if (!ownerAccount || id === 0 || ownerAccount.id === me.id) return noSuch(reply);
-      const roster = openRoster(ownerAccount);
+      if (!tenant || id === 0 || isOwn(req, tenant)) return noSuch(reply);
+      const roster = openRoster(tenant);
       if (!roster) return noSuch(reply);
       try {
         const vendor = getVendorByAccount(roster, me.id);
@@ -554,7 +574,7 @@ export function registerAssignmentRoutes(
         if (!vendor || !assignment || !mine) return noSuch(reply);
 
         const preview = readPreview(
-          projectPath(storageRoot, ownerAccount, assignment.projectName),
+          projectPath(storageRoot, tenant, assignment.projectName),
         );
         const analysis = getAssignmentAnalysis(roster, assignment.id);
         const card = vendorRateCardAt(roster, vendor.id, assignment.createdAt)
@@ -602,16 +622,20 @@ export function registerAssignmentRoutes(
   // between the move and the grant or revoke is mended here, not by repeating a step
   // that is terminal. The owner's, idempotent, and a run that finds nothing writes nothing.
   app.post('/api/assignments/reconcile', async (req) => {
-    const me = deps.owner(req);
-    const roster = openRoster(me);
-    if (!roster) return { granted: [], revoked: [], skipped: [], memberships: [] };
+    const tenant = deps.ownTenant(req);
+    const roster = tenant === null ? null : openRoster(tenant);
+    if (!tenant || !roster)
+      return { granted: [], revoked: [], skipped: [], memberships: [] };
     try {
       const grants = reconcileAssignmentGrants(roster, platform, {
-        ownerId: me.id,
+        tenantId: tenant.id,
         actor: deps.sessionActor(req),
       });
       // The membership index too (#52a): backfills rosters written before it existed.
-      return { ...grants, memberships: reconcileMemberships(roster, platform, me.id) };
+      return {
+        ...grants,
+        memberships: reconcileMemberships(roster, platform, tenant.id),
+      };
     } finally {
       roster.close();
     }
@@ -624,19 +648,19 @@ export function registerAssignmentRoutes(
   app.post<{ Params: { id: string }; Body: { note?: unknown } | undefined }>(
     '/api/assignments/:id/review',
     async (req, reply) => {
-      const me = deps.owner(req);
+      const tenant = deps.ownTenant(req);
       const id = /^[1-9]\d{0,14}$/.test(req.params.id) ? Number(req.params.id) : 0;
-      if (id === 0) return noSuch(reply);
+      if (id === 0 || !tenant) return noSuch(reply);
       const note = req.body?.note;
       if (note !== undefined && note !== null && typeof note !== 'string') {
         return reply.code(400).send({ error: 'note must be text' });
       }
-      const roster = openRoster(me);
+      const roster = openRoster(tenant);
       if (!roster) return noSuch(reply);
       try {
         const assignment = getAssignment(roster, id);
         if (!assignment) return noSuch(reply);
-        const path = projectPath(storageRoot, me, assignment.projectName);
+        const path = projectPath(storageRoot, tenant, assignment.projectName);
         if (!existsSync(path)) {
           return reply.code(409).send({
             error: `the project "${assignment.projectName}" is gone: there is nothing to review the job against`,
@@ -661,7 +685,7 @@ export function registerAssignmentRoutes(
         if (vendor) {
           revokeProjectAuthorization(platform, {
             accountId: vendor.accountId,
-            project: { accountId: me.id, name: reviewed.projectName },
+            project: { tenantId: tenant.id, name: reviewed.projectName },
             actor: deps.sessionActor(req),
           });
         }
@@ -728,7 +752,7 @@ export function registerAssignmentRoutes(
   // The pay run: every locked payable that matches, with a total per currency
   // (never converted) split into unpaid and paid.
   app.get('/api/payables', async (req, reply) => {
-    const roster = openRoster(deps.owner(req));
+    const roster = ownRoster(req);
     if (!roster) return { payables: [], totals: [] };
     try {
       const filter = ledgerFilter(roster, req.query as Record<string, unknown>);
@@ -749,8 +773,7 @@ export function registerAssignmentRoutes(
   // The same list as a CSV, and a record that it left: a count and the digest
   // of the bytes, never a name or an amount (`payables.exported`).
   app.get('/api/payables.csv', async (req, reply) => {
-    const me = deps.owner(req);
-    const roster = openRoster(me);
+    const roster = ownRoster(req);
     if (!roster) return noSuch(reply);
     try {
       const filter = ledgerFilter(roster, req.query as Record<string, unknown>);
@@ -803,7 +826,7 @@ export function registerAssignmentRoutes(
     if (note !== undefined && note !== null && typeof note !== 'string') {
       return reply.code(400).send({ error: 'note must be text' });
     }
-    const roster = openRoster(deps.owner(req));
+    const roster = ownRoster(req);
     if (!roster) return noSuch(reply);
     try {
       recordPayment(roster, {
@@ -830,7 +853,7 @@ export function registerAssignmentRoutes(
       if (note !== undefined && note !== null && typeof note !== 'string') {
         return reply.code(400).send({ error: 'note must be text' });
       }
-      const roster = openRoster(deps.owner(req));
+      const roster = ownRoster(req);
       if (!roster) return noSuch(reply);
       try {
         reopenPayment(roster, {
@@ -849,22 +872,22 @@ export function registerAssignmentRoutes(
 
   // A vendor's own record across every roster that lists them, the feed's
   // shape: what each job locked at, whether it is paid, and how long it took.
-  // Their rows only (`vendorId`), and no owner total.
+  // Their rows only (`vendorId`), and no tenant total.
   app.get('/api/vendor/payments', async (req) => {
-    const me = deps.owner(req);
+    const me = deps.account(req);
     const items: Array<ReturnType<typeof vendorPaymentView>> = [];
     const rows: LedgerEntry[] = [];
-    for (const ownerId of listRosterOwners(platform, me.id)) {
-      const ownerAccount = getAccountById(platform, ownerId);
-      if (!ownerAccount) continue;
-      const roster = openRoster(ownerAccount);
+    for (const tenantId of listRosterTenants(platform, me.id)) {
+      const tenant = getTenantById(platform, tenantId);
+      if (!tenant) continue;
+      const roster = openRoster(tenant);
       if (!roster) continue;
       try {
         const vendor = getVendorByAccount(roster, me.id);
         if (!vendor) continue;
         for (const r of listLedger(roster, { vendorId: vendor.id })) {
           rows.push(r);
-          items.push(vendorPaymentView(ownerId, r));
+          items.push(vendorPaymentView(tenantId, r));
         }
       } finally {
         roster.close();
@@ -876,9 +899,9 @@ export function registerAssignmentRoutes(
     return { payments: items, totals: totalsByCurrency(rows) };
   });
 
-  function vendorPaymentView(ownerId: number, r: LedgerEntry) {
+  function vendorPaymentView(tenantId: number, r: LedgerEntry) {
     return {
-      owner: ownerId,
+      tenantId,
       assignment: r.assignmentId,
       project: r.project,
       currency: r.currency,
@@ -905,7 +928,7 @@ export function registerAssignmentRoutes(
 
   // The roster: account id and display name, languages and specialties. Never an email.
   app.get('/api/vendors', async (req) => {
-    const roster = openRoster(deps.owner(req));
+    const roster = ownRoster(req);
     if (!roster) return { vendors: [] };
     try {
       const records = vendorRecords(roster);
@@ -934,17 +957,19 @@ export function registerAssignmentRoutes(
   app.get<{ Querystring: { project?: string; specialty?: string } }>(
     '/api/vendors/eligibility',
     async (req, reply) => {
-      const me = deps.owner(req);
+      const tenant = deps.ownTenant(req);
       const { project, specialty } = req.query;
       if (!isSlug(project ?? ''))
         return reply.code(400).send({ error: 'name a project' });
       if (specialty !== undefined && typeof specialty !== 'string') {
         return reply.code(400).send({ error: 'specialty must be text' });
       }
-      const job = readJob(projectPath(deps.storageRoot, me, project!));
-      if (!job) return reply.code(404).send({ error: 'no such project' });
+      const job = tenant
+        ? readJob(projectPath(deps.storageRoot, tenant, project!))
+        : null;
+      if (!tenant || !job) return reply.code(404).send({ error: 'no such project' });
       const { pair, portalClientId } = job;
-      const roster = openRoster(me);
+      const roster = openRoster(tenant);
       const fits = roster
         ? assessRoster(roster, { ...pair, specialty }, { portalClientId })
         : [];
@@ -971,7 +996,7 @@ export function registerAssignmentRoutes(
       specialties?: unknown;
     };
   }>('/api/vendors', async (req, reply) => {
-    const me = deps.owner(req);
+    const tenant = deps.tenant(req);
     const { account, displayName, languages, specialties } = req.body ?? {};
     if (!Number.isSafeInteger(account) || (account as number) < 1) {
       return reply.code(400).send({ error: 'account must be an account id' });
@@ -1010,8 +1035,8 @@ export function registerAssignmentRoutes(
     }
     // The index first, the roster second: a failure between them leaves a harmless row
     // that shows its account nothing, never a vendor the index does not know.
-    addRosterMembership(platform, { ownerId: me.id, accountId: target.id });
-    const roster = openOrCreateRoster(me);
+    addRosterMembership(platform, { tenantId: tenant.id, accountId: target.id });
+    const roster = openOrCreateRoster(tenant);
     try {
       const vendor = addVendor(roster, {
         accountId: target.id,
@@ -1045,7 +1070,7 @@ export function registerAssignmentRoutes(
     clientId: number,
   ) => getClientPool(roster, clientId).map((id) => getVendor(roster, id)!.accountId);
   app.get('/api/client-pools', async (req) => {
-    const roster = openRoster(deps.owner(req));
+    const roster = ownRoster(req);
     if (!roster) return { pools: [] };
     try {
       return {
@@ -1074,8 +1099,8 @@ export function registerAssignmentRoutes(
       ) {
         return reply.code(400).send({ error: 'vendors must be a list of account ids' });
       }
-      const me = deps.owner(req);
-      const roster = openOrCreateRoster(me);
+      const tenant = deps.tenant(req);
+      const roster = openOrCreateRoster(tenant);
       try {
         // One answer for an account that is not on the roster, whatever it is.
         const ids: number[] = [];
@@ -1114,7 +1139,7 @@ export function registerAssignmentRoutes(
       // the file open leaks a handle, and Windows will not delete an open file.
       const accountId = accountParam(req.params.accountId);
       if (accountId === 0) return reply.code(404).send({ error: 'no such vendor' });
-      const roster = openRoster(deps.owner(req));
+      const roster = ownRoster(req);
       if (!roster) return reply.code(404).send({ error: 'no such vendor' });
       try {
         const vendor = getVendorByAccount(roster, accountId);
@@ -1141,7 +1166,7 @@ export function registerAssignmentRoutes(
   }>('/api/vendors/:accountId/rates', async (req, reply) => {
     const accountId = accountParam(req.params.accountId);
     if (accountId === 0) return reply.code(404).send({ error: 'no such vendor' });
-    const roster = openRoster(deps.owner(req));
+    const roster = ownRoster(req);
     if (!roster) return reply.code(404).send({ error: 'no such vendor' });
     try {
       const vendor = getVendorByAccount(roster, accountId);
@@ -1183,21 +1208,21 @@ export function registerAssignmentRoutes(
     move: (
       roster: Roster,
       o: Parameters<typeof claimAssignment>[1],
-      owner: Account,
+      tenant: Tenant,
     ) => Assignment,
   ): void {
     app.post<{ Params: { id: string }; Body: { note?: unknown } | undefined }>(
       `/api/assignments/:id/${verb}`,
       async (req, reply) => {
-        const me = deps.owner(req);
-        const ownerAccount = ownerParam(req);
+        const me = deps.account(req);
+        const tenant = tenantParam(req);
         const id = /^[1-9]\d{0,14}$/.test(req.params.id) ? Number(req.params.id) : 0;
-        if (!ownerAccount || id === 0 || ownerAccount.id === me.id) return noSuch(reply);
+        if (!tenant || id === 0 || isOwn(req, tenant)) return noSuch(reply);
         const note = req.body?.note;
         if (note !== undefined && note !== null && typeof note !== 'string') {
           return reply.code(400).send({ error: 'note must be text' });
         }
-        const roster = openRoster(ownerAccount);
+        const roster = openRoster(tenant);
         if (!roster) return noSuch(reply);
         try {
           const vendor = getVendorByAccount(roster, me.id);
@@ -1210,7 +1235,7 @@ export function registerAssignmentRoutes(
               note: (note as string | null | undefined) ?? null,
               actor: deps.sessionActor(req),
             },
-            ownerAccount,
+            tenant,
           );
           if (verb === 'accept') {
             // Accepting opens the editor: the grant of #45. Two files, so not
@@ -1218,7 +1243,7 @@ export function registerAssignmentRoutes(
             // and follows (vendor-spec §4, #48 note).
             grantProjectAuthorization(platform, {
               accountId: me.id,
-              project: { accountId: ownerAccount.id, name: assignment.projectName },
+              project: { tenantId: tenant.id, name: assignment.projectName },
               scope: 'assigned_translator',
               actor: deps.sessionActor(req),
             });
@@ -1239,11 +1264,11 @@ export function registerAssignmentRoutes(
   vendorMove('start', startAssignment);
   // Delivering locks the payable (#120), which is priced per the project's pair. The
   // project is read only for the job's own vendor: anyone else is refused by the move.
-  vendorMove('deliver', (roster, o, owner) => {
+  vendorMove('deliver', (roster, o, tenant) => {
     const current = getAssignment(roster, o.assignmentId);
     const pair =
       current && current.vendorId === o.vendorId
-        ? readPair(projectPath(storageRoot, owner, current.projectName))
+        ? readPair(projectPath(storageRoot, tenant, current.projectName))
         : null;
     return deliverAssignment(roster, { ...o, pair });
   });

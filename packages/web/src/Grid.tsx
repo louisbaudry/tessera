@@ -165,8 +165,8 @@ function SegmentGrid({
   const [glossaryOpen, setGlossaryOpen] = useState(loadGlossaryPanel);
   const [resourcesOpen, setResourcesOpen] = useState(loadResourcesPanel);
   // The glossary is the owner's to manage (backlog #45): another account's project has none.
-  const { name: projectName, owner: projectOwner } = parseProjectKey(project);
-  const foreign = projectOwner !== null;
+  const { name: projectName, tenantId: projectTenant } = parseProjectKey(project);
+  const foreign = projectTenant !== null;
   // The drafts on offer, by segment, and the target the server last stored for one
   // the translator took (a new object each time: the open editor shows it).
   const [suggestions, setSuggestions] = useState<ReadonlyMap<number, readonly Token[]>>(
@@ -882,8 +882,8 @@ function SegmentGrid({
                 no word count
               </span>
             )}
-            {projectOwner !== null && (
-              <JobPayable owner={projectOwner} project={projectName} />
+            {projectTenant !== null && (
+              <JobPayable tenantId={projectTenant} project={projectName} />
             )}
             {flagged > 0 && ` · ${flagged.toLocaleString()} with QA errors`}
             {unsaved.size > 0 && (

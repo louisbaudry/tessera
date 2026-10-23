@@ -1,12 +1,12 @@
 /**
- * An owner invites a vendor (backlog #111; `vendor-spec.md` §3, the #111 note).
- * The owner lists, creates and withdraws invitations behind the login gate, and the
+ * A tenant invites a vendor (backlog #111, #205; `vendor-spec.md` §3, the #111 note).
+ * Its staff list, create and withdraw invitations behind the login gate, and the
  * invitee opens and accepts a link **without a session**, which is why those two are
  * the only public paths besides login (`PUBLIC_PATHS`, app.ts). A vendor who already
  * has an account joins by signing in and posting the link to `/api/invitations/join`
  * (backlog #187), behind the gate: the session is what proves who is joining.
  *
- * The link is shown to the owner to pass on, not mailed: this server has no mail
+ * The link is shown to the inviting staff member to pass on, not mailed: this server has no mail
  * sender (the SMTP service is `portal-server`'s), and sending would be a new outbound
  * data flow. The token travels in a request body and in the link's `#` fragment,
  * never in a path or query, so no access log or `Referer` header carries it.
@@ -15,7 +15,7 @@
  * (`acceptInvitation`); the roster file's own entry is a second file no transaction
  * covers, so it is written after and mended against the invitations, never by
  * repeating a step: `bringRosterLevel` adds any accepted invitation's vendor the
- * roster lacks, after an accept and whenever the owner lists their invitations.
+ * roster lacks, after an accept and whenever the tenant lists its invitations.
  */
 
 import { generateSessionToken, hashPassword, type AuditActor } from '@cat-tool/core';
@@ -25,7 +25,7 @@ import {
   createAccountSession,
   createInvitation,
   EmailTakenError,
-  getAccountById,
+  getTenantById,
   getVendorByAccount,
   joinInvitation,
   InvalidInvitationError,
@@ -40,6 +40,7 @@ import {
   type Account,
   type Invitation,
   type openPlatformDb,
+  type Tenant,
 } from '@cat-tool/db';
 import { passwordProblem } from '@cat-tool/vendor-core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -55,12 +56,14 @@ export const ACCEPT_INVITATION_PATH = '/api/invitations/accept';
 export interface InvitationRouteDeps {
   readonly storageRoot: string;
   readonly platform: Platform;
-  /** The session's account. */
-  readonly owner: (req: FastifyRequest) => Account;
+  /** The session's account: the person who invites, and who is the actor. */
+  readonly account: (req: FastifyRequest) => Account;
+  /** The session's tenant, or null for an account with none (a vendor). */
+  readonly tenant: (req: FastifyRequest) => Tenant | null;
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
 }
 
-/** What the owner sees of an invitation: never the token, which only the creating response carries. */
+/** What the tenant's staff see of an invitation: never the token, which only the creating response carries. */
 const invitationView = (i: Invitation) => ({
   id: i.id,
   email: i.email,
@@ -78,19 +81,20 @@ export function registerInvitationRoutes(
 ): void {
   const { storageRoot, platform } = deps;
 
-  /** Puts every vendor an owner's accepted invitations made onto the roster file, once each. */
-  function bringRosterLevel(ownerAccount: Account): void {
-    const accepted = listAcceptedInvitations(platform, ownerAccount.id);
+  /** Puts every vendor a tenant's accepted invitations made onto its roster file, once each. */
+  function bringRosterLevel(tenant: Tenant): void {
+    const accepted = listAcceptedInvitations(platform, tenant.id);
     if (accepted.length === 0) return;
-    const roster = openOrCreateRoster(storageRoot, ownerAccount);
+    const roster = openOrCreateRoster(storageRoot, tenant);
     try {
-      // The owner vouched for these accounts, so the owner is who added them.
-      const actor: AuditActor = {
-        actor: { kind: 'account', id: ownerAccount.id },
-        label: null,
-      };
-      for (const { accountId, displayName } of accepted) {
+      for (const { accountId, displayName, invitedBy } of accepted) {
         if (!getVendorByAccount(roster, accountId)) {
+          // The staff member who sent the invitation vouched for the account, so they
+          // are who added it: the tenant is not a person and cannot be an actor.
+          const actor: AuditActor = {
+            actor: { kind: 'account', id: invitedBy },
+            label: null,
+          };
           addVendor(roster, { accountId, displayName, actor });
         }
       }
@@ -100,15 +104,21 @@ export function registerInvitationRoutes(
   }
 
   app.get('/api/invitations', async (req) => {
-    const me = deps.owner(req);
-    bringRosterLevel(me);
-    return { invitations: listInvitations(platform, me.id).map(invitationView) };
+    // No tenant (a vendor) has no invitations: an empty list, as an empty owner list was.
+    const tenant = deps.tenant(req);
+    if (!tenant) return { invitations: [] };
+    bringRosterLevel(tenant);
+    return { invitations: listInvitations(platform, tenant.id).map(invitationView) };
   });
 
   // Creates the link. Its token is in this response and nowhere else, ever again.
   app.post<{ Body: { email?: unknown; displayName?: unknown } | undefined }>(
     '/api/invitations',
     async (req, reply) => {
+      const tenant = deps.tenant(req);
+      // The refusal a vendor inviter always got, from the same rule (`InvalidInvitationError`).
+      if (!tenant)
+        return reply.code(400).send({ error: 'only an owner can invite a vendor' });
       const { email, displayName } = req.body ?? {};
       if (typeof email !== 'string') {
         return reply.code(400).send({ error: 'email must be text' });
@@ -122,7 +132,8 @@ export function registerInvitationRoutes(
       }
       try {
         const { invitation, token } = createInvitation(platform, {
-          ownerId: deps.owner(req).id,
+          tenantId: tenant.id,
+          invitedBy: deps.account(req).id,
           email,
           displayName: (displayName as string | null | undefined) ?? null,
           actor: deps.sessionActor(req),
@@ -140,10 +151,12 @@ export function registerInvitationRoutes(
   app.post<{ Params: { id: string } }>(
     '/api/invitations/:id/revoke',
     async (req, reply) => {
+      const tenant = deps.tenant(req);
+      if (!tenant) return reply.code(404).send({ error: 'no such invitation' });
       const id = /^[1-9]\d{0,14}$/.test(req.params.id) ? Number(req.params.id) : 0;
       try {
         const done = revokeInvitation(platform, {
-          ownerId: deps.owner(req).id,
+          tenantId: tenant.id,
           id,
           actor: deps.sessionActor(req),
         });
@@ -178,7 +191,7 @@ export function registerInvitationRoutes(
     return opened ?? reply.code(404).send(NOT_VALID);
   });
 
-  // A vendor who already has an account joins the roster of the owner who invited
+  // A vendor who already has an account joins the roster of the tenant that invited
   // them (backlog #187). Behind the login gate on purpose: the session is the proof
   // of who is joining, so a link alone never attaches anyone to an account. The
   // session's account must be the one whose address the owner invited, and a vendor's.
@@ -187,11 +200,11 @@ export function registerInvitationRoutes(
     async (req, reply) => {
       const token = tokenOf(req.body);
       if (token === null) return reply.code(404).send(NOT_VALID);
-      const me = deps.owner(req);
+      const me = deps.account(req);
       try {
         const { invitation } = joinInvitation(platform, { token, accountId: me.id });
-        const owner = getAccountById(platform, invitation.ownerId);
-        if (owner) bringRosterLevel(owner);
+        const tenant = getTenantById(platform, invitation.tenantId);
+        if (tenant) bringRosterLevel(tenant);
         return reply.code(201).send({ ok: true });
       } catch (err) {
         if (err instanceof InvitationUnusableError)
@@ -220,8 +233,8 @@ export function registerInvitationRoutes(
         token,
         passwordHash: hashPassword(password),
       });
-      const owner = getAccountById(platform, invitation.ownerId);
-      if (owner) bringRosterLevel(owner);
+      const tenant = getTenantById(platform, invitation.tenantId);
+      if (tenant) bringRosterLevel(tenant);
       const session = generateSessionToken();
       const { expiresAt } = createAccountSession(platform, account.id, session, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },

@@ -51,6 +51,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
+import { tenantOf } from './tenant.fixture.js';
 
 const FIXTURE = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -621,7 +622,7 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
         actor: `account:${alice.id}`,
         action: 'project.created',
         subject_type: 'project',
-        subject_id: `${alice.id}/job`,
+        subject_id: `t${tenantOf(config, alice).id}/job`,
         detail: null,
       },
     ]);
@@ -638,7 +639,7 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
       {
         actor: `account:${alice.id}`,
         action: 'project.deleted',
-        subject_id: `${alice.id}/job`,
+        subject_id: `t${tenantOf(config, alice).id}/job`,
       },
     ]);
     expect(existsSync(projectFile(alice, 'job'))).toBe(false);
@@ -680,7 +681,7 @@ describe('the audit trail (audit-spec.md §2.5)', () => {
         actor_label: 'alice@example.com',
         action: 'file.downloaded',
         subject_type: 'project',
-        subject_id: `${alice.id}/job`,
+        subject_id: `t${tenantOf(config, alice).id}/job`,
         detail: JSON.stringify({ file_id: fileId, name: 'form-minimal.docx', sha256 }),
       },
     ]);

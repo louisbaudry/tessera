@@ -9,13 +9,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
 import { listEvents } from '../audit/events.js';
 import { createAccount, type Account } from '../platform/accounts.js';
+import { getTenantForAccount } from '../platform/tenants.js';
 import {
   grantProjectAuthorization,
-  listAuthorizationsByOwner,
+  listAuthorizationsByTenant,
   revokeProjectAuthorization,
   scopeOf,
 } from '../platform/authorization.js';
-import { listRosterOwners } from '../platform/membership.js';
+import { listRosterTenants } from '../platform/membership.js';
 import { openPlatformDb } from '../platform/index.js';
 import {
   acceptAssignment,
@@ -41,6 +42,9 @@ let ben: Account;
 let anaId: number; // roster ids
 let benId: number;
 
+/** The tenant an account is staff of; its id is not the account's (the vendors come first). */
+const tenantOf = (a: Account): number => getTenantForAccount(platform, a.id)!.tenant.id;
+
 const account = (email: string, role?: 'vendor'): Account =>
   createAccount(platform, {
     email,
@@ -53,9 +57,9 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cat-reconcile-'));
   platform = openPlatformDb(join(dir, 'platform.sqlite'));
   roster = createVendorFile(join(dir, 'vendors.ctv'), { generator: 'test' });
-  owner = account('owner@example.com');
   ana = account('ana@example.com', 'vendor');
   ben = account('ben@example.com', 'vendor');
+  owner = account('owner@example.com');
   anaId = addVendor(roster, { accountId: ana.id, actor: TEST_ACTOR }).id;
   benId = addVendor(roster, { accountId: ben.id, actor: TEST_ACTOR }).id;
 });
@@ -93,17 +97,20 @@ const review = (id: number) =>
     actor: runner,
     now: NOW,
   });
-const grant = (a: Account, project = 'p1', ownerId = owner.id) =>
+const grant = (a: Account, project = 'p1', tenantId = tenantOf(owner)) =>
   grantProjectAuthorization(platform, {
     accountId: a.id,
-    project: { accountId: ownerId, name: project },
+    project: { tenantId, name: project },
     scope: 'assigned_translator',
     actor: TEST_ACTOR,
   });
 const holds = (a: Account, project = 'p1') =>
-  scopeOf(platform, a.id, { accountId: owner.id, name: project }) !== null;
+  scopeOf(platform, a.id, { tenantId: tenantOf(owner), name: project }) !== null;
 const run = () =>
-  reconcileAssignmentGrants(roster, platform, { ownerId: owner.id, actor: runner });
+  reconcileAssignmentGrants(roster, platform, {
+    tenantId: tenantOf(owner),
+    actor: runner,
+  });
 
 describe('reconcileAssignmentGrants', () => {
   it('grants a vendor whose accept left them without access, and a second run changes nothing', () => {
@@ -179,18 +186,18 @@ describe('reconcileAssignmentGrants', () => {
     expect(holds(ana, 'p3')).toBe(false);
   });
 
-  it('leaves alone a grant the roster has never heard of, and another owner’s projects', () => {
+  it('leaves alone a grant the roster has never heard of, and another tenant’s projects', () => {
     grant(ben, 'unrelated'); // no assignment on it
     const other = account('other@example.com');
     grantProjectAuthorization(platform, {
       accountId: ana.id,
-      project: { accountId: other.id, name: 'p1' },
+      project: { tenantId: tenantOf(other), name: 'p1' },
       scope: 'assigned_translator',
       actor: TEST_ACTOR,
     });
     expect(run()).toEqual({ granted: [], revoked: [], skipped: [] });
     expect(holds(ben, 'unrelated')).toBe(true);
-    expect(listAuthorizationsByOwner(platform, other.id)).toHaveLength(1);
+    expect(listAuthorizationsByTenant(platform, tenantOf(other))).toHaveLength(1);
   });
 
   it('reports a grant it cannot make as skipped and still mends the rest', () => {
@@ -212,7 +219,7 @@ describe('reconcileAssignmentGrants', () => {
     run();
     const [event] = listEvents(platform, {
       subjectType: 'project',
-      subjectId: `${owner.id}/p1`,
+      subjectId: `t${tenantOf(owner)}/p1`,
     }).filter((e) => e.action === 'authorization.granted');
     expect(event).toMatchObject({ action: 'authorization.granted', actorLabel: 'owner' });
   });
@@ -223,7 +230,7 @@ describe('reconcileAssignmentGrants', () => {
     run();
     revokeProjectAuthorization(platform, {
       accountId: ana.id,
-      project: { accountId: owner.id, name: 'p1' },
+      project: { tenantId: tenantOf(owner), name: 'p1' },
       actor: TEST_ACTOR,
     });
     expect(run().granted).toHaveLength(1);
@@ -233,17 +240,17 @@ describe('reconcileAssignmentGrants', () => {
 
 describe('reconcileMemberships', () => {
   it('indexes every vendor on the roster, once, and a second run adds nothing', () => {
-    expect(reconcileMemberships(roster, platform, owner.id).sort()).toEqual(
+    expect(reconcileMemberships(roster, platform, tenantOf(owner)).sort()).toEqual(
       [ana.id, ben.id].sort(),
     );
-    expect(listRosterOwners(platform, ana.id)).toEqual([owner.id]);
-    expect(listRosterOwners(platform, ben.id)).toEqual([owner.id]);
-    expect(reconcileMemberships(roster, platform, owner.id)).toEqual([]);
+    expect(listRosterTenants(platform, ana.id)).toEqual([tenantOf(owner)]);
+    expect(listRosterTenants(platform, ben.id)).toEqual([tenantOf(owner)]);
+    expect(reconcileMemberships(roster, platform, tenantOf(owner))).toEqual([]);
   });
 
   it('skips a vendor whose account no longer exists, and indexes the rest', () => {
     addVendor(roster, { accountId: 999_999, actor: TEST_ACTOR });
-    expect(reconcileMemberships(roster, platform, owner.id).sort()).toEqual(
+    expect(reconcileMemberships(roster, platform, tenantOf(owner)).sort()).toEqual(
       [ana.id, ben.id].sort(),
     );
   });

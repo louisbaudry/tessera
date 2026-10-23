@@ -8,7 +8,7 @@
  * engine, model, prompt version or digest is in any answer, and asking for a draft
  * answers `{ tokens: null }` alike when the engine is off, unconfigured, refused,
  * failed or had nothing, so a translator cannot tell which. The consent that
- * governs a request is the project owner's (`engineFor` over `opened.owner`), and
+ * governs a request is the project owner's (`engineFor` over `opened.tenant`), and
  * `ai.requested` names the translator who asked, the accountable human.
  */
 
@@ -22,7 +22,7 @@ import {
   NoSuggestionError,
   SegmentRepoError,
   TargetConflictError,
-  type Account,
+  type Tenant,
   type openPlatformDb,
   type openProjectDb,
 } from '@cat-tool/db';
@@ -40,7 +40,7 @@ export interface SuggestionRouteDeps {
     reply: FastifyReply,
     name: string,
     action: ProjectAction,
-  ) => { db: ReturnType<typeof openProjectDb>; path: string; owner: Account } | null;
+  ) => { db: ReturnType<typeof openProjectDb>; path: string; tenant: Tenant } | null;
   readonly adapterFor: AdapterFor;
 }
 
@@ -81,7 +81,7 @@ export function registerSuggestionRoutes(
       const opened = deps.openProject(req, reply, req.params.name, 'edit');
       if (!opened) return reply;
       const { db } = opened;
-      const key = `${opened.owner.id}/${req.params.name}/${req.params.segmentId}`;
+      const key = `${opened.tenant.id}/${req.params.name}/${req.params.segmentId}`;
       try {
         const id = segmentIdOf(req.params.segmentId);
         if (id === null || !getSegment(db, id)) {
@@ -90,7 +90,7 @@ export function registerSuggestionRoutes(
         const have = getDraftSuggestion(db, id);
         if (have) return { tokens: have.targetTokens };
 
-        const gate = () => engineFor(platform, opened.owner.id, db);
+        const gate = () => engineFor(platform, opened.tenant.id, db);
         const decision = gate();
         const adapter: DraftEngineAdapter | null =
           decision.engine === 'off' ? null : deps.adapterFor(decision.engine);

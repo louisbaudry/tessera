@@ -54,7 +54,7 @@ function FeedBody() {
             </h2>
             <ul>
               {jobs.map((job) => (
-                <JobRow key={`${job.owner}/${job.id}`} job={job} />
+                <JobRow key={`${job.tenantId}/${job.id}`} job={job} />
               ))}
             </ul>
           </section>
@@ -68,7 +68,7 @@ function JobRow({ job }: { job: FeedJob }) {
   return (
     <li>
       <span className="job-main">
-        <a href={formatRoute({ screen: 'job', owner: job.owner, id: job.id })}>
+        <a href={formatRoute({ screen: 'job', tenantId: job.tenantId, id: job.id })}>
           {job.project}
         </a>
         <span className="muted">{formatDeadline(job.deadline)}</span>

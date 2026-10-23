@@ -1,4 +1,4 @@
-/** `roster_membership` (backlog #52a): which owners' rosters an account is on. */
+/** `roster_membership` (backlog #52a): which tenants' rosters an account is on. */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
 import { createAccount, type Account } from './accounts.js';
 import { openPlatformDb } from './index.js';
-import { addRosterMembership, listRosterOwners } from './membership.js';
+import { getTenantForAccount } from './tenants.js';
+import { addRosterMembership, listRosterTenants } from './membership.js';
 
 let dir: string;
 let db: Database.Database;
@@ -25,12 +26,17 @@ const make = (email: string, role?: 'vendor') =>
     ...(role ? { role } : {}),
   });
 
+/** The tenant an account is staff of; its id is not the account's. */
+const tenantOf = (account: Account): number =>
+  getTenantForAccount(db, account.id)!.tenant.id;
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cat-membership-'));
   db = openPlatformDb(join(dir, 'platform.sqlite'));
+  // the vendor first, so no tenant's id equals its founder's account id
+  bob = make('bob@example.com', 'vendor');
   alice = make('alice@example.com');
   carol = make('carol@example.com');
-  bob = make('bob@example.com', 'vendor');
 });
 afterEach(() => {
   db.close();
@@ -38,25 +44,29 @@ afterEach(() => {
 });
 
 describe('roster membership', () => {
-  it('lists the owners an account is on the roster of, by owner id', () => {
-    addRosterMembership(db, { ownerId: carol.id, accountId: bob.id });
-    addRosterMembership(db, { ownerId: alice.id, accountId: bob.id });
-    expect(listRosterOwners(db, bob.id)).toEqual([alice.id, carol.id]);
-    expect(listRosterOwners(db, alice.id)).toEqual([]);
+  it('lists the tenants an account is on the roster of, by tenant id', () => {
+    addRosterMembership(db, { tenantId: tenantOf(carol), accountId: bob.id });
+    addRosterMembership(db, { tenantId: tenantOf(alice), accountId: bob.id });
+    expect(listRosterTenants(db, bob.id)).toEqual([tenantOf(alice), tenantOf(carol)]);
+    expect(listRosterTenants(db, alice.id)).toEqual([]);
   });
 
   it('is idempotent, and says whether it added a row', () => {
-    expect(addRosterMembership(db, { ownerId: alice.id, accountId: bob.id })).toBe(true);
-    expect(addRosterMembership(db, { ownerId: alice.id, accountId: bob.id })).toBe(false);
-    expect(listRosterOwners(db, bob.id)).toEqual([alice.id]);
+    expect(
+      addRosterMembership(db, { tenantId: tenantOf(alice), accountId: bob.id }),
+    ).toBe(true);
+    expect(
+      addRosterMembership(db, { tenantId: tenantOf(alice), accountId: bob.id }),
+    ).toBe(false);
+    expect(listRosterTenants(db, bob.id)).toEqual([tenantOf(alice)]);
   });
 
-  it('refuses an owner on their own roster, and an account that does not exist', () => {
+  it('refuses staff on their own tenant’s roster, and an account that does not exist', () => {
     expect(() =>
-      addRosterMembership(db, { ownerId: alice.id, accountId: alice.id }),
-    ).toThrow();
+      addRosterMembership(db, { tenantId: tenantOf(alice), accountId: alice.id }),
+    ).toThrow(/staff of a tenant are not on its roster/);
     expect(() =>
-      addRosterMembership(db, { ownerId: alice.id, accountId: 9999 }),
+      addRosterMembership(db, { tenantId: tenantOf(alice), accountId: 9999 }),
     ).toThrow();
   });
 });

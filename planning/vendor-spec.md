@@ -8,6 +8,12 @@ real design pass, the way `segmentation-spec.md` and
 
 Extends: `v1-spec.md`, `ai-platform-vision.md` §2–3, `portal-v0-spec.md`.
 
+**Since 2026-10-23 (backlog #205, `tenant-spec.md`) the owner is a tenant.** Read "owner"
+below as the tenant, or the staff member acting for it. The API addresses a roster and a
+project by `?tenant=<tenant id>`, not `?tenant=<tenant id>`; `owner_id` columns are
+`tenant_id`; a feed row carries `tenantId`, not `owner`. The decisions are unchanged and the
+older text is left as it was written.
+
 ## 0. Why this is heavy, and why it's a separate component
 
 A vendor is a translator. Not a business record referenced by a job —
@@ -323,7 +329,7 @@ What `#45` settled that decision 2 left open:
   `core/auth/` instead, next to the credentials: what an account may do to
   a project is about accounts, not vendor business, and the server needs it
   now. If `vendor-core` wants them, moving a pure module is cheap.
-- **A project is addressed by `?owner=<account id>`** on the project
+- **A project is addressed by `?tenant=<tenant id>`** on the project
   routes, defaulting to the session's own account. A vendor may be on two
   owners' projects with the same slug, so the slug alone cannot name one.
   The route resolves the project from the owner named, then asks the table;
@@ -499,8 +505,8 @@ once, here, is what `vendor-core/src/assignment.ts` encodes:
   projects are.** The owner (PM) creates an assignment with `POST
   /api/assignments`, on their own roster, naming the project, the channel
   and the vendors by account id. A vendor acts with `POST
-  /api/assignments/:id/claim|accept|decline?owner=<account id>`: the
-  roster is the owner's, found by `?owner=` as a project is (`#45`), and a
+  /api/assignments/:id/claim|accept|decline?tenant=<account id>`: the
+  roster is the owner's, found by `?tenant=` as a project is (`#45`), and a
   vendor who is not on that roster, or on it but not eligible for that
   assignment, gets the **same 404 as an assignment that does not exist**.
   `GET /api/assignments/:id` answers the assignment as that party may
@@ -725,15 +731,15 @@ price it with is the one in force at the offer's date, which the assignment's
 vendor's two reads, JSON only (the screens are `#52`); accept, decline and
 claim already exist (`#48`).
 
-- **The feed is `GET /api/assignments?owner=<id>`**, a vendor's, on the
-  roster `?owner=` names (the owner's own id is not a vendor's feed and gets
+- **The feed is `GET /api/assignments?tenant=<id>`**, a vendor's, on the
+  roster `?tenant=` names (the owner's own id is not a vendor's feed and gets
   the same 404 as a roster the caller is not on; the owner's list is `#51`).
   Four groups, newest first: `needsResponse` (`offered`, and `claimed`, a
   pool claim not yet accepted), `claimable` (the pool jobs they may claim),
   `active` (`accepted`, `in_progress`) and `delivered` (`delivered`,
   `reviewed`, the latest twenty). `declined` is a vendor's own answer and
   is not a job to act on, so it is not listed.
-- **The offer detail is `GET /api/assignments/:id/offer?owner=<id>`**, for
+- **The offer detail is `GET /api/assignments/:id/offer?tenant=<id>`**, for
   the assignee or a pool member, and the same identical 404 for anyone else.
   It carries what decision 11 asks for before an answer: deadline and the
   PM's instructions; the words by tier **from the frozen analysis**
@@ -777,7 +783,7 @@ owner's side of the lifecycle, and the decision `#47` left to it.
   reconciliation that mends it (this and `#48`'s accept-then-grant) is not
   built, and is an issue.
 - **The owner lists their own assignments**: `GET /api/assignments` with no
-  `?owner` (a vendor's feed names the owner it is on), newest first, in the
+  `?tenant` (a vendor's feed names the owner it is on), newest first, in the
   owner's view.
 - **The roster's own routes** are the owner's, on their `.ctv`:
   `GET`/`POST /api/vendors` (adding an account that exists and has the
@@ -796,7 +802,7 @@ vendor's last two moves and what "the payable locks at delivery" (decision
 - **Both moves are explicit vendor acts, over HTTP**: `POST
   /api/assignments/:id/start` (`accepted → in_progress`) and `.../deliver`
   (`in_progress → delivered`), through `moveAssignment` like every other
-  move, addressed `?owner=` with the same identical 404 for a stranger.
+  move, addressed `?tenant=` with the same identical 404 for a stranger.
   `start` is not implied by a first confirmed segment: an act the machine
   already has an edge for, and one the editor's UI (`#52`/`#53`) can call
   when the vendor opens the job, is simpler than inferring it from segment
@@ -861,7 +867,7 @@ accept mends a failed grant; **nothing mends a failed revoke**, because
 
 **Implementation note (#52a), written before the code (2026-10-04).** `#52`'s
 screens turned out to need a backend `#50` did not give them: a vendor's feed
-is read per owner (`?owner=`), but a vendor has no way to learn *which*
+is read per owner (`?tenant=`), but a vendor has no way to learn *which*
 owners' rosters they are on, and §7 wants one feed across all of them. The
 roster is each owner's own file, so the answer cannot be a query.
 
@@ -881,7 +887,7 @@ roster is each owner's own file, so the answer cannot be a query.
   own. For each owner whose roster lists them it reads `vendorFeed` and merges
   the four groups, each assignment carrying its `owner` (an account id) and
   `offeredAt`, newest first. An owner with no roster file, or whose roster no
-  longer lists the account, is skipped, never an error. It takes no `?owner`:
+  longer lists the account, is skipped, never an error. It takes no `?tenant`:
   a vendor cannot be asked to name the owners who engage them.
 - **`/api/me` says what the account is** (`role`), so the SPA can send a vendor
   to the feed and an owner to their projects without guessing.

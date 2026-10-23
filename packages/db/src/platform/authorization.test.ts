@@ -20,7 +20,6 @@ import {
   type Account,
 } from './accounts.js';
 import {
-  AuthorizationError,
   grantProjectAuthorization,
   listAuthorizationsFor,
   listAuthorizationsOn,
@@ -29,6 +28,7 @@ import {
   scopeOf,
 } from './authorization.js';
 import { openPlatformDb } from './index.js';
+import { getTenantForAccount } from './tenants.js';
 import { PLATFORM_APPLICATION_ID, PLATFORM_MIGRATIONS } from './schema.js';
 
 let dir: string;
@@ -57,11 +57,16 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
 });
 
-const ref = (name = 'brief') => ({ accountId: owner.id, name });
+/** The tenant an account is staff of: its id is not the account's (`other` is #3 but tenant 2). */
+const tenantOf = (account: Account): number =>
+  getTenantForAccount(db, account.id)!.tenant.id;
+
+const ref = (name = 'brief') => ({ tenantId: tenantOf(owner), name });
 const events = (name = 'brief') =>
-  listEvents(db, { subjectType: 'project', subjectId: `${owner.id}/${name}` }).filter(
-    (e) => e.action.startsWith('authorization.'),
-  );
+  listEvents(db, {
+    subjectType: 'project',
+    subjectId: `t${tenantOf(owner)}/${name}`,
+  }).filter((e) => e.action.startsWith('authorization.'));
 
 describe('account.role', () => {
   it('is owner unless said otherwise, and is read back', () => {
@@ -93,7 +98,7 @@ describe('account.role', () => {
 
     const migrated = openPlatformDb(path);
     expect(getAccountByEmail(migrated, 'old@example.com')?.role).toBe('owner');
-    expect(migrated.pragma('user_version', { simple: true })).toBe(8);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(9);
     migrated.close();
     // the migration took a backup first, as every migration does
     expect(
@@ -113,8 +118,10 @@ describe('grantProjectAuthorization', () => {
     expect(scopeOf(db, vendor.id, ref())).toBe('assigned_translator');
     expect(scopeOf(db, vendor.id, ref('other-project'))).toBeNull();
     expect(scopeOf(db, other.id, ref())).toBeNull();
-    // the same slug under another owner is another project
-    expect(scopeOf(db, vendor.id, { accountId: other.id, name: 'brief' })).toBeNull();
+    // the same slug under another tenant is another project
+    expect(
+      scopeOf(db, vendor.id, { tenantId: tenantOf(other), name: 'brief' }),
+    ).toBeNull();
   });
 
   it('records one event naming the project, the grantee and the scope, in the same chain', () => {
@@ -147,14 +154,14 @@ describe('grantProjectAuthorization', () => {
     expect(listAuthorizationsOn(db, ref())).toHaveLength(1);
   });
 
-  it('refuses the owner, an unknown account and an unknown scope, recording nothing', () => {
+  it('refuses staff of the tenant, an unknown account, an unknown tenant and an unknown scope, recording nothing', () => {
     const base = {
       project: ref(),
       scope: 'assigned_translator' as const,
       actor: TEST_ACTOR,
     };
     expect(() => grantProjectAuthorization(db, { ...base, accountId: owner.id })).toThrow(
-      AuthorizationError,
+      /staff of a tenant already have its projects/,
     );
     expect(() => grantProjectAuthorization(db, { ...base, accountId: 999 })).toThrow(
       /no account #999/,
@@ -163,9 +170,9 @@ describe('grantProjectAuthorization', () => {
       grantProjectAuthorization(db, {
         ...base,
         accountId: vendor.id,
-        project: { accountId: 999, name: 'brief' },
+        project: { tenantId: 999, name: 'brief' },
       }),
-    ).toThrow(/no account #999/);
+    ).toThrow(/no tenant #999/);
     expect(() =>
       grantProjectAuthorization(db, {
         ...base,
@@ -176,17 +183,22 @@ describe('grantProjectAuthorization', () => {
     expect(events()).toEqual([]);
   });
 
-  it('cannot be written around: the table itself refuses a self-grant and a bad scope', () => {
-    const insert = (accountId: number, scope: string) =>
+  it('cannot be written around: the table itself refuses a grant to staff, a bad scope and a missing tenant', () => {
+    const insert = (accountId: number, scope: string, tenantId = tenantOf(owner)) =>
       db
         .prepare(
           `INSERT INTO project_authorization
-             (account_id, owner_id, project_name, scope, granted_at)
+             (account_id, tenant_id, project_name, scope, granted_at)
            VALUES (?, ?, 'brief', ?, 'now')`,
         )
-        .run(accountId, owner.id, scope);
-    expect(() => insert(owner.id, 'assigned_translator')).toThrow(/CHECK/);
+        .run(accountId, tenantId, scope);
+    expect(() => insert(owner.id, 'assigned_translator')).toThrow(
+      /staff of a tenant already have its projects/,
+    );
+    // staff of another tenant may be granted: it is not theirs
+    expect(() => insert(other.id, 'assigned_translator')).not.toThrow();
     expect(() => insert(vendor.id, 'reviewer')).toThrow(/CHECK/);
+    expect(() => insert(vendor.id, 'assigned_translator', 999)).toThrow(/FOREIGN KEY/);
   });
 });
 

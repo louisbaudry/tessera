@@ -22,7 +22,7 @@ export function Capacity() {
   return (
     <section className="capacity" aria-label="Your availability">
       {rosters.map((r) => (
-        <CapacityRow key={r.owner} initial={r} labelled={rosters.length > 1} />
+        <CapacityRow key={r.tenantId} initial={r} labelled={rosters.length > 1} />
       ))}
     </section>
   );
@@ -41,7 +41,7 @@ function CapacityRow({
 
   const save = async (status: NonNullable<RosterCapacity['status']>, text: string) => {
     const done = await action.run((token) =>
-      api.setCapacity(token, saved.owner, {
+      api.setCapacity(token, saved.tenantId, {
         status,
         note: text.trim() === '' ? null : text,
       }),
@@ -55,7 +55,7 @@ function CapacityRow({
   return (
     <div className="capacity-row">
       <strong>
-        {labelled ? `Availability (client ${saved.owner})` : 'Availability'}
+        {labelled ? `Availability (organisation ${saved.tenantId})` : 'Availability'}
       </strong>
       <span role="group" aria-label="Status">
         {CAPACITY_OPTIONS.map((status) => (
