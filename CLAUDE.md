@@ -175,6 +175,19 @@ it is now `?tenant=<tenant id>`. Keep true:
   (`project_authorization_not_staff`, `roster_membership_not_staff`), as a vendor on staff is
   (D3): the schema, not a route, holds each.
 
+## Single sign-on (designed, not built)
+
+`planning/sso-spec.md` (Epic 15, issues #316 to #318): Microsoft 365 and Google sign-in for staff,
+vendors and a tenant's portal clients. Nothing is built, so none of this is in the code yet. Keep true
+when it lands:
+
+- **SSO signs in someone who exists and creates no one** (D1). A sign-in is matched on the provider's
+  `(provider, issuer, sub)` through `account_identity`, never on an email, and no email is stored.
+- **A session exists only on its own tenant's host.** Every provider callback goes to one neutral host,
+  `auth.<CAT_BASE_DOMAIN>`, which mints a one-minute hand-off code and no session; the tenant's host
+  redeems it (D4). A failed match, an off-tenant account and an expired code are one identical refusal.
+- **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6).
+
 ## The working rhythm
 
 1. **Spec before code.** A design decision (a new data model, a new file
