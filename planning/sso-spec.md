@@ -1,7 +1,9 @@
 # Single sign-on with Microsoft 365 and Google — spec
 
-Status: decided 2026-10-25 in a scoping conversation with Louis. Nothing is built.
-The build is the three cards at the end (§8); this file is the design they share.
+Status: decided 2026-10-25 in a scoping conversation with Louis. Slice 1 (#316) is built
+(`core/auth/sso.ts`, platform schema v14, `server/src/sso.ts`); slices 2 and 3 are not. The
+build is the three cards at the end (§8); this file is the design they share, and where
+slice 1 learned something the text below says so (notes marked _Slice 1_).
 
 Extends: `tenant-spec.md` (D2, D3, D6, D7, D14), `vendor-spec.md` §1 (invitations),
 `portal-v0-spec.md` §7 and §9a, `audit-spec.md` §2.1 and §3.1.
@@ -34,9 +36,10 @@ A sign-in with no linked identity makes no account, however good the provider's 
 claim looks. This keeps `tenant-spec.md` D7 (no signup route) and O4 (signup is a
 commercial and legal call) true, and it is what stops "anyone with a Gmail address" from
 becoming a Tessera user. Rejected: matching a verified email to an existing account
-automatically (Microsoft's `email` claim can be unverified and an Entra administrator
-can rewrite it, so it is an account-takeover path that needs its own guards), and open
-signup through SSO.
+automatically, and open signup through SSO. Microsoft's own reference says its `email`
+claim "isn't guaranteed to be correct and is mutable over time" and to "never use it for
+authorization" (read 2026-10-25), and Google says to key a user on `sub`, not `email`, so an
+address is never what opens an account here.
 
 **D2. A sign-in is matched on `(provider, issuer, sub)`, never on the email.** The link
 table is `account_identity`:
@@ -66,11 +69,11 @@ who signs in from two directories is two identities, linked deliberately.
 
 1. **Accepting an invitation** (staff `staff_invitation`, vendor `vendor_invitation`):
    the one-time link, plus a provider sign-in in place of choosing a password. The
-   invitation fixes the tenant, role and email as today; the provider's verified email
-   must equal the invited address (Google `email_verified`; Microsoft: the `email`
-   claim only when the token is for a work or school directory and the address equals
-   the invited one, else refused). The account is then created with the link in the
-   same transaction.
+   invitation fixes the tenant, role and email as today. **The link is the proof**, as it
+   is when the invitee types a password today: whoever holds the one-time secret chooses
+   how the account will be opened, and no address from the provider is compared with the
+   invited one (a Microsoft `email` claim cannot be trusted for that, D1). The account is
+   then created with the link in the same transaction.
 2. **An existing account's settings:** a person logged in by password links an identity,
    and may unlink it as long as they keep another way in (a password, or another link).
 3. **A vendor joining a second roster** (`joinInvitation`, #187) behind the login gate:
@@ -91,20 +94,34 @@ only exact redirect URLs, and each tenant is its own subdomain (`tenant-spec.md`
 so every callback goes to one address, `auth.<CAT_BASE_DOMAIN>` (`auth` is already a
 reserved slug). The flow:
 
-1. The tenant's host starts it: `POST /api/login/sso/start` with the provider. The
-   server mints a `state` and a `nonce`, a PKCE verifier, and stores them with the
-   tenant's id, the purpose (`login`, `accept-staff`, `accept-vendor`, `link`) and a
-   five-minute expiry, in `sso_attempt` (a row, never memory, so a restart does not
-   strand a person mid-flow; deleted when used). It answers with the provider's URL.
+1. The tenant's host starts it: `POST /api/login/sso/start` with the provider and a
+   **browser secret** the page made and keeps in session storage. The server mints a
+   `state`, a `nonce` and a PKCE verifier, and stores them with the tenant's id, the
+   purpose (`login` or `link` in slice 1; slice 2 adds the invitation purposes), the
+   hash of the browser secret and a five-minute expiry, in `sso_attempt` (a row, never
+   memory, so a restart does not strand a person mid-flow; deleted when used). It
+   answers with the provider's URL.
 2. The provider redirects to the callback host. That host looks the attempt up by
    `state`, exchanges the code (PKCE), verifies the ID token (D5), and **makes no
    session**. It mints a one-time hand-off code, stored only as its hash with a one-minute
    expiry, bound to the attempt, and redirects the browser to
    `<slug>.<base>/#sso=<code>`.
-3. The tenant's host redeems the code (`POST /api/login/sso/redeem`): the tenant in the
-   attempt must equal `req.hostTenant`, or it is the one 404 of an unusable code. Only
-   then is the session minted, so **a session still exists only on its own tenant's
-   host** (D14 rule 1 holds) and the callback host holds no authority.
+3. The tenant's host redeems the code (`POST /api/login/sso/redeem`, with the browser
+   secret): the tenant in the attempt must equal `req.hostTenant`, the purpose must be
+   the one it was for, a link only for the account that began it, and the browser the one
+   that started it, or it is the one refusal of an unusable code, and **the code is spent
+   by the try**. Only then is the session minted, so **a session still exists only on its
+   own tenant's host** (D14 rule 1 holds) and the callback host holds no authority.
+
+   _Slice 1:_ the browser secret is what stops a login CSRF: without it an attacker could
+   start an attempt, sign in as themselves, and get a victim's browser to present the
+   resulting code, landing the victim in the attacker's account. A link additionally
+   needs the redeeming session to be the account that began it, so a victim's browser
+   cannot complete another account's link. Why a callback host at all, and not a redirect
+   URL per tenant: Microsoft caps redirect URIs per app (256 for work and school accounts,
+   100 once personal accounts are allowed), forbids wildcards when personal accounts are
+   allowed and itself recommends one shared redirect URI with a `state` parameter; Google
+   allows no wildcard either (both read 2026-10-25).
 
 The callback host is the first address that is no tenant's, an explicit exception to
 D14's "nothing else answers": it serves exactly one route (the callback) and a fixed 404
@@ -113,15 +130,23 @@ matches). The hand-off code travels in a `#` fragment, never a path or query, as
 invitation token does. Unset `CAT_BASE_DOMAIN` (development) means one host: the callback
 is on it and the redeem is in-process.
 
-**D5. The ID token is verified, not decoded.** With `jose` (D8): signature against the
-provider's published keys (fetched from the provider's discovery document, cached, never
-from a URL in a request), `iss`, `aud` equal to the app's client id, `exp`, and the
-attempt's `nonce`. Microsoft: `tid` must not be the consumer directory unless a consumer
-account is what the invitation names (personal Outlook addresses are legitimate for a
-vendor, §3). Google: `email_verified` true for any step that compares an address. The
-provider hosts are fixed in code and no redirect is followed, the rule a new outbound
-call always gets (the draft engines, the webhook sender). Reading a reply back or
-refusing it, never repairing it, as `core/draft/` does.
+**D5. The ID token is verified, not decoded.** With `jose` (D8): signature (RS256 only)
+against the provider's published keys, `iss`, `aud` equal to the app's client id, `exp`,
+and the attempt's `nonce`. The endpoints and key URLs are read from each provider's
+OpenID discovery document (2026-10-25) and **fixed in code** (`SSO_ENDPOINTS`), never taken
+from a request or a setting; the keys are cached six hours and read again once when a token
+names a key the cache lacks (a rotation). Microsoft's issuer names the directory, so the
+token is verified first and its own `tid` (a GUID) is then used to build the issuer it must
+equal; a personal account has the fixed `tid` `9188040d-6c67-4c5b-b112-36a304b66dad` and is a
+legitimate identity (a freelancer on Outlook.com), recorded as such and not refused. No
+redirect is followed and no error carries what a provider said, the rule a new outbound
+call always gets (the draft engines, the webhook sender). Reading a reply back or refusing
+it, never repairing it, as `core/draft/` does.
+
+_Slice 1:_ the authorization request asks for the scope `openid` alone. The subject and,
+for Microsoft, the directory come with it, and an address is neither needed nor wanted
+(D1, D2). Slice 2's Google Workspace lock needs the `hd` claim; whether that takes a wider
+scope is checked there, not assumed.
 
 **D6. A tenant's clients sign in to the portal as client contacts, beside the link.**
 `client_contact` (portal file, so per tenant: `portal-v0-spec.md` §9a, D13): `id`,
@@ -146,13 +171,15 @@ unless the acting admin holds a qualifying link. Vendors are never covered by a 
 **D8. TypeScript, `jose`; no Rust/Wasm** (asked and decided 2026-10-25, as
 `CLAUDE.md`'s rhythm requires). The work is protocol steps and access rules with no hot
 kernel, the existing `inject` suites cover it with a fake identity provider that signs
-tokens with a test key, and a maintained library (`jose`, MIT) does the signature
-check. It is added to `THIRD-PARTY-NOTICES.md` and the licence allowlist
-(`scripts/license-policy.mjs`) in the card that adds it (`prior-art.md`).
+tokens with a test key, and a maintained library (`jose`, MIT, a dependency of `core` and a
+dev dependency of `server`'s fixture) does the signature check. MIT is already on the
+allowlist, so no exception is recorded; `pnpm licenses:check` covers it, and an npm
+dependency is not copied into `THIRD-PARTY-NOTICES.md` (`prior-art.md`).
 
 **D9. Audit and enumeration.** New platform audit actions, each a frozen literal widened
-with `rebuildTable`: `account.sso_linked`, `account.sso_unlinked`, `login.sso`,
-`login.sso_refused`, `tenant.sso_policy_set`. The actor is the person (or the `login`
+with `rebuildTable`: `account.sso_linked`, `account.sso_unlinked`, `auth.sso_login`,
+`auth.sso_login_failed` (slice 1, platform v14, named like the existing `auth.login`) and
+`tenant.sso_policy_set` (slice 2). The actor is the person (or the `login`
 system actor for a refusal), the tenant is the one the event is about, and no detail
 carries an email, a subject or a provider claim. A sign-in that matches nothing, a
 linked account that is not on the host's tenant, a disabled contact and an expired code
@@ -176,7 +203,9 @@ Creating the two registrations and holding their secrets is a credentials step t
 the operator's (`CLAUDE.md`, shared rules: credentials and consent):
 
 - A Google Cloud OAuth client (web), redirect URI
-  `https://auth.<base domain>/api/login/sso/callback`, scopes `openid` and `email`.
+  `https://auth.<base domain>/api/login/sso/callback`, scope `openid` (nothing more is asked).
+  Whether Google requires an app verification for that scope alone is unconfirmed: its
+  redirect-URI page does not say.
 - A Microsoft Entra application registration, "accounts in any organizational directory
   and personal Microsoft accounts", the same redirect URI, ID tokens issued. Publisher
   verification is recommended so another organisation's admin is not shown an unverified
@@ -184,7 +213,12 @@ the operator's (`CLAUDE.md`, shared rules: credentials and consent):
 - The ids and secrets are server environment variables (`GOOGLE_OAUTH_CLIENT_ID`,
   `GOOGLE_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET`),
   read at start; a provider with no pair is off and its button absent. They are never in
-  this repo, a log or an error.
+  this repo, a log or an error. `SSO_CALLBACK_ORIGIN` is `https://auth.<base domain>` by
+  default and may be set only where there is no base domain (development: `http://localhost:3400`
+  is allowed, plain http nowhere else); with a base domain the server recognises the callback
+  host by that one name, so any other value is refused at startup. Single sign-on is off when no
+  provider has a pair or there is nowhere to call back. The Microsoft registration's platform is
+  "Web" (the secret stays on the server).
 - Recorded in `INFRASTRUCTURE.md` (in `claude-shared`) when the cards land: a new external
   service provider and where its secrets live.
 
@@ -220,7 +254,7 @@ Each is written before the code that enforces it, with a fake provider:
 
 | # | What | Size | After |
 | - | ---- | ---- | ----- |
-| 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions | L | none |
+| 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions. **Built** (#214), with the login screen's buttons and the link and unlink routes; no settings screen | L | none |
 | 2 | SSO in staff and vendor invitation acceptance, linking and unlinking from settings, `tenant_sso_policy` | M | 1 |
 | 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen | L | 1 |
 

@@ -189,6 +189,14 @@ volume under `./data` by default; a deployment overrides `CAT_PORT`,
 file, and unset means that engine is unavailable) and `CAT_DRAFT_MODEL`
 (default `claude-sonnet-5-5`, a placeholder until the benchmark picks the tier):
 
+Signing in with Microsoft 365 or Google (backlog #214, `planning/sso-spec.md`) is off until the
+operator registers an app with each provider and sets `GOOGLE_OAUTH_CLIENT_ID` and
+`GOOGLE_OAUTH_CLIENT_SECRET`, and `MICROSOFT_OAUTH_CLIENT_ID` and `MICROSOFT_OAUTH_CLIENT_SECRET`
+(secrets: environment only, a provider with half a pair is off). Every provider calls back to one
+address, `https://auth.<CAT_BASE_DOMAIN>` (`SSO_CALLBACK_ORIGIN` names it only where there is no
+base domain, such as `http://localhost:3400` in development). It signs in accounts that already
+exist and creates none.
+
 ```sh
 pnpm --filter @cat-tool/server run create-account -- you@example.com <password>   # once per deployment
 pnpm --filter @cat-tool/server start                                               # http://localhost:3400 — POST /api/login first

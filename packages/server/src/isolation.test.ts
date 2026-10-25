@@ -335,6 +335,38 @@ const ROUTES: Record<string, Entry> = {
     why: 'the signed-in account joins by a link; a link is the tenant’s own',
     req: { method: 'POST', url: '/api/invitations/join', body: { token: 'nope' } },
   },
+  // Sign-in with Microsoft 365 or Google (backlog #214): the callback host's one route and the
+  // tenant host's two, none of which has a session; the links a signed-in account holds are its own.
+  'GET /api/login/sso/providers': {
+    kind: 'public',
+    why: 'a login screen asks, with no session',
+  },
+  'POST /api/login/sso/start': { kind: 'public', why: 'no session yet' },
+  'GET /api/login/sso/callback': {
+    kind: 'public',
+    why: 'the provider’s redirect, on the neutral callback host, with no session',
+  },
+  'POST /api/login/sso/redeem': { kind: 'public', why: 'a one-time code, not a session' },
+  'GET /api/me/identities': { kind: 'own', why: 'the caller’s own linked accounts' },
+  'POST /api/me/identities/start': {
+    kind: 'own',
+    why: 'starts a link for the caller’s own account',
+    req: { method: 'POST', url: '/api/me/identities/start', body: {} },
+  },
+  'POST /api/me/identities/redeem': {
+    kind: 'own',
+    why: 'links to the caller’s own account, and only the account that started it',
+    req: {
+      method: 'POST',
+      url: '/api/me/identities/redeem',
+      body: { code: 'nope', binding: 'a-browser-secret-0123456789' },
+    },
+  },
+  'DELETE /api/me/identities/:id': {
+    kind: 'own',
+    why: 'the caller’s own link, another account’s is a 404',
+    req: { method: 'DELETE', url: '/api/me/identities/999999' },
+  },
   'POST /api/logout': { kind: 'own', why: 'ends the caller’s own session' },
   'GET /api/me': { kind: 'own', why: 'the caller’s own account' },
 

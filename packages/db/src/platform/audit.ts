@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { AuditActor } from '@cat-tool/core';
+import type { AuditActor, SsoFailure, SsoProvider } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
 import { verifyAudit } from '../audit/events.js';
@@ -63,6 +63,37 @@ export function recordFailedLogin(
     subjectType: 'account',
     subjectId: options.accountId === null ? null : String(options.accountId),
     detail: { reason: options.reason },
+  });
+}
+
+export interface FailedSsoLoginOptions {
+  /** The gate that refused it, never the account an identity turned out to name. */
+  readonly actor: AuditActor;
+  /** The provider the attempt was with, or `null` when it never got that far (a spent hand-off code). */
+  readonly provider: SsoProvider | null;
+  readonly reason: SsoFailure;
+  /** The account the identity opened, when it opened one (a refusal for being on another host). */
+  readonly accountId?: number | null;
+  /** The tenant whose host the attempt was made on, when it was on one; `null` otherwise. */
+  readonly tenantId?: number | null;
+}
+
+/**
+ * Records a refused sign-in with a provider (`planning/sso-spec.md` D9). The reason is told apart
+ * here and never in the response; nothing from the provider is kept: no subject, issuer, address
+ * or claim, because a detail is hashed and so could never be erased.
+ */
+export function recordFailedSsoLogin(
+  db: Database.Database,
+  options: FailedSsoLoginOptions,
+): void {
+  appendPlatformEvent(db, {
+    actor: options.actor,
+    action: 'auth.sso_login_failed',
+    tenantId: options.tenantId ?? null,
+    subjectType: 'account',
+    subjectId: options.accountId == null ? null : String(options.accountId),
+    detail: { provider: options.provider, reason: options.reason },
   });
 }
 

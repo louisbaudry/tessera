@@ -244,6 +244,11 @@ their `*_by` columns have always been free text; writers pass the
 `vendor-spec.md` §3; the invitation is the subject and no email is in a detail), and
 since backlog #209 `tenant.slug_set` (a tenant's address label, set once; no detail, because a
 slug comes from a company's name).
+Since backlog #214 the single sign-on actions: `auth.sso_login` (`{ provider }`) in place of `auth.login`
+for a session a provider started, `auth.sso_login_failed` (`{ provider, reason }`, the reason told apart
+here and never in the response), and `account.sso_linked` / `account.sso_unlinked` (`{ provider }`, the
+account the subject). A detail never carries a provider's subject, issuer, address or claim: it is
+hashed, so erasure could not reach it.
 
 `vendors.ctv` (backlog #46, `vendor-spec.md` §5): `vendor.added`,
 `vendor.profile_changed` and `vendor.rate_set`, with the shared table and

@@ -144,6 +144,22 @@ button.link {
   background: var(--surface);
 }
 
+/* Continue with Microsoft or Google, under the password form (backlog #214). */
+.login .sso {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: stretch;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.login .sso button {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
 /* --- shell -------------------------------------------------------- */
 
 .app {

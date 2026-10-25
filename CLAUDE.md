@@ -175,18 +175,28 @@ it is now `?tenant=<tenant id>`. Keep true:
   (`project_authorization_not_staff`, `roster_membership_not_staff`), as a vendor on staff is
   (D3): the schema, not a route, holds each.
 
-## Single sign-on (designed, not built)
+## Single sign-on (slice 1 built; slices 2 and 3 not)
 
-`planning/sso-spec.md` (Epic 15, issues #316 to #318): Microsoft 365 and Google sign-in for staff,
-vendors and a tenant's portal clients. Nothing is built, so none of this is in the code yet. Keep true
-when it lands:
+`planning/sso-spec.md` (Epic 15, backlog #214 built, issues #317 and #318 open): Microsoft 365 and Google
+sign-in. Slice 1 signs in an account that exists, by `server/src/sso.ts`; invitations, a settings screen
+and the portal's client contacts are the next two cards. Keep true:
 
 - **SSO signs in someone who exists and creates no one** (D1). A sign-in is matched on the provider's
-  `(provider, issuer, sub)` through `account_identity`, never on an email, and no email is stored.
+  `(provider, issuer, sub)` through `account_identity` (`db/platform/identities.ts`), never on an email, and
+  no email, subject or claim is stored beyond that row or put in an audit detail. The request asks for
+  the scope `openid` alone. Microsoft's own docs say never to authorize on its `email` claim.
 - **A session exists only on its own tenant's host.** Every provider callback goes to one neutral host,
-  `auth.<CAT_BASE_DOMAIN>`, which mints a one-minute hand-off code and no session; the tenant's host
-  redeems it (D4). A failed match, an off-tenant account and an expired code are one identical refusal.
-- **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6).
+  `auth.<CAT_BASE_DOMAIN>`, which serves that one route and a fixed 404 for everything else, mints a
+  one-minute hand-off code and **no session**; the tenant's host redeems it (D4,
+  `db/platform/sso-attempts.ts`). A code is spent by any failed try: wrong host, purpose, account or
+  browser. The browser secret (`web/src/sso.ts`) is what stops a login CSRF; don't drop it.
+- **Every failure is one answer** (`sign-in failed`, 401); the log tells them apart
+  (`auth.sso_login_failed`, a reason and nothing from the provider). The provider hosts are fixed in
+  code (`SSO_ENDPOINTS`) and `sso-http.ts` follows no redirect and puts no body, code or secret in an
+  error. A new provider is one entry there, one literal in a migration, and a label in `web/src/sso.ts`.
+- **An account with no password stores `NO_PASSWORD_HASH`**, never an empty or random hash; the login
+  route asks `hasPassword`, and `unlinkIdentity` refuses to remove the last way into one.
+- **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6, slice 3).
 
 ## The working rhythm
 

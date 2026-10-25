@@ -64,6 +64,7 @@ export * from './project/fallback.js';
 export * from './project/find-replace.js';
 export * from './auth/authorization.js';
 export * from './auth/credentials.js';
+export * from './auth/sso.js';
 export * from './auth/tenant-slug.js';
 export * from './audit/actor.js';
 export * from './audit/actions.js';
