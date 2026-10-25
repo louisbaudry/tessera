@@ -5112,6 +5112,28 @@ S4 (the semantic match type in the editor), S5 (LLM context, with Epic
 8) and S6 (real-use data) are not carded yet: each waits on the editor,
 Epic 8, or a shipped feature.
 
+### Epic 15 — Single sign-on (spec'd 2026-10-25, not started)
+
+Design in `planning/sso-spec.md` (decisions D1 to D9), decided with Louis on 2026-10-25: staff,
+vendors and a tenant's clients can sign in with a Microsoft 365 or Google account. Worth carrying
+forward:
+
+- **Invite-bound.** A sign-in is matched on the provider's `(provider, issuer, sub)` through an
+  identity link and creates no account; the email is never the key and is not stored (D1, D2).
+- **One operator-owned OAuth app per provider and one neutral callback host,
+  `auth.<CAT_BASE_DOMAIN>`**, because the providers accept only exact redirect URLs and every tenant
+  is its own subdomain. The callback host makes no session: it hands a one-minute code to the tenant's
+  host, which mints it, so a session still exists only on its own tenant's host (D4).
+- **Clients keep the private link** and gain client contacts in the tenant's own portal file (D6).
+- **Stack decided:** TypeScript with `jose`, no Rust/Wasm (D8). Creating the two provider
+  registrations is the operator's: credentials, not code (spec §4).
+
+**#214 · SSO slice 1: sign in with Microsoft 365 or Google · L** · [issue #316]
+
+**#215 · SSO slice 2: SSO in invitations and settings, and a tenant policy · M** · [issue #317]
+
+**#216 · SSO slice 3: portal client contacts sign in with SSO · L** · [issue #318]
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,
@@ -5156,3 +5178,6 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51
+[issue #316]: https://github.com/louisbaudry/tessera/issues/316
+[issue #317]: https://github.com/louisbaudry/tessera/issues/317
+[issue #318]: https://github.com/louisbaudry/tessera/issues/318
