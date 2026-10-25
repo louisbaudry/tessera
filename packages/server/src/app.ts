@@ -29,8 +29,10 @@ import {
   fileKindOfName,
   formatActor,
   generateSessionToken,
+  hasPassword,
   isFuzzyThreshold,
   isSlug,
+  normaliseHost,
   parseTokens,
   primarySubtag,
   rulesFor,
@@ -160,6 +162,8 @@ import {
   registerInvitationRoutes,
 } from './invitations.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
+import { PUBLIC_SSO_PATHS, registerSsoRoutes, SSO_CALLBACK_PATH } from './sso.js';
+import { createSsoHttp, type SsoHttp } from './sso-http.js';
 import { registerTenantAuditRoutes } from './tenant-audit.js';
 import {
   ACCEPT_STAFF_INVITATION_PATH,
@@ -230,6 +234,12 @@ export interface BuildAppOptions {
    * app's routes through it, so a route added later is found by the test and not by hand.
    */
   readonly onRoute?: (route: { readonly method: string; readonly url: string }) => void;
+  /**
+   * The seams of sign-in with Microsoft 365 or Google (backlog #214). A deployment passes nothing:
+   * the real providers and the real clock. Tests inject a fake provider's network and a clock they
+   * can move, so no sign-in ever reaches Google or Microsoft.
+   */
+  readonly sso?: { readonly http?: SsoHttp; readonly now?: () => Date };
   readonly webhooks?: {
     readonly send?: WebhookSender;
     readonly resolve?: Resolver;
@@ -310,6 +320,7 @@ const PUBLIC_PATHS = new Set([
   JOIN_SIGNIN_PATH,
   OPEN_STAFF_INVITATION_PATH,
   ACCEPT_STAFF_INVITATION_PATH,
+  ...PUBLIC_SSO_PATHS,
 ]);
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -387,7 +398,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // that names another or none (D14). A host that is not a tenant's is one fixed 404.
   if (config.baseDomain) {
     const base = config.baseDomain;
+    // The one address that is no tenant's (`planning/sso-spec.md` D4): the neutral host every provider
+    // calls back to. `auth` is a reserved slug, so no tenant has it, and it answers the callback and
+    // nothing else, so no page, no login and no session is ever served from it.
+    const callbackHost = config.sso
+      ? normaliseHost(new URL(config.sso.callbackOrigin).host)
+      : null;
     app.addHook('onRequest', async (req, reply) => {
+      if (callbackHost !== null && normaliseHost(req.headers.host) === callbackHost) {
+        const path = req.url.split('?')[0];
+        if (req.method === 'GET' && path === SSO_CALLBACK_PATH) return;
+        return reply.code(404).send({ error: 'not found' });
+      }
       const label = tenantLabelOfHost(req.headers.host, base);
       const tenant = label === null ? null : getTenantBySlug(platform, label);
       if (!tenant) return reply.code(404).send({ error: 'not found' });
@@ -452,8 +474,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     async (req, reply) => {
       const { email, password } = req.body ?? {};
       const account = email ? getAccountByEmail(platform, email) : null;
+      // An account made by signing in with a provider has no password (`NO_PASSWORD_HASH`): refused
+      // before any comparison, so the refusal never depends on what a hash happens to match.
       const passwordOk =
-        account !== null && !!password && verifyPassword(password, account.passwordHash);
+        account !== null &&
+        hasPassword(account.passwordHash) &&
+        !!password &&
+        verifyPassword(password, account.passwordHash);
       // On a tenant's host the account must belong there too (D14): an account that does not
       // fails as a wrong password does, so the form cannot be used to ask who works for whom.
       const host = req.hostTenant;
@@ -2336,6 +2363,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     tenant: ownTenant,
     sessionActor,
     loginGate: LOGIN_GATE,
+  });
+
+  // --- sign in with Microsoft 365 or Google (backlog #214, sso-spec.md) -------
+  registerSsoRoutes(app, {
+    platform,
+    config,
+    http: options.sso?.http ?? createSsoHttp(),
+    now: options.sso?.now ?? (() => new Date()),
+    account: sessionAccount,
+    auditActor,
+    loginGate: LOGIN_GATE,
+    publicAccount,
   });
 
   // --- a tenant's own slice of the platform log (backlog #211) -------------

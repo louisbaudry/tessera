@@ -21,6 +21,7 @@ import {
   SESSION_TTL_MS,
   type AccountRole,
   type AuditActor,
+  type SsoProvider,
   type TenantRole,
 } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
@@ -170,7 +171,7 @@ export function createAccount(
  * tenant's slice of the log (a vendor sits across rosters; a tenant's host will name
  * the tenant when subdomains land, #298).
  */
-function tenantOfAccount(db: Database.Database, accountId: number): number | null {
+export function tenantOfAccount(db: Database.Database, accountId: number): number | null {
   const row = db
     .prepare('SELECT tenant_id FROM tenant_membership WHERE account_id = ?')
     .get(accountId) as { tenant_id: number } | undefined;
@@ -204,9 +205,15 @@ export interface SessionWriteOptions {
    * tenant's slice of the log. Omitted: the account's own tenant, none for a vendor.
    */
   readonly tenantId?: number | null;
+  /**
+   * The provider that signed the person in (`planning/sso-spec.md`, backlog #214): the session is
+   * the same and the event is `auth.sso_login` naming the provider, in place of `auth.login`. Omitted
+   * for a password.
+   */
+  readonly via?: SsoProvider;
 }
 
-/** Stores a new session and records `auth.login` with it. */
+/** Stores a new session and records `auth.login` (or `auth.sso_login`, with `via`) with it. */
 export function createAccountSession(
   db: Database.Database,
   accountId: number,
@@ -226,17 +233,27 @@ export function createAccountSession(
       created_at: createdAt,
       expires_at: expiresAt,
     });
-    appendPlatformEvent(db, {
-      actor: options.actor,
-      action: 'auth.login',
-      tenantId:
-        options.tenantId === undefined
-          ? tenantOfAccount(db, accountId)
-          : options.tenantId,
-      subjectType: 'account',
-      subjectId: String(accountId),
-      detail: null,
-    });
+    const tenantId =
+      options.tenantId === undefined ? tenantOfAccount(db, accountId) : options.tenantId;
+    if (options.via !== undefined) {
+      appendPlatformEvent(db, {
+        actor: options.actor,
+        action: 'auth.sso_login',
+        tenantId,
+        subjectType: 'account',
+        subjectId: String(accountId),
+        detail: { provider: options.via },
+      });
+    } else {
+      appendPlatformEvent(db, {
+        actor: options.actor,
+        action: 'auth.login',
+        tenantId,
+        subjectType: 'account',
+        subjectId: String(accountId),
+        detail: null,
+      });
+    }
   })();
   return { expiresAt };
 }

@@ -39,6 +39,10 @@ export const ACTION_LABEL: Record<PlatformAuditAction, string> = {
   'tenant.member_removed': 'Someone was removed from the staff',
   'tenant.role_changed': 'A staff role changed',
   'tenant.audit_exported': 'This log was exported by the operator',
+  'auth.sso_login': 'Signed in with Microsoft or Google',
+  'auth.sso_login_failed': 'A Microsoft or Google sign-in was refused',
+  'account.sso_linked': 'A Microsoft or Google account was linked',
+  'account.sso_unlinked': 'A Microsoft or Google account was unlinked',
   'tenant.slug_set': 'The organisation’s web address was set',
 };
 

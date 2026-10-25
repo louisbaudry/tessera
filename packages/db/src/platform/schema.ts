@@ -666,6 +666,79 @@ const v13: Migration = {
   },
 };
 
+/**
+ * `audit_event.action` as of platform v14 (v13's list and the four single sign-on actions).
+ * Frozen, never the live constant.
+ */
+const V14_AUDIT_ACTIONS = [
+  ...V13_AUDIT_ACTIONS,
+  'auth.sso_login',
+  'auth.sso_login_failed',
+  'account.sso_linked',
+  'account.sso_unlinked',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * Single sign-on with Microsoft 365 and Google (backlog #214, `planning/sso-spec.md` D2, D4, D9).
+ *
+ * `account_identity` ties a provider's `(provider, issuer, subject)` to an account and is the only
+ * thing a later sign-in is matched on. There is no email column on purpose: a provider's address
+ * is mutable and not guaranteed correct, so it identifies nobody here and would only be a person's
+ * data kept for no reason. One identity belongs to one account (the UNIQUE); an account may hold
+ * several. `issuer` carries Microsoft's directory, so one person in two directories is two
+ * identities.
+ *
+ * `sso_attempt` is a sign-in in flight, a row and never memory so a restart does not strand a person
+ * mid-flow: the state (stored only as its hash), the nonce and PKCE verifier the token exchange needs,
+ * the hash of a secret the starting browser keeps and shows again to redeem, so a hand-off code a
+ * victim's browser is tricked into presenting is refused (a login CSRF), the tenant whose host started it (no foreign key: the row lives minutes and the tenant need not
+ * outlive it; null when the server runs with no base domain) and, for a link, the account that
+ * started it, so a victim's browser cannot complete someone else's. The callback host marks it
+ * (`callback_at`, so a state is single use) and, once the token verified, stores the identity and the
+ * hash of a one-minute hand-off code; the tenant's host redeems the code and the row is deleted.
+ * Both closed sets are frozen literals, never the constants in `core`.
+ */
+const v14: Migration = {
+  version: 14,
+  description: 'account_identity, sso_attempt, and the single sign-on audit actions',
+  up(db) {
+    db.exec(`
+      CREATE TABLE account_identity (
+        id            INTEGER PRIMARY KEY,
+        account_id    INTEGER NOT NULL REFERENCES account(id),
+        provider      TEXT    NOT NULL CHECK (provider IN ('google', 'microsoft')),
+        issuer        TEXT    NOT NULL CHECK (length(issuer) > 0),
+        subject       TEXT    NOT NULL CHECK (length(subject) > 0),
+        linked_at     TEXT    NOT NULL,
+        last_login_at TEXT,
+        UNIQUE (provider, issuer, subject)
+      );
+      CREATE INDEX account_identity_account ON account_identity(account_id);
+
+      CREATE TABLE sso_attempt (
+        id                 INTEGER PRIMARY KEY,
+        state_hash         TEXT    NOT NULL UNIQUE,
+        binding_hash       TEXT    NOT NULL,
+        nonce              TEXT    NOT NULL,
+        code_verifier      TEXT    NOT NULL,
+        provider           TEXT    NOT NULL CHECK (provider IN ('google', 'microsoft')),
+        purpose            TEXT    NOT NULL CHECK (purpose IN ('login', 'link')),
+        tenant_id          INTEGER,
+        account_id         INTEGER REFERENCES account(id),
+        created_at         TEXT    NOT NULL,
+        expires_at         TEXT    NOT NULL,
+        callback_at        TEXT,
+        handoff_hash       TEXT    UNIQUE,
+        handoff_expires_at TEXT,
+        issuer             TEXT,
+        subject            TEXT,
+        CHECK ((purpose = 'link') = (account_id IS NOT NULL))
+      );
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V14_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -680,4 +753,5 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v11,
   v12,
   v13,
+  v14,
 ];

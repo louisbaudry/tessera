@@ -23,6 +23,8 @@ import {
   QA_RULES,
   QA_SEVERITIES,
   SEGMENT_STATUSES,
+  SSO_PROVIDERS,
+  SSO_PURPOSES,
   VENDOR_AUDIT_ACTIONS,
 } from '@cat-tool/core';
 import { CLIENT_RESOURCE_KINDS, ORDER_STATUSES } from '@cat-tool/portal-core';
@@ -92,6 +94,9 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'project_authorization.scope': PROJECT_SCOPES,
       'tenant_membership.role': TENANT_ROLES,
       'staff_invitation.role': TENANT_ROLES,
+      'account_identity.provider': SSO_PROVIDERS,
+      'sso_attempt.provider': SSO_PROVIDERS,
+      'sso_attempt.purpose': SSO_PURPOSES,
       'client_engine_consent.engine': DRAFT_ENGINES,
       'client_engine_default.engine': DRAFT_ENGINES,
     },

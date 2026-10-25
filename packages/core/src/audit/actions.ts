@@ -10,6 +10,7 @@
  */
 
 import type { ProjectScope, TenantRole } from '../auth/authorization.js';
+import type { SsoFailure, SsoProvider } from '../auth/sso.js';
 import type { QaRule } from '../model/qa.js';
 import type { Origin, SegmentStatus } from '../model/segment.js';
 import type { Token } from '../model/token.js';
@@ -58,6 +59,10 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'tenant.role_changed',
   'tenant.audit_exported',
   'tenant.slug_set',
+  'auth.sso_login',
+  'auth.sso_login_failed',
+  'account.sso_linked',
+  'account.sso_unlinked',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -258,6 +263,16 @@ export interface AuditDetail {
   };
   'auth.logout': null;
   'account.created': null;
+  /** A sign-in through a provider (`planning/sso-spec.md` D9): which one, never who it said. */
+  'auth.sso_login': { readonly provider: SsoProvider };
+  /** Told apart in the log, never in the response; no address, subject or claim. */
+  'auth.sso_login_failed': {
+    readonly provider: SsoProvider | null;
+    readonly reason: SsoFailure;
+  };
+  /** Subject: the account. An identity at a provider was tied to it. */
+  'account.sso_linked': { readonly provider: SsoProvider };
+  'account.sso_unlinked': { readonly provider: SsoProvider };
   /**
    * Subject: the project. The grantee is an account id, installation-local
    * and not personal (audit-spec.md §2.5); `#45`.

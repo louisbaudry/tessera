@@ -48,6 +48,9 @@ importers:
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+      jose:
+        specifier: ^6.2.13
+        version: 6.2.13
     devDependencies:
       '@types/node':
         specifier: ^22.20.1
@@ -147,6 +150,9 @@ importers:
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1
+      jose:
+        specifier: ^6.2.13
+        version: 6.2.13
 
   packages/vendor-core:
     dependencies:
@@ -1531,6 +1537,9 @@ packages:
   jackspeak@4.2.3:
     resolution: {integrity: sha512-ykkVRwrYvFm1nb2AJfKKYPr0emF6IiXDYUaFx4Zn9ZuIH7MrzEZ3sD5RlqGXNRpHtvUHJyOnCEFxOlNDtGo7wg==}
     engines: {node: 20 || >=22}
+
+  jose@6.2.13:
+    resolution: {integrity: sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -3425,6 +3434,8 @@ snapshots:
   jackspeak@4.2.3:
     dependencies:
       '@isaacs/cliui': 9.0.0
+
+  jose@6.2.13: {}
 
   js-tokens@4.0.0: {}
 

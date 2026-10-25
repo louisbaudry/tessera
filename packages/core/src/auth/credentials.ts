@@ -27,6 +27,18 @@ export function hashPassword(password: string): string {
   return `${salt.toString('hex')}:${derived.toString('hex')}`;
 }
 
+/**
+ * What `account.password_hash` holds for an account made by signing in with a provider
+ * (`planning/sso-spec.md` D3): no password at all. `account` is a referenced table, which
+ * `rebuildTable` refuses, so the column stays `NOT NULL` and holds this instead. It has no
+ * `:`, so {@link verifyPassword} can never match it, whatever is typed; the login route
+ * still asks {@link hasPassword} first, so a refusal does not depend on that accident.
+ */
+export const NO_PASSWORD_HASH = '!';
+
+/** Whether a stored hash is a password's, and not the {@link NO_PASSWORD_HASH} sentinel. */
+export const hasPassword = (stored: string): boolean => stored !== NO_PASSWORD_HASH;
+
 export function verifyPassword(password: string, stored: string): boolean {
   const [saltHex, hashHex] = stored.split(':');
   if (!saltHex || !hashHex) return false;
