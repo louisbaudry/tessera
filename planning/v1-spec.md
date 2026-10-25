@@ -16,7 +16,7 @@ pool) rides on top later and is out of scope here.
 
 | Area | Decision |
 |---|---|
-| Source format | DOCX only, import **and** export |
+| Source format | DOCX, import **and** export. (Added after v1 shipped as DOCX only: XLIFF 2.x, §3.8, and PPTX, §3.9.) |
 | Inline formatting | Full Trados-style protected inline tags |
 | Working unit | Project: many files, many TMs, one write-back target |
 | TM matching | **Exact matches only** (100%) |

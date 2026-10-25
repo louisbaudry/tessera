@@ -5,7 +5,7 @@ platform for professional translators, translation-service providers, and
 their clients.
 
 **v1 ("Ring 0")** is a personal Trados substitute — no AI yet, deliberately:
-import DOCX, segment, apply a translation memory, run QA, export DOCX. See
+import DOCX, PPTX or XLIFF 2.x, segment, apply a translation memory, run QA, export the same format. See
 [`planning/v1-spec.md`](planning/v1-spec.md) for scope and
 [`planning/v1-backlog.md`](planning/v1-backlog.md) for the issue list. Once
 that's solid, AI-assisted translation and the rest of the business —
@@ -32,11 +32,13 @@ there is only ever one copy of this guidance.
 packages/
   core/        @cat-tool/core   pure TS — no Electron, no DOM, no HTTP
     model/     tokens, tags, segments, QA types, the one CSV cell guard (`csvCell`)
-    docx/      DOCX filter: package I/O, skeleton, tokenize, render
+    docx/      DOCX filter: package I/O, skeleton, tokenize, render (the skeleton and renderer take a dialect, so PPTX shares them)
+    pptx/      PPTX filter (v1-spec.md §3.9): DrawingML tokenizer, slides and notes in play order
+    xliff/     XLIFF 2.x filter (v1-spec.md §3.8): offset-reporting XML tree, inline tags <-> tokens, document reader
     segment/   sentence segmentation, custom profiles, SRX, Trados lists, manual split/merge
     tm/        Token<->TmToken mapping; TMX import/export and native .sdltm parsing, normalisation, context; exact matcher + pre-translate
     glossary/  termKey — the one definition of "the same term" across core and db; term candidate detection, the aligner seam, and flagging known terms in a source (smart-glossary-spec.md §4)
-    project/   assembleFile — DOCX import -> persistable file + segments; exportProjectFile — the inverse, segments folded back into DOCX
+    project/   assembleFile / assemblePptx / assembleXliff — import -> persistable file + segments; exportFileBytes — the inverse by file kind, segments folded back into DOCX, PPTX or XLIFF; reference-file rules (v1-spec.md §7.9)
     qa/        QA rule engine — all thirteen v1-spec.md §6.4 rules, locale tables, numeral matching
   db/          @cat-tool/db     versioned SQLite migration runner; project, platform, portal, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export, .sdltm import, memory merge; the vendor roster (.ctv, with eligibility and client vendor pools); a read-only open for files another process owns; the client export of a linked memory and glossary; worker-thread jobs for bulk operations
   cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export, history, audit-verify (v1-spec.md §2.4)
@@ -46,9 +48,9 @@ packages/
   vendor-core/ @cat-tool/vendor-core   pure TS — the assignment lifecycle state machine, rate tiers, capacity statuses, payables, deadline notices, webhook rules and the advisory eligibility rule for Language Provider tools (planning/vendor-spec.md)
   portal-server/ @cat-tool/portal-server Fastify API + minimal static UI for the translation portal (client intake/approval, admin order management, SMTP email notifications, a client's own memory and glossary download, update orders quoted on what changed)
 planning/      specs and backlog
-fixtures/      real-world DOCX structure with synthetic content (docx/), used by every gate test; the golden end-to-end job's memory and transcript (golden/)
+fixtures/      real-world DOCX structure with synthetic content (docx/), used by every gate test; hand-written XLIFF 2.x files (xliff/) and two PPTX decks (pptx/, one LibreOffice-written); the golden end-to-end job's memory and transcript (golden/)
 site/          public landing page, deployed to GitHub Pages
-scripts/       fixture synthesis (synthesize-fixtures.py)
+scripts/       fixture synthesis (synthesize-fixtures.py, make-pptx-fixture.py); the OOXML validator (ooxml-validate)
 ```
 
 (Two directories share the name `tm/` for two different things: `core/tm/`
@@ -146,7 +148,7 @@ Requires Node 22+ and pnpm 10+.
 ```sh
 pnpm install
 pnpm test        # vitest, excludes the roundtrip gate
-pnpm test:gate   # the roundtrip gate — byte-identical DOCX import/export
+pnpm test:gate   # the roundtrip gate — byte-identical DOCX and PPTX import/export
 pnpm test:golden # the golden end-to-end job — a real DOCX and TMX through every CLI command, against a committed transcript
 pnpm test:ooxml  # differential OOXML validation — a translated export may add no validator finding its original lacked (needs the .NET 8 SDK)
 pnpm test:all    # everything
@@ -159,7 +161,7 @@ A whole job runs headless through the CLI once `pnpm build` has run:
 
 ```sh
 pnpm cat-tool init job.catdb --src en --tgt fr
-pnpm cat-tool add-file job.catdb client/brief.docx
+pnpm cat-tool add-file job.catdb client/brief.docx     # or a .pptx, or an XLIFF 2.x .xlf
 pnpm cat-tool add-tm job.catdb client/memory.tmx        # imported into client/memory.ctm, then attached
 pnpm cat-tool add-tm job.catdb job.ctm --write-target   # created empty if missing
 pnpm cat-tool pretranslate job.catdb
@@ -212,7 +214,7 @@ full row of green checks — see CLAUDE.md's gotcha list.
 
 | Document                                                                   | What it covers                                                                                                                      |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [`planning/v1-spec.md`](planning/v1-spec.md)                               | v1 ("Ring 0") scope, DOCX filter design, data model, segmentation, matching, QA                                                     |
+| [`planning/v1-spec.md`](planning/v1-spec.md)                               | v1 ("Ring 0") scope, DOCX, XLIFF and PPTX filter design, data model, segmentation, matching, QA                                     |
 | [`planning/tm-format-spec.md`](planning/tm-format-spec.md)                 | The `.ctm` translation memory format — authoritative                                                                                |
 | [`planning/segmentation-spec.md`](planning/segmentation-spec.md)           | Custom segmentation: editable profiles, SRX, Trados resource lists                                                                  |
 | [`planning/ai-platform-vision.md`](planning/ai-platform-vision.md)         | The roadmap beyond v1 — AI-assisted translation, vendor management, client-facing tools, and why they're sequenced the way they are |
