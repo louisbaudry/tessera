@@ -10,6 +10,7 @@ import type {
   QaIssue,
   QaRule,
   Segment,
+  SsoProvider,
   TenantRole,
   Token,
 } from '@cat-tool/core';
@@ -422,6 +423,25 @@ export const api = {
       method: 'POST',
       body: { email, password },
     }),
+  /** The providers the operator has set up, for the login screen's buttons (backlog #214). */
+  ssoProviders: () =>
+    call<{ providers: SsoProvider[] }>('/api/login/sso/providers', null),
+  /** Where to send the browser to sign in at a provider; `binding` is this browser's secret (`sso.ts`). */
+  ssoStart: (provider: SsoProvider, binding: string) =>
+    call<{ url: string }>('/api/login/sso/start', null, {
+      method: 'POST',
+      body: { provider, binding },
+    }),
+  /** Turns the code a returning sign-in left in the address into a session. */
+  ssoRedeem: (code: string, binding: string) =>
+    call<{ token: string; expiresAt: string; account: Account }>(
+      '/api/login/sso/redeem',
+      null,
+      {
+        method: 'POST',
+        body: { code, binding },
+      },
+    ),
   logout: (token: string) => call<{ ok: true }>('/api/logout', token, { method: 'POST' }),
   /** The signed-in vendor's feed across every tenant that engages them (backlog #52a). */
   vendorFeed: (token: string, signal?: AbortSignal) =>

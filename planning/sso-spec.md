@@ -254,7 +254,7 @@ Each is written before the code that enforces it, with a fake provider:
 
 | # | What | Size | After |
 | - | ---- | ---- | ----- |
-| 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions | L | none |
+| 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions. **Built** (#214), with the login screen's buttons and the link and unlink routes; no settings screen | L | none |
 | 2 | SSO in staff and vendor invitation acceptance, linking and unlinking from settings, `tenant_sso_policy` | M | 1 |
 | 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen | L | 1 |
 

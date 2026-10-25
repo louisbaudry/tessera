@@ -77,6 +77,10 @@ every stored `tm_ref.path` with it (`v1-spec.md` §4.2).
   container, so no client text can leave for an engine. Enabling one needs the consent
   rows in the application (`CLAUDE.md`, "The draft engine") and a decision to add the key
   to `docker-compose.yml`.
+- **No single sign-on.** The provider ids and secrets and `SSO_CALLBACK_ORIGIN` are not passed to the
+  container, and Caddy routes no `auth.<domain>` host, so signing in with Microsoft or Google is
+  off. Enabling it needs the two registrations (`planning/sso-spec.md` §4), the five variables in
+  `docker-compose.yml`, and `auth.<domain>` on the certificate and in the Caddyfile.
 - **No registry, no automatic deploy.** The image is built on the host from a checkout.
   A published image and a deploy workflow are a later card, once there is more than one
   host or more than one person deploying.

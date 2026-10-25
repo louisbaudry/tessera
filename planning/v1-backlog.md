@@ -5112,7 +5112,7 @@ S4 (the semantic match type in the editor), S5 (LLM context, with Epic
 8) and S6 (real-use data) are not carded yet: each waits on the editor,
 Epic 8, or a shipped feature.
 
-### Epic 15 — Single sign-on (spec'd 2026-10-25, not started)
+### Epic 15 — Single sign-on (spec'd 2026-10-25, slice 1 built 2026-10-25)
 
 Design in `planning/sso-spec.md` (decisions D1 to D9), decided with Louis on 2026-10-25: staff,
 vendors and a tenant's clients can sign in with a Microsoft 365 or Google account. Worth carrying
@@ -5128,7 +5128,21 @@ forward:
 - **Stack decided:** TypeScript with `jose`, no Rust/Wasm (D8). Creating the two provider
   registrations is the operator's: credentials, not code (spec §4).
 
-**#214 · SSO slice 1: sign in with Microsoft 365 or Google · L** · [issue #316]
+**#214 · ~~SSO slice 1: sign in with Microsoft 365 or Google~~ · DONE — `core/src/auth/sso.ts`, platform schema v14 (`account_identity`, `sso_attempt`), `db/src/platform/{identities,sso-attempts,audit}.ts`, `server/src/{sso,sso-http,config,app}.ts`, `web/src/{Login.tsx,sso.ts,api.ts}`** (2026-10-25; card #316, Epic 15, `sso-spec.md` D1 to D5, D8, D9)
+
+A person can sign in to an account that already exists with a Microsoft 365 or Google account, on their tenant's host, and a signed-in account can link and unlink one by API. No screen yet for linking (slice 2), no invitation by provider (slice 2), no portal (slice 3). What it taught:
+
+- **Read the providers' own pages before building on a belief, and the belief was wrong in one place.** The spec had a staff or vendor invitation compare the provider's email with the invited one. Microsoft's claims reference says its `email` claim "isn't guaranteed to be correct and is mutable" and to "never use it for authorization", so the comparison was dropped: the one-time link is the proof, as it is for a password today (spec D3.1). Endpoints, issuers, key URLs, the personal-account `tid` and the redirect-URI limits (256 for work and school, 100 once personal accounts are on, no wildcards) were read from the discovery documents and docs on 2026-10-25 and are in the code and spec. Still unconfirmed: whether Microsoft requires publisher verification, and whether Google needs an app verification for the scope `openid` alone.
+- **No address is asked for or stored.** The request's scope is `openid`; an identity is `(provider, issuer, subject)`. Microsoft's `sub` is per application and per directory, so `issuer` carries the `tid` and one person in two directories is two identities. A Microsoft token's issuer is only known after its signature checks out, so `verifyIdToken` verifies first and then builds the issuer from the token's own `tid` (a GUID); a test pins both that and a non-GUID `tid`.
+- **A login CSRF hole the spec had missed, closed by a browser secret.** With only a state and a code, an attacker could start a sign-in, sign in as themselves, and get a victim's browser to present the resulting hand-off code, landing the victim in the attacker's account. The start now takes a secret the page keeps in session storage, stored only as its hash, and redeem needs it again. A link is also bound to the account that began it, so a victim's browser cannot complete someone else's link. A code that fails any check (host, purpose, account, browser) is spent by the try.
+- **The callback host holds no authority.** It claims the attempt by state (one conditional UPDATE, so a replay finds nothing), exchanges the code, verifies the token, and hands back a one-minute code; it makes no session and links nothing. It serves exactly the callback (`GET /api/login/sso/callback`); every other path on `auth.<base domain>` is a fixed 404, and on a tenant's host the callback route is a 404 that claims nothing. With no base domain the same flow runs on one host.
+- **Every refusal is one answer** (`{ error: 'sign-in failed' }`, 401), and the log tells them apart: `auth.sso_login_failed` carries a reason and no subject, issuer, address or claim. The log's action names follow the existing `auth.login` (`auth.sso_login`, `auth.sso_login_failed`, `account.sso_linked`, `account.sso_unlinked`), not the spec's first wording.
+- **Outbound calls follow the engines' rule.** Hosts fixed in code, no redirect followed, an error that carries no body, secret or code (`SsoHttpError`), and no retry of a spent code. The provider's keys are cached six hours and read again once when a token names a key the cache lacks, which is what a rotation looks like; a test rotates the key.
+- **`jose`** (MIT, already on the allowlist, so no exception to record) verifies the signature, RS256 only. A first test of "any other algorithm is refused" passed with the restriction removed, because the published key named its algorithm; the test now publishes a key without one and fails without the restriction.
+- **The account with no password** stores `NO_PASSWORD_HASH` (`!`, no `:`), which `verifyPassword` can never match, and the login route asks `hasPassword` before comparing. `unlinkIdentity` refuses to remove the last way into such an account.
+- **Two things only the full gate found.** `pnpm typecheck` rejected `CryptoKey` in two test files (core and server have no DOM lib; vitest only transpiles, so every test was green), and the React hooks lint rejected setting state synchronously in the login effect. The landing address is now read once at module level (`Login.tsx`), which also keeps React's double effect run in development from spending the code twice.
+- **Mutation checks were run, not assumed.** Each of these was broken in turn and a test failed: no nonce, no audience, no issuer match, host unchecked at redeem, callback served on a tenant host, callback host serving other paths, no key refresh, failures not logged, a link redeemed for any account, a state reusable, a hand-off code reusable, the browser secret unchecked, the last-way-in guard.
+- Verified: the new tests (core 25, db 32, server 61 across config, `sso-http`, routes) and the whole suite (3238) pass, `pnpm test:golden` passes, and a real browser run against the built server and SPA with a stand-in for Google (intercepted at the provider's URL) went login button, callback host, tenant host, session, and refused a stranger with the one message. **Not verified:** a real Google or Microsoft sign-in (the operator has registered no app; spec §4), a real Microsoft or Google token's exact claims, and the callback host on a real certificate and DNS.
 
 **#215 · SSO slice 2: SSO in invitations and settings, and a tenant policy · M** · [issue #317]
 
@@ -5178,6 +5192,5 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51
-[issue #316]: https://github.com/louisbaudry/tessera/issues/316
 [issue #317]: https://github.com/louisbaudry/tessera/issues/317
 [issue #318]: https://github.com/louisbaudry/tessera/issues/318
