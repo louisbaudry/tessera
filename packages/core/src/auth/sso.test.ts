@@ -11,18 +11,20 @@ import {
   type SsoProvider,
 } from './sso.js';
 
+type SigningKey = Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
+
 const CLIENT_ID = 'client-id-1';
 const NONCE = 'nonce-1';
 const NOW = new Date('2026-10-25T12:00:00Z');
 const TID = '11111111-2222-4333-8444-555555555555';
 
-let signing: CryptoKey;
+let signing: SigningKey;
 let jwks: JSONWebKeySet;
-let otherSigning: CryptoKey;
+let otherSigning: SigningKey;
 
 beforeAll(async () => {
   const pair = await generateKeyPair('RS256', { extractable: true });
-  signing = pair.privateKey as CryptoKey;
+  signing = pair.privateKey;
   const jwk: JWK = {
     ...(await exportJWK(pair.publicKey)),
     kid: 'k1',
@@ -30,7 +32,7 @@ beforeAll(async () => {
     use: 'sig',
   };
   jwks = { keys: [jwk] };
-  otherSigning = (await generateKeyPair('RS256')).privateKey as CryptoKey;
+  otherSigning = (await generateKeyPair('RS256')).privateKey;
 });
 
 interface TokenOptions {
@@ -39,7 +41,7 @@ interface TokenOptions {
   readonly sub?: string;
   readonly nonce?: string;
   readonly exp?: number;
-  readonly key?: CryptoKey;
+  readonly key?: SigningKey;
   readonly claims?: Record<string, unknown>;
 }
 
