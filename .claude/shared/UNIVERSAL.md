@@ -261,6 +261,30 @@ kept:
 - Record the dependency in the repo that depends on it, so the next
   session finds it.
 
+## Outward actions and accounts
+
+An email, message, invitation or comment cannot be recalled once sent, and
+it goes out in Louis's name. These rules apply in every repo.
+
+- **Confirm the account before sending.** Before any outward action
+  (email, message, calendar invitation, comment on an external service),
+  tell Louis which account it will go out from, to whom, and the text, and
+  wait for his answer, even when he asks you to send it. A confirmation
+  covers one message and one recipient.
+- **Accounts have one purpose each.** Louis has connected accounts that are
+  for a single use, for example a mailbox kept for a business abroad. Which
+  account is for what is written in `ai_profile.md`, not here, so that no
+  address lands in a repo that may be public. Never use a single-purpose
+  account for anything outside its purpose, such as personal, family,
+  health, school or administrative matters.
+- **If `ai_profile.md` is not loaded, or does not say, the account is
+  unconfirmed.** Ask, with options and a recommendation, before sending.
+- **No connector for the right account?** Write the text and give it to
+  Louis to send himself. Do not fall back to another account.
+- This adds to "When to stop and ask Louis" (irreversible actions that
+  leave the repo). A repo's standing authorization there does not waive the
+  account check.
+
 ## Shared ontology
 
 Facts, findings, claims, assessments, sources, evidence and people are
