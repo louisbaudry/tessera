@@ -13,7 +13,12 @@ those stay in the operator's password manager and the infrastructure register.
 - A VPS running a current Ubuntu LTS, 2 vCPU and 4 GB of RAM or more (the image build
   compiles `better-sqlite3` only when no prebuilt binary matches), with 20 GB of disk.
 - A DNS **A record** for the name you will serve, pointing at the VPS's address,
-  before the first start: Caddy asks Let's Encrypt for the certificate on boot.
+  before the first start: Caddy asks Let's Encrypt for the certificate on boot. Add it in
+  the domain's **DNS settings**, not through a hosting panel's "add subdomain" (Plesk and
+  the like), which builds a site on that panel's own server and points the name there.
+  Check it from a public resolver (`nslookup <name> 8.8.8.8`) before the first start. Your
+  own router can keep serving the old answer for the whole TTL, so judge the server from a
+  phone on mobile data, not from your PC, while it settles.
 - Ports 80 and 443 open to the internet (80 is how Let's Encrypt proves the name).
 
 ## First deployment
@@ -50,7 +55,9 @@ docker compose run --rm tessera node dist/create-account.js you@example.com "$PW
 ## Backup
 
 `backup.sh` writes a dated archive of `/data` and keeps two weeks. It stops the app
-for a few seconds, which is why it runs at night:
+for a few seconds, which is why it runs at night. Run it once by hand first, as your own
+user, into your home directory (`./backup.sh ~/backups`; the default `/var/backups/tessera`
+needs root), and check the archive lists with `tar -tzf`. Then schedule it:
 
 ```sh
 sudo crontab -e   # 15 3 * * * /home/<user>/tessera/deploy/backup.sh >>/var/log/tessera-backup.log 2>&1
@@ -89,5 +96,6 @@ every stored `tm_ref.path` with it (`v1-spec.md` §4.2).
 
 ## Verification status
 
-The compose file validates (`docker compose config`). It has **not** been run: the
-session that wrote it had no Docker daemon. The first real run on the host is the check.
+Run on the host on 2026-10-26: the build, Caddy's certificate, the login over HTTPS and
+the account surviving a `down` and `up` are verified. **The backup script and a restore
+have not been run on the host yet**; do both before real client files depend on it.
