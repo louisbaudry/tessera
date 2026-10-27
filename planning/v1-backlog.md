@@ -2572,7 +2572,7 @@ verified: a by-eye contrast pass over the grid on a real project.
 
 ## Epic 7 — Ship to self
 
-**#36 · Deploy · M** — phased: `#36a` is built, `#36b` is open.
+**#36 · ~~Deploy~~ · DONE** — phased: `#36a` and `#36b` are built.
 
 **#36a · ~~Container image~~ · DONE — `Dockerfile`, `scripts/smoke-image.sh`,
 `ci.yml`'s `🐳 container image`, `server/src/app.ts`'s `webDir`**
@@ -2599,20 +2599,32 @@ and the image does not terminate HTTPS — the host's proxy does.
 served, login); the Docker build and the smoke script run only in CI,
 where the daemon is.
 
-**#36b · Deploy to a target · S** · [issue #21]
-Pick the one deployment target (a host with a persistent volume and
-HTTPS in front), run the image there, create the one account, and
-confirm the first real login. Outward-facing, and the target is
-Louis's choice, so it waits for him. Superseded the electron-builder
-plan (three-platform installers) — a web service ships once, to one
-place. Pairs with backlog `#3`'s remaining scope (one build target, a
-smoke test of the built image) — the smoke test is now `#36a`'s.
-
-*Prepared (host chosen: a US-based VPS):* `deploy/` holds the compose file (the image behind
-Caddy, which gets the certificate), the nightly backup script and the runbook
-(`deploy/README.md`). Written without a Docker daemon, so the compose file is validated
-(`docker compose config`) but not run: the first start on the host is the check. Still
-open until the SPA loads over HTTPS there and the volume survives a restart.
+**#36b · ~~Deploy to a target~~ · DONE — `deploy/` (compose file, Caddyfile, `backup.sh`) and its runbook `deploy/README.md`**
+Production is one US-based VPS (Ubuntu 24.04 LTS, 4 GB, Docker Compose): the image behind
+Caddy, which gets and renews the Let's Encrypt certificate, with the one `/data` volume.
+Done 2026-10-26: the SPA loads over HTTPS at its own hostname, the one account was created on
+the host and logs in, and the account survived `docker compose down && up`, so the volume
+does what `#36a` promised. Superseded the electron-builder plan (three-platform installers):
+a web service ships once, to one place.
+*Taught:*
+- **A hosting panel's "add subdomain" is the wrong tool.** It builds a site on that server and
+  points the name at it; what Tessera needed was one DNS A record to the VPS. A first record
+  copied from the wrong place resolved to the old server and the browser showed that server's
+  login with a certificate error (`ERR_CERT_COMMON_NAME_INVALID`).
+- **A home router can keep the old answer for the whole TTL after the zone is right.** Public
+  resolvers had the new address; the operator's router did not. Test through a public resolver
+  or from a phone on mobile data before deciding the server is broken, and set a short TTL on
+  a first record.
+- **`create-account` takes the password as an argument and has no prompt**, so the runbook reads
+  it with `read -rs` rather than have it land in the shell history; and a placeholder email
+  typed literally fails its `@` check, creating nothing.
+- **`backup.sh` as first written would have corrupted every archive**: `docker compose run`
+  allocates a pseudo-terminal, which rewrites newlines in a binary stream. It now passes `-T`
+  and runs `tar -tzf` on the result so a bad archive fails the script. Found by reading it
+  before the first run, not by running it: **the backup and a restore are still untested**
+  on the host, and the archive lives on the same disk until copied off it.
+- The draft-engine keys are not passed to the container, so no client text can reach an
+  engine from this deployment until a decision adds them.
 
 **#37 · 🏁 Real job dogfood · L** · [issue #22]
 Translate and deliver one real paid multi-file client job end to end.

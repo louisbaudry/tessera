@@ -7,7 +7,8 @@
 # get a consistent copy; a live `.backup` per file is a later job if the
 # service ever needs to stay up around the clock.
 #
-#   deploy/backup.sh [destination-dir]      # default: /var/backups/tessera
+#   deploy/backup.sh [destination-dir]      # default: /var/backups/tessera (needs root;
+#                                           # a first test run as a normal user: ~/backups)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -19,8 +20,13 @@ mkdir -p "$DEST"
 # the service down.
 trap 'docker compose start tessera >/dev/null' EXIT
 docker compose stop tessera >/dev/null
-docker compose run --rm --no-deps --entrypoint tar tessera \
+# -T: no pseudo-terminal. With one, Docker rewrites \n to \r\n in the stream and
+# the archive is silently corrupt.
+docker compose run -T --rm --no-deps --entrypoint tar tessera \
   -C /data -czf - . >"$DEST/tessera-data-$STAMP.tar.gz"
+
+# A truncated or corrupt archive must fail the script, not sit there until the day it is needed.
+tar -tzf "$DEST/tessera-data-$STAMP.tar.gz" >/dev/null
 
 # Keep two weeks.
 find "$DEST" -name 'tessera-data-*.tar.gz' -mtime +14 -delete
