@@ -4816,6 +4816,34 @@ app (it could not safely have: one origin would have put the CAT session within 
   created. It would be defence in depth, but it changes what the endpoint accepts.
 - Not verified: the pages in a real browser.
 
+**#218 · ~~The client portal on the same host as the app~~ · DONE — `Dockerfile` (`portal` target), `deploy/{docker-compose.yml,Caddyfile,backup.sh,.env.example,README.md}`, `scripts/smoke-image.sh`, `.github/workflows/ci.yml`** (2026-10-28; card #325, Epic 10a, `deploy/README.md`)
+
+`deploy/` ran the CAT server only; the portal (what a client such as the first pilot client uses) had no
+image, no service and no route. The operator chose one address for both. What it taught:
+
+- **One host, routed by path, is possible only because the paths are disjoint.** Caddy sends the portal's seven
+  paths (`/client.html`, `/admin.html`, their scripts, the stylesheet, `/api/admin/*`, `/api/client/*`) to it and
+  the rest to the app. Checked first: the app has no `/api/admin`, no `/api/client/` (singular; its
+  `/api/clients/...` is a different prefix) and none of those files. A new route in either app that lands on
+  one of these prefixes would be silently misrouted, which is why CI runs the real compose file behind Caddy
+  and asserts which app answers each path.
+- **One `path` line.** In a Caddy named matcher two `path` lines must both match, so a path matches neither;
+  every pattern goes in one line.
+- **A second Docker target must not be the last stage.** `docker build .` builds the last stage, so the portal
+  target sits before the app's stage and is chosen with `--target portal`; the default image is unchanged.
+- **A blank compose variable is not an unset one.** `PORTAL_SMTP_PORT=` reaches the process as the empty string,
+  and `Number('')` is 0, so the compose file gives the port and secure flag real defaults. The blank host,
+  sender and name are correct blanks (mail off, neutral name).
+- **Shared origin is a cost, named in the README.** A script flaw in a portal page would sit on the app's origin.
+  #323 fixed the known one found while checking exactly this; a second name for the portal is the cheap
+  way to stop relying on that and is documented.
+- **The admin page cannot create a client or a rate**, only API routes can, so the README has `curl` recipes
+  that pipe the password (no command line, no history). A screen for them is a separate card.
+- **Verification is CI's, not mine.** No Docker daemon in the session: the compose file validates
+  (`docker compose config`) and the deployed portal package was started and served locally, but the image
+  build, the smoke test (portal part: page, neutral name, admin login, a client's token, restart) and the
+  Caddy routing run only in the image job. Not verified: anything on the real host.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

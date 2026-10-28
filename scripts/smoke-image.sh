@@ -6,7 +6,12 @@
 # new one started on the same volume — still knows the account and the
 # memory. That last step is the point of the volume.
 #
-#   scripts/smoke-image.sh [image]     # default: tessera:smoke, built here
+# Then the same for the client portal's image (issue #325): it starts, serves its
+# page with the neutral name, takes an admin login, creates a client whose private
+# token reads that client back, and still has the admin after a new container.
+#
+#   scripts/smoke-image.sh [image [portal-image]]   # default: tessera:smoke and
+#                                                   # tessera-portal:smoke, built here
 set -euo pipefail
 
 IMAGE="${1:-tessera:smoke}"
@@ -15,16 +20,21 @@ NAME="tessera-smoke-$$"
 EMAIL="smoke@example.com"
 PASSWORD="smoke-test-password"
 PORT="${SMOKE_PORT:-3490}"
+PORTAL_IMAGE="${2:-tessera-portal:smoke}"
+PORTAL_VOLUME="tessera-portal-smoke-$$"
+PORTAL_NAME="tessera-portal-smoke-$$"
+PORTAL_PORT="${SMOKE_PORTAL_PORT:-3491}"
 
 TMP="$(mktemp -d)"
 cleanup() {
-  docker rm -f "$NAME" >/dev/null 2>&1 || true
-  docker volume rm -f "$VOLUME" >/dev/null 2>&1 || true
+  docker rm -f "$NAME" "$PORTAL_NAME" >/dev/null 2>&1 || true
+  docker volume rm -f "$VOLUME" "$PORTAL_VOLUME" >/dev/null 2>&1 || true
   rm -rf "$TMP"
 }
 trap cleanup EXIT
 
 [ $# -ge 1 ] || docker build -t "$IMAGE" .
+[ $# -ge 2 ] || docker build --target portal -t "$PORTAL_IMAGE" .
 
 start() {
   docker run -d --name "$NAME" -p "$PORT:3400" -v "$VOLUME:/data" "$IMAGE" >/dev/null
@@ -82,5 +92,47 @@ TOKEN="$(login | field token)"
 [ -n "$TOKEN" ] || { echo "account lost with the container" >&2; exit 1; }
 curl -fsS "http://localhost:$PORT/api/tms" -H "authorization: Bearer $TOKEN" | grep -q '"slug":"hello"' \
   || { echo "memory lost with the container" >&2; exit 1; }
+
+# --- the client portal image (issue #325) ------------------------------------
+
+PORTAL_ADMIN="portal-admin@example.com"
+
+start_portal() {
+  docker run -d --name "$PORTAL_NAME" -p "$PORTAL_PORT:3300" -v "$PORTAL_VOLUME:/data" "$PORTAL_IMAGE" >/dev/null
+  for _ in $(seq 1 30); do
+    if curl -fsS "http://localhost:$PORTAL_PORT/client.html" >/dev/null 2>&1; then return 0; fi
+    sleep 1
+  done
+  echo "portal did not come up" >&2
+  docker logs "$PORTAL_NAME" >&2
+  exit 1
+}
+
+portal_login() {
+  curl -fsS -X POST "http://localhost:$PORTAL_PORT/api/admin/login" \
+    -H 'content-type: application/json' \
+    -d "{\"email\":\"$PORTAL_ADMIN\",\"password\":\"$PASSWORD\"}"
+}
+
+docker run --rm -v "$PORTAL_VOLUME:/data" "$PORTAL_IMAGE" \
+  node dist/create-admin.js "$PORTAL_ADMIN" "$PASSWORD"
+
+start_portal
+curl -fsS "http://localhost:$PORTAL_PORT/client.html" | grep -q '<h1>Translation Portal</h1>' \
+  || { echo "/client.html is not the portal page with the neutral name" >&2; exit 1; }
+[ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$PORTAL_PORT/api/client/me")" = 401 ] \
+  || { echo "/api/client/me is not behind the access token" >&2; exit 1; }
+ADMIN_TOKEN="$(portal_login | field token)"
+[ -n "$ADMIN_TOKEN" ] || { echo "portal admin login failed" >&2; exit 1; }
+CLIENT_TOKEN="$(curl -fsS -X POST "http://localhost:$PORTAL_PORT/api/admin/clients" \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"Smoke Client","email":"client@example.com"}' | field accessToken)"
+[ -n "$CLIENT_TOKEN" ] || { echo "the portal made no client" >&2; exit 1; }
+curl -fsS "http://localhost:$PORTAL_PORT/api/client/me" -H "authorization: Bearer $CLIENT_TOKEN" \
+  | grep -q 'Smoke Client' || { echo "the client's token does not read the client back" >&2; exit 1; }
+
+docker rm -f "$PORTAL_NAME" >/dev/null
+start_portal
+[ -n "$(portal_login | field token)" ] || { echo "portal admin lost with the container" >&2; exit 1; }
 
 echo "image smoke test passed"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nightly copy of the /data volume, taken with the app stopped.
+# Nightly copy of the /data volumes (the CAT app's and the portal's), taken with both stopped.
 #
 # A project, a memory and platform.sqlite are SQLite files in WAL mode: a
 # file-level copy of a running database can be torn. For a one-account v1
@@ -16,18 +16,22 @@ DEST="${1:-/var/backups/tessera}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$DEST"
 
-# Restart the app even if the copy fails: a failed backup must not leave
-# the service down.
-trap 'docker compose start tessera >/dev/null' EXIT
-docker compose stop tessera >/dev/null
-# -T: no pseudo-terminal. With one, Docker rewrites \n to \r\n in the stream and
-# the archive is silently corrupt.
-docker compose run -T --rm --no-deps --entrypoint tar tessera \
-  -C /data -czf - . >"$DEST/tessera-data-$STAMP.tar.gz"
+# Restart both even if a copy fails: a failed backup must not leave the service down.
+trap 'docker compose start tessera portal >/dev/null' EXIT
+docker compose stop tessera portal >/dev/null
 
-# A truncated or corrupt archive must fail the script, not sit there until the day it is needed.
-tar -tzf "$DEST/tessera-data-$STAMP.tar.gz" >/dev/null
+# One archive per service: its file name, and the compose service whose /data it is.
+for service in tessera portal; do
+  OUT="$DEST/$service-data-$STAMP.tar.gz"
+  # -T: no pseudo-terminal. With one, Docker rewrites \n to \r\n in the stream and
+  # the archive is silently corrupt.
+  docker compose run -T --rm --no-deps --entrypoint tar "$service" \
+    -C /data -czf - . >"$OUT"
 
-# Keep two weeks.
-find "$DEST" -name 'tessera-data-*.tar.gz' -mtime +14 -delete
-echo "wrote $DEST/tessera-data-$STAMP.tar.gz"
+  # A truncated or corrupt archive must fail the script, not sit there until the day it is needed.
+  tar -tzf "$OUT" >/dev/null
+
+  # Keep two weeks.
+  find "$DEST" -name "$service-data-*.tar.gz" -mtime +14 -delete
+  echo "wrote $OUT"
+done

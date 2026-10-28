@@ -1,4 +1,16 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
-	reverse_proxy tessera:3400
+
+	# The client portal's pages and API (issue #325). Everything else is the CAT app. The paths
+	# are the portal's own and none is the CAT app's (it has no /api/admin, no /api/client/ and none
+	# of these files), so one host serves both. One matcher with one `path` line: separate lines
+	# would have to match together, and nothing would.
+	@portal path /client.html /admin.html /client.js /admin.js /style.css /api/admin/* /api/client/*
+	handle @portal {
+		reverse_proxy portal:3300
+	}
+
+	handle {
+		reverse_proxy tessera:3400
+	}
 }

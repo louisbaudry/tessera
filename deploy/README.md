@@ -2,7 +2,8 @@
 
 Backlog `#36b` (the outward half of `#36`). `deploy/` holds what runs on the host:
 the image from the repository's `Dockerfile` behind Caddy, which obtains and renews
-the TLS certificate. The image terminates no HTTPS itself (`#36a`).
+the TLS certificate, and (issue #325) the client portal as a second container on the same
+host. The images terminate no HTTPS themselves (`#36a`).
 
 The choice of host was Louis's: a VPS in the United States from a hosting provider,
 with a persistent disk. Nothing here names the provider, an address or an account;
@@ -45,6 +46,60 @@ read -rsp 'Password: ' PW; echo
 docker compose run --rm tessera node dist/create-account.js you@example.com "$PW"; unset PW
 ```
 
+## The client portal (issue #325)
+
+The same `docker compose up -d --build` also starts the portal (`portal-server`, on port
+3300 inside the project's network). Caddy sends its paths to it and everything else to the
+app, on the **same host name**: `/client.html`, `/admin.html`, their scripts and
+stylesheet, `/api/admin/*` and `/api/client/*`. None of these is a path of the app's, so
+nothing needs a second DNS record or certificate.
+
+One thing to know about a shared host: the portal's pages and the app's share a browser
+origin, so a script flaw in a portal page could reach the app's sign-in on the same
+browser. The known one is fixed (#323); if you would rather not rely on that, give the
+portal its own name later (a second A record and a second site block in the `Caddyfile`).
+
+Set the name its pages show in `deploy/.env` (`PORTAL_DISPLAY_NAME`, blank is "Translation
+Portal"), then `docker compose up -d`. **Mail is off by default**: notifications go to the
+log (`docker compose logs portal`). To turn mail on set `PORTAL_SMTP_HOST`, `PORTAL_SMTP_FROM`
+and `PORTAL_ADMIN_EMAIL` together; a host without a sender refuses to start.
+
+**The admin and the first client.** The admin page has no screen for creating clients or
+rates yet, only API routes, so these are `curl` calls. Passwords are read into a variable and
+piped, so they appear in no command line, shell history or process list. Never put one in a chat,
+an issue or a file in the repository.
+
+```sh
+cd tessera/deploy
+read -rsp 'Admin password: ' PW; echo
+docker compose run --rm portal node dist/create-admin.js you@example.com "$PW"; unset PW
+```
+
+Then, from any machine, with `SITE=https://<SITE_ADDRESS>`:
+
+```sh
+SITE=https://tessera.example.com
+read -rsp 'Admin password: ' PW; echo
+TOKEN=$(printf '{"email":"you@example.com","password":"%s"}' "$PW" \
+  | curl -fsS -X POST "$SITE/api/admin/login" -H 'content-type: application/json' -d @- \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'); unset PW
+
+# a rate (per source and target language, per word)
+curl -fsS -X POST "$SITE/api/admin/rates" -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"srcLang":"en","tgtLang":"es","ratePerWord":0.1,"minimumPrice":40}'
+
+# a client: the reply holds "accessToken", the client's whole credential
+curl -fsS -X POST "$SITE/api/admin/clients" -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"name":"Client name","email":"client@example.com"}'
+```
+
+The client's private link is `$SITE/client.html#token=<accessToken>`. Send it to them yourself
+(the portal mails nothing without SMTP). The admin signs in at `$SITE/admin.html`. The language
+codes in a rate must match what the client picks, and a client can only choose languages that
+have a rate.
+
 ## Done when (issue 21)
 
 1. `https://<SITE_ADDRESS>/` loads the SPA over a valid certificate.
@@ -54,8 +109,9 @@ docker compose run --rm tessera node dist/create-account.js you@example.com "$PW
 
 ## Backup
 
-`backup.sh` writes a dated archive of `/data` and keeps two weeks. It stops the app
-for a few seconds, which is why it runs at night. Run it once by hand first, as your own
+`backup.sh` writes a dated archive of each `/data` volume (`tessera-data-*` for the app,
+`portal-data-*` for the portal) and keeps two weeks. It stops both for a few seconds, which is
+why it runs at night. Run it once by hand first, as your own
 user, into your home directory (`./backup.sh ~/backups`; the default `/var/backups/tessera`
 needs root), and check the archive lists with `tar -tzf`. Then schedule it:
 
@@ -78,6 +134,10 @@ The server applies any pending migration of a file the next time that file is op
 with the runner's pre-migration backup beside it. A volume moved to another host moves
 every stored `tm_ref.path` with it (`v1-spec.md` §4.2).
 
+The first update that carries the portal adds a container and changes the `Caddyfile`; `up -d` recreates
+Caddy for it. If it ever does not, `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`
+reloads the file.
+
 ## What this deliberately does not do
 
 - **No draft engine.** `ANTHROPIC_API_KEY` and `DEEPL_API_KEY` are not passed to the
@@ -91,6 +151,8 @@ every stored `tm_ref.path` with it (`v1-spec.md` §4.2).
 - **No registry, no automatic deploy.** The image is built on the host from a checkout.
   A published image and a deploy workflow are a later card, once there is more than one
   host or more than one person deploying.
+- **No portal screen for clients and rates, and no portal mail by default.** See the portal
+  section above; both are separate cards.
 - **No signup.** There is no registration endpoint; accounts exist only because this script ran on the host
   (`v1-spec.md` §4.1a). A second account is the same command with another email.
 
