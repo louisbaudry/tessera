@@ -4797,6 +4797,25 @@ The shipped pages used a real company's name as page title, heading and in one m
   its registry entry a `displayName`: set one before deploying this.**
 - Not verified: the pages in a browser (the served HTML is asserted, not rendered).
 
+**#217 · ~~The portal pages printed client-typed text as markup~~ · DONE — `portal-server/src/public/{admin,client}.js`, `portal-server/src/pages.test.ts`** (2026-10-28; card #323, Epic 10a, `portal-v0-spec.md` §7)
+
+The admin page escaped file names but printed an order's `notes`, `srcLang` and `tgtLangs` raw; all three are
+free text from `POST /api/client/orders`, so a client could run script in the admin's browser, where the admin
+session token sits in `sessionStorage`. Found while checking whether the portal could share a host with the CAT
+app (it could not safely have: one origin would have put the CAT session within the same reach). What it taught:
+
+- **A test that runs the shipped script beats a rule about it.** `pages.test.ts` loads each page script in a
+  `vm` context with a stub browser (elements record every `innerHTML` they are given, `fetch` answers canned
+  JSON) and requires a marked payload in every field to come out as `&lt;i data-pwn=...`. Each assertion also
+  requires the escaped text to be present, so a test that never reached a field fails too. It was red on seven
+  fields before the fix and green after; no DOM library was added.
+- **Every interpolation of data is escaped, ids and numbers aside**, including the ones that looked safe
+  (status words, error messages, the client's own name), because "the server only sends fixed values" is
+  a claim about code that is somewhere else and changes without touching this file.
+- **Not done, left as a decision:** validating `srcLang` / `tgtLangs` as language tags when an order is
+  created. It would be defence in depth, but it changes what the endpoint accepts.
+- Not verified: the pages in a real browser.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

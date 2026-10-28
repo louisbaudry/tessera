@@ -26,7 +26,7 @@ function renderLogin(message = '') {
       <label>Email<input type="email" name="email" required /></label>
       <label>Password<input type="password" name="password" required /></label>
       <button type="submit">Log in</button>
-      <p class="error" id="login-error">${message}</p>
+      <p class="error" id="login-error">${escapeHtml(message)}</p>
     </form>
   `;
   app.querySelector('#login-form').addEventListener('submit', async (e) => {
@@ -54,7 +54,7 @@ function renderLogin(message = '') {
 }
 
 function statusBadge(status) {
-  return `<span class="status ${status}">${status.replace('_', ' ')}</span>`;
+  return `<span class="status ${escapeHtml(status)}">${escapeHtml(String(status).replace('_', ' '))}</span>`;
 }
 
 function escapeHtml(s) {
@@ -94,7 +94,7 @@ function fileRows(files, downloadPath, withCounts = false, withChanged = false) 
         <td>${f.byteSize.toLocaleString()}</td>
         ${withCounts ? `<td>${f.wordCount == null ? '—' : f.wordCount.toLocaleString()}</td>` : ''}
         ${withChanged ? `<td>${changedCell(f)}</td>` : ''}
-        <td><button class="secondary" data-download="${downloadPath(f)}" data-filename="${escapeHtml(f.filename)}">Download</button></td>
+        <td><button class="secondary" data-download="${escapeHtml(downloadPath(f))}" data-filename="${escapeHtml(f.filename)}">Download</button></td>
       </tr>`,
     )
     .join('');
@@ -163,9 +163,9 @@ async function renderOrderDetail(id) {
   app.innerHTML = `
     <button class="secondary" id="back">&larr; All orders</button>
     <h2>Order #${order.id} ${statusBadge(order.status)}</h2>
-    <p>${order.srcLang} &rarr; ${order.tgtLangs.join(', ')}</p>
+    <p>${escapeHtml(order.srcLang)} &rarr; ${escapeHtml(order.tgtLangs.join(', '))}</p>
     ${order.previousOrderId == null ? '' : `<p>Update of order <a href="#" id="previous-order">#${order.previousOrderId}</a>: the figure below counts only new or changed sentences.</p>`}
-    <p class="muted">${order.notes || ''}</p>
+    <p class="muted">${escapeHtml(order.notes || '')}</p>
 
     <div class="card">
       <label>Word count</label>
@@ -216,7 +216,7 @@ async function renderOrderDetail(id) {
     <h2>History</h2>
     <table>
       <tr><th>When</th><th>From</th><th>To</th><th>Note</th></tr>
-      ${events.map((e) => `<tr><td>${e.createdAt}</td><td>${e.fromStatus ?? '—'}</td><td>${e.toStatus}</td><td>${e.note ?? ''}</td></tr>`).join('')}
+      ${events.map((e) => `<tr><td>${escapeHtml(e.createdAt)}</td><td>${escapeHtml(e.fromStatus ?? '—')}</td><td>${escapeHtml(e.toStatus)}</td><td>${escapeHtml(e.note ?? '')}</td></tr>`).join('')}
     </table>
   `;
 
@@ -244,7 +244,8 @@ async function renderOrderDetail(id) {
   statusButtons.innerHTML = next.length
     ? next
         .map(
-          (s) => `<button data-status="${s}" style="margin-right:0.5rem">${s}</button>`,
+          (s) =>
+            `<button data-status="${escapeHtml(s)}" style="margin-right:0.5rem">${escapeHtml(s)}</button>`,
         )
         .join('')
     : '<span class="muted">terminal status</span>';
@@ -321,7 +322,7 @@ async function renderOrderList() {
   try {
     orders = await api('/api/admin/orders');
   } catch (err) {
-    app.innerHTML = `<p class="error">${err.message}</p>`;
+    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     return;
   }
 
@@ -337,7 +338,7 @@ async function renderOrderList() {
         <tr data-open="${o.id}" style="cursor:pointer">
           <td>${o.id}</td>
           <td>client #${o.clientId}</td>
-          <td>${o.srcLang} → ${o.tgtLangs.join(', ')}</td>
+          <td>${escapeHtml(o.srcLang)} → ${escapeHtml(o.tgtLangs.join(', '))}</td>
           <td>${statusBadge(o.status)}</td>
           <td>${o.wordCount ?? 'pending'}</td>
           <td>${money(o.price)}</td>

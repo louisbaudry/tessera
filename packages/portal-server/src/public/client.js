@@ -25,7 +25,7 @@ async function api(path, options = {}) {
 }
 
 function statusBadge(status) {
-  return `<span class="status ${status}">${status.replace('_', ' ')}</span>`;
+  return `<span class="status ${escapeHtml(status)}">${escapeHtml(String(status).replace('_', ' '))}</span>`;
 }
 
 function money(n) {
@@ -81,7 +81,7 @@ function fileRows(files, downloadPath) {
         <td>${f.byteSize.toLocaleString()} bytes</td>
         <td>${
           downloadPath
-            ? `<button class="secondary" data-download="${downloadPath(f)}" data-filename="${escapeHtml(f.filename)}">Download</button>`
+            ? `<button class="secondary" data-download="${escapeHtml(downloadPath(f))}" data-filename="${escapeHtml(f.filename)}">Download</button>`
             : ''
         }</td>
       </tr>`,
@@ -152,8 +152,8 @@ function resourcesSection(resources) {
       .map(
         (r) => `<div class="card">
           <strong>${escapeHtml(r.name)}</strong>
-          <div class="muted">${labels[r.kind]}</div>
-          <button class="secondary" data-download="/api/client/resources/${r.kind}/export"
+          <div class="muted">${escapeHtml(labels[r.kind] ?? r.kind)}</div>
+          <button class="secondary" data-download="/api/client/resources/${escapeHtml(r.kind)}/export"
             data-filename="${escapeHtml(r.filename)}">Download</button>
         </div>`,
       )
@@ -176,12 +176,12 @@ async function renderHome() {
       api('/api/client/resources'),
     ]);
   } catch (err) {
-    app.innerHTML = `<p class="error">${err.message}</p>`;
+    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     return;
   }
 
   app.innerHTML = `
-    <p>Welcome, ${me.name}.</p>
+    <p>Welcome, ${escapeHtml(me.name)}.</p>
 
     <h2>New translation request</h2>
     <form id="new-order">
@@ -255,7 +255,7 @@ async function renderHome() {
       .map(
         (o) => `
       <div class="card">
-        <strong>#${o.id}</strong> ${o.srcLang} → ${o.tgtLangs.join(', ')}
+        <strong>#${o.id}</strong> ${escapeHtml(o.srcLang)} → ${escapeHtml(o.tgtLangs.join(', '))}
         ${statusBadge(o.status)}${o.previousOrderId == null ? '' : ` <span class="muted">update of #${o.previousOrderId}</span>`}
         <div class="muted">Words: ${o.wordCount ?? 'estimate pending'} · Price: ${money(o.price)}</div>
         ${
