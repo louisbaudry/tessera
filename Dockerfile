@@ -27,7 +27,25 @@ RUN pnpm install --frozen-lockfile \
  # packages copied in as built. `--no-optional` leaves out the bench's
  # approximate vector index (hnswlib-node, a node-gyp build the server
  # never loads).
- && pnpm --filter @cat-tool/server deploy --prod --no-optional --legacy /app
+ && pnpm --filter @cat-tool/server deploy --prod --no-optional --legacy /app \
+ && pnpm --filter @cat-tool/portal-server deploy --prod --no-optional --legacy /portal-app
+
+# The client portal (portal-v0-spec.md, issue #325): a second image from the same
+# build, selected with `--target portal`. It is NOT the last stage, so a plain
+# `docker build .` still produces the CAT server below. Its own volume holds
+# portal.sqlite and the uploads; HTTPS is the proxy's, as for the CAT server.
+FROM node:22-bookworm-slim AS portal
+ENV NODE_ENV=production \
+    PORTAL_PORT=3300 \
+    PORTAL_DB_PATH=/data/portal.sqlite \
+    PORTAL_STORAGE_ROOT=/data/storage
+WORKDIR /app
+COPY --from=build /portal-app ./
+RUN mkdir -p /data && chown node:node /data
+USER node
+VOLUME /data
+EXPOSE 3300
+CMD ["node", "dist/main.js"]
 
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production \

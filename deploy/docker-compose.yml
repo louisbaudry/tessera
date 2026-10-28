@@ -19,11 +19,36 @@ services:
     # the draft engine is unavailable, which is what a deployment with no
     # client consent on file must do (CLAUDE.md, "The draft engine").
 
+  # The client portal (issue #325): the same host as the app, reached by the paths the
+  # Caddyfile sends it. Its own volume holds portal.sqlite and the uploads.
+  portal:
+    build:
+      context: ..
+      target: portal
+    restart: unless-stopped
+    expose:
+      - '3300'
+    volumes:
+      - portal_data:/data
+    environment:
+      # The name the portal pages show (empty: "Translation Portal").
+      PORTAL_DISPLAY_NAME: ${PORTAL_DISPLAY_NAME:-}
+      # Mail is off until PORTAL_SMTP_HOST is set; until then notifications go to the log.
+      # The port and secure flag need real defaults: an empty value would read as port 0.
+      PORTAL_SMTP_HOST: ${PORTAL_SMTP_HOST:-}
+      PORTAL_SMTP_PORT: ${PORTAL_SMTP_PORT:-587}
+      PORTAL_SMTP_SECURE: ${PORTAL_SMTP_SECURE:-false}
+      PORTAL_SMTP_USER: ${PORTAL_SMTP_USER:-}
+      PORTAL_SMTP_PASS: ${PORTAL_SMTP_PASS:-}
+      PORTAL_SMTP_FROM: ${PORTAL_SMTP_FROM:-}
+      PORTAL_ADMIN_EMAIL: ${PORTAL_ADMIN_EMAIL:-}
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on:
       - tessera
+      - portal
     ports:
       - '80:80'
       - '443:443'
@@ -39,5 +64,6 @@ services:
 
 volumes:
   tessera_data:
+  portal_data:
   caddy_data:
   caddy_config:

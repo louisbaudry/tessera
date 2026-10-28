@@ -192,3 +192,28 @@ jobs:
 
       - name: Build and smoke-test the image
         run: scripts/smoke-image.sh
+
+      # The deploy files themselves (issue #325): the real compose file and Caddyfile, with
+      # Caddy on plain HTTP so no certificate is needed. A path that went to the wrong app
+      # would otherwise show only on the host.
+      - name: Compose and Caddy route the portal and the app to the right place
+        run: |
+          set -euo pipefail
+          cd deploy
+          echo 'SITE_ADDRESS=http://localhost' > .env
+          docker compose config --quiet
+          docker compose up -d --build
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost/client.html >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://localhost/client.html | grep -q '<h1>Translation Portal</h1>'
+          curl -fsS http://localhost/admin.html | grep -q 'Translation Portal'
+          curl -fsS http://localhost/ | grep -q '<div id="root">'
+          # CAT-side API: the CAT app's own gate answers.
+          curl -s http://localhost/api/me | grep -q 'expired session'
+          # Portal-side API: the portal answers, not the CAT app.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api/client/me)" = 401
+          ! curl -s http://localhost/api/admin/orders | grep -q 'expired session'
+          ! curl -s http://localhost/api/client/me | grep -q 'expired session'
+          docker compose down -v
