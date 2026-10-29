@@ -112,13 +112,14 @@ repo. Read the repo's section before changing how it is hosted, built or
 deployed.
 
 - **What counts as an infrastructure change:** hosting provider, server,
-  region or OS; containers, Compose files, Dockerfile base image, runtime
-  or language major version; reverse proxy or TLS; database engine,
-  version, host or Supabase project; storage buckets; backups; CI or CD
-  workflows and the deploy mechanism; container or package registry;
-  scheduled jobs; domains and DNS; external service providers; where
-  secrets live; environments. Creating, moving, archiving or retiring a
-  repo that has any of these counts too.
+  server size (vCPU, memory, disk), region or OS; containers, Compose
+  files, Dockerfile base image, runtime or language major version;
+  reverse proxy or TLS; database engine, version, host or Supabase
+  project; storage buckets; backups; CI or CD workflows and the deploy
+  mechanism; container or package registry; scheduled jobs; domains and
+  DNS; external service providers; where secrets live; environments.
+  Creating, moving, archiving or retiring a repo that has any of these
+  counts too.
 - **When:** in the same session as the change, before calling the work
   done. The repo's PR carries one line, either "Infrastructure: updated,
   with the link to the claude-shared PR" or "Infrastructure: no change".
