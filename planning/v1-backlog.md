@@ -4844,6 +4844,26 @@ image, no service and no route. The operator chose one address for both. What it
   build, the smoke test (portal part: page, neutral name, admin login, a client's token, restart) and the
   Caddy routing run only in the image job. Not verified: anything on the real host.
 
+**#219 · ~~Admin screens for clients and rates~~ · DONE — `portal-server/src/{admin-input.ts,app.ts}`, `public/admin.js`, `portal-v0-spec.md` §9b** (2026-10-29; card #328, Epic 10a)
+
+Setting up the first client showed that the admin page could not create a client or a rate, only the API could,
+and the operator wanted to do it in the browser. What it taught:
+
+- **A form turns a quiet gap into a visible one.** Both routes took `req.body` on trust: a missing name or a
+  repeated address was a database error and a 500. They now check their input (`admin-input.ts`, pure, tested
+  alone) and say what is wrong; a duplicate address is a 409. Rates need two different language tags, a per-word
+  price above zero and a minimum of zero or more.
+- **The private link is built in the browser** from `location.origin` and the client's token, so the screen
+  needs no new route and no server idea of its own public address. Two layers keep it out of markup: the token
+  is percent-encoded and the whole value is escaped. Mutating either one alone leaves the test green (the other
+  still holds), which is the point of two; the test fails only if both go.
+- **The harness from #323 paid for itself.** `pages.test.ts` loads the real `admin.js` against a stub browser,
+  so the new screens' escaping, the link, and the navigation on every list screen are asserted without a DOM
+  library. Removing the client name's escape fails it; removing the duplicate check fails the route test.
+- **No currency symbol on the new screens**: the older ones still print `$` (#327), so the new numbers are bare.
+- Not built: editing or deleting a client or a rate (a token must not change under a link already sent), a
+  currency, mailing the link. Not verified: the screens in a real browser.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the
