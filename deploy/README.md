@@ -64,10 +64,9 @@ Portal"), then `docker compose up -d`. **Mail is off by default**: notifications
 log (`docker compose logs portal`). To turn mail on set `PORTAL_SMTP_HOST`, `PORTAL_SMTP_FROM`
 and `PORTAL_ADMIN_EMAIL` together; a host without a sender refuses to start.
 
-**The admin and the first client.** The admin page has no screen for creating clients or
-rates yet, only API routes, so these are `curl` calls. Passwords are read into a variable and
-piped, so they appear in no command line, shell history or process list. Never put one in a chat,
-an issue or a file in the repository.
+**The admin and the first client.** Create the portal admin once, on the host. The password is read into a
+variable, so it appears in no command line or history; never put one in a chat, an issue or a file in the
+repository:
 
 ```sh
 cd tessera/deploy
@@ -75,30 +74,19 @@ read -rsp 'Admin password: ' PW; echo
 docker compose run --rm portal node dist/create-admin.js you@example.com "$PW"; unset PW
 ```
 
-Then, from any machine, with `SITE=https://<SITE_ADDRESS>`:
+Then everything else is in the browser. Sign in at `https://<SITE_ADDRESS>/admin.html`:
 
-```sh
-SITE=https://tessera.example.com
-read -rsp 'Admin password: ' PW; echo
-TOKEN=$(printf '{"email":"you@example.com","password":"%s"}' "$PW" \
-  | curl -fsS -X POST "$SITE/api/admin/login" -H 'content-type: application/json' -d @- \
-  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'); unset PW
+- **Rates** (issue #328): add one row per language pair a client may order (codes such as `en`, `es`, `pt-BR`,
+  a price per word and a minimum price for a job). A client can only choose pairs that have a rate. Saving a
+  pair that exists updates it.
+- **Clients**: add a client by name and email address. The page then shows that client's **private link**
+  (`/client.html#token=...`); the **Copy link** button on each row shows it again. The link is the client's
+  whole credential: send it only to them. The portal mails nothing without SMTP, so you send it yourself.
+- **Orders**: a client's requests, to price and deliver as before.
 
-# a rate (per source and target language, per word)
-curl -fsS -X POST "$SITE/api/admin/rates" -H "authorization: Bearer $TOKEN" \
-  -H 'content-type: application/json' \
-  -d '{"srcLang":"en","tgtLang":"es","ratePerWord":0.1,"minimumPrice":40}'
-
-# a client: the reply holds "accessToken", the client's whole credential
-curl -fsS -X POST "$SITE/api/admin/clients" -H "authorization: Bearer $TOKEN" \
-  -H 'content-type: application/json' \
-  -d '{"name":"Client name","email":"client@example.com"}'
-```
-
-The client's private link is `$SITE/client.html#token=<accessToken>`. Send it to them yourself
-(the portal mails nothing without SMTP). The admin signs in at `$SITE/admin.html`. The language
-codes in a rate must match what the client picks, and a client can only choose languages that
-have a rate.
+The two screens use the routes `POST /api/admin/clients` and `POST /api/admin/rates`, which check their input
+(a duplicate address is refused). Neither screen edits or deletes yet. Prices still show a `$` whatever the
+currency (issue #327).
 
 ## Done when (issue 21)
 
@@ -151,8 +139,8 @@ reloads the file.
 - **No registry, no automatic deploy.** The image is built on the host from a checkout.
   A published image and a deploy workflow are a later card, once there is more than one
   host or more than one person deploying.
-- **No portal screen for clients and rates, and no portal mail by default.** See the portal
-  section above; both are separate cards.
+- **No portal mail by default**, and no way yet to edit or delete a client or a rate. See the
+  portal section above.
 - **No signup.** There is no registration endpoint; accounts exist only because this script ran on the host
   (`v1-spec.md` §4.1a). A second account is the same command with another email.
 

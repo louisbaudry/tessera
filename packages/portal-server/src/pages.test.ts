@@ -64,7 +64,7 @@ async function loadPage(
     document: { getElementById: () => app, createElement: () => element() },
     sessionStorage: store({ ...storage }),
     localStorage: store({ ...storage }),
-    location: { hash: '' },
+    location: { hash: '', origin: 'https://portal.test' },
     Option: class {},
     console,
     fetch: async (path: string) => {
@@ -144,6 +144,69 @@ describe('the admin page', () => {
       { portal_admin_token: 't' },
     );
     expectOnlyText(renders, ['err']);
+  });
+});
+
+describe('the admin clients and rates screens (issue #328)', () => {
+  const pwnClient = {
+    id: 3,
+    name: PWN('name'),
+    email: 'c@example.com',
+    accessToken: 'tok-abc_123',
+  };
+  const pwnRate = {
+    srcLang: PWN('src'),
+    tgtLang: PWN('tgt'),
+    ratePerWord: 0.1,
+    minimumPrice: 20,
+    minWordsPerFile: 0,
+  };
+  const canned: Canned = {
+    '/api/admin/clients': { json: [pwnClient] },
+    '/api/admin/rates': { json: [pwnRate] },
+  };
+
+  it('shows a client as text, and a new client’s link built from the page’s address and the token', async () => {
+    const { renders, context } = await loadPage('admin.js', canned, {
+      portal_admin_token: 't',
+    });
+    await (context.renderClients as (made?: unknown) => Promise<void>)(pwnClient);
+    expectOnlyText(renders, ['name']);
+    const page = renders.at(-1)!;
+    expect(page).toContain('value="https://portal.test/client.html#token=tok-abc_123"');
+    expect(page).toContain('id="new-client"');
+  });
+
+  it('keeps a hostile token out of the link’s markup', async () => {
+    const { renders, context } = await loadPage('admin.js', canned, {
+      portal_admin_token: 't',
+    });
+    const hostile = { ...pwnClient, accessToken: '"><i data-pwn="tok">' };
+    await (context.renderClients as (made?: unknown) => Promise<void>)(hostile);
+    expect(renders.at(-1)).not.toContain('<i data-pwn="tok"');
+  });
+
+  it('shows rates as text', async () => {
+    const { renders, context } = await loadPage('admin.js', canned, {
+      portal_admin_token: 't',
+    });
+    await (context.renderRates as () => Promise<void>)();
+    expectOnlyText(renders, ['src', 'tgt']);
+    expect(renders.at(-1)).toContain('id="new-rate"');
+  });
+
+  it('puts the same navigation on every list screen', async () => {
+    const { renders, context } = await loadPage('admin.js', canned, {
+      portal_admin_token: 't',
+    });
+    await (context.renderClients as () => Promise<void>)();
+    await (context.renderRates as () => Promise<void>)();
+    for (const html of renders.slice(-2)) {
+      for (const tab of ['orders', 'clients', 'rates']) {
+        expect(html).toContain(`data-nav="${tab}"`);
+      }
+      expect(html).toContain('id="logout"');
+    }
   });
 });
 

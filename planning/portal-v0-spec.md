@@ -457,6 +457,26 @@ over that tenant's own file and folder. What is new is only how a request finds 
 - **Mail is the tenant's.** The SMTP transport is the operator's, shared; `from` and the admin's address
   are per tenant, so a tenant's clients are mailed in its name.
 
+## 9b. Admin screens for clients and rates (issue #328, 2026-10-29)
+
+The admin page lists and prices orders; until now a client and a rate could only be made with API
+calls. The page gains a navigation bar and two screens over the routes that already existed
+(`GET`/`POST /api/admin/clients`, `GET`/`POST /api/admin/rates`):
+
+- **Clients.** A table of clients and a form (name, address). Each row can show and copy that client's
+  private link, `<page origin>/client.html#token=<access token>`, built in the browser from the client's
+  token, which the admin routes already return. The link is the client's whole credential (§7), so it is
+  shown to the admin and nowhere else, and the portal mails it to no one.
+- **Rates.** A table and a form (source language, target language, per word, minimum price, minimum words
+  per file). Saving a pair that exists updates it. Values carry no currency symbol, because the pages still
+  assume one (#327).
+- **The two routes now check their input**, which a form makes necessary: a client needs a name (at most
+  200 characters) and an address that has the shape of one (at most 254), and a duplicate address is a 409
+  rather than a 500; a rate needs two different language tags (`en`, `pt-BR`), a per-word rate above zero and
+  a minimum price of zero or more, both finite. Neither screen edits or deletes: a client's token must not
+  change under a link already sent, and a rate is one row per pair that saving overwrites.
+- Not here: a currency (#327), mailing the link, editing or deleting a client.
+
 ## 10. A client plan: a monthly word allowance (idea #220, designed, not built)
 
 Decided 2026-10-11 (Louis): this feature is written down now and built when

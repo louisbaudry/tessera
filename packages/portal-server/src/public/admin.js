@@ -327,7 +327,7 @@ async function renderOrderList() {
   }
 
   app.innerHTML = `
-    <button class="secondary" id="logout" style="float:right">Log out</button>
+    ${navHtml('orders')}
     <h2>All orders</h2>
     <table>
       <tr><th>#</th><th>Client</th><th>Languages</th><th>Status</th><th>Words</th><th>Price</th></tr>
@@ -351,6 +351,25 @@ async function renderOrderList() {
   app.querySelectorAll('[data-open]').forEach((row) => {
     row.addEventListener('click', () => renderOrderDetail(row.dataset.open));
   });
+  wireNav();
+}
+
+/** The navigation bar every list screen shares, with the log-out button. */
+function navHtml(active) {
+  const tab = (id, label) =>
+    `<button class="${active === id ? '' : 'secondary'}" data-nav="${id}">${label}</button>`;
+  return `<div style="margin-bottom:1rem">
+    ${tab('orders', 'Orders')} ${tab('clients', 'Clients')} ${tab('rates', 'Rates')}
+    <button class="secondary" id="logout" style="float:right">Log out</button>
+  </div>`;
+}
+
+/** Makes the bar `navHtml` drew work. Call it after setting `app.innerHTML`. */
+function wireNav() {
+  const screens = { orders: renderOrderList, clients: renderClients, rates: renderRates };
+  app.querySelectorAll('[data-nav]').forEach((btn) => {
+    btn.addEventListener('click', () => screens[btn.dataset.nav]());
+  });
   app.querySelector('#logout').addEventListener('click', async () => {
     await fetch('/api/admin/logout', {
       method: 'POST',
@@ -359,6 +378,160 @@ async function renderOrderList() {
     sessionStorage.removeItem('portal_admin_token');
     token = null;
     renderLogin();
+  });
+}
+
+/** A client's private link: the page's own address and the client's token (portal-v0-spec.md §9b). */
+function clientLink(client) {
+  return `${location.origin}/client.html#token=${encodeURIComponent(client.accessToken)}`;
+}
+
+async function postJson(path, body) {
+  return api(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Clients: who can use the portal, and each one's private link. `justMade` is a client just added. */
+async function renderClients(justMade) {
+  let clients;
+  try {
+    clients = await api('/api/admin/clients');
+  } catch (err) {
+    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  app.innerHTML = `
+    ${navHtml('clients')}
+    <h2>Clients</h2>
+    ${
+      justMade
+        ? `<div class="card">
+        <strong>${escapeHtml(justMade.name)}</strong> was added. Send them this private link. It is
+        their only credential, so send it only to them.
+        <input readonly id="new-link" value="${escapeHtml(clientLink(justMade))}" style="width:100%; margin-top:0.5rem" />
+      </div>`
+        : ''
+    }
+    <table>
+      <tr><th>#</th><th>Name</th><th>Email</th><th>Private link</th></tr>
+      ${
+        clients
+          .map(
+            (c) => `<tr>
+          <td>${c.id}</td>
+          <td>${escapeHtml(c.name)}</td>
+          <td>${escapeHtml(c.email)}</td>
+          <td><button class="secondary" data-copy="${c.id}">Copy link</button></td>
+        </tr>`,
+          )
+          .join('') || '<tr><td colspan="4" class="muted">No clients yet.</td></tr>'
+      }
+    </table>
+
+    <h3>Add a client</h3>
+    <form id="new-client" class="card" style="max-width:28rem">
+      <label>Name<input name="name" required maxlength="200" /></label>
+      <label>Email<input type="email" name="email" required maxlength="254" /></label>
+      <button type="submit">Add client</button>
+      <p class="error" id="client-error"></p>
+    </form>
+  `;
+  wireNav();
+  const newLink = app.querySelector('#new-link');
+  if (newLink) newLink.addEventListener('focus', () => newLink.select());
+  app.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const client = clients.find((c) => String(c.id) === btn.dataset.copy);
+      const link = clientLink(client);
+      try {
+        await navigator.clipboard.writeText(link);
+        btn.textContent = 'Copied';
+      } catch {
+        // No clipboard (an insecure context, a denied permission): show it to copy by hand.
+        window.prompt("Copy this client's private link:", link);
+      }
+    });
+  });
+  app.querySelector('#new-client').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = app.querySelector('#client-error');
+    errorEl.textContent = '';
+    try {
+      const created = await postJson('/api/admin/clients', {
+        name: e.target.name.value,
+        email: e.target.email.value,
+      });
+      renderClients(created);
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  });
+}
+
+/** Rates: the language pairs a client can order, and what each costs. Saving a pair that exists updates it. */
+async function renderRates() {
+  let rates;
+  try {
+    rates = await api('/api/admin/rates');
+  } catch (err) {
+    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  app.innerHTML = `
+    ${navHtml('rates')}
+    <h2>Rates</h2>
+    <p class="muted">A client can order only the language pairs listed here.</p>
+    <table>
+      <tr><th>From</th><th>To</th><th>Per word</th><th>Minimum price</th><th>Minimum words per file</th></tr>
+      ${
+        rates
+          .map(
+            (r) => `<tr>
+          <td>${escapeHtml(r.srcLang)}</td>
+          <td>${escapeHtml(r.tgtLang)}</td>
+          <td>${escapeHtml(r.ratePerWord)}</td>
+          <td>${escapeHtml(r.minimumPrice)}</td>
+          <td>${escapeHtml(r.minWordsPerFile ?? 0)}</td>
+        </tr>`,
+          )
+          .join('') || '<tr><td colspan="5" class="muted">No rates yet.</td></tr>'
+      }
+    </table>
+
+    <h3>Add or change a rate</h3>
+    <form id="new-rate" class="card" style="max-width:28rem">
+      <label>From (language code, such as en)<input name="srcLang" required /></label>
+      <label>To (language code, such as es or pt-BR)<input name="tgtLang" required /></label>
+      <label>Price per word<input type="number" name="ratePerWord" min="0" step="any" required /></label>
+      <label>Minimum price for a job<input type="number" name="minimumPrice" min="0" step="any" required /></label>
+      <label>Minimum words counted per file (optional, 0 is off)<input type="number" name="minWordsPerFile" min="0" step="1" /></label>
+      <button type="submit">Save rate</button>
+      <p class="error" id="rate-error"></p>
+    </form>
+  `;
+  wireNav();
+  app.querySelector('#new-rate').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = app.querySelector('#rate-error');
+    errorEl.textContent = '';
+    const f = e.target;
+    const body = {
+      srcLang: f.srcLang.value,
+      tgtLang: f.tgtLang.value,
+      ratePerWord: Number(f.ratePerWord.value),
+      minimumPrice: Number(f.minimumPrice.value),
+    };
+    if (f.minWordsPerFile.value !== '')
+      body.minWordsPerFile = Number(f.minWordsPerFile.value);
+    try {
+      await postJson('/api/admin/rates', body);
+      renderRates();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
   });
 }
 

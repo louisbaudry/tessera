@@ -1430,3 +1430,99 @@ describe('a minimum per file (portal-v0-spec.md §4b; idea #222)', () => {
     });
   });
 });
+
+describe('the admin creates clients and rates (portal-v0-spec.md §9b; issue #328)', () => {
+  const post = (admin: string, url: string, payload: unknown) =>
+    app.inject({ method: 'POST', url, headers: auth(admin), payload: payload as object });
+
+  it('makes a client whose token reads them back, and lists it', async () => {
+    const admin = await adminLogin();
+    const made = await post(admin, '/api/admin/clients', {
+      name: '  New Org  ',
+      email: ' new@example.com ',
+    });
+    expect(made.statusCode, made.body).toBe(200);
+    const client = made.json() as {
+      id: number;
+      name: string;
+      email: string;
+      accessToken: string;
+    };
+    expect(client).toMatchObject({ name: 'New Org', email: 'new@example.com' });
+    expect(client.accessToken.length).toBeGreaterThanOrEqual(20);
+    const me = await app.inject({
+      method: 'GET',
+      url: '/api/client/me',
+      headers: auth(client.accessToken),
+    });
+    expect(me.json()).toMatchObject({ name: 'New Org' });
+    const list = (
+      await app.inject({ method: 'GET', url: '/api/admin/clients', headers: auth(admin) })
+    ).json() as Array<{ id: number }>;
+    expect(list.map((c) => c.id)).toContain(client.id);
+  });
+
+  it('refuses a bad client with a message, and a repeated address with a 409, not a 500', async () => {
+    const admin = await adminLogin();
+    for (const bad of [
+      {},
+      { name: 'x' },
+      { name: 'x', email: 'nobody' },
+      { email: 'a@b.co' },
+    ]) {
+      const res = await post(admin, '/api/admin/clients', bad);
+      expect(res.statusCode, JSON.stringify(bad)).toBe(400);
+      expect(res.json()).toHaveProperty('error');
+    }
+    const first = await post(admin, '/api/admin/clients', {
+      name: 'A',
+      email: 'dup@example.com',
+    });
+    expect(first.statusCode).toBe(200);
+    const again = await post(admin, '/api/admin/clients', {
+      name: 'B',
+      email: 'dup@example.com',
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: expect.stringMatching(/already exists/) });
+  });
+
+  it('saves a rate, updates the same pair, and refuses a malformed one without writing', async () => {
+    const admin = await adminLogin();
+    const before = (
+      await app.inject({ method: 'GET', url: '/api/admin/rates', headers: auth(admin) })
+    ).json() as unknown[];
+    const good = { srcLang: 'en', tgtLang: 'pt-BR', ratePerWord: 0.12, minimumPrice: 30 };
+    const saved = await post(admin, '/api/admin/rates', good);
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect(saved.json()).toHaveLength(before.length + 1);
+    const updated = await post(admin, '/api/admin/rates', { ...good, ratePerWord: 0.2 });
+    const rows = updated.json() as Array<{ tgtLang: string; ratePerWord: number }>;
+    expect(rows).toHaveLength(before.length + 1);
+    expect(rows.find((r) => r.tgtLang === 'pt-BR')?.ratePerWord).toBe(0.2);
+    for (const bad of [
+      { ...good, srcLang: '<i>' },
+      { ...good, tgtLang: 'en' },
+      { ...good, ratePerWord: 0 },
+      { ...good, ratePerWord: '0.1' },
+      { ...good, minimumPrice: -1 },
+      {},
+    ]) {
+      const res = await post(admin, '/api/admin/rates', bad);
+      expect(res.statusCode, JSON.stringify(bad)).toBe(400);
+    }
+    const after = (
+      await app.inject({ method: 'GET', url: '/api/admin/rates', headers: auth(admin) })
+    ).json() as unknown[];
+    expect(after).toHaveLength(before.length + 1);
+  });
+
+  it('is the admin’s alone', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/clients',
+      payload: { name: 'x', email: 'x@example.com' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

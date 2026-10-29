@@ -85,6 +85,7 @@ import Fastify, {
 
 import type { TenantPortalConfig } from './tenants.js';
 import { SmtpNotificationService } from './notification/smtp.js';
+import { checkClientInput, checkRateInput } from './admin-input.js';
 import { DEFAULT_PORTAL_NAME, renderPortalPage } from './page.js';
 import {
   attachmentDisposition,
@@ -918,23 +919,31 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.get('/api/admin/clients', async () => listClients(db));
 
-  app.post('/api/admin/clients', async (req) => {
-    const body = req.body as { name: string; email: string };
-    return createClient(db, body.name, body.email);
+  app.post('/api/admin/clients', async (req, reply) => {
+    const input = checkClientInput(req.body);
+    if ('problem' in input) return reply.code(400).send({ error: input.problem });
+    try {
+      return createClient(db, input.name, input.email);
+    } catch (err) {
+      // `client.email` is UNIQUE: say so, rather than a 500 for a form's most likely mistake.
+      if ((err as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') {
+        return reply
+          .code(409)
+          .send({ error: 'a client with this email address already exists' });
+      }
+      throw err;
+    }
   });
 
   app.get('/api/admin/rates', async () => listRates(db));
 
   app.post('/api/admin/rates', async (req, reply) => {
-    const body = req.body as {
-      srcLang: string;
-      tgtLang: string;
-      ratePerWord: number;
-      minimumPrice: number;
+    const input = checkRateInput(req.body);
+    if ('problem' in input) return reply.code(400).send({ error: input.problem });
+    const { minWordsPerFile } = (req.body ?? {}) as {
       /** Words a file counts as at least when priced; 0 or absent is off (§4b). */
       minWordsPerFile?: unknown;
     };
-    const { minWordsPerFile } = body;
     if (
       minWordsPerFile !== undefined &&
       (typeof minWordsPerFile !== 'number' ||
@@ -945,13 +954,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         .code(400)
         .send({ error: 'minWordsPerFile must be a non-negative whole number' });
     }
-    setRate(db, {
-      srcLang: body.srcLang,
-      tgtLang: body.tgtLang,
-      ratePerWord: body.ratePerWord,
-      minimumPrice: body.minimumPrice,
-      minWordsPerFile,
-    });
+    setRate(db, { ...input, minWordsPerFile });
     return listRates(db);
   });
 
