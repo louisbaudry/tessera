@@ -21,7 +21,8 @@ built and what it taught) and the repo's open GitHub issues (what's
 next — one per open backlog entry, labelled by epic and size), then the
 specific spec section for whatever you're about to touch
 (`v1-spec.md`, `tm-format-spec.md`, `segmentation-spec.md`,
-`ai-platform-vision.md`, `smart-glossary-spec.md`). Don't start
+`ai-platform-vision.md`, `smart-glossary-spec.md`,
+`software-localisation-spec.md` for the keyed-strings scenario). Don't start
 implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
