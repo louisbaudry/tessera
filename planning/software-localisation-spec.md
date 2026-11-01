@@ -1,6 +1,6 @@
 # Software localisation — the first real scenario (spec)
 
-Status: **proposal, 2026-10-31. Nothing is built, no card is filed, and no decision in §7 is taken.** Written from
+Status: **proposal, 2026-10-31. Nothing is built and no card is filed. The six decisions in §7 were taken by Louis on 2026-11-01, each as recommended, except D3, where he chose the first-round option (c).** Written from
 Louis's request: the OSINT Workbench (`louisbaudry/osint`, his own application, public) needs a multilingual
 interface, and translating that interface should be the first real scenario for Tessera. The workbench's side is
 `docs/INTERFACE_LOCALISATION.md` in that repository; the two are written to be read together and meet at **a file**
@@ -136,7 +136,7 @@ A round is one language and one release of the workbench's catalogue.
    reviewed and says so in its interface.
 
 ```xml
-<xliff xmlns="urn:oasis:names:tc:xliff:document:2.1" version="2.1" srcLang="en" trgLang="uk">
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.1" srcLang="en" trgLang="uk">
   <file id="f1">
     <unit id="saveButton" name="saveButton">
       <notes><note category="context">Button, case page toolbar. Imperative verb.</note></notes>
@@ -206,35 +206,43 @@ Each is one card, one branch, one PR, and each starts with the standing question
 
 The workbench's L1 to L5 do not wait on any of this, and S0 to S5 do not wait on the workbench.
 
-## 7. Decisions proposed (none taken)
+## 7. Decisions (taken by Louis, 2026-11-01)
+
+He answered each one in turn. D1, D2, D4, D5 and D6 are the recommended options; D3 is option (c) for the first round, which the recommendation allowed "only to shake out S1 to S4". Each decision below keeps its options and reasoning; the line headed **Taken** says which.
 
 **D1. Who the client is.** (a) Louis's own tenant with an internal client number; consent for the Tessera engine switched
 on for that client only (the text is public); DeepL left off until `uk`/`ru` rounds show a reason. (b) Human-only first,
 engine off. (c) A fresh tenant for the experiment. *Recommended: (a).* It is the consent gate and the purge under real
 conditions, with nothing at risk. (c) adds tenancy ceremony for no gain.
+**Taken: (a)** Louis's own tenant with an internal client number, the Tessera engine on for that client only, DeepL off.
 
 **D2. XLIFF only, for now.** (a) Rounds 1 and 2 use the existing XLIFF filter; a native JSON filter is decided after
 round 2 (S8). (b) Build the JSON filter first. *Recommended: (a).* It needs no new filter, the format is standard,
 and the friction that would justify a JSON filter is exactly what the rounds measure.
+**Taken: (a)** XLIFF through the existing filter for rounds 1 and 2; S8 decides on a native filter after round 2.
 
 **D3. How the reviewers are engaged.** (a) Native readers invited to the roster as vendors, offered an assignment,
 paid at a rate Louis sets (the real Epic 9 path, so it is under test). (b) Readers outside Tessera, working from the
 exported file in another tool. (c) Louis alone for the first round. *Recommended: (a) once a reader exists; (c) only to
 shake out S1 to S4.* (b) tests nothing about Tessera.
+**Taken: (c)** Louis alone for the first round, to shake out S1 to S4. Native readers as vendors (a) are the plan once a reader exists, and S6 is not the round that proves the vendor path.
 
 **D4. Plural and polysemy handling.** (a) S2 now, bounded to groups; key-scoped matching later if H2 shows polysemy
 errors. (b) Key-scoped matching from the start: a unit's `name` stored with each memory unit and an exact hit placed
 only where names agree. *Recommended: (a).* (b) changes the memory's contract (`tm-format-spec.md`) for a problem not yet
 counted.
+**Taken: (a)** S2 now, bounded to groups; key-scoped matching only if H2 shows polysemy errors.
 
 **D5. Working rhythm 6, Rust/WebAssembly.** The question is asked before each slice; nothing here is a hot kernel. The
 work is reading XML attributes, a prompt block, a CSV and a few SQL columns. *Recommended: stay in TypeScript for S0 to
 S5*, as D6 of the engine spec and §3.8 and §3.9 did, and reopen only on a `pnpm bench:tm` result. Louis's answer is
-needed before S1; this spec is not a stop because it builds nothing.
+needed before S1 (given: see Taken).
+**Taken:** stay in TypeScript for S0 to S5. Reopen only on a `pnpm bench:tm` result.
 
 **D6. Where the numbers live.** (a) `research/software-localisation/`, numbers only, the protocol of the other records.
 (b) Also keep the (public) strings and drafts there. *Recommended: (a).* One protocol, and the strings are already in
 the workbench's repository if anyone wants them.
+**Taken: (a)** `research/software-localisation/`, numbers only.
 
 ## 8. Not in this spec
 
