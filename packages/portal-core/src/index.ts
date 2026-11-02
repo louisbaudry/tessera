@@ -1,5 +1,7 @@
 export * from './auth.js';
 export { normaliseHost } from '@cat-tool/core';
+// What a currency is (issue #327), one definition in `@cat-tool/core`.
+export { isCurrencyCode } from '@cat-tool/core';
 export * from './order.js';
 export * from './pricing.js';
 export * from './word-count.js';

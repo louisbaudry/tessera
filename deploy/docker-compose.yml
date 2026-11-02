@@ -33,6 +33,8 @@ services:
     environment:
       # The name the portal pages show (empty: "Translation Portal").
       PORTAL_DISPLAY_NAME: ${PORTAL_DISPLAY_NAME:-}
+      # The ISO 4217 code of the portal's prices (empty: USD). Fixed once an order is priced.
+      PORTAL_CURRENCY: ${PORTAL_CURRENCY:-}
       # Mail is off until PORTAL_SMTP_HOST is set; until then notifications go to the log.
       # The port and secure flag need real defaults: an empty value would read as port 0.
       PORTAL_SMTP_HOST: ${PORTAL_SMTP_HOST:-}

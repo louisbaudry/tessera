@@ -29,6 +29,7 @@ async function loadPage(
   file: 'admin.js' | 'client.js',
   canned: Canned,
   storage: Record<string, string>,
+  currency: string | null = 'USD',
 ): Promise<{
   renders: string[];
   context: Record<string, (...args: unknown[]) => unknown>;
@@ -61,7 +62,15 @@ async function loadPage(
     removeItem: (k: string) => void delete init[k],
   });
   const sandbox = {
-    document: { getElementById: () => app, createElement: () => element() },
+    document: {
+      getElementById: () => app,
+      createElement: () => element(),
+      // the `<meta name="portal-currency">` the server fills (issue #327); absent when null
+      querySelector: (selector: string) =>
+        selector === 'meta[name="portal-currency"]' && currency !== null
+          ? { content: currency }
+          : null,
+    },
     sessionStorage: store({ ...storage }),
     localStorage: store({ ...storage }),
     location: { hash: '', origin: 'https://portal.test' },
@@ -239,5 +248,102 @@ describe('the client page', () => {
       { portal_client_token: 't' },
     );
     expectOnlyText(renders, ['err']);
+  });
+});
+
+describe('prices, in the portal’s currency (issue #327)', () => {
+  const priced = {
+    ...order,
+    srcLang: 'en',
+    tgtLangs: ['de'],
+    notes: null,
+    wordCount: 1000,
+    price: 1234.5,
+  };
+  const pricedDetail = { ...detail, order: priced, events: [] };
+  const amount = (n: number, currency: string) =>
+    new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
+
+  /** Every amount shows the configured currency, and no page writes a symbol of its own. */
+  function expectCurrency(renders: string[], currency: string): void {
+    const all = renders.join('\n');
+    expect(all).toContain(amount(1234.5, currency));
+    expect(all, 'a hard-coded dollar sign').not.toMatch(/\$\d/);
+  }
+
+  it('shows the client the currency in the list, on the approve button and in the order', async () => {
+    const { renders, context } = await loadPage(
+      'client.js',
+      {
+        '/api/client/me': { json: { id: 7, name: 'Client' } },
+        '/api/client/orders': { json: [priced] },
+        '/api/client/rates': { json: [] },
+        '/api/client/resources': { json: [] },
+        '/api/client/orders/1': { json: pricedDetail },
+      },
+      { portal_client_token: 't' },
+      'EUR',
+    );
+    const list = renders.join('\n');
+    expect(list).toMatch(
+      new RegExp(
+        `data-approve="1"[^>]*>Approve ${amount(1234.5, 'EUR').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}<`,
+      ),
+    );
+    await (context.renderOrderDetail as (id: number) => Promise<void>)(1);
+    expectCurrency(renders, 'EUR');
+  });
+
+  it('shows the admin the currency in the order list, the order and the rates', async () => {
+    const { renders, context } = await loadPage(
+      'admin.js',
+      {
+        '/api/admin/orders': { json: [priced] },
+        '/api/admin/orders/1': { json: pricedDetail },
+        '/api/admin/rates': {
+          json: [
+            {
+              srcLang: 'en',
+              tgtLang: 'de',
+              ratePerWord: 0.085,
+              minimumPrice: 1234.5,
+              minWordsPerFile: 0,
+            },
+          ],
+        },
+      },
+      { portal_admin_token: 't' },
+      'JPY',
+    );
+    await (context.renderOrderDetail as (id: number) => Promise<void>)(1);
+    await (context.renderRates as () => Promise<void>)();
+    expectCurrency(renders, 'JPY');
+    const rates = renders.at(-1)!;
+    // a per-word rate keeps the places it was set with, even in a currency with none
+    expect(rates).toContain(
+      new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: 'JPY',
+        maximumFractionDigits: 4,
+      }).format(0.085),
+    );
+    expect(rates).toContain('Price per word (JPY)');
+  });
+
+  it('shows a bare amount, never a guessed symbol, if the page carries no currency', async () => {
+    const { renders } = await loadPage(
+      'client.js',
+      {
+        '/api/client/me': { json: { id: 7, name: 'Client' } },
+        '/api/client/orders': { json: [priced] },
+        '/api/client/rates': { json: [] },
+        '/api/client/resources': { json: [] },
+      },
+      { portal_client_token: 't' },
+      null,
+    );
+    const all = renders.join('\n');
+    expect(all).toContain('1234.50');
+    expect(all).not.toMatch(/\$\d/);
   });
 });

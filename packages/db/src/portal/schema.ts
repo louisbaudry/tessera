@@ -341,4 +341,34 @@ const v8: Migration = {
   },
 };
 
-export const PORTAL_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7, v8];
+/**
+ * v9 — the currency the portal's prices are in (issue #327, `portal-v0-spec.md` §9c). One row,
+ * written at start from the configured code (`settlePortalCurrency`). A price is a bare number in
+ * `translation_order.price` and `rate`, so this row is what says which money it is; it may change
+ * only while no order has a price, because an approved price is the client's consent to that amount
+ * in that currency. No row is "never started since v9", which `settlePortalCurrency` fills.
+ */
+const v9: Migration = {
+  version: 9,
+  description: 'portal_currency: the currency of every price in the file (issue #327)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE portal_currency (
+        id   INTEGER PRIMARY KEY CHECK (id = 1),
+        code TEXT NOT NULL CHECK (length(code) = 3 AND code = upper(code))
+      );
+    `);
+  },
+};
+
+export const PORTAL_MIGRATIONS: readonly Migration[] = [
+  v1,
+  v2,
+  v3,
+  v4,
+  v5,
+  v6,
+  v7,
+  v8,
+  v9,
+];

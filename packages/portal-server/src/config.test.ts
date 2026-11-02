@@ -47,6 +47,15 @@ describe('loadConfig', () => {
     );
   });
 
+  it('reads the currency from PORTAL_CURRENCY, USD when unset, and refuses a code ISO does not list (issue #327)', () => {
+    expect(loadConfig({}).currency).toBe('USD');
+    expect(loadConfig({ PORTAL_CURRENCY: '  ' }).currency).toBe('USD');
+    expect(loadConfig({ PORTAL_CURRENCY: ' EUR ' }).currency).toBe('EUR');
+    for (const bad of ['eur', 'XYZ', '€']) {
+      expect(() => loadConfig({ PORTAL_CURRENCY: bad }), bad).toThrow(/ISO 4217/);
+    }
+  });
+
   it('reads the portal name from PORTAL_DISPLAY_NAME, trimmed, a blank one meaning none (issue #310)', () => {
     expect(loadConfig({}).displayName).toBeUndefined();
     expect(loadConfig({ PORTAL_DISPLAY_NAME: '   ' }).displayName).toBeUndefined();

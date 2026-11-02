@@ -59,7 +59,7 @@ and the clauses it meets go in the clause map (§5). Louis decided on
 | **ISO/IEC 29500** (Office Open XML) | DOCX and PPTX | Roundtrip gate byte-identical; differential validation with the Open XML SDK in CI (`v1-spec.md` §3.7). |
 | **ISO 30042:2019** (TBX) | Glossary exchange | **Missing.** Named and deferred in `smart-glossary-spec.md` §8. #336. |
 | **ISO 639 / ISO 15924 / ISO 3166** via **BCP 47** (IETF RFC 5646) | Language tags | Language tags are BCP 47, split once by `primarySubtag` (`core/model/lang.ts`). |
-| **ISO 4217** | Currency codes | Vendor ledger: three-letter code (`CHECK (length(currency) = 3)`), never converted. Portal shows `$` always: #327. A length check is not a code check; #327 should validate against the list. |
+| **ISO 4217** | Currency codes | Vendor ledger: three-letter code (`CHECK (length(currency) = 3)`), never converted. Portal (#327): one currency per portal, validated against the runtime's ISO 4217 list (`isCurrencyCode`, `core/model/currency.ts`), formatted with `Intl.NumberFormat`. The vendor ledger still checks length only; it can use the same function. |
 | **ISO 8601** | Timestamps in files and APIs | Timestamps written with `toISOString()` throughout `db` and the servers. |
 | **ISO/IEC 40500:2012** (WCAG 2.0) | Accessibility of the web app | Not audited. #193 (accessibility audit of the grid). Public-sector clients (a target sector, compliance spec §6) commonly require it; their rules usually cite WCAG 2.1, which is newer than 40500. |
 
@@ -94,7 +94,7 @@ Filed 2026-11-02 as `Idea:` issues:
 - #336, v1: TBX (ISO 30042) import and export for `.ctg`.
 
 And on existing cards: #171 carries the ISO 17100 revision step and the
-ISO 5060 scoring; #327 the ISO 4217 code list; #193 WCAG / ISO/IEC 40500.
+ISO 5060 scoring; #193 WCAG / ISO/IEC 40500. #327 (ISO 4217 in the portal) is built.
 
 ## 5. The clause map: how a spec is shown to meet a standard
 

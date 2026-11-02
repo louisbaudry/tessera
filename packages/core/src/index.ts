@@ -7,6 +7,7 @@ export * from './net/host.js';
 export * from './model/segment.js';
 export * from './model/file.js';
 export * from './model/csv.js';
+export * from './model/currency.js';
 export * from './model/qa.js';
 export * from './qa/rules.js';
 export * from './model/project.js';

@@ -5,6 +5,14 @@
  */
 import { resolve } from 'node:path';
 
+import { isCurrencyCode } from '@cat-tool/portal-core';
+
+/**
+ * The currency a portal's prices are in when nothing names one: what every price showed before
+ * issue #327, so a portal that sets nothing keeps the symbol its clients already saw.
+ */
+export const DEFAULT_PORTAL_CURRENCY = 'USD';
+
 /** What one portal's `SmtpNotificationService` is built from: the sender is always known. */
 export interface SmtpConfig {
   readonly host: string;
@@ -35,6 +43,12 @@ export interface PortalConfig {
   readonly tenantsFile?: string;
   /** The name the portal pages show; a tenant's own `displayName` wins (issue #310). */
   readonly displayName?: string;
+  /**
+   * The ISO 4217 code of the portal's prices (issue #327): `PORTAL_CURRENCY`, else
+   * `DEFAULT_PORTAL_CURRENCY`; a tenant's own `currency` wins. Recorded in the portal's file at
+   * start, and fixed there once an order has a price (`settlePortalCurrency`).
+   */
+  readonly currency: string;
   // Set only when PORTAL_SMTP_HOST is configured — absence is the signal
   // to fall back to ConsoleNotificationService (portal-v0-spec.md §5),
   // same "no real email adapter yet" default v0 shipped with.
@@ -50,8 +64,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PortalConfig {
     ...(env.PORTAL_DISPLAY_NAME?.trim()
       ? { displayName: env.PORTAL_DISPLAY_NAME.trim() }
       : {}),
+    currency: loadCurrency(env),
     smtp: loadSmtpConfig(env),
   };
+}
+
+function loadCurrency(env: NodeJS.ProcessEnv): string {
+  const code = env.PORTAL_CURRENCY?.trim();
+  if (!code) return DEFAULT_PORTAL_CURRENCY;
+  if (!isCurrencyCode(code)) {
+    throw new Error(
+      `PORTAL_CURRENCY is "${code}", which is not an ISO 4217 currency code such as EUR or USD.`,
+    );
+  }
+  return code;
 }
 
 function loadSmtpConfig(env: NodeJS.ProcessEnv): SharedSmtpConfig | undefined {

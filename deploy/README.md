@@ -60,7 +60,9 @@ browser. The known one is fixed (#323); if you would rather not rely on that, gi
 portal its own name later (a second A record and a second site block in the `Caddyfile`).
 
 Set the name its pages show in `deploy/.env` (`PORTAL_DISPLAY_NAME`, blank is "Translation
-Portal"), then `docker compose up -d`. **Mail is off by default**: notifications go to the
+Portal") and the currency of its prices (`PORTAL_CURRENCY`, an ISO 4217 code such as `EUR`; blank is
+`USD`), then `docker compose up -d`. **Set the currency before the first order is priced**: once an order
+has a price the portal refuses to start in another currency, so an approved price is never relabelled. **Mail is off by default**: notifications go to the
 log (`docker compose logs portal`). To turn mail on set `PORTAL_SMTP_HOST`, `PORTAL_SMTP_FROM`
 and `PORTAL_ADMIN_EMAIL` together; a host without a sender refuses to start.
 
@@ -85,8 +87,7 @@ Then everything else is in the browser. Sign in at `https://<SITE_ADDRESS>/admin
 - **Orders**: a client's requests, to price and deliver as before.
 
 The two screens use the routes `POST /api/admin/clients` and `POST /api/admin/rates`, which check their input
-(a duplicate address is refused). Neither screen edits or deletes yet. Prices still show a `$` whatever the
-currency (issue #327).
+(a duplicate address is refused). Neither screen edits or deletes yet. Prices show in `PORTAL_CURRENCY`.
 
 ## Done when (issue 21)
 

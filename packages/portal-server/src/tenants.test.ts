@@ -81,6 +81,15 @@ describe('parseTenantRegistry', () => {
     expect(parse(entry({ displayName: 'x'.repeat(80) }))).toHaveLength(1);
   });
 
+  it('carries a tenant’s currency and refuses one that is not ISO 4217 (issue #327)', () => {
+    expect(parse(entry({ currency: 'EUR' }))[0]).toMatchObject({ currency: 'EUR' });
+    for (const bad of ['eur', 'XYZ', '€', '', 978]) {
+      expect(() => parse(entry({ currency: bad })), String(bad)).toThrow(
+        TenantRegistryError,
+      );
+    }
+  });
+
   it('refuses two tenants that would share a number, a host, a database file or a folder', () => {
     const other = {
       dbPath: 't2/portal.sqlite',
@@ -137,6 +146,7 @@ describe('parseTenantRegistry', () => {
         storageRoot: 't2/storage',
         from: 'x <x@example.com>',
         displayName: 'Two',
+        currency: 'GBP',
       }),
     );
     expect(parseTenantRegistry(serializeTenantRegistry(tenants), BASE)).toEqual(tenants);
@@ -148,6 +158,7 @@ describe('the legacy single portal', () => {
     port: 0,
     dbPath: '/data/portal.sqlite',
     storageRoot: '/data/storage',
+    currency: 'USD',
     smtp: undefined,
   };
 
@@ -195,6 +206,17 @@ describe('the legacy single portal', () => {
     expect(configForTenant(shared, t).displayName).toBe('Shared');
     expect(configForTenant(shared, { ...t, displayName: 'Two' }).displayName).toBe('Two');
     expect(configForTenant(config, t)).not.toHaveProperty('displayName');
+  });
+
+  it('gives a tenant its own currency over the shared one (issue #327)', () => {
+    const t: PortalTenant = {
+      tenantId: 2,
+      host: 'two.portal.test',
+      dbPath: '/d/2.sqlite',
+      storageRoot: '/d/2',
+    };
+    expect(configForTenant(config, t).currency).toBe('USD');
+    expect(configForTenant(config, { ...t, currency: 'EUR' }).currency).toBe('EUR');
   });
 
   it('refuses a tenant with no sender when SMTP is configured, naming where to set one (issue #306)', () => {
@@ -267,6 +289,7 @@ describe('choosing a tenant on the command line', () => {
         port: 0,
         dbPath: join('/d', 'p.sqlite'),
         storageRoot: '/d/s',
+        currency: 'USD',
         smtp: undefined,
       }),
     ];

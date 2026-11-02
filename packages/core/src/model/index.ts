@@ -17,3 +17,4 @@ export * from './slug.js';
 export * from './segment.js';
 export * from './file.js';
 export * from './csv.js';
+export * from './currency.js';

@@ -43,6 +43,7 @@ import {
   listRates,
   listSourceFiles,
   openPortalDb,
+  settlePortalCurrency,
   recordFailedAdminLogin,
   recordFileDownload,
   setRate,
@@ -248,6 +249,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       ? new SmtpNotificationService(config.smtp)
       : new ConsoleNotificationService());
   const db = openPortalDb(config.dbPath);
+  // The file remembers which money its prices are in (issue #327): a portal started in another
+  // currency under priced orders refuses to start rather than relabel an approved price.
+  let currency: string;
+  try {
+    currency = settlePortalCurrency(db, config.currency);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 
   const app = Fastify({ logger: options.logger ?? true });
   if (options.onRoute) {
@@ -260,11 +270,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
   // The two pages carry the tenant's name (issue #310); a route of its own, registered before the
   // static plugin's wildcard, so the raw file with its placeholder is never served.
-  const portalName = config.displayName ?? DEFAULT_PORTAL_NAME;
+  const fill = { name: config.displayName ?? DEFAULT_PORTAL_NAME, currency };
   for (const file of ['client.html', 'admin.html']) {
     const html = renderPortalPage(
       readFileSync(join(__dirname, 'public', file), 'utf8'),
-      portalName,
+      fill,
     );
     app.get(`/${file}`, async (_req, reply) =>
       reply.type('text/html; charset=utf-8').send(html),

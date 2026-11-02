@@ -439,7 +439,7 @@ over that tenant's own file and folder. What is new is only how a request finds 
   routes by the request's `Host`; an unknown host is a 404 naming nothing, never a fallback. The SPA's
   root-relative `/api/...` calls and a client's `/client.html#token=...` link are untouched.
 - **The registry** (`PORTAL_TENANTS_FILE`, JSON: `{ tenantId, host, dbPath, storageRoot, from?,
-  adminEmail?, displayName? }` per tenant) is written by `add-portal-tenant`. Reading it refuses entries that share a
+  adminEmail?, displayName?, currency? }` per tenant) is written by `add-portal-tenant`. Reading it refuses entries that share a
   number, host, file or folder, or put one folder inside another.
 - **No registry, no change.** Without `PORTAL_TENANTS_FILE` the server is the single portal from
   `PORTAL_DB_PATH` and `PORTAL_STORAGE_ROOT` on any host, as before. The first tenant adopts that file
@@ -468,14 +468,35 @@ calls. The page gains a navigation bar and two screens over the routes that alre
   token, which the admin routes already return. The link is the client's whole credential (§7), so it is
   shown to the admin and nowhere else, and the portal mails it to no one.
 - **Rates.** A table and a form (source language, target language, per word, minimum price, minimum words
-  per file). Saving a pair that exists updates it. Values carry no currency symbol, because the pages still
-  assume one (#327).
+  per file). Saving a pair that exists updates it. Values are shown in the portal's currency (§9c).
 - **The two routes now check their input**, which a form makes necessary: a client needs a name (at most
   200 characters) and an address that has the shape of one (at most 254), and a duplicate address is a 409
   rather than a 500; a rate needs two different language tags (`en`, `pt-BR`), a per-word rate above zero and
   a minimum price of zero or more, both finite. Neither screen edits or deletes: a client's token must not
   change under a link already sent, and a rate is one row per pair that saving overwrites.
-- Not here: a currency (#327), mailing the link, editing or deleting a client.
+- Not here: mailing the link, editing or deleting a client.
+
+## 9c. The portal's currency (issue #327, 2026-11-02)
+
+A price is a bare number (`translation_order.price`, `rate.rate_per_word`, `rate.minimum_price`); the
+portal's currency is what says which money it is.
+
+- **One currency per portal.** An order's lines add up to one total that the client approves once, so they
+  share a currency. A rate per currency would need a total per currency, as the vendor ledger keeps, and is
+  left to whoever needs it (#331 is the nearest card).
+- **Where it comes from**: the tenant's `currency` (registry key, `add-portal-tenant --currency`), else
+  `PORTAL_CURRENCY`, else `USD`, which is what every page showed before. It must be an ISO 4217 code the
+  runtime knows (`isCurrencyCode`, `core/model/currency.ts`): `eur`, `€` and `XYZ` are refused at start.
+- **The file remembers it, and an approved price never changes currency.** `portal_currency` (portal v9) holds
+  one code, written at start by `settlePortalCurrency`. A start with a different code moves it only while no
+  order has a price; otherwise the portal refuses to start, because approval is consent to an amount in one
+  currency (§3) and relabelling it would show the client a different price. Not an audit event: it is
+  configuration read at start, and since it cannot move under a price every `order.priced` is in the one
+  currency the row names.
+- **Shown by the browser's own formatting.** The server fills `<meta name="portal-currency">` (as it fills the
+  name, §9a) and the pages format every amount with `Intl.NumberFormat`: the order list, an order, the approve
+  button (which states the amount it approves) and the rates screen, where a per-word rate keeps up to four
+  places. No page writes a symbol of its own. Mail quotes no price, so it has nothing to format.
 
 ## 10. A client plan: a monthly word allowance (idea #220, designed, not built)
 
