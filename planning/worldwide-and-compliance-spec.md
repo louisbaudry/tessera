@@ -252,6 +252,10 @@ clients already hold is a migration). Audits are expensive at any time.
 Target sectors, all four: **healthcare/pharma, legal/patents,
 corporate/tech/marketing, public sector.**
 
+The translation-industry standards (ISO 17100, ISO 18587, ISO 5060, and the
+format standards such as TBX and XLIFF) are mapped in
+`standards-register.md`; this section stays on security and privacy.
+
 ### 6.1 What this changes on the record
 
 - **Reverses** `ai-platform-vision.md` §5 item 4 ("GDPR paperwork …
