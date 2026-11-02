@@ -38,8 +38,8 @@ standards are sold per copy. What follows is from their published titles,
 scopes and widely documented summaries, so every requirement is written in
 general terms. No clause number is cited, because none has been checked.
 **Before a card claims to satisfy a standard, the standard is bought and read**,
-and its card records which clauses it meets. Buying them is Louis's call
-(a cost; §5).
+and the clauses it meets go in the clause map (§5). Louis decided on
+2026-11-02 to buy them, ISO 17100 first (§6).
 
 ## 1. Process standards (the tenant's certification, Tessera's support)
 
@@ -96,10 +96,46 @@ Filed 2026-11-02 as `Idea:` issues:
 And on existing cards: #171 carries the ISO 17100 revision step and the
 ISO 5060 scoring; #193 WCAG / ISO/IEC 40500. #327 (ISO 4217 in the portal) is built.
 
-## 5. Open, for Louis
+## 5. The clause map: how a spec is shown to meet a standard
 
-- **Buying the texts** of ISO 17100, 18587 and 5060 (and 30042 before the
-  TBX card) before any card claims conformance (§0.1).
+A standard's text is copyrighted and this repository is public, so conformance
+is shown by **traceability, never quotation**: a clause is cited by number,
+restated in our own words, and tied to the spec and the test that deliver it.
+No sentence of a standard is copied into the repo, in a spec, a test, a
+comment or an issue. The map below is filled once a standard is bought and
+read (§0.1); until then it holds no rows.
+
+| Standard, edition, clause | Our requirement (paraphrase) | Spec | Test | Reviewed |
+| ------------------------- | ---------------------------- | ---- | ---- | -------- |
+
+Rules for a row:
+
+- **One clause per row**, cited with its edition and amendment
+  (`ISO 17100:2015+A1:2017, <clause>`), so a new edition flags every row that
+  cites the old one for review.
+- **The paraphrase is one or two sentences of our own**, saying what the
+  software must do or allow. It is the requirement the spec answers. A clause
+  that is company process only (a client agreement, training, complaints) gets
+  a row that says so and names no spec, so nobody builds a feature for it.
+- **The test is a named test that fails if the behaviour breaks**, never
+  "manual" without saying who checks what. A clause the software only makes
+  possible (it records, the company decides) names the test of the record.
+- **Reviewed is a person and a date**, by someone holding a licensed copy who
+  checked that the paraphrase says what the clause asks: no narrower, no wider.
+  The author of a paraphrase does not review it alone. A row with no review is
+  a claim, not a mapping, and no text, card or page may cite it as met.
+- **What the map proves**: for each software-relevant clause, a feature and a
+  test that do what our reading of the clause says. It does not prove a
+  tenant's conformance, which is an auditor's verdict on its process (§0).
+- **A verbatim copy, if one is kept, stays out of this repository**, and only
+  where the purchase licence allows it.
+
+## 6. Open, for Louis
+
+- **Buying the texts**: decided 2026-11-02, ISO 17100 with its amendment
+  first. ISO 18587 is marked for revision; buying it can wait for the new
+  edition unless post-editing jobs are urgent. Before a text is given to an AI
+  session, its licence is read for whether that use is allowed.
 - **Whether the pilot LSP is or wants to be ISO 17100 certified.** If yes, the
   revision step (#171) stops being "Not before #157" and moves ahead.
 - **Wording on the website** (#81): "built to support an ISO 17100 workflow"
