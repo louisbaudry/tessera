@@ -4860,9 +4860,29 @@ and the operator wanted to do it in the browser. What it taught:
 - **The harness from #323 paid for itself.** `pages.test.ts` loads the real `admin.js` against a stub browser,
   so the new screens' escaping, the link, and the navigation on every list screen are asserted without a DOM
   library. Removing the client name's escape fails it; removing the duplicate check fails the route test.
-- **No currency symbol on the new screens**: the older ones still print `$` (#327), so the new numbers are bare.
+- **No currency symbol on the new screens**: the older ones still printed `$` (#327, since fixed by #220), so the new numbers were bare.
 - Not built: editing or deleting a client or a rate (a token must not change under a link already sent), a
   currency, mailing the link. Not verified: the screens in a real browser.
+
+**#220 · ~~Prices always showed a dollar sign~~ · DONE — `core/model/currency.ts`, `db/portal/currency.ts` (portal v9), `portal-server/src/{config,tenants,page,app,add-portal-tenant}.ts`, `public/*`, `portal-v0-spec.md` §9c** (2026-11-02; card #327, Epic 10a, `standards-register.md` §2)
+
+Setting up the first client's rates showed every price as `$` whatever the operator quoted in. What it taught:
+
+- **A label is part of a price once a client has approved it.** Prices are bare numbers, so a currency set only
+  in config would let a restart relabel an approved amount. The file now records its currency (`portal_currency`,
+  one row) at start, and `settlePortalCurrency` refuses a different one while any order has a price: the portal
+  will not start rather than show a client a different amount from the one they consented to.
+- **ISO 4217 is checked against the runtime's list, not by shape.** `Intl.NumberFormat` happily prints `XYZ` as a
+  symbol, so `isCurrencyCode` (`core/model`, one definition) asks `Intl.supportedValuesOf('currency')`. The vendor
+  ledger still checks length only; it can use the same function.
+- **One currency per portal**, decided here as the issue proposed: an order's lines share one total and one
+  approval. Per-rate currencies would need per-currency totals, as the ledger keeps, and belong with #331 if ever.
+- **Filled in by the server, read by the page.** The currency travels as `<meta name="portal-currency">`, the way
+  the name does (#213), so there is no new route. With no meta the pages show a bare amount, never a guessed
+  symbol; the default when nothing is configured is `USD`, which is what every page showed before.
+- Tests fail on the old `$` (`pages.test.ts`, checked by putting the old `money()` back) and on a currency change
+  under a priced order (checked by disabling the guard). Not verified: the pages in a real browser, and mail text,
+  which quotes no price today.
 
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 

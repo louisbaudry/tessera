@@ -28,8 +28,20 @@ function statusBadge(status) {
   return `<span class="status ${escapeHtml(status)}">${escapeHtml(String(status).replace('_', ' '))}</span>`;
 }
 
-function money(n) {
-  return n == null ? '—' : `$${n.toFixed(2)}`;
+// The portal's ISO 4217 code, filled into the page by the server (issue #327); every amount
+// is formatted from it, never with a symbol written here.
+const CURRENCY = document.querySelector('meta[name="portal-currency"]')?.content;
+
+function money(n, digits = 2) {
+  if (n == null) return '—';
+  return CURRENCY
+    ? new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: CURRENCY,
+        // A per-word rate may need more places than the currency's own; an amount never does.
+        ...(digits > 2 ? { maximumFractionDigits: digits } : {}),
+      }).format(n)
+    : n.toFixed(2);
 }
 
 function escapeHtml(s) {
@@ -260,7 +272,7 @@ async function renderHome() {
         <div class="muted">Words: ${o.wordCount ?? 'estimate pending'} · Price: ${money(o.price)}</div>
         ${
           o.status === 'submitted'
-            ? `<button data-approve="${o.id}" data-price="${o.price}" ${o.price == null ? 'disabled title="Waiting on a word-count estimate before you can approve."' : ''}>Approve</button>`
+            ? `<button data-approve="${o.id}" data-price="${o.price}" ${o.price == null ? 'disabled title="Waiting on a word-count estimate before you can approve."' : ''}>${o.price == null ? 'Approve' : `Approve ${escapeHtml(money(o.price))}`}</button>`
             : ''
         }
         <button class="secondary" data-detail="${o.id}">${

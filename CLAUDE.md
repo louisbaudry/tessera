@@ -734,6 +734,11 @@ engine, but follows the same discipline:
   carry `{{portalName}}`, filled (escaped) by the app from the tenant's `displayName`, else
   `PORTAL_DISPLAY_NAME`, else `Translation Portal`; no company name is in the code, and there is no
   default SMTP sender either: `configForTenant` refuses SMTP with no sender at startup.
+- **An approved price never changes currency** (issue #327, `portal-v0-spec.md` §9c). A price is a bare
+  number; the portal's ISO 4217 code (`currency` in the registry, else `PORTAL_CURRENCY`, else `USD`, checked by
+  `isCurrencyCode`) is recorded in its file at start by `settlePortalCurrency`, which refuses a different one
+  once any order has a price. The pages format amounts from `<meta name="portal-currency">`; no page script
+  writes a symbol of its own.
 - **An uploaded filename never becomes a path.** The API server's rule
   ("no function takes a path from a request") holds here too, and v0
   broke it once: `portal-server/src/storage.ts` stored uploads under

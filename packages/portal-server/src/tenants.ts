@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 
-import { normaliseHost } from '@cat-tool/portal-core';
+import { isCurrencyCode, normaliseHost } from '@cat-tool/portal-core';
 
 import type { PortalConfig, SmtpConfig } from './config.js';
 
@@ -33,6 +33,8 @@ export interface PortalTenant {
   readonly adminEmail?: string;
   /** The name this tenant's portal pages show; the shared default when omitted (issue #310). */
   readonly displayName?: string;
+  /** The ISO 4217 code of this tenant's prices; the shared default when omitted (issue #327). */
+  readonly currency?: string;
 }
 
 /** A registry that cannot be used, or a tenant that is not in it. The message says which. */
@@ -52,6 +54,7 @@ const KEYS = new Set([
   'from',
   'adminEmail',
   'displayName',
+  'currency',
 ]);
 
 /** The longest name a portal heading takes: a heading, not a paragraph. */
@@ -81,6 +84,20 @@ export function displayName(value: string, where: string): string {
     );
   }
   return name;
+}
+
+/**
+ * A tenant's currency code, as ISO writes it.
+ *
+ * @throws {TenantRegistryError} for anything but an ISO 4217 code (`EUR`; not `eur` or `€`).
+ */
+export function currencyCode(value: string, where: string): string {
+  if (!isCurrencyCode(value)) {
+    throw new TenantRegistryError(
+      `${where}: currency "${value}" is not an ISO 4217 code such as EUR or USD`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -136,6 +153,9 @@ export function parseTenantRegistry(source: string, baseDir: string): PortalTena
       ...(entry.displayName === undefined
         ? {}
         : { displayName: displayName(text(entry, 'displayName', where), where) }),
+      ...(entry.currency === undefined
+        ? {}
+        : { currency: currencyCode(text(entry, 'currency', where), where) }),
     };
     return tenant;
   });
@@ -200,6 +220,7 @@ export function serializeTenantRegistry(tenants: readonly PortalTenant[]): strin
           ...(t.from === undefined ? {} : { from: t.from }),
           ...(t.adminEmail === undefined ? {} : { adminEmail: t.adminEmail }),
           ...(t.displayName === undefined ? {} : { displayName: t.displayName }),
+          ...(t.currency === undefined ? {} : { currency: t.currency }),
         })),
       },
       null,
@@ -251,6 +272,7 @@ export function configForTenant(
   const rest = {
     ...base,
     ...(tenant.displayName === undefined ? {} : { displayName: tenant.displayName }),
+    ...(tenant.currency === undefined ? {} : { currency: tenant.currency }),
   };
   if (shared === undefined) {
     return {

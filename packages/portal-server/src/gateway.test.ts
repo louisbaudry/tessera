@@ -50,6 +50,7 @@ beforeEach(async () => {
       dbPath: join(dir, 't1', 'portal.sqlite'),
       storageRoot: join(dir, 't1', 'storage'),
       displayName: 'Alpha <Portal>',
+      currency: 'EUR',
     },
     {
       tenantId: 2,
@@ -62,6 +63,7 @@ beforeEach(async () => {
     port: 0,
     dbPath: join(dir, 'unused.sqlite'),
     storageRoot: join(dir, 'unused'),
+    currency: 'USD',
     smtp: undefined,
     displayName: 'Shared Portal',
   };
@@ -312,6 +314,7 @@ describe('the name each portal shows (issue #310)', () => {
         port: 0,
         dbPath: join(solo, 'portal.sqlite'),
         storageRoot: join(solo, 'storage'),
+        currency: 'USD',
         smtp: undefined,
       },
       logger: false,
@@ -324,6 +327,22 @@ describe('the name each portal shows (issue #310)', () => {
       expect(res.body).toContain('<h1>Translation Portal</h1>');
     } finally {
       await gw.close();
+    }
+  });
+});
+
+describe('the currency each portal prices in (issue #327)', () => {
+  it('is the tenant’s own, else the shared one, filled into both pages', async () => {
+    for (const [host, code] of [
+      [HOST_A, 'EUR'],
+      [HOST_B, 'USD'],
+    ] as const) {
+      for (const file of ['client.html', 'admin.html']) {
+        const res = await http(host, 'GET', `/${file}`);
+        expect(res.body, `${host} ${file}`).toContain(
+          `<meta name="portal-currency" content="${code}" />`,
+        );
+      }
     }
   });
 });
@@ -341,6 +360,7 @@ describe('a sender is required wherever SMTP is configured (issue #306)', () => 
     port: 0,
     dbPath: join(dir, 'solo-smtp', 'portal.sqlite'),
     storageRoot: join(dir, 'solo-smtp', 'storage'),
+    currency: 'USD',
     smtp,
   });
 
@@ -364,6 +384,7 @@ describe('the legacy single portal', () => {
       port: 0,
       dbPath: join(solo, 'portal.sqlite'),
       storageRoot: join(solo, 'storage'),
+      currency: 'USD',
       smtp: undefined,
     };
     const gw = await buildGateway({ config, logger: false });

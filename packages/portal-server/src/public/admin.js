@@ -108,8 +108,20 @@ function changedCell(f) {
   return f.comparedToFileId == null ? `${n} <span class="muted">(new file)</span>` : n;
 }
 
-function money(n) {
-  return n == null ? '—' : `$${n.toFixed(2)}`;
+// The portal's ISO 4217 code, filled into the page by the server (issue #327); every amount
+// is formatted from it, never with a symbol written here.
+const CURRENCY = document.querySelector('meta[name="portal-currency"]')?.content;
+
+function money(n, digits = 2) {
+  if (n == null) return '—';
+  return CURRENCY
+    ? new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: CURRENCY,
+        // A per-word rate may need more places than the currency's own; an amount never does.
+        ...(digits > 2 ? { maximumFractionDigits: digits } : {}),
+      }).format(n)
+    : n.toFixed(2);
 }
 
 const NEXT_STATUSES = {
@@ -492,8 +504,8 @@ async function renderRates() {
             (r) => `<tr>
           <td>${escapeHtml(r.srcLang)}</td>
           <td>${escapeHtml(r.tgtLang)}</td>
-          <td>${escapeHtml(r.ratePerWord)}</td>
-          <td>${escapeHtml(r.minimumPrice)}</td>
+          <td>${escapeHtml(money(r.ratePerWord, 4))}</td>
+          <td>${escapeHtml(money(r.minimumPrice))}</td>
           <td>${escapeHtml(r.minWordsPerFile ?? 0)}</td>
         </tr>`,
           )
@@ -505,8 +517,8 @@ async function renderRates() {
     <form id="new-rate" class="card" style="max-width:28rem">
       <label>From (language code, such as en)<input name="srcLang" required /></label>
       <label>To (language code, such as es or pt-BR)<input name="tgtLang" required /></label>
-      <label>Price per word<input type="number" name="ratePerWord" min="0" step="any" required /></label>
-      <label>Minimum price for a job<input type="number" name="minimumPrice" min="0" step="any" required /></label>
+      <label>Price per word (${escapeHtml(CURRENCY ?? '')})<input type="number" name="ratePerWord" min="0" step="any" required /></label>
+      <label>Minimum price for a job (${escapeHtml(CURRENCY ?? '')})<input type="number" name="minimumPrice" min="0" step="any" required /></label>
       <label>Minimum words counted per file (optional, 0 is off)<input type="number" name="minWordsPerFile" min="0" step="1" /></label>
       <button type="submit">Save rate</button>
       <p class="error" id="rate-error"></p>

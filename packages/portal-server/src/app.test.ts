@@ -16,6 +16,7 @@ import {
   createAdminUser,
   createClient,
   createGlossary,
+  createOrder,
   createTm,
   insertTerm,
   linkClientResource,
@@ -23,6 +24,7 @@ import {
   listOrderEvents,
   openPortalDb,
   setRate,
+  setWordCountAndPrice,
   verifyAudit,
   writeBack,
   type Client,
@@ -47,6 +49,7 @@ beforeEach(async () => {
     port: 0,
     dbPath: join(dir, 'portal.sqlite'),
     storageRoot: join(dir, 'storage'),
+    currency: 'USD',
     smtp: undefined,
   };
   const db = openPortalDb(config.dbPath);
@@ -1524,5 +1527,27 @@ describe('the admin creates clients and rates (portal-v0-spec.md §9b; issue #32
       payload: { name: 'x', email: 'x@example.com' },
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('the currency of the portal’s prices (issue #327)', () => {
+  it('refuses to start in another currency once an order has a price, and leaves the file as it was', async () => {
+    await app.close();
+    const db = openPortalDb(config.dbPath);
+    const actor = { actor: { kind: 'cli', name: 'test' }, label: 'test' } as const;
+    const order = createOrder(
+      db,
+      { clientId: ada.id, srcLang: 'en', tgtLangs: ['es'] },
+      { actor },
+    );
+    setWordCountAndPrice(db, order.id, 100, 20, { actor });
+    db.close();
+    await expect(
+      buildApp({ config: { ...config, currency: 'EUR' }, logger: false }),
+    ).rejects.toThrow(/prices are in USD/);
+    // the same currency still starts, so the refusal changed nothing
+    app = await buildApp({ config, logger: false });
+    const page = await app.inject({ method: 'GET', url: '/client.html' });
+    expect(page.body).toContain('<meta name="portal-currency" content="USD" />');
   });
 });
