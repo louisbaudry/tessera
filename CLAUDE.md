@@ -82,6 +82,20 @@ issue #261), so a GPL or AGPL source cannot be combined with it; the
 copyright holder in `NOTICE` is "The Tessera authors" (Louis's decision,
 2026-10-19), so no personal or company name goes in the repo.
 
+## ISO and other standards
+
+`planning/standards-register.md` (2026-11-02) maps each ISO standard that
+applies to a CAT and translation-business tool to what Tessera does and the
+card for each gap. Keep true:
+
+- **A process standard certifies a tenant, never Tessera.** ISO 17100 and
+  ISO 18587 are audited against an LSP; Tessera lets a tenant run that process
+  and prove it ran. No text, UI or website says Tessera is "ISO compliant" or
+  "ISO certified".
+- **No card claims conformance to a standard nobody has read.** The ISO texts
+  are sold per copy and none has been read here yet; a card cites the clauses
+  it meets once the text is in hand, never a summary.
+
 ## Code comments
 
 Code comments rule synced: 2026-10-11
