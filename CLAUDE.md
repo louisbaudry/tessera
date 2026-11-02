@@ -95,6 +95,10 @@ card for each gap. Keep true:
 - **No card claims conformance to a standard nobody has read.** The ISO texts
   are sold per copy and none has been read here yet; a card cites the clauses
   it meets once the text is in hand, never a summary.
+- **Cite, never quote** (register §5). A standard is copyrighted and this repo
+  is public: a clause is cited by number and edition, restated in our words in
+  the clause map, and tied to its spec and a test. A row counts only once someone
+  holding the text has reviewed the paraphrase.
 
 ## Code comments
 
