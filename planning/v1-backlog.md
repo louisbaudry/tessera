@@ -4884,6 +4884,23 @@ Setting up the first client's rates showed every price as `$` whatever the opera
   under a priced order (checked by disabling the guard). Not verified: the pages in a real browser, and mail text,
   which quotes no price today.
 
+**#221 · ~~More than one rate per language pair~~ · DONE — `portal-core/src/pricing.ts` (`ratesForClient`), `db/portal/rates.ts` (portal v10, `client_rate`), `portal-server/src/{app,admin-input}.ts`, `public/admin.js`, `portal-v0-spec.md` §3a** (2026-11-03; card #331, Epic 10a)
+
+The operator wanted rates more granular than one per pair. Louis chose a rate per client, falling back to the
+default; TypeScript, not Rust/Wasm, for a lookup per order line. What it taught:
+
+- **An own rate replaces the default whole.** Taking the client's per-word price but the default's minimum would
+  quote a price nobody negotiated; `ratesForClient` swaps the row, and a test checks the default's per-file minimum
+  does not leak into it.
+- **Every price for a client reads one list** (`listRatesForClient`): the client's rates, its estimate and the
+  admin's confirmation. A test fails if the confirmation reads the defaults (checked by making it do so), which is
+  the bug this card could most easily have shipped: an estimate at the negotiated price, confirmed at the default.
+- **A separate table, not a nullable `client_id` on `rate`**: a NULL in `UNIQUE (src_lang, tgt_lang, client_id)` is
+  never equal, so the defaults would lose their one-per-pair guarantee.
+- `checkRateInput` now also checks `minWordsPerFile`, so the default and own-rate forms accept the same rates.
+- Not built: rates per service, domain or volume; an audit event for a rate write (none for defaults either). Not
+  verified: the screen in a real browser.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

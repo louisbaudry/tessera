@@ -1551,3 +1551,93 @@ describe('the currency of the portal’s prices (issue #327)', () => {
     expect(page.body).toContain('<meta name="portal-currency" content="USD" />');
   });
 });
+
+describe('a client’s own rates (issue #331)', () => {
+  const ownRate = { srcLang: 'en', tgtLang: 'es', ratePerWord: 0.05, minimumPrice: 5 };
+
+  const estimate = async (token: string) =>
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/client/estimate',
+        headers: auth(token),
+        payload: { srcLang: 'en', tgtLangs: ['es'], wordCount: 1000 },
+      })
+    ).json() as { total: number };
+
+  it('prices that client, and only that client, at its own rate, from estimate to confirmation', async () => {
+    const admin = await adminLogin();
+    const set = await app.inject({
+      method: 'POST',
+      url: `/api/admin/clients/${ada.id}/rates`,
+      headers: auth(admin),
+      payload: ownRate,
+    });
+    expect(set.statusCode, set.body).toBe(200);
+    expect(set.json()).toMatchObject({
+      own: [{ ...ownRate, minWordsPerFile: 0 }],
+      effective: [{ ...ownRate, minWordsPerFile: 0 }],
+    });
+
+    const rates = async (token: string) =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/client/rates',
+          headers: auth(token),
+        })
+      ).json() as Array<{ ratePerWord: number }>;
+    expect((await rates(ada.accessToken))[0]!.ratePerWord).toBe(0.05);
+    expect((await rates(other.accessToken))[0]!.ratePerWord).toBe(0.1);
+    expect((await estimate(ada.accessToken)).total).toBe(50);
+    expect((await estimate(other.accessToken)).total).toBe(100);
+
+    // The admin's confirmation prices the order from the same list the estimate used.
+    const { order } = await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'x' }]);
+    const priced = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${order.id}`,
+      headers: auth(admin),
+      payload: { wordCount: 1000 },
+    });
+    expect(priced.statusCode, priced.body).toBe(200);
+    expect((priced.json() as { price: number }).price).toBe(50);
+
+    // Removed, the client is back on the default.
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/clients/${ada.id}/rates/en/es`,
+      headers: auth(admin),
+    });
+    expect(removed.statusCode, removed.body).toBe(200);
+    expect((await estimate(ada.accessToken)).total).toBe(100);
+  });
+
+  it('answers a missing client, a missing own rate and a bad rate plainly, and changes nothing', async () => {
+    const admin = await adminLogin();
+    const call = (method: 'GET' | 'POST' | 'DELETE', url: string, payload?: object) =>
+      app.inject({ method, url, headers: auth(admin), ...(payload ? { payload } : {}) });
+    expect((await call('GET', '/api/admin/clients/999/rates')).statusCode).toBe(404);
+    expect((await call('POST', '/api/admin/clients/999/rates', ownRate)).statusCode).toBe(
+      404,
+    );
+    expect(
+      (await call('DELETE', `/api/admin/clients/${ada.id}/rates/en/es`)).statusCode,
+    ).toBe(404);
+    for (const bad of [
+      { ...ownRate, ratePerWord: 0 },
+      { ...ownRate, tgtLang: 'en' },
+      { ...ownRate, minWordsPerFile: 1.5 },
+    ]) {
+      expect(
+        (await call('POST', `/api/admin/clients/${ada.id}/rates`, bad)).statusCode,
+        JSON.stringify(bad),
+      ).toBe(400);
+    }
+    expect(
+      (await call('GET', `/api/admin/clients/${ada.id}/rates`)).json(),
+    ).toMatchObject({
+      own: [],
+    });
+  });
+});

@@ -23,6 +23,7 @@ import {
   deleteAdminSession,
   getAdminUserByEmail,
   getAdminUserBySessionToken,
+  getClient,
   getClientByToken,
   ClientResourceError,
   clientExportFilename,
@@ -40,12 +41,16 @@ import {
   listOrderEvents,
   listOrders,
   listOrdersForClient,
+  listClientRates,
   listRates,
+  listRatesForClient,
+  removeClientRate,
   listSourceFiles,
   openPortalDb,
   settlePortalCurrency,
   recordFailedAdminLogin,
   recordFileDownload,
+  setClientRate,
   setRate,
   setStatus,
   setWordCountAndPrice,
@@ -487,7 +492,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const client = requireClient(req);
     if (!client)
       return reply.code(401).send({ error: 'invalid or missing access token' });
-    return listRates(db);
+    // The client's own prices where it has them (issue #331): what it may order, and at what.
+    return listRatesForClient(db, client.id);
   });
 
   // Create an order plus its source files, multipart: fields srcLang,
@@ -655,7 +661,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return { pending: true };
     }
     try {
-      const rates = listRates(db);
+      const rates = listRatesForClient(db, client.id);
       const estimate = estimateOrder(rates, body.srcLang, body.tgtLangs, words);
       return { pending: false, ...estimate };
     } catch (err) {
@@ -760,7 +766,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }),
       // A per-file minimum on some requested pair (§4b): the admin then
       // confirms a count for each file, pre-filled from these.
-      needsFileWordCounts: orderNeedsFileWordCounts(listRates(db), order),
+      needsFileWordCounts: orderNeedsFileWordCounts(
+        listRatesForClient(db, order.clientId),
+        order,
+      ),
       suggestedFileWordCounts: Object.fromEntries(
         sourceFiles.map((f) => [
           f.id,
@@ -805,7 +814,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
     if (body.wordCount !== undefined || body.fileWordCounts !== undefined) {
       try {
-        const rates = listRates(db);
+        const rates = listRatesForClient(db, order.clientId);
         let wordCount = body.wordCount;
         let estimate;
         let fileWordCounts: Map<number, number> | undefined;
@@ -950,22 +959,44 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post('/api/admin/rates', async (req, reply) => {
     const input = checkRateInput(req.body);
     if ('problem' in input) return reply.code(400).send({ error: input.problem });
-    const { minWordsPerFile } = (req.body ?? {}) as {
-      /** Words a file counts as at least when priced; 0 or absent is off (§4b). */
-      minWordsPerFile?: unknown;
-    };
-    if (
-      minWordsPerFile !== undefined &&
-      (typeof minWordsPerFile !== 'number' ||
-        !Number.isSafeInteger(minWordsPerFile) ||
-        minWordsPerFile < 0)
-    ) {
-      return reply
-        .code(400)
-        .send({ error: 'minWordsPerFile must be a non-negative whole number' });
-    }
-    setRate(db, { ...input, minWordsPerFile });
+    setRate(db, input);
     return listRates(db);
+  });
+
+  // A client's own rates (issue #331, spec §3a): what it negotiated, in place of the defaults.
+  // The answer carries both lists so the screen can show which rate a client is priced at.
+  const clientRates = (clientId: number) => ({
+    own: listClientRates(db, clientId),
+    effective: listRatesForClient(db, clientId),
+  });
+
+  app.get('/api/admin/clients/:id/rates', async (req, reply) => {
+    const client = getClient(db, Number((req.params as { id: string }).id));
+    if (!client) return reply.code(404).send({ error: 'client not found' });
+    return clientRates(client.id);
+  });
+
+  app.post('/api/admin/clients/:id/rates', async (req, reply) => {
+    const client = getClient(db, Number((req.params as { id: string }).id));
+    if (!client) return reply.code(404).send({ error: 'client not found' });
+    const input = checkRateInput(req.body);
+    if ('problem' in input) return reply.code(400).send({ error: input.problem });
+    setClientRate(db, client.id, input);
+    return clientRates(client.id);
+  });
+
+  app.delete('/api/admin/clients/:id/rates/:srcLang/:tgtLang', async (req, reply) => {
+    const { id, srcLang, tgtLang } = req.params as {
+      id: string;
+      srcLang: string;
+      tgtLang: string;
+    };
+    const client = getClient(db, Number(id));
+    if (!client) return reply.code(404).send({ error: 'client not found' });
+    if (!removeClientRate(db, client.id, srcLang, tgtLang)) {
+      return reply.code(404).send({ error: 'this client has no own rate for that pair' });
+    }
+    return clientRates(client.id);
   });
 
   return app;

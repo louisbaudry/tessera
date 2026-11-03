@@ -2,8 +2,8 @@
  * Pricing (portal-v0-spec.md §3, §4b).
  *
  * Deliberately simple: a per-word rate by language pair, a per-pair
- * minimum price, an optional per-file minimum in words, no
- * discounts/retainers/POs. Pure functions, no DB/HTTP — same headless
+ * minimum price, an optional per-file minimum in words, a client's own rate
+ * in place of the default (§3a), no discounts/retainers/POs. Pure functions, no DB/HTTP — same headless
  * discipline `@cat-tool/core` follows, provable by a test with nothing
  * else in the loop.
  */
@@ -65,6 +65,31 @@ export function billableWords(
     total += count === 0 ? 0 : Math.max(count, minimum);
   }
   return total;
+}
+
+/**
+ * The rates one client is priced at (issue #331, portal-v0-spec.md §3a): every default pair rate,
+ * with the client's own rate for a pair in its place, and a pair only the client has a rate for
+ * offered to that client alone. A client's rate replaces the default whole (per word, minimum
+ * price and per-file minimum together), never field by field: a negotiated price is one
+ * agreement, and mixing it with a default's minimum would quote a price nobody agreed to.
+ *
+ * @param defaults - The portal's rate per language pair, shared by every client.
+ * @param own - This client's own rates, at most one per pair.
+ * @returns The client's rates, one per pair, ordered by source then target language.
+ */
+export function ratesForClient(
+  defaults: readonly LanguagePairRate[],
+  own: readonly LanguagePairRate[],
+): LanguagePairRate[] {
+  const key = (r: LanguagePairRate) => `${r.srcLang}\u0000${r.tgtLang}`;
+  const byPair = new Map(defaults.map((r) => [key(r), r]));
+  for (const r of own) byPair.set(key(r), r);
+  // Code-unit order, as SQLite's ORDER BY gives the default list, so the two never disagree.
+  const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+  return [...byPair.values()].sort(
+    (a, b) => cmp(a.srcLang, b.srcLang) || cmp(a.tgtLang, b.tgtLang),
+  );
 }
 
 export class RateNotFoundError extends Error {

@@ -428,7 +428,7 @@ async function renderClients(justMade) {
         : ''
     }
     <table>
-      <tr><th>#</th><th>Name</th><th>Email</th><th>Private link</th></tr>
+      <tr><th>#</th><th>Name</th><th>Email</th><th>Private link</th><th>Rates</th></tr>
       ${
         clients
           .map(
@@ -437,9 +437,10 @@ async function renderClients(justMade) {
           <td>${escapeHtml(c.name)}</td>
           <td>${escapeHtml(c.email)}</td>
           <td><button class="secondary" data-copy="${c.id}">Copy link</button></td>
+          <td><button class="secondary" data-client-rates="${c.id}">Rates</button></td>
         </tr>`,
           )
-          .join('') || '<tr><td colspan="4" class="muted">No clients yet.</td></tr>'
+          .join('') || '<tr><td colspan="5" class="muted">No clients yet.</td></tr>'
       }
     </table>
 
@@ -467,6 +468,11 @@ async function renderClients(justMade) {
       }
     });
   });
+  app.querySelectorAll('[data-client-rates]').forEach((btn) => {
+    btn.addEventListener('click', () =>
+      renderRates(clients.find((c) => String(c.id) === btn.dataset.clientRates)),
+    );
+  });
   app.querySelector('#new-client').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorEl = app.querySelector('#client-error');
@@ -483,21 +489,37 @@ async function renderClients(justMade) {
   });
 }
 
-/** Rates: the language pairs a client can order, and what each costs. Saving a pair that exists updates it. */
-async function renderRates() {
+/**
+ * Rates: the language pairs a client can order, and what each costs. Saving a pair that exists
+ * updates it. With a `client`, the screen is that client's own rates (issue #331): the rates it is
+ * priced at, which of them are its own, a form to set one, and a way back to the default.
+ */
+async function renderRates(client) {
+  const base = client
+    ? `/api/admin/clients/${encodeURIComponent(client.id)}/rates`
+    : '/api/admin/rates';
   let rates;
+  let own = [];
   try {
-    rates = await api('/api/admin/rates');
+    const answer = await api(base);
+    rates = client ? answer.effective : answer;
+    if (client) own = answer.own;
   } catch (err) {
     app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     return;
   }
+  const isOwn = (r) =>
+    own.some((o) => o.srcLang === r.srcLang && o.tgtLang === r.tgtLang);
   app.innerHTML = `
-    ${navHtml('rates')}
-    <h2>Rates</h2>
-    <p class="muted">A client can order only the language pairs listed here.</p>
+    ${navHtml(client ? 'clients' : 'rates')}
+    <h2>${client ? `Rates for ${escapeHtml(client.name)}` : 'Rates'}</h2>
+    <p class="muted">${
+      client
+        ? 'This client is priced at its own rate where it has one, and at the default rate otherwise. A pair with only an own rate can be ordered by this client alone.'
+        : 'The default rates. A client can order only the language pairs listed here or among its own rates (Clients, then Rates).'
+    }</p>
     <table>
-      <tr><th>From</th><th>To</th><th>Per word</th><th>Minimum price</th><th>Minimum words per file</th></tr>
+      <tr><th>From</th><th>To</th><th>Per word</th><th>Minimum price</th><th>Minimum words per file</th>${client ? '<th>Rate</th>' : ''}</tr>
       ${
         rates
           .map(
@@ -507,13 +529,21 @@ async function renderRates() {
           <td>${escapeHtml(money(r.ratePerWord, 4))}</td>
           <td>${escapeHtml(money(r.minimumPrice))}</td>
           <td>${escapeHtml(r.minWordsPerFile ?? 0)}</td>
+          ${
+            client
+              ? isOwn(r)
+                ? `<td>Own <button class="secondary" data-remove-src="${escapeHtml(r.srcLang)}" data-remove-tgt="${escapeHtml(r.tgtLang)}">Use default</button></td>`
+                : '<td class="muted">Default</td>'
+              : ''
+          }
         </tr>`,
           )
-          .join('') || '<tr><td colspan="5" class="muted">No rates yet.</td></tr>'
+          .join('') ||
+        `<tr><td colspan="${client ? 6 : 5}" class="muted">No rates yet.</td></tr>`
       }
     </table>
 
-    <h3>Add or change a rate</h3>
+    <h3>${client ? 'Set an own rate for this client' : 'Add or change a rate'}</h3>
     <form id="new-rate" class="card" style="max-width:28rem">
       <label>From (language code, such as en)<input name="srcLang" required /></label>
       <label>To (language code, such as es or pt-BR)<input name="tgtLang" required /></label>
@@ -525,6 +555,19 @@ async function renderRates() {
     </form>
   `;
   wireNav();
+  app.querySelectorAll('[data-remove-src]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api(
+          `${base}/${encodeURIComponent(btn.dataset.removeSrc)}/${encodeURIComponent(btn.dataset.removeTgt)}`,
+          { method: 'DELETE' },
+        );
+        renderRates(client);
+      } catch (err) {
+        app.querySelector('#rate-error').textContent = err.message;
+      }
+    });
+  });
   app.querySelector('#new-rate').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorEl = app.querySelector('#rate-error');
@@ -539,8 +582,8 @@ async function renderRates() {
     if (f.minWordsPerFile.value !== '')
       body.minWordsPerFile = Number(f.minWordsPerFile.value);
     try {
-      await postJson('/api/admin/rates', body);
-      renderRates();
+      await postJson(base, body);
+      renderRates(client);
     } catch (err) {
       errorEl.textContent = err.message;
     }

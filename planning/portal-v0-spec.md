@@ -116,6 +116,40 @@ else in the loop.
   `system:migration`: what the price was when recording began, the way
   `segment.baseline` records a segment (`audit-spec.md` §6).
 
+## 3a. A client's own rate (issue #331, 2026-11-03)
+
+One rate per language pair, shared by every client, was not enough: an operator negotiates prices
+with some clients. Louis chose the missing dimension on 2026-11-03: **a rate per client**, falling
+back to the default. Rates per service, per domain or by volume were the other candidates and are
+not built. Stack: TypeScript (Louis, 2026-11-03), since pricing is one lookup per order line and no
+profile shows a slow path.
+
+- **A client's own rate replaces the default for its pair, whole.** `client_rate` (portal v10) has
+  `rate`'s columns keyed by client and pair. `ratesForClient` (`portal-core/src/pricing.ts`, pure)
+  makes a client's list: each default, with the client's own row in its place. Per word, minimum
+  price and per-file minimum are replaced together, never field by field, because a negotiated price
+  is one agreement and mixing it with a default's minimum would quote a price nobody agreed to.
+- **A pair with only an own rate is that client's alone**: it appears in that client's order form and
+  nowhere else.
+- **One list for every price of a client.** The client's rates screen, its estimate, the admin's
+  per-file prompt and the admin's confirmation all read `listRatesForClient`, so an estimate and the
+  price that is confirmed never come from different lists. A rate is still advice until the admin
+  confirms the price (§3), and an approved price never moves when a rate changes later.
+- **A table of its own, not a `client_id` on `rate`.** `rate`'s `UNIQUE (src_lang, tgt_lang)` would
+  have needed a rebuild, and a NULL in a unique key equals nothing, so two defaults for one pair could
+  then coexist.
+- **Removable.** Removing a client's own rate puts it back on the default (or takes the pair away, if
+  there is no default). A default rate is still not removable from the screen (§9b).
+- **Admin only, and not audited yet**, like the default rates and client writes (`CLAUDE.md`, the
+  portal's audit note): the price an order is confirmed at is audited (`order.priced`), the rate
+  behind it is not.
+- **Screens.** Each client row on the Clients screen has a **Rates** button opening that client's
+  rates: what it is priced at, which rates are its own, a form to set one, and **Use default** on each
+  own rate. The routes are `GET`/`POST /api/admin/clients/:id/rates` and
+  `DELETE /api/admin/clients/:id/rates/:srcLang/:tgtLang`; a missing client or a missing own rate is a
+  404, a bad rate a 400 from the same check as a default rate (`checkRateInput`, which now also checks
+  `minWordsPerFile`).
+
 ## 4. Word count
 
 **The count is advice, computed by `@cat-tool/core` (backlog `#62`,
@@ -473,7 +507,8 @@ calls. The page gains a navigation bar and two screens over the routes that alre
   200 characters) and an address that has the shape of one (at most 254), and a duplicate address is a 409
   rather than a 500; a rate needs two different language tags (`en`, `pt-BR`), a per-word rate above zero and
   a minimum price of zero or more, both finite. Neither screen edits or deletes: a client's token must not
-  change under a link already sent, and a rate is one row per pair that saving overwrites.
+  change under a link already sent, and a rate is one row per pair that saving overwrites. A client's own
+  rates (§3a) are reached from the Clients screen and can be removed.
 - Not here: mailing the link, editing or deleting a client.
 
 ## 9c. The portal's currency (issue #327, 2026-11-02)
