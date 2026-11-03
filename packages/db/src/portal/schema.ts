@@ -361,6 +361,33 @@ const v9: Migration = {
   },
 };
 
+/**
+ * v10 — a client's own rate for a language pair (issue #331, `portal-v0-spec.md` §3a). The same
+ * columns as `rate`, keyed by client and pair; `ratesForClient` puts a row here in place of the
+ * pair's default for that client, and a pair with a row here and none in `rate` is offered to that
+ * client alone. A table of its own rather than a nullable `client_id` on `rate`, because `rate`'s
+ * `UNIQUE (src_lang, tgt_lang)` would have to be rebuilt and a NULL in a unique key is never equal
+ * to another, so two defaults for one pair could then exist.
+ */
+const v10: Migration = {
+  version: 10,
+  description: "client_rate: a client's own rate for a language pair (issue #331)",
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE client_rate (
+        id                 INTEGER PRIMARY KEY,
+        client_id          INTEGER NOT NULL REFERENCES client(id),
+        src_lang           TEXT NOT NULL,
+        tgt_lang           TEXT NOT NULL,
+        rate_per_word      REAL NOT NULL CHECK (rate_per_word > 0),
+        minimum_price      REAL NOT NULL CHECK (minimum_price >= 0),
+        min_words_per_file INTEGER NOT NULL DEFAULT 0 CHECK (min_words_per_file >= 0),
+        UNIQUE (client_id, src_lang, tgt_lang)
+      );
+    `);
+  },
+};
+
 export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -371,4 +398,5 @@ export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v7,
   v8,
   v9,
+  v10,
 ];

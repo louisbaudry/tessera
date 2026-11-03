@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ratesForClient,
   billableWords,
   estimateOrder,
   FileWordCountsRequiredError,
@@ -164,5 +165,48 @@ describe('estimateOrder with a single total', () => {
     expect(() => estimateOrder([...RATES, PER_FILE], 'en', ['fr', 'de'], 300)).toThrow(
       FileWordCountsRequiredError,
     );
+  });
+});
+
+describe('ratesForClient (issue #331)', () => {
+  const enDe = { srcLang: 'en', tgtLang: 'de', ratePerWord: 0.1, minimumPrice: 20 };
+  const enFr = {
+    srcLang: 'en',
+    tgtLang: 'fr',
+    ratePerWord: 0.12,
+    minimumPrice: 25,
+    minWordsPerFile: 100,
+  };
+
+  it('is the default rates when the client has none of its own', () => {
+    expect(ratesForClient([enFr, enDe], [])).toEqual([enDe, enFr]);
+  });
+
+  it('puts the client’s rate in place of the default, whole', () => {
+    const own = { srcLang: 'en', tgtLang: 'fr', ratePerWord: 0.09, minimumPrice: 0 };
+    const rates = ratesForClient([enDe, enFr], [own]);
+    expect(rates).toEqual([enDe, own]);
+    // the default's per-file minimum does not leak into the negotiated rate
+    expect(findRate(rates, 'en', 'fr').minWordsPerFile).toBeUndefined();
+    expect(estimateOrder(rates, 'en', ['fr'], 1000).total).toBe(90);
+  });
+
+  it('offers a pair only the client has a rate for, to that client alone', () => {
+    const enJa = { srcLang: 'en', tgtLang: 'ja', ratePerWord: 0.2, minimumPrice: 30 };
+    expect(ratesForClient([enDe], [enJa])).toEqual([enDe, enJa]);
+    expect(() => findRate(ratesForClient([enDe], []), 'en', 'ja')).toThrow(
+      RateNotFoundError,
+    );
+  });
+
+  it('orders by code unit, as the database orders the defaults', () => {
+    const ptBR = { srcLang: 'en', tgtLang: 'pt-BR', ratePerWord: 0.1, minimumPrice: 0 };
+    const pt = { srcLang: 'en', tgtLang: 'pt', ratePerWord: 0.1, minimumPrice: 0 };
+    const es = { srcLang: 'en', tgtLang: 'es', ratePerWord: 0.1, minimumPrice: 0 };
+    expect(ratesForClient([ptBR, es], [pt]).map((r) => r.tgtLang)).toEqual([
+      'es',
+      'pt',
+      'pt-BR',
+    ]);
   });
 });

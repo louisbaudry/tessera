@@ -347,3 +347,48 @@ describe('prices, in the portal’s currency (issue #327)', () => {
     expect(all).not.toMatch(/\$\d/);
   });
 });
+
+describe('a client’s own rates screen (issue #331)', () => {
+  const client = { id: 3, name: PWN('name'), email: 'c@example.com', accessToken: 't' };
+  const own = {
+    srcLang: 'en',
+    tgtLang: 'fr',
+    ratePerWord: 0.09,
+    minimumPrice: 10,
+    minWordsPerFile: 0,
+  };
+  const deflt = {
+    srcLang: 'en',
+    tgtLang: 'de',
+    ratePerWord: 0.1,
+    minimumPrice: 20,
+    minWordsPerFile: 0,
+  };
+
+  it('names the client as text and marks which rates are its own', async () => {
+    const { renders, context } = await loadPage(
+      'admin.js',
+      {
+        '/api/admin/clients/3/rates': { json: { own: [own], effective: [deflt, own] } },
+        '/api/admin/clients': { json: [client] },
+      },
+      { portal_admin_token: 't' },
+    );
+    await (context.renderRates as (c: unknown) => Promise<void>)(client);
+    expectOnlyText(renders, ['name']);
+    const page = renders.at(-1)!;
+    expect(page).toContain('data-remove-src="en" data-remove-tgt="fr"');
+    expect(page).not.toContain('data-remove-tgt="de"');
+    expect(page).toContain('<td class="muted">Default</td>');
+  });
+
+  it('is reached from a Rates button on each client', async () => {
+    const { renders, context } = await loadPage(
+      'admin.js',
+      { '/api/admin/clients': { json: [client] } },
+      { portal_admin_token: 't' },
+    );
+    await (context.renderClients as () => Promise<void>)();
+    expect(renders.at(-1)).toContain('data-client-rates="3"');
+  });
+});

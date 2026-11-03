@@ -80,7 +80,9 @@ Then everything else is in the browser. Sign in at `https://<SITE_ADDRESS>/admin
 
 - **Rates** (issue #328): add one row per language pair a client may order (codes such as `en`, `es`, `pt-BR`,
   a price per word and a minimum price for a job). A client can only choose pairs that have a rate. Saving a
-  pair that exists updates it.
+  pair that exists updates it. A client with negotiated prices gets its own rates from the **Rates**
+  button on its row in **Clients**: an own rate replaces the default for that client only, and **Use
+  default** removes it.
 - **Clients**: add a client by name and email address. The page then shows that client's **private link**
   (`/client.html#token=...`); the **Copy link** button on each row shows it again. The link is the client's
   whole credential: send it only to them. The portal mails nothing without SMTP, so you send it yourself.

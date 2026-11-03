@@ -743,6 +743,11 @@ engine, but follows the same discipline:
   `isCurrencyCode`) is recorded in its file at start by `settlePortalCurrency`, which refuses a different one
   once any order has a price. The pages format amounts from `<meta name="portal-currency">`; no page script
   writes a symbol of its own.
+- **A client's own rate replaces the default whole, and every price for a client reads one list**
+  (issue #331, `portal-v0-spec.md` §3a). `client_rate` (portal v10) holds a client's negotiated rate per
+  pair; `ratesForClient` puts it in place of the default, never field by field, and `listRatesForClient`
+  is what the client's rates, its estimate and the admin's confirmation all read. Don't price a client
+  from `listRates` alone.
 - **An uploaded filename never becomes a path.** The API server's rule
   ("no function takes a path from a request") holds here too, and v0
   broke it once: `portal-server/src/storage.ts` stored uploads under

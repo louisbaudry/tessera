@@ -33,13 +33,18 @@ export function checkClientInput(
   return { name: name.trim(), email: email.trim() };
 }
 
-/** The language pair and prices of a rate once trimmed, or the message to send back. */
+/**
+ * The language pair and prices of a rate once trimmed, or the message to send back. One check for a
+ * default rate and a client's own (issue #331), so the two forms accept the same rates.
+ */
 export function checkRateInput(body: unknown):
   | {
       srcLang: string;
       tgtLang: string;
       ratePerWord: number;
       minimumPrice: number;
+      /** Words a file counts as at least when priced; absent is off (portal-v0-spec.md §4b). */
+      minWordsPerFile?: number;
     }
   | { problem: string } {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -66,5 +71,20 @@ export function checkRateInput(body: unknown):
   ) {
     return { problem: 'minimumPrice must be a number, zero or more' };
   }
-  return { srcLang: src, tgtLang: tgt, ratePerWord, minimumPrice };
+  const { minWordsPerFile } = b;
+  if (
+    minWordsPerFile !== undefined &&
+    (typeof minWordsPerFile !== 'number' ||
+      !Number.isSafeInteger(minWordsPerFile) ||
+      minWordsPerFile < 0)
+  ) {
+    return { problem: 'minWordsPerFile must be a non-negative whole number' };
+  }
+  return {
+    srcLang: src,
+    tgtLang: tgt,
+    ratePerWord,
+    minimumPrice,
+    ...(minWordsPerFile === undefined ? {} : { minWordsPerFile }),
+  };
 }
