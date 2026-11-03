@@ -739,6 +739,70 @@ const v14: Migration = {
   },
 };
 
+/** `audit_event.action` as of platform v15: v14's list and `tenant.sso_policy_set`. Frozen. */
+const V15_AUDIT_ACTIONS = [
+  ...V14_AUDIT_ACTIONS,
+  'tenant.sso_policy_set',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * Single sign-on, slice 2 (issue #317, `planning/sso-spec.md` D3, D7, §2a).
+ *
+ * `sso_attempt` is rebuilt to widen `purpose` with the invitation purposes (`staff_invite`,
+ * `vendor_invite`, `join`) and to carry Google's Workspace domain (`hosted_domain`) from the
+ * callback to the redeem; nothing references the table, and a row lives minutes, so the rebuild
+ * loses nothing. `account_identity.hosted_domain` keeps that domain on the link, set at linking and
+ * refreshed at every sign-in, because a tenant's Google lock is checked on it (Microsoft's directory
+ * is read back from `issuer`, never stored twice). `tenant_sso_policy` is a tenant's policy, absent
+ * being none: `require_sso` refuses a staff password sign-in, and the two locks narrow which
+ * directory or domain a provider accepts. The closed sets are frozen literals.
+ */
+const v15: Migration = {
+  version: 15,
+  description:
+    'sso_attempt purposes and hosted_domain, account_identity.hosted_domain, tenant_sso_policy',
+  up(db) {
+    rebuildTable(
+      db,
+      'sso_attempt',
+      `CREATE TABLE sso_attempt (
+        id                 INTEGER PRIMARY KEY,
+        state_hash         TEXT    NOT NULL UNIQUE,
+        binding_hash       TEXT    NOT NULL,
+        nonce              TEXT    NOT NULL,
+        code_verifier      TEXT    NOT NULL,
+        provider           TEXT    NOT NULL CHECK (provider IN ('google', 'microsoft')),
+        purpose            TEXT    NOT NULL
+          CHECK (purpose IN ('login', 'link', 'staff_invite', 'vendor_invite', 'join')),
+        tenant_id          INTEGER,
+        account_id         INTEGER REFERENCES account(id),
+        created_at         TEXT    NOT NULL,
+        expires_at         TEXT    NOT NULL,
+        callback_at        TEXT,
+        handoff_hash       TEXT    UNIQUE,
+        handoff_expires_at TEXT,
+        issuer             TEXT,
+        subject            TEXT,
+        hosted_domain      TEXT,
+        CHECK ((purpose = 'link') = (account_id IS NOT NULL))
+      )`,
+    );
+    db.exec(`
+      ALTER TABLE account_identity ADD COLUMN hosted_domain TEXT;
+
+      CREATE TABLE tenant_sso_policy (
+        tenant_id     INTEGER PRIMARY KEY REFERENCES tenant(id),
+        require_sso   INTEGER NOT NULL CHECK (require_sso BETWEEN 0 AND 1),
+        microsoft_tid TEXT    CHECK (microsoft_tid IS NULL OR length(microsoft_tid) = 36),
+        google_hd     TEXT    CHECK (google_hd IS NULL OR length(google_hd) BETWEEN 1 AND 253),
+        updated_at    TEXT    NOT NULL,
+        updated_by    INTEGER NOT NULL REFERENCES account(id)
+      );
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V15_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -754,4 +818,5 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v12,
   v13,
   v14,
+  v15,
 ];

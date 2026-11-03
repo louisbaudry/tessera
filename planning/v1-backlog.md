@@ -5228,7 +5228,7 @@ S4 (the semantic match type in the editor), S5 (LLM context, with Epic
 8) and S6 (real-use data) are not carded yet: each waits on the editor,
 Epic 8, or a shipped feature.
 
-### Epic 15 — Single sign-on (spec'd 2026-10-25, slice 1 built 2026-10-25)
+### Epic 15 — Single sign-on (spec'd 2026-10-25, slice 1 built 2026-10-25, slice 2 built 2026-11-03)
 
 Design in `planning/sso-spec.md` (decisions D1 to D9), decided with Louis on 2026-10-25: staff,
 vendors and a tenant's clients can sign in with a Microsoft 365 or Google account. Worth carrying
@@ -5260,7 +5260,17 @@ A person can sign in to an account that already exists with a Microsoft 365 or G
 - **Mutation checks were run, not assumed.** Each of these was broken in turn and a test failed: no nonce, no audience, no issuer match, host unchecked at redeem, callback served on a tenant host, callback host serving other paths, no key refresh, failures not logged, a link redeemed for any account, a state reusable, a hand-off code reusable, the browser secret unchecked, the last-way-in guard.
 - Verified: the new tests (core 25, db 32, server 61 across config, `sso-http`, routes) and the whole suite (3238) pass, `pnpm test:golden` passes, and a real browser run against the built server and SPA with a stand-in for Google (intercepted at the provider's URL) went login button, callback host, tenant host, session, and refused a stranger with the one message. **Not verified:** a real Google or Microsoft sign-in (the operator has registered no app; spec §4), a real Microsoft or Google token's exact claims, and the callback host on a real certificate and DNS.
 
-**#215 · SSO slice 2: SSO in invitations and settings, and a tenant policy · M** · [issue #317]
+**#215 · ~~SSO slice 2: SSO in invitations and settings, and a tenant policy~~ · DONE — `core/src/auth/sso.ts` (`directoryOfIssuer`, `identityMeetsLock`, three purposes), platform schema v15 (`tenant_sso_policy`, `hosted_domain` on `sso_attempt` and `account_identity`), `db/src/platform/{sso-policy,invitations,staff-invitations,identities,sso-attempts}.ts`, `server/src/{sso,invitations,staff,app}.ts`, `web/src/{Account.tsx,account-settings.ts,Accept.tsx,App.tsx,sso.ts,route.ts,api.ts}`** (2026-11-03; card #317, Epic 15, `sso-spec.md` D3, D7, D9, §2a)
+
+A staff or vendor invitation can be accepted with Microsoft or Google, a vendor with an account can join another roster by a linked identity, a signed-in account links and unlinks from a new Account screen, and a tenant's admin sets a policy that requires SSO for staff and locks each provider to a directory or Workspace domain. What it taught:
+
+- **The card and the spec disagreed, and the spec won.** The card said the provider's verified email must equal the invited address; D3.1 (and slice 1's reading of Microsoft's own docs) had already decided that no address is compared, because the link is the proof and an `email` claim is not trustworthy. Recorded in §2a so the next reader does not reopen it.
+- **The return trip needed somewhere to remember the page.** The callback host always sends the browser to `/#sso=<code>`, so an invitation page or the Account screen keeps what it was doing (`PendingSso`, session storage, read once and checked like a request) and the shell routes the code to it. A login keeps no record, and pressing a login button clears an abandoned one, so an old invitation can never take a login's code.
+- **"Has a link" had to mean "has a link that lets them in", or the policy could shut people out.** A staff member whose only link is outside the lock keeps their password; requiring SSO is refused unless the acting admin holds a qualifying link; a staff invitation accepted by an identity outside the lock is refused before the account is made. Each was mutation-checked: loosening the qualifying-link rule, dropping the lock check at sign-in, and dropping the password refusal each fail a test.
+- **Google's Workspace domain had to be kept on the link**, because the lockout check reads an admin's existing links and the domain is not in the issuer as Microsoft's directory is. `hd` with scope `openid` alone is documented without a scope and unconfirmed against a real account, so every check fails closed: no `hd`, no Google lock met, and an admin simply cannot set one rather than lock anyone out.
+- **The refusals stay one answer where they were one.** A sign-in outside the lock is the slice-1 refusal (`outside_policy` in the log only); a password refused by the policy is a 403 that says why, because the password was right and nothing is revealed; the log reason is `sso_required`.
+- **The isolation matrix gained the eight routes**, and tenant B now holds a policy whose domain is a marker, so a policy read that leaked across tenants would fail it.
+- Verified: core, db and server tests for every rule above (`sso-slice2.test.ts`, the `slice 2` block in `sso.test.ts`), the isolation matrix, the web tests (`account-settings`, `parsePending`), the full suite, and a browser run against the built server and SPA: the Account screen lists links, refuses to require SSO without one (the server's message shown), saves a domain lock, and the staff invitation page offers "Join with Google" and leaves for the provider. **Not verified:** a real Microsoft or Google sign-in, the `hd` claim of a real Workspace token, and the invitation return trip in a browser (it needs a provider to come back from).
 
 **#216 · SSO slice 3: portal client contacts sign in with SSO · L** · [issue #318]
 
@@ -5308,5 +5318,4 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51
-[issue #317]: https://github.com/louisbaudry/tessera/issues/317
 [issue #318]: https://github.com/louisbaudry/tessera/issues/318

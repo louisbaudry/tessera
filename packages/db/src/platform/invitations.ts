@@ -17,7 +17,13 @@
  * `vendor_invitation` and, once accepted, in `account`.
  */
 
-import { generateSessionToken, hashSessionToken, type AuditActor } from '@cat-tool/core';
+import {
+  generateSessionToken,
+  hashSessionToken,
+  NO_PASSWORD_HASH,
+  type AuditActor,
+  type SsoIdentity,
+} from '@cat-tool/core';
 import {
   INVITATION_TTL_MS,
   invitationStatus,
@@ -33,6 +39,7 @@ import {
   getAccountById,
   type Account,
 } from './accounts.js';
+import { linkIdentity } from './identities.js';
 import { addRosterMembership } from './membership.js';
 
 export interface Invitation {
@@ -306,12 +313,47 @@ export function openInvitation(
   return invitation.status === 'pending' ? { email: invitation.email } : null;
 }
 
-export interface AcceptInvitationOptions {
-  readonly token: string;
-  /** From `hashPassword`: never a raw password. */
-  readonly passwordHash: string;
-  readonly now?: Date;
+/**
+ * How an invitee opens the account: a password (its hash, from `hashPassword`, never a raw password),
+ * or an identity a provider just signed in (`planning/sso-spec.md` D3.1, §2a), which leaves the
+ * account with `NO_PASSWORD_HASH` and links the identity in the same transaction.
+ */
+export type InvitationCredential =
+  | { readonly passwordHash: string; readonly identity?: never }
+  | {
+      readonly identity: Pick<
+        SsoIdentity,
+        'provider' | 'issuer' | 'subject' | 'hostedDomain'
+      >;
+      readonly passwordHash?: never;
+    };
+
+/** The hash an account is created with, for either credential. */
+export const credentialHash = (credential: InvitationCredential): string =>
+  credential.identity ? NO_PASSWORD_HASH : credential.passwordHash;
+
+/**
+ * Links the identity of an account an invitation just made, as the account itself. Inside the
+ * caller's transaction, so an identity already linked elsewhere (`IdentityTakenError`) undoes the
+ * account and leaves the invitation pending.
+ */
+export function linkInvitedIdentity(
+  db: Database.Database,
+  account: Account,
+  credential: InvitationCredential,
+  now: Date,
+): void {
+  if (!credential.identity) return;
+  linkIdentity(db, account.id, credential.identity, {
+    actor: { actor: { kind: 'account', id: account.id }, label: account.email },
+    now,
+  });
 }
+
+export type AcceptInvitationOptions = InvitationCredential & {
+  readonly token: string;
+  readonly now?: Date;
+};
 
 /**
  * Uses a link: creates the vendor account, records it on the owner's roster index and
@@ -334,7 +376,7 @@ export function acceptInvitation(
       if (getAccountByEmail(db, row.email)) throw new EmailTakenError();
       const account = createAccount(db, {
         email: row.email,
-        passwordHash: options.passwordHash,
+        passwordHash: credentialHash(options),
         role: 'vendor',
         forTenant: row.tenant_id,
         actor: { actor: { kind: 'account', id: row.invited_by }, label: null },
@@ -347,6 +389,7 @@ export function acceptInvitation(
         .run(now.toISOString(), account.id, row.id).changes;
       if (changed !== 1) throw new InvitationUnusableError();
       addRosterMembership(db, { tenantId: row.tenant_id, accountId: account.id, now });
+      linkInvitedIdentity(db, account, options, now);
       appendPlatformEvent(db, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },
         action: 'invitation.accepted',

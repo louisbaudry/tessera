@@ -1628,3 +1628,30 @@ button.chip-button:hover {
 .webhooks .chip.warn {
   color: var(--error, #b42318);
 }
+
+/* The account screen's policy form (issue #317): one field per line, as on the login form. */
+.account form.policy {
+  max-width: 34rem;
+}
+.account form.policy label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.75rem 0;
+}
+.account form.policy label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+.account section + section {
+  margin-top: 2rem;
+}
+.account form.policy input:not([type='checkbox']) {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+}

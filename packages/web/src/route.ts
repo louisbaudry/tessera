@@ -11,7 +11,9 @@
  * `#/vendors` is the owner's roster and invitations, and `#/invite/<token>` the
  * page a vendor's invitation link opens (backlog #111). `#/audit` is an admin's activity log (backlog #211), `#/staff` an admin's staff
  * list and `#/join/<token>` the page a staff link opens (backlog #210). The two link
- * pages are the only screens reached without a session.
+ * pages are the only screens reached without a session. `#/account` is the signed-in
+ * account's own settings: its linked sign-ins and, for an admin, the tenant's single sign-on
+ * policy (issue #317).
  */
 
 export type Route =
@@ -22,6 +24,7 @@ export type Route =
   | { readonly screen: 'vendors' }
   | { readonly screen: 'staff' }
   | { readonly screen: 'audit' }
+  | { readonly screen: 'account' }
   | { readonly screen: 'join'; readonly token: string }
   | { readonly screen: 'invite'; readonly token: string }
   | { readonly screen: 'job'; readonly tenantId: number; readonly id: number }
@@ -33,6 +36,9 @@ const HOME: Route = { screen: 'projects' };
 /** What `generateSessionToken` makes: base64url, 43 characters; the bounds are loose. */
 const INVITE_TOKEN = /^[A-Za-z0-9_-]{20,200}$/;
 
+/** Whether a text has the shape of an invitation link's token. */
+export const isInviteToken = (text: string): boolean => INVITE_TOKEN.test(text);
+
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts.length === 1 && parts[0] === 'tms') return { screen: 'tms' };
@@ -41,6 +47,7 @@ export function parseRoute(hash: string): Route {
   if (parts.length === 1 && parts[0] === 'vendors') return { screen: 'vendors' };
   if (parts.length === 1 && parts[0] === 'staff') return { screen: 'staff' };
   if (parts.length === 1 && parts[0] === 'audit') return { screen: 'audit' };
+  if (parts.length === 1 && parts[0] === 'account') return { screen: 'account' };
   if (parts.length === 2 && parts[0] === 'join') {
     // A staff link, like a vendor's, lives in the fragment and is never sent to a server.
     return INVITE_TOKEN.test(parts[1]!) ? { screen: 'join', token: parts[1]! } : HOME;
@@ -86,6 +93,8 @@ export function formatRoute(route: Route): string {
       return '#/staff';
     case 'audit':
       return '#/audit';
+    case 'account':
+      return '#/account';
     case 'join':
       return `#/join/${route.token}`;
     case 'invite':

@@ -237,6 +237,16 @@ async function buildWorld(): Promise<World> {
     },
     201,
   );
+  // B's single sign-on policy, locks only (requiring SSO needs a link): its domain is a marker.
+  await sendOk(
+    c,
+    {
+      method: 'PUT',
+      url: '/api/tenant/sso-policy',
+      body: { requireSso: false, microsoftTid: null, googleHd: 'b-policy.example' },
+    },
+    200,
+  );
   const clientId = 7;
   await sendOk(
     c,
@@ -282,6 +292,7 @@ async function buildWorld(): Promise<World> {
       'b-staff@',
       'carol@',
       'zed@',
+      'b-policy',
     ],
   };
 }
@@ -330,6 +341,34 @@ const ROUTES: Record<string, Entry> = {
   },
   'POST /api/staff-invitations/open': { kind: 'public', why: 'a link, not a session' },
   'POST /api/staff-invitations/accept': { kind: 'public', why: 'a link, not a session' },
+  'POST /api/staff-invitations/sso/start': {
+    kind: 'public',
+    why: 'a link, not a session',
+  },
+  'POST /api/staff-invitations/sso/accept': {
+    kind: 'public',
+    why: 'a link and a one-time code',
+  },
+  'POST /api/invitations/sso/start': { kind: 'public', why: 'a link, not a session' },
+  'POST /api/invitations/sso/accept': {
+    kind: 'public',
+    why: 'a link and a one-time code',
+  },
+  'POST /api/invitations/sso/join-start': {
+    kind: 'public',
+    why: 'a link, not a session',
+  },
+  'POST /api/invitations/sso/join': { kind: 'public', why: 'a link and a one-time code' },
+  'GET /api/tenant/sso-policy': { kind: 'list' },
+  'PUT /api/tenant/sso-policy': {
+    kind: 'own',
+    why: 'the caller’s own tenant’s policy',
+    req: {
+      method: 'PUT',
+      url: '/api/tenant/sso-policy',
+      body: { requireSso: false, microsoftTid: null, googleHd: 'a-policy.example' },
+    },
+  },
   'POST /api/invitations/join': {
     kind: 'own',
     why: 'the signed-in account joins by a link; a link is the tenant’s own',

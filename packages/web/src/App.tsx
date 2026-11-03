@@ -8,9 +8,10 @@ import type { AccountRole, TenantRole } from '@cat-tool/core';
 
 import { api, ApiError } from './api.js';
 import { Accept } from './Accept.js';
+import { Account } from './Account.js';
 import { Grid } from './Grid.js';
 import { JobScreen } from './Job.js';
-import { Login } from './Login.js';
+import { Login, takeLanding } from './Login.js';
 import { Memories } from './Memories.js';
 import { Payables } from './Payables.js';
 import { Payments } from './Payments.js';
@@ -23,8 +24,26 @@ import { formatRoute, parseRoute, type Route } from './route.js';
 import { SessionContext, type SessionValue } from './session-context.js';
 import { clearToken, loadToken, saveToken } from './session.js';
 import { applyTheme, followSystem, nextThemeChoice, type ThemeChoice } from './theme.js';
+import { takePending, type PendingSso, type SsoFragment } from './sso.js';
 import { VendorFeed } from './VendorFeed.js';
 import { Vendors } from './Vendors.js';
+
+/**
+ * A sign-in at a provider that comes back (`#sso=<code>`), with what the page was doing when it
+ * left (issue #317): read once, at module level, because the code is single use. A link goes back
+ * to the account screen; an invitation to its page; a login (no record) to the login screen.
+ */
+let returned: { landing: SsoFragment; pending: PendingSso | null } | null | undefined;
+function takeReturn() {
+  if (returned === undefined) {
+    const landing = takeLanding();
+    returned = landing === null ? null : { landing, pending: takePending() };
+    if (returned?.pending?.purpose === 'link') {
+      window.history.replaceState(null, '', formatRoute({ screen: 'account' }));
+    }
+  }
+  return returned;
+}
 
 function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
@@ -37,6 +56,7 @@ function useRoute(): Route {
 }
 
 export function App() {
+  const [back, setBack] = useState(takeReturn);
   const [token, setToken] = useState(loadToken);
   const route = useRoute();
 
@@ -72,6 +92,26 @@ export function App() {
       live = false;
     };
   }, [token, signOut]);
+
+  // Back from a provider with an invitation's sign-in (issue #317): its page finishes it.
+  const invited = back?.pending && back.pending.purpose !== 'link' ? back.pending : null;
+  if (back && invited) {
+    return (
+      <Accept
+        token={invited.token}
+        kind={invited.purpose === 'staff_invite' ? 'staff' : 'vendor'}
+        returning={{ purpose: invited.purpose, fragment: back.landing }}
+        onToken={(t) => {
+          saveToken(t);
+          setBack(null);
+          setRole(null);
+          setStaffRole(null);
+          setToken(t);
+          window.location.hash = formatRoute({ screen: 'projects' });
+        }}
+      />
+    );
+  }
 
   // An invitation link is the one screen reached without a session (backlog #111).
   // Accepting it signs the new vendor in; whoever was signed in before is replaced,
@@ -133,6 +173,7 @@ export function App() {
           {role === 'vendor' && (
             <a href={formatRoute({ screen: 'payments' })}>Payments</a>
           )}
+          <a href={formatRoute({ screen: 'account' })}>Account</a>
           <ThemeToggle />
           <button type="button" className="link" onClick={() => void logOut()}>
             Sign out
@@ -152,6 +193,12 @@ export function App() {
           )}
           {route.screen === 'staff' && staffRole === 'admin' && <Staff />}
           {route.screen === 'audit' && staffRole === 'admin' && <Audit />}
+          {route.screen === 'account' && role !== null && (
+            <Account
+              staffRole={staffRole}
+              returning={back?.pending?.purpose === 'link' ? back.landing : undefined}
+            />
+          )}
           {route.screen === 'payables' && role === 'owner' && <Payables />}
           {route.screen === 'payments' && role === 'vendor' && <Payments />}
           {route.screen === 'project' && <ProjectFiles name={route.project} />}
@@ -186,7 +233,8 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
     route.screen === 'payments' ||
     route.screen === 'vendors' ||
     route.screen === 'staff' ||
-    route.screen === 'audit'
+    route.screen === 'audit' ||
+    route.screen === 'account'
   ) {
     const here = {
       tms: 'Memories',
@@ -195,6 +243,7 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       vendors: 'Vendors',
       staff: 'Staff',
       audit: 'Activity',
+      account: 'Account',
     }[route.screen];
     return (
       <nav className="crumbs">

@@ -186,6 +186,56 @@ linked account that is not on the host's tenant, a disabled contact and an expir
 are **one identical refusal**: the form cannot be used to ask who has an account or who
 works for whom (D14 rule 2).
 
+### 2a. Slice 2, as built (issue #317, 2026-11-03)
+
+What slice 2 settled while building D3, D7 and D9. Stack unchanged (D8).
+
+- **An invitation accepted by a provider compares no address** (D3.1 governs). The card's text
+  said the provider's verified email must equal the invited address; D3 had already decided the
+  opposite, for D1's reason (a Microsoft `email` claim is not trustworthy, and scope `openid` asks
+  for none), and the spec wins. The one-time link is the proof; the provider only chooses how the
+  account will be opened. The account (`NO_PASSWORD_HASH`), its membership or roster row, the link
+  and the invitation's use are one transaction, so an identity already linked elsewhere leaves the
+  invitation pending.
+- **Three new purposes**, widened in `sso_attempt.purpose` by a migration (platform v15):
+  `staff_invite`, `vendor_invite` and `join`. They start on the invitation page, which holds the
+  link's token, and are redeemed there with the token again: the token proves the invitation, the
+  hand-off code and the browser secret prove the sign-in, and the attempt names no account (only
+  `link` does). A join redeems to the account the identity already opens, which `joinInvitation`
+  then checks as it checks a password sign-in (a vendor, at the invited address).
+- **The directory and the Workspace domain travel with the identity, and the domain is kept on the
+  link.** Microsoft's directory is part of its issuer, so it is read back from `issuer`
+  (`directoryOfIssuer`, `core/auth/sso.ts`) and never stored twice. Google's `hd` is not, so
+  `sso_attempt.hosted_domain` carries it from the callback to the redeem, and
+  `account_identity.hosted_domain` keeps it, set at linking and refreshed at every sign-in: it is
+  an organisation's domain, not a person's address, and D7's "the acting admin holds a qualifying
+  link" cannot be checked without it.
+- **Whether Google sends `hd` for scope `openid` alone is unconfirmed.** Google's reference says the
+  claim is "provided only if the user belongs to a Google Cloud organization" and ties it to no
+  scope; no real Workspace account has been tried (read 2026-11-03). The scope stays `openid`, and
+  every check **fails closed**: a token with no `hd` never meets a Google lock, so if the claim never
+  comes an admin simply cannot set a Google lock (they hold no qualifying link) and nobody is shut
+  out. Verify with a real Workspace account before advertising the Google lock.
+- **The policy, exactly.** `tenant_sso_policy` (one row per tenant, absent is no policy): `require_sso`,
+  `microsoft_tid`, `google_hd`. A lock is per provider: a locked provider accepts only its directory
+  or domain, an unlocked one any account of that provider. It applies to the tenant's staff only
+  (`tenantOfAccount`), never a vendor.
+  - **A password sign-in by staff is refused while `require_sso` holds and the account holds a link
+    that meets the locks.** "Has a link" in D7 is read as "has a link that would let them in", so a
+    staff member whose only link is outside the lock keeps their password and cannot be shut out by
+    the policy. The refusal comes after the password checked, so it may say why (a 403 naming SSO);
+    the log reason is `sso_required`.
+  - **A staff sign-in by a provider outside the lock is the one refusal** (log reason
+    `outside_policy`).
+  - **Setting `require_sso` is refused unless the acting admin holds a link that meets the locks
+    being set** (`SsoLockoutError`, a 409). Clearing it, or setting locks without requiring SSO, is
+    never refused. Every change writes `tenant.sso_policy_set` with the three values (a directory id
+    and a domain are an organisation's, not a person's), and the route is the tenant's admin's
+    (`staff` in `tenantRoleAllows`).
+- **The settings screen** (`#/account`) lists the account's links (provider and dates only, never the
+  subject), links another through slice 1's routes and unlinks one unless it is the last way in; an
+  admin sees the policy below it.
+
 ## 3. Per audience
 
 | Who | Gets in by | Lock |
@@ -255,7 +305,7 @@ Each is written before the code that enforces it, with a fake provider:
 | # | What | Size | After |
 | - | ---- | ---- | ----- |
 | 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions. **Built** (#214), with the login screen's buttons and the link and unlink routes; no settings screen | L | none |
-| 2 | SSO in staff and vendor invitation acceptance, linking and unlinking from settings, `tenant_sso_policy` | M | 1 |
+| 2 | SSO in staff and vendor invitation acceptance, linking and unlinking from settings, `tenant_sso_policy`. **Built** (#317, §2a) | M | 1 |
 | 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen | L | 1 |
 
 One session on one slice: slices 1 and 2 both change `platform/schema.ts`, and

@@ -97,6 +97,7 @@ import {
   QaIssueError,
   recordDownload,
   recordFailedLogin,
+  staffPasswordRefused,
   recordProjectChange,
   revokeAllProjectAuthorizations,
   scopeOf,
@@ -158,8 +159,12 @@ import {
 import {
   ACCEPT_INVITATION_PATH,
   JOIN_SIGNIN_PATH,
+  JOIN_SSO_PATH,
+  JOIN_SSO_START_PATH,
   OPEN_INVITATION_PATH,
   registerInvitationRoutes,
+  VENDOR_SSO_ACCEPT_PATH,
+  VENDOR_SSO_START_PATH,
 } from './invitations.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
 import { PUBLIC_SSO_PATHS, registerSsoRoutes, SSO_CALLBACK_PATH } from './sso.js';
@@ -169,6 +174,8 @@ import {
   ACCEPT_STAFF_INVITATION_PATH,
   OPEN_STAFF_INVITATION_PATH,
   registerStaffRoutes,
+  STAFF_SSO_ACCEPT_PATH,
+  STAFF_SSO_START_PATH,
 } from './staff.js';
 import {
   glossaryPath,
@@ -320,6 +327,13 @@ const PUBLIC_PATHS = new Set([
   JOIN_SIGNIN_PATH,
   OPEN_STAFF_INVITATION_PATH,
   ACCEPT_STAFF_INVITATION_PATH,
+  // The same steps by a provider (slice 2, sso-spec.md §2a): the invitee has no session yet.
+  VENDOR_SSO_START_PATH,
+  VENDOR_SSO_ACCEPT_PATH,
+  JOIN_SSO_START_PATH,
+  JOIN_SSO_PATH,
+  STAFF_SSO_START_PATH,
+  STAFF_SSO_ACCEPT_PATH,
   ...PUBLIC_SSO_PATHS,
 ]);
 
@@ -500,6 +514,19 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           ...(host ? { tenantId: host.id } : {}),
         });
         return reply.code(401).send({ error: 'invalid email or password' });
+      }
+      // A tenant that requires single sign-on (sso-spec.md D7, §2a) refuses its staff's password
+      // once they hold a link that would let them in. The password was right, so it may say why.
+      if (staffPasswordRefused(platform, account.id)) {
+        recordFailedLogin(platform, {
+          actor: LOGIN_GATE,
+          accountId: account.id,
+          reason: 'sso_required',
+          ...(host ? { tenantId: host.id } : {}),
+        });
+        return reply.code(403).send({
+          error: 'your organisation requires signing in with Microsoft or Google',
+        });
       }
       const token = generateSessionToken();
       const { expiresAt } = createAccountSession(platform, account.id, token, {
@@ -2355,18 +2382,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
   dispatcher.start();
 
-  // --- a tenant invites a vendor (backlog #111) -------------------------
-  registerInvitationRoutes(app, {
-    storageRoot: config.storageRoot,
-    platform,
-    account: sessionAccount,
-    tenant: ownTenant,
-    sessionActor,
-    loginGate: LOGIN_GATE,
-  });
-
-  // --- sign in with Microsoft 365 or Google (backlog #214, sso-spec.md) -------
-  registerSsoRoutes(app, {
+  // --- sign in with Microsoft 365 or Google (backlog #214, #317, sso-spec.md) -------
+  // First, because the invitation routes accept by a provider through the same steps.
+  const ssoFlow = registerSsoRoutes(app, {
     platform,
     config,
     http: options.sso?.http ?? createSsoHttp(),
@@ -2375,6 +2393,17 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     auditActor,
     loginGate: LOGIN_GATE,
     publicAccount,
+  });
+
+  // --- a tenant invites a vendor (backlog #111) -------------------------
+  registerInvitationRoutes(app, {
+    storageRoot: config.storageRoot,
+    platform,
+    account: sessionAccount,
+    tenant: ownTenant,
+    sessionActor,
+    loginGate: LOGIN_GATE,
+    sso: ssoFlow,
   });
 
   // --- a tenant's own slice of the platform log (backlog #211) -------------
@@ -2389,6 +2418,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     account: sessionAccount,
     tenant: (req) => tenantFor(req, 'staff'),
     sessionActor,
+    sso: ssoFlow,
   });
 
   return app;

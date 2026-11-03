@@ -43,6 +43,7 @@ export const ACTION_LABEL: Record<PlatformAuditAction, string> = {
   'auth.sso_login_failed': 'A Microsoft or Google sign-in was refused',
   'account.sso_linked': 'A Microsoft or Google account was linked',
   'account.sso_unlinked': 'A Microsoft or Google account was unlinked',
+  'tenant.sso_policy_set': 'The single sign-on policy changed',
   'tenant.slug_set': 'The organisation’s web address was set',
 };
 

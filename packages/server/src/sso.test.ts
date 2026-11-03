@@ -65,6 +65,7 @@ function link(
   subject: string,
   provider: SsoProvider = 'google',
   tid: string = DIRECTORY,
+  hostedDomain: string | null = null,
 ): void {
   const db = platformDb();
   linkIdentity(
@@ -77,6 +78,7 @@ function link(
           ? 'https://accounts.google.com'
           : `https://login.microsoftonline.com/${tid}/v2.0`,
       subject,
+      hostedDomain,
     },
     { actor: SETUP },
   );
@@ -952,5 +954,269 @@ describe('with no base domain', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().account.email).toBe('alice@example.com');
+  });
+});
+
+describe('slice 2: invitations accepted by a provider, and a tenant’s policy (#317)', () => {
+  const passwordLogin = (account: Account, host = HOST_A) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/login',
+      headers: at(host),
+      payload: { email: account.email, password: `${account.email.split('@')[0]}-pw` },
+    });
+  const login = async (account: Account, host = HOST_A): Promise<string> => {
+    const res = await passwordLogin(account, host);
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json().token;
+  };
+  const OTHER_TID = '99999999-2222-4333-8444-555555555555';
+
+  /** An invitation's whole provider flow, to the accept (or join) response. */
+  async function viaInvitation(
+    startPath: string,
+    acceptPath: string,
+    token: string,
+    provider: SsoProvider,
+    subject: string,
+    over: Partial<Parameters<FakeProvider['idToken']>[0]> = {},
+    host = HOST_A,
+  ) {
+    const started = await app.inject({
+      method: 'POST',
+      url: startPath,
+      headers: at(host),
+      payload: { token, provider, binding: BINDING },
+    });
+    expect(started.statusCode, started.body).toBe(200);
+    const url = new URL(started.json().url);
+    const attempt = {
+      state: url.searchParams.get('state')!,
+      nonce: url.searchParams.get('nonce')!,
+      url,
+    };
+    const back = await viaProvider(attempt, provider, subject, over);
+    expect(back.statusCode).toBe(302);
+    return app.inject({
+      method: 'POST',
+      url: acceptPath,
+      headers: at(host),
+      payload: { token, code: fragmentOf(back.headers.location), binding: BINDING },
+    });
+  }
+
+  const staffInvite = async (email = 'newpm@example.com') => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/staff/invitations',
+      headers: at(HOST_A, await login(alice)),
+      payload: { email, role: 'pm' },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().token as string;
+  };
+  const vendorInvite = async (email: string) => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/invitations',
+      headers: at(HOST_A, await login(alice)),
+      payload: { email },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().token as string;
+  };
+  const setPolicy = async (token: string, body: object) =>
+    app.inject({
+      method: 'PUT',
+      url: '/api/tenant/sso-policy',
+      headers: at(HOST_A, token),
+      payload: body,
+    });
+
+  it('opens a staff account with no password from a staff invitation, which then signs in', async () => {
+    const token = await staffInvite();
+    const res = await viaInvitation(
+      '/api/staff-invitations/sso/start',
+      '/api/staff-invitations/sso/accept',
+      token,
+      'microsoft',
+      'ms-newpm',
+    );
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().account.email).toBe('newpm@example.com');
+    const db = platformDb();
+    const made = listAccounts(db).find((a) => a.email === 'newpm@example.com')!;
+    db.close();
+    expect(made.passwordHash).toBe(NO_PASSWORD_HASH);
+    expect((await signIn(HOST_A, 'microsoft', 'ms-newpm')).statusCode).toBe(200);
+    // the link is spent: it cannot open a second account
+    const again = await app.inject({
+      method: 'POST',
+      url: '/api/staff-invitations/sso/start',
+      headers: at(HOST_A),
+      payload: { token, provider: 'google', binding: BINDING },
+    });
+    expect(again.statusCode).toBe(404);
+  });
+
+  it('opens a vendor account from a vendor invitation the same way', async () => {
+    const token = await vendorInvite('fresh-vendor@example.com');
+    const res = await viaInvitation(
+      '/api/invitations/sso/start',
+      '/api/invitations/sso/accept',
+      token,
+      'google',
+      'g-fresh-vendor',
+    );
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().account.role).toBe('vendor');
+  });
+
+  it('refuses an invitation link made for another tenant, before any provider is involved', async () => {
+    const token = await staffInvite();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/staff-invitations/sso/start',
+      headers: at(HOST_B),
+      payload: { token, provider: 'google', binding: BINDING },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('refuses an identity that already opens another account, and the invitation stays usable', async () => {
+    link(carol, 'g-carol');
+    const token = await staffInvite();
+    const res = await viaInvitation(
+      '/api/staff-invitations/sso/start',
+      '/api/staff-invitations/sso/accept',
+      token,
+      'google',
+      'g-carol',
+    );
+    expect(res.statusCode).toBe(409);
+    const open = await app.inject({
+      method: 'POST',
+      url: '/api/staff-invitations/open',
+      headers: at(HOST_A),
+      payload: { token },
+    });
+    expect(open.statusCode).toBe(200);
+  });
+
+  it('lets a vendor with an account join another roster by a linked identity, and refuses one nobody linked', async () => {
+    link(dave, 'g-dave');
+    const token = await vendorInvite('dave@example.com');
+    const nobody = await viaInvitation(
+      '/api/invitations/sso/join-start',
+      '/api/invitations/sso/join',
+      token,
+      'google',
+      'g-stranger',
+    );
+    expect(nobody.statusCode).toBe(401);
+    expect(nobody.json()).toEqual(REFUSED);
+    const joined = await viaInvitation(
+      '/api/invitations/sso/join-start',
+      '/api/invitations/sso/join',
+      token,
+      'google',
+      'g-dave',
+    );
+    expect(joined.statusCode, joined.body).toBe(201);
+    expect(joined.json().account.email).toBe('dave@example.com');
+    // dave now signs in on tenant A's host by the same identity
+    expect((await signIn(HOST_A, 'google', 'g-dave')).statusCode).toBe(200);
+  });
+
+  it('refuses a staff invitation accepted with an identity outside the tenant’s lock', async () => {
+    const admin = await login(alice);
+    expect(
+      (
+        await setPolicy(admin, {
+          requireSso: false,
+          microsoftTid: OTHER_TID,
+          googleHd: null,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const token = await staffInvite();
+    const res = await viaInvitation(
+      '/api/staff-invitations/sso/start',
+      '/api/staff-invitations/sso/accept',
+      token,
+      'microsoft',
+      'ms-outsider',
+    );
+    expect(res.statusCode).toBe(403);
+    const db = platformDb();
+    expect(listAccounts(db).some((a) => a.email === 'newpm@example.com')).toBe(false);
+    db.close();
+  });
+
+  it('will not let an admin require SSO without a way in by it, then refuses staff passwords', async () => {
+    const admin = await login(alice);
+    const require = { requireSso: true, microsoftTid: null, googleHd: 'example.org' };
+    expect((await setPolicy(admin, require)).statusCode).toBe(409);
+    link(alice, 'g-alice', 'google', DIRECTORY, 'example.org');
+    const set = await setPolicy(admin, require);
+    expect(set.statusCode, set.body).toBe(200);
+    expect(set.json()).toEqual(require);
+
+    const refused = await passwordLogin(alice);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error).toMatch(/Microsoft or Google/);
+    // the provider still lets the admin in, so nobody is locked out
+    expect(
+      (await signIn(HOST_A, 'google', 'g-alice', { hd: 'example.org' })).statusCode,
+    ).toBe(200);
+    // another tenant's staff and a vendor are untouched
+    expect((await passwordLogin(carol, HOST_B)).statusCode).toBe(200);
+    expect((await passwordLogin(erin)).statusCode).toBe(200);
+  });
+
+  it('refuses a staff sign-in outside the lock as every refusal is, and logs why', async () => {
+    link(alice, 'ms-alice-home', 'microsoft', OTHER_TID);
+    link(alice, 'ms-alice-work', 'microsoft', DIRECTORY);
+    const admin = await login(alice);
+    expect(
+      (
+        await setPolicy(admin, {
+          requireSso: false,
+          microsoftTid: DIRECTORY,
+          googleHd: null,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const outside = await signIn(HOST_A, 'microsoft', 'ms-alice-home', {
+      tid: OTHER_TID,
+    });
+    expect(outside.statusCode).toBe(401);
+    expect(outside.json()).toEqual(REFUSED);
+    expect(failures().at(-1)).toMatchObject({
+      reason: 'outside_policy',
+      tenant_id: tenantA.id,
+    });
+    expect((await signIn(HOST_A, 'microsoft', 'ms-alice-work')).statusCode).toBe(200);
+  });
+
+  it('is the admin’s alone: a pm is refused, and a vendor has no policy to read', async () => {
+    link(pam, 'g-pam');
+    const pmToken = (await signIn(HOST_A, 'google', 'g-pam')).json().token as string;
+    expect(
+      (
+        await setPolicy(pmToken, {
+          requireSso: false,
+          microsoftTid: null,
+          googleHd: null,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const vendorToken = await login(erin);
+    const read = await app.inject({
+      method: 'GET',
+      url: '/api/tenant/sso-policy',
+      headers: at(HOST_A, vendorToken),
+    });
+    expect(read.statusCode).toBe(404);
   });
 });
