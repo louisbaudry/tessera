@@ -16,7 +16,7 @@
  * Every way a sign-in can fail is one answer to the person (`REFUSED`) and a reason in the log
  * (`auth.sso_login_failed`): the form cannot be asked who has an account or who works for whom
  * (D9). The provider hosts are fixed in code and an error never carries what a provider said
- * (`sso-http.ts`).
+ * (`@cat-tool/sso-http`).
  */
 
 import {
@@ -59,7 +59,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { JSONWebKeySet } from 'jose';
 
 import type { ServerConfig } from './config.js';
-import { SsoHttpError, type SsoHttp } from './sso-http.js';
+import { SsoHttpError, type SsoHttp } from '@cat-tool/sso-http';
 
 type Platform = ReturnType<typeof openPlatformDb>;
 

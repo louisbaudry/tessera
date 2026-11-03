@@ -97,12 +97,18 @@ importers:
 
   packages/portal-server:
     dependencies:
+      '@cat-tool/core':
+        specifier: workspace:*
+        version: link:../core
       '@cat-tool/db':
         specifier: workspace:*
         version: link:../db
       '@cat-tool/portal-core':
         specifier: workspace:*
         version: link:../portal-core
+      '@cat-tool/sso-http':
+        specifier: workspace:*
+        version: link:../sso-http
       '@fastify/multipart':
         specifier: ^9.0.0
         version: 9.4.0
@@ -112,13 +118,13 @@ importers:
       fastify:
         specifier: ^5.1.0
         version: 5.12.3
+      jose:
+        specifier: ^6.2.13
+        version: 6.2.13
       nodemailer:
         specifier: ^6.9.16
         version: 6.10.1
     devDependencies:
-      '@cat-tool/core':
-        specifier: workspace:*
-        version: link:../core
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1
@@ -134,6 +140,9 @@ importers:
       '@cat-tool/db':
         specifier: workspace:*
         version: link:../db
+      '@cat-tool/sso-http':
+        specifier: workspace:*
+        version: link:../sso-http
       '@cat-tool/vendor-core':
         specifier: workspace:*
         version: link:../vendor-core
@@ -153,6 +162,19 @@ importers:
       jose:
         specifier: ^6.2.13
         version: 6.2.13
+
+  packages/sso-http:
+    dependencies:
+      '@cat-tool/core':
+        specifier: workspace:*
+        version: link:../core
+      jose:
+        specifier: ^6.2.13
+        version: 6.2.13
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
 
   packages/vendor-core:
     dependencies:

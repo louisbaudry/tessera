@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createSsoHttp, SsoHttpError } from './sso-http.js';
+import { createSsoHttp, SsoHttpError } from './index.js';
 
 const exchange = {
   provider: 'google' as const,

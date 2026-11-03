@@ -10,6 +10,8 @@ export interface Client {
   readonly email: string;
   readonly accessToken: string;
   readonly createdAt: string;
+  /** Whether the private link opens the portal (issue #342); off only once a contact can sign in. */
+  readonly linkEnabled: boolean;
 }
 
 interface ClientRow {
@@ -18,6 +20,7 @@ interface ClientRow {
   email: string;
   access_token: string;
   created_at: string;
+  link_enabled: number;
 }
 
 const fromRow = (row: ClientRow): Client => ({
@@ -26,6 +29,7 @@ const fromRow = (row: ClientRow): Client => ({
   email: row.email,
   accessToken: row.access_token,
   createdAt: row.created_at,
+  linkEnabled: row.link_enabled === 1,
 });
 
 /** A URL-safe token for the client's private access link. */
@@ -52,15 +56,20 @@ export function createClient(
     email,
     accessToken,
     createdAt,
+    linkEnabled: true,
   };
 }
 
+/**
+ * The client a private link's token opens, or `null`. A link the admin turned off opens nothing
+ * (issue #342): the same `null` as a token nobody holds.
+ */
 export function getClientByToken(
   db: Database.Database,
   accessToken: string,
 ): Client | null {
   const row = db
-    .prepare('SELECT * FROM client WHERE access_token = ?')
+    .prepare('SELECT * FROM client WHERE access_token = ? AND link_enabled = 1')
     .get(accessToken) as ClientRow | undefined;
   return row ? fromRow(row) : null;
 }

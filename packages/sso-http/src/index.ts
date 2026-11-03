@@ -1,5 +1,6 @@
 /**
- * The two outbound calls single sign-on makes (`planning/sso-spec.md` D4, D5): redeeming a
+ * The two outbound calls single sign-on makes (`planning/sso-spec.md` D4, D5, §2b), shared by the
+ * CAT server and the portal so neither keeps a copy: redeeming a
  * provider's authorization code for an ID token, and reading its published signing keys.
  *
  * The same rules every outbound call here keeps (the draft engines, the webhook sender): the

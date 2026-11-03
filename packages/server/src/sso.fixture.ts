@@ -8,8 +8,8 @@
 import { type SsoProvider } from '@cat-tool/core';
 import { exportJWK, generateKeyPair, SignJWT, type JSONWebKeySet } from 'jose';
 
-import type { CodeExchange, SsoHttp } from './sso-http.js';
-import { SsoHttpError } from './sso-http.js';
+import type { CodeExchange, SsoHttp } from '@cat-tool/sso-http';
+import { SsoHttpError } from '@cat-tool/sso-http';
 
 type SigningKey = Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
 

@@ -76,6 +76,8 @@ export const PORTAL_AUDIT_ACTIONS = [
   'resource.linked',
   'resource.unlinked',
   'resource.exported',
+  'auth.contact_login',
+  'auth.contact_login_failed',
 ] as const;
 
 /**
@@ -265,6 +267,13 @@ export interface AuditDetail {
       'unknown_email' | 'wrong_password' | 'not_on_this_host' | 'sso_required';
   };
   'auth.logout': null;
+  /**
+   * The portal (`sso-spec.md` §2b): a client contact signed in with a provider. Actor `client:<id>`;
+   * the contact's number and the provider, never an address or a subject.
+   */
+  'auth.contact_login': { readonly provider: SsoProvider; readonly contact: number };
+  /** Told apart in the log, never in the response. */
+  'auth.contact_login_failed': { readonly reason: string };
   'account.created': null;
   /** A sign-in through a provider (`planning/sso-spec.md` D9): which one, never who it said. */
   'auth.sso_login': { readonly provider: SsoProvider };
