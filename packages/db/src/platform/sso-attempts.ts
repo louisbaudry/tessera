@@ -13,6 +13,7 @@
  */
 
 import {
+  directoryOfIssuer,
   hashSessionToken,
   type SsoIdentity,
   type SsoProvider,
@@ -144,7 +145,8 @@ export function completeSsoCallback(
 ): void {
   db.prepare(
     `UPDATE sso_attempt
-     SET handoff_hash = @hash, handoff_expires_at = @expires, issuer = @issuer, subject = @subject
+     SET handoff_hash = @hash, handoff_expires_at = @expires, issuer = @issuer, subject = @subject,
+         hosted_domain = @hosted_domain
      WHERE id = @id AND callback_at IS NOT NULL AND handoff_hash IS NULL`,
   ).run({
     id: attemptId,
@@ -152,6 +154,8 @@ export function completeSsoCallback(
     expires: new Date(now.getTime() + SSO_HANDOFF_TTL_MS).toISOString(),
     issuer: identity.issuer,
     subject: identity.subject,
+    // Google's Workspace domain, for a tenant's lock (sso-spec §2a); Microsoft's directory is in the issuer.
+    hosted_domain: identity.hostedDomain,
   });
 }
 
@@ -184,7 +188,7 @@ export function redeemSsoHandoff(
       `DELETE FROM sso_attempt
        WHERE handoff_hash = @hash
        RETURNING provider, purpose, tenant_id, account_id, binding_hash, issuer, subject,
-                 handoff_expires_at`,
+                 hosted_domain, handoff_expires_at`,
     )
     .get({ hash: hashSessionToken(code) }) as
     | {
@@ -195,6 +199,7 @@ export function redeemSsoHandoff(
         binding_hash: string;
         issuer: string;
         subject: string;
+        hosted_domain: string | null;
         handoff_expires_at: string;
       }
     | undefined;
@@ -212,7 +217,7 @@ export function redeemSsoHandoff(
     provider: row.provider,
     issuer: row.issuer,
     subject: row.subject,
-    directory: null,
-    hostedDomain: null,
+    directory: directoryOfIssuer(row.issuer),
+    hostedDomain: row.hosted_domain,
   };
 }

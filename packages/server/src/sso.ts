@@ -23,6 +23,7 @@ import {
   buildAuthorizationUrl,
   generateSessionToken,
   generateSsoToken,
+  hasPassword,
   pkceChallenge,
   SSO_PROVIDERS,
   SsoTokenError,
@@ -48,6 +49,7 @@ import {
   NoSuchIdentityError,
   recordFailedSsoLogin,
   redeemSsoHandoff,
+  staffIdentityAllowed,
   unlinkIdentity,
   type Account,
   type openPlatformDb,
@@ -96,13 +98,45 @@ export interface SsoRouteDeps {
   readonly publicAccount: (account: Account) => unknown;
 }
 
+/**
+ * The two steps of a sign-in other routes build on (slice 2, `planning/sso-spec.md` §2a): an
+ * invitation page starts an attempt for its own purpose and later takes the identity the hand-off
+ * code stands for. Both answer the request themselves when they refuse, as the login's do.
+ */
+export interface SsoFlow {
+  /** Starts an attempt and answers with the provider's URL, or a 400 for a bad body. */
+  readonly start: (
+    req: FastifyRequest<{ Body: { provider?: unknown; binding?: unknown } }>,
+    reply: FastifyReply,
+    purpose: SsoPurpose,
+  ) => unknown;
+  /**
+   * The identity a hand-off code in the body (`code`, `binding`) stands for, on this host and for
+   * this purpose; or `null`, once the request has been answered (a 400 for a bad body, the one
+   * refusal for a code that cannot be used, logged as `handoff_refused`).
+   */
+  readonly takeIdentity: (
+    req: FastifyRequest<{ Body: { code?: unknown; binding?: unknown } }>,
+    reply: FastifyReply,
+    purpose: SsoPurpose,
+  ) => SsoIdentity | null;
+  /** Logs a refused sign-in and answers with the one refusal. */
+  readonly refuse: (
+    req: FastifyRequest,
+    reply: FastifyReply,
+    reason: SsoFailure,
+    provider: SsoProvider | null,
+    accountId?: number,
+  ) => unknown;
+}
+
 /** A whole-number path parameter, or 0 (which names nothing). */
 const idOf = (raw: string): number => (/^[1-9]\d{0,14}$/.test(raw) ? Number(raw) : 0);
 
 const isText = (value: unknown, min: number): value is string =>
   typeof value === 'string' && value.length >= min && value.length <= MAX_FIELD;
 
-export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps): void {
+export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps): SsoFlow {
   const { platform, config, http, now } = deps;
   const sso = config.sso;
   const configured: readonly SsoProvider[] = sso
@@ -329,6 +363,13 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps): voi
           accountId: account.id,
         });
       }
+      // A tenant's lock (slice 2, D7): staff sign in only with its directory or domain.
+      if (!staffIdentityAllowed(platform, account.id, identity)) {
+        return refuse(reply, 'outside_policy', identity.provider, {
+          ...tenantId,
+          accountId: account.id,
+        });
+      }
       const token = generateSessionToken();
       const { expiresAt } = createSsoSession(platform, account.id, token, identity, {
         actor: deps.auditActor(account),
@@ -341,8 +382,11 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps): voi
 
   // --- the signed-in account's own links --------------------------------------------------------
 
+  // Whether the account has a password too, so the settings screen can say which link is the last
+  // way in rather than fail when it is clicked (slice 2); never the hash.
   const identitiesOf = (account: Account) => ({
     identities: listIdentities(platform, account.id),
+    hasPassword: hasPassword(account.passwordHash),
   });
 
   app.get('/api/me/identities', async (req) => ({
@@ -417,4 +461,33 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps): voi
     }
     return identitiesOf(account);
   });
+
+  return {
+    start: (req, reply, purpose) => start(req, reply, purpose, null),
+    takeIdentity: (req, reply, purpose) => {
+      const { code, binding } = req.body ?? {};
+      if (!isText(code, 1) || !isText(binding, MIN_BINDING)) {
+        void reply.code(400).send({ error: 'a code and a browser secret are required' });
+        return null;
+      }
+      const identity = redeemSsoHandoff(platform, code, {
+        tenantId: hostTenantId(req),
+        purpose,
+        accountId: null,
+        binding,
+        now: now(),
+      });
+      if (!identity) {
+        const host = req.hostTenant;
+        void refuse(reply, 'handoff_refused', null, host ? { tenantId: host.id } : {});
+        return null;
+      }
+      return identity;
+    },
+    refuse: (req, reply, reason, provider, accountId) =>
+      refuse(reply, reason, provider, {
+        ...(req.hostTenant ? { tenantId: req.hostTenant.id } : {}),
+        ...(accountId !== undefined ? { accountId } : {}),
+      }),
+  };
 }

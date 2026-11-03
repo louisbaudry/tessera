@@ -194,11 +194,12 @@ it is now `?tenant=<tenant id>`. Keep true:
   (`project_authorization_not_staff`, `roster_membership_not_staff`), as a vendor on staff is
   (D3): the schema, not a route, holds each.
 
-## Single sign-on (slice 1 built; slices 2 and 3 not)
+## Single sign-on (slices 1 and 2 built; slice 3 not)
 
-`planning/sso-spec.md` (Epic 15, backlog #214 built, issues #317 and #318 open): Microsoft 365 and Google
-sign-in. Slice 1 signs in an account that exists, by `server/src/sso.ts`; invitations, a settings screen
-and the portal's client contacts are the next two cards. Keep true:
+`planning/sso-spec.md` (Epic 15, backlog #214 and #215 built, issue #318 open): Microsoft 365 and Google
+sign-in. Slice 1 signs in an account that exists, by `server/src/sso.ts`; slice 2 accepts staff and vendor
+invitations by a provider, adds the Account screen and a tenant's policy (§2a); the portal's client contacts
+are the next card. Keep true:
 
 - **SSO signs in someone who exists and creates no one** (D1). A sign-in is matched on the provider's
   `(provider, issuer, sub)` through `account_identity` (`db/platform/identities.ts`), never on an email, and
@@ -215,6 +216,15 @@ and the portal's client contacts are the next two cards. Keep true:
   error. A new provider is one entry there, one literal in a migration, and a label in `web/src/sso.ts`.
 - **An account with no password stores `NO_PASSWORD_HASH`**, never an empty or random hash; the login
   route asks `hasPassword`, and `unlinkIdentity` refuses to remove the last way into one.
+- **An invitation accepted by a provider compares no address** (D3.1, §2a): the link is the proof, the
+  account gets `NO_PASSWORD_HASH`, and the account, its link and the invitation's use are one transaction.
+  The invitation page keeps what it was doing (`PendingSso`, `web/src/sso.ts`) for the return trip; a login
+  keeps nothing.
+- **A tenant's policy never shuts anyone out** (`db/platform/sso-policy.ts`, D7): staff only, never a vendor; a
+  password is refused only to staff holding a link that meets the locks; requiring SSO is refused unless the
+  acting admin holds one; a staff invitation outside the lock is refused before the account exists. A lock
+  check fails closed (a Google token with no `hd` meets no Google lock). Every staff sign-in by a provider
+  asks `staffIdentityAllowed`.
 - **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6, slice 3).
 
 ## The working rhythm

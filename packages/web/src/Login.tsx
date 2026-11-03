@@ -20,6 +20,7 @@ import {
   parseSsoFragment,
   PROVIDER_LABEL,
   saveBinding,
+  savePending,
   type SsoFragment,
 } from './sso.js';
 
@@ -34,7 +35,7 @@ const SSO_FAILED =
  * answer and not a cleared address.
  */
 let landing: SsoFragment | null | undefined;
-function takeLanding(): SsoFragment | null {
+export function takeLanding(): SsoFragment | null {
   if (landing === undefined) {
     landing = parseSsoFragment(window.location.hash);
     if (landing !== null) {
@@ -108,7 +109,8 @@ export function Login({ onToken }: { onToken: (token: string) => void }) {
     setBusy(true);
     setError(null);
     const binding = makeBinding((n) => crypto.getRandomValues(new Uint8Array(n)));
-    if (!saveBinding(binding)) {
+    // A login keeps no pending record: one left by an abandoned invitation must not take this code.
+    if (!saveBinding(binding) || !savePending(null)) {
       setError('This browser will not keep what a sign-in needs. Use your password.');
       setBusy(false);
       return;

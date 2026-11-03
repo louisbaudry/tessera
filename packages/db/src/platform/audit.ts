@@ -42,7 +42,8 @@ export interface FailedLoginOptions {
   readonly actor: AuditActor;
   /** The account the email matched, or `null` if none did. */
   readonly accountId: number | null;
-  readonly reason: 'unknown_email' | 'wrong_password' | 'not_on_this_host';
+  readonly reason:
+    'unknown_email' | 'wrong_password' | 'not_on_this_host' | 'sso_required';
   /**
    * The tenant whose host the attempt was made on, when it was on one (`tenant-spec.md` D14): the
    * attempt is about that tenant, whose admin reads it in their slice. `null` otherwise.

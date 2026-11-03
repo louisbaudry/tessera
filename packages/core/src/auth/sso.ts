@@ -30,11 +30,17 @@ export const SSO_PROVIDERS = ['google', 'microsoft'] as const;
 export type SsoProvider = (typeof SSO_PROVIDERS)[number];
 
 /**
- * What a sign-in attempt is for: signing in, or linking an identity to the account already
- * signed in. A frozen literal in the migration (`sso_attempt.purpose`); slice 2 adds the
- * invitation purposes with a migration that widens it.
+ * What a sign-in attempt is for: signing in, linking an identity to the account already signed
+ * in, or (slice 2, `planning/sso-spec.md` §2a) accepting a staff or vendor invitation, or a vendor
+ * joining another tenant's roster. A frozen literal in the migration (`sso_attempt.purpose`).
  */
-export const SSO_PURPOSES = ['login', 'link'] as const;
+export const SSO_PURPOSES = [
+  'login',
+  'link',
+  'staff_invite',
+  'vendor_invite',
+  'join',
+] as const;
 export type SsoPurpose = (typeof SSO_PURPOSES)[number];
 
 /** Where a provider is reached. Fixed in code: no request and no setting can point it elsewhere. */
@@ -93,8 +99,9 @@ export interface AuthorizationRequest {
  * a state that finds the attempt again and a nonce the token must echo.
  *
  * `scope` is `openid` only: the subject and, for Microsoft, the directory come with it, and
- * an address is neither needed nor wanted (module note). Slice 2's tenant policy may need
- * Google's `hd` claim and will re-check whether that takes a wider scope.
+ * an address is neither needed nor wanted (module note). Google documents its `hd` claim as
+ * present for a Workspace account without naming a scope; unconfirmed against a real account,
+ * so every lock check fails closed without it (`planning/sso-spec.md` §2a).
  */
 export function buildAuthorizationUrl(
   provider: SsoProvider,
@@ -118,9 +125,12 @@ export interface SsoIdentity {
   /** Google's issuer; Microsoft's, which carries the directory, so one person in two directories is two identities. */
   readonly issuer: string;
   readonly subject: string;
-  /** Microsoft's directory (`tid`); `null` for Google. Not stored: slice 2's policy reads it. */
+  /** Microsoft's directory (`tid`); `null` for Google. Never stored apart: the issuer carries it. */
   readonly directory: string | null;
-  /** Google's Workspace domain (`hd`) when the token carries one; `null` otherwise. Not stored. */
+  /**
+   * Google's Workspace domain (`hd`) when the token carries one; `null` otherwise. Kept on the link
+   * (`account_identity.hosted_domain`): an organisation's domain, which a tenant's lock is checked on.
+   */
   readonly hostedDomain: string | null;
 }
 
@@ -134,7 +144,8 @@ export type SsoFailure =
   | 'exchange_failed'
   | 'unknown_identity'
   | 'not_on_this_host'
-  | 'handoff_refused';
+  | 'handoff_refused'
+  | 'outside_policy';
 
 /** Why a token was not accepted. Told apart in the log, never in the response (D9). */
 export type SsoRefusal =
@@ -220,6 +231,56 @@ export async function verifyIdToken(
 
 const microsoftIssuer = (tid: string): string =>
   `https://login.microsoftonline.com/${tid}/v2.0`;
+
+const MICROSOFT_ISSUER =
+  /^https:\/\/login\.microsoftonline\.com\/([0-9a-f-]{36})\/v2\.0$/i;
+
+/**
+ * The Microsoft directory (`tid`) an issuer names, or `null` for an issuer that is not a
+ * Microsoft directory's (Google's). The directory is part of the issuer, so it is read back from
+ * it rather than stored twice (`planning/sso-spec.md` §2a).
+ */
+export function directoryOfIssuer(issuer: string): string | null {
+  const tid = MICROSOFT_ISSUER.exec(issuer)?.[1];
+  return tid !== undefined && GUID.test(tid) && issuer === microsoftIssuer(tid)
+    ? tid
+    : null;
+}
+
+/** A tenant's provider locks (`planning/sso-spec.md` D7): `null` leaves that provider open. */
+export interface SsoLock {
+  readonly microsoftTid: string | null;
+  readonly googleHd: string | null;
+}
+
+/**
+ * Whether an identity passes a tenant's locks. A lock is per provider: a locked provider accepts
+ * only its directory or Workspace domain, an unlocked one any account of that provider. Fails
+ * closed: a Google identity with no domain never meets a Google lock (§2a). Directory ids are
+ * compared case-insensitively (a GUID), domains case-insensitively (a host name).
+ *
+ * @param identity - The provider, the issuer (Microsoft's names the directory) and Google's domain.
+ * @param lock - The tenant's locks.
+ */
+export function identityMeetsLock(
+  identity: {
+    readonly provider: SsoProvider;
+    readonly issuer: string;
+    readonly hostedDomain: string | null;
+  },
+  lock: SsoLock,
+): boolean {
+  if (identity.provider === 'microsoft') {
+    if (lock.microsoftTid === null) return true;
+    const tid = directoryOfIssuer(identity.issuer);
+    return tid !== null && tid.toLowerCase() === lock.microsoftTid.toLowerCase();
+  }
+  if (lock.googleHd === null) return true;
+  return (
+    identity.hostedDomain !== null &&
+    identity.hostedDomain.toLowerCase() === lock.googleHd.toLowerCase()
+  );
+}
 
 function refusalOf(err: unknown): SsoRefusal {
   if (err instanceof errors.JWTExpired) return 'expired';

@@ -7,6 +7,8 @@
  */
 import type { SsoProvider } from '@cat-tool/core';
 
+import { isInviteToken } from './route.js';
+
 /** A `Record` over core's union, so a provider added there fails this typecheck until it is worded here. */
 export const PROVIDER_LABEL: Record<SsoProvider, string> = {
   google: 'Google',
@@ -73,5 +75,92 @@ export function clearBinding(): void {
     sessionStorage.removeItem(KEY);
   } catch {
     // Nothing kept to clear.
+  }
+}
+
+/**
+ * What the page was doing when it left for the provider (issue #317, `planning/sso-spec.md`
+ * §2a): the callback host always sends the browser back to `/#sso=<code>`, so the page that
+ * started the sign-in keeps here what to do with the code it brings back. A login keeps nothing
+ * (no record is a login), a link needs the session it started in, and an invitation needs its
+ * link's token, which the server asks for again.
+ */
+export type PendingSso =
+  | { readonly purpose: 'link' }
+  | {
+      readonly purpose: 'staff_invite' | 'vendor_invite' | 'join';
+      readonly token: string;
+    };
+
+/**
+ * A kept record read back, or `null` for anything that is not one: storage another script could
+ * have written is checked as a request would be.
+ */
+export function parsePending(text: string | null): PendingSso | null {
+  if (text === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof value !== 'object' || value === null) return null;
+  const { purpose, token } = value as { purpose?: unknown; token?: unknown };
+  if (purpose === 'link') return { purpose };
+  if (
+    (purpose === 'staff_invite' || purpose === 'vendor_invite' || purpose === 'join') &&
+    typeof token === 'string' &&
+    isInviteToken(token)
+  ) {
+    return { purpose, token };
+  }
+  return null;
+}
+
+const PENDING_KEY = 'cat-tool.sso-pending';
+
+/** Keeps what the page was doing, in this tab only, as the browser secret is kept. */
+export function savePending(pending: PendingSso | null): boolean {
+  try {
+    if (pending === null) sessionStorage.removeItem(PENDING_KEY);
+    else sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** What a returning sign-in is for, read once: the record is removed as it is read. */
+export function takePending(): PendingSso | null {
+  try {
+    const text = sessionStorage.getItem(PENDING_KEY);
+    sessionStorage.removeItem(PENDING_KEY);
+    return parsePending(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Leaves for a provider: makes and keeps this browser's secret and what the page was doing, asks
+ * the server where to go with `start`, and sends the browser there. Resolves to a message to show
+ * when it cannot leave (no storage, or the server refused); otherwise the page is gone.
+ */
+export async function leaveForProvider(
+  start: (binding: string) => Promise<{ url: string }>,
+  pending: PendingSso | null,
+): Promise<string> {
+  const binding = makeBinding((n) => crypto.getRandomValues(new Uint8Array(n)));
+  if (!saveBinding(binding) || !savePending(pending)) {
+    return 'This browser will not keep what a sign-in needs. Use a password instead.';
+  }
+  try {
+    const { url } = await start(binding);
+    window.location.assign(url);
+    return '';
+  } catch (err) {
+    clearBinding();
+    savePending(null);
+    return err instanceof Error ? err.message : String(err);
   }
 }

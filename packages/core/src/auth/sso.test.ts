@@ -2,6 +2,8 @@ import { exportJWK, generateKeyPair, SignJWT, type JWK, type JSONWebKeySet } fro
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  directoryOfIssuer,
+  identityMeetsLock,
   buildAuthorizationUrl,
   MICROSOFT_CONSUMER_TID,
   pkceChallenge,
@@ -330,5 +332,56 @@ describe('verifyIdToken, Microsoft', () => {
       expected,
     );
     expect(identity.directory).toBe(MICROSOFT_CONSUMER_TID);
+  });
+});
+
+describe('directoryOfIssuer and identityMeetsLock (slice 2, sso-spec §2a)', () => {
+  const tid = '6f1b2c3d-1111-4222-8333-944455556666';
+  const other = '0a0b0c0d-1111-4222-8333-944455556666';
+  const ms = (t: string) => ({
+    provider: 'microsoft' as const,
+    issuer: `https://login.microsoftonline.com/${t}/v2.0`,
+    hostedDomain: null,
+  });
+  const google = (hd: string | null) => ({
+    provider: 'google' as const,
+    issuer: 'https://accounts.google.com',
+    hostedDomain: hd,
+  });
+  const open = { microsoftTid: null, googleHd: null };
+
+  it('reads the directory back from a Microsoft issuer, and nothing from any other', () => {
+    expect(directoryOfIssuer(ms(tid).issuer)).toBe(tid);
+    expect(directoryOfIssuer('https://accounts.google.com')).toBeNull();
+    expect(
+      directoryOfIssuer(`https://login.microsoftonline.com/${tid}/v2.0/x`),
+    ).toBeNull();
+    expect(
+      directoryOfIssuer(
+        'https://login.microsoftonline.com/not-a-guid-at-all-not-a-guid-xx/v2.0',
+      ),
+    ).toBeNull();
+  });
+
+  it('lets every identity through with no lock', () => {
+    expect(identityMeetsLock(ms(tid), open)).toBe(true);
+    expect(identityMeetsLock(google(null), open)).toBe(true);
+  });
+
+  it('locks a provider to its directory or domain, and leaves the other provider open', () => {
+    const msLock = { microsoftTid: tid.toUpperCase(), googleHd: null };
+    expect(identityMeetsLock(ms(tid), msLock)).toBe(true);
+    expect(identityMeetsLock(ms(other), msLock)).toBe(false);
+    expect(identityMeetsLock(google(null), msLock)).toBe(true);
+    const gLock = { microsoftTid: null, googleHd: 'Example.org' };
+    expect(identityMeetsLock(google('example.org'), gLock)).toBe(true);
+    expect(identityMeetsLock(google('other.org'), gLock)).toBe(false);
+    expect(identityMeetsLock(ms(other), gLock)).toBe(true);
+  });
+
+  it('fails closed on a Google token with no Workspace domain', () => {
+    expect(
+      identityMeetsLock(google(null), { microsoftTid: null, googleHd: 'example.org' }),
+    ).toBe(false);
   });
 });

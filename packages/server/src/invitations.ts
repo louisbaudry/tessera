@@ -30,7 +30,9 @@ import {
   createAccountSession,
   createInvitation,
   EmailTakenError,
+  findAccountByIdentity,
   getAccountByEmail,
+  IdentityTakenError,
   getTenantById,
   getVendorByAccount,
   peekInvitationTenant,
@@ -51,9 +53,10 @@ import {
   type Tenant,
 } from '@cat-tool/db';
 import { passwordProblem } from '@cat-tool/vendor-core';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { openOrCreateRoster } from './roster.js';
+import type { SsoFlow } from './sso.js';
 
 type Platform = ReturnType<typeof openPlatformDb>;
 
@@ -62,6 +65,15 @@ export const OPEN_INVITATION_PATH = '/api/invitations/open';
 export const ACCEPT_INVITATION_PATH = '/api/invitations/accept';
 /** A vendor who already has an account joins a second tenant from that tenant's own host (D14). */
 export const JOIN_SIGNIN_PATH = '/api/invitations/join-signin';
+/**
+ * The same three steps by a Microsoft or Google sign-in instead of a password (slice 2,
+ * `planning/sso-spec.md` D3, §2a): start an attempt from the invitation page, then accept or join
+ * with the hand-off code and the link's token again. No session, as the password routes.
+ */
+export const VENDOR_SSO_START_PATH = '/api/invitations/sso/start';
+export const VENDOR_SSO_ACCEPT_PATH = '/api/invitations/sso/accept';
+export const JOIN_SSO_START_PATH = '/api/invitations/sso/join-start';
+export const JOIN_SSO_PATH = '/api/invitations/sso/join';
 
 export interface InvitationRouteDeps {
   readonly storageRoot: string;
@@ -73,6 +85,8 @@ export interface InvitationRouteDeps {
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
   /** The actor a refused sign-in is logged under (the login route's own). */
   readonly loginGate: AuditActor;
+  /** The sign-in steps an invitation page shares with the login (`sso.ts`). */
+  readonly sso: SsoFlow;
 }
 
 /** What the tenant's staff see of an invitation: never the token, which only the creating response carries. */
@@ -330,6 +344,99 @@ export function registerInvitationRoutes(
         return reply.code(409).send({
           error: 'an account with this address already exists: sign in instead',
         });
+      }
+      throw err;
+    }
+  });
+
+  /** A session for an account an invitation just made or joined, on the inviting tenant. */
+  function sessionFor(account: Account, tenantId: number) {
+    const session = generateSessionToken();
+    const { expiresAt } = createAccountSession(platform, account.id, session, {
+      actor: { actor: { kind: 'account', id: account.id }, label: account.email },
+      tenantId,
+    });
+    return {
+      token: session,
+      expiresAt,
+      account: {
+        id: account.id,
+        email: account.email,
+        role: account.role,
+        createdAt: account.createdAt,
+      },
+    };
+  }
+
+  /** The link's token, if it may be used on this host and is still pending; else the request is answered. */
+  function usableToken(req: FastifyRequest, reply: FastifyReply): string | null {
+    const token = tokenOf(req.body);
+    if (token === null || wrongHost(req, token) || !openInvitation(platform, token)) {
+      void reply.code(404).send(NOT_VALID);
+      return null;
+    }
+    return token;
+  }
+
+  const ALREADY_LINKED = {
+    error: 'that Microsoft or Google account already opens another Tessera account',
+  };
+
+  for (const [path, purpose] of [
+    [VENDOR_SSO_START_PATH, 'vendor_invite'],
+    [JOIN_SSO_START_PATH, 'join'],
+  ] as const) {
+    app.post(path, async (req, reply) => {
+      if (usableToken(req, reply) === null) return reply;
+      return deps.sso.start(req as never, reply, purpose);
+    });
+  }
+
+  // Opens the vendor's account with the provider's identity and no password: the link is the proof
+  // of who is invited, the provider only how the account is opened (D3.1). No address is compared.
+  app.post(VENDOR_SSO_ACCEPT_PATH, async (req, reply) => {
+    const token = usableToken(req, reply);
+    if (token === null) return reply;
+    const identity = deps.sso.takeIdentity(req as never, reply, 'vendor_invite');
+    if (identity === null) return reply;
+    try {
+      const { account, invitation } = acceptInvitation(platform, { token, identity });
+      const tenant = getTenantById(platform, invitation.tenantId);
+      if (tenant) bringRosterLevel(tenant);
+      return reply.code(201).send(sessionFor(account, invitation.tenantId));
+    } catch (err) {
+      if (err instanceof InvitationUnusableError) return reply.code(404).send(NOT_VALID);
+      if (err instanceof IdentityTakenError) return reply.code(409).send(ALREADY_LINKED);
+      if (err instanceof EmailTakenError) {
+        return reply.code(409).send({
+          error: 'an account with this address already exists: sign in instead',
+        });
+      }
+      throw err;
+    }
+  });
+
+  // A vendor who already has an account joins this tenant by signing in with a linked identity, as
+  // `join-signin` does with a password: the identity must already open an account, and
+  // `joinInvitation` checks it is a vendor at the invited address. An identity nobody linked is the
+  // one sign-in refusal.
+  app.post(JOIN_SSO_PATH, async (req, reply) => {
+    const token = usableToken(req, reply);
+    if (token === null) return reply;
+    const identity = deps.sso.takeIdentity(req as never, reply, 'join');
+    if (identity === null) return reply;
+    const account = findAccountByIdentity(platform, identity);
+    if (!account)
+      return deps.sso.refuse(req, reply, 'unknown_identity', identity.provider);
+    try {
+      const { invitation } = joinInvitation(platform, { token, accountId: account.id });
+      const tenant = getTenantById(platform, invitation.tenantId);
+      if (tenant) bringRosterLevel(tenant);
+      return reply.code(201).send(sessionFor(account, invitation.tenantId));
+    } catch (err) {
+      if (err instanceof InvitationUnusableError) return reply.code(404).send(NOT_VALID);
+      if (err instanceof InvitationRoleError) {
+        return reply.code(409).send({ error: err.message });
       }
       throw err;
     }

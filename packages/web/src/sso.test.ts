@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { makeBinding, parseSsoFragment, PROVIDER_LABEL } from './sso.js';
+import { makeBinding, parsePending, parseSsoFragment, PROVIDER_LABEL } from './sso.js';
 
 describe('parseSsoFragment', () => {
   it('reads the hand-off code the callback host put in the fragment', () => {
@@ -62,5 +62,36 @@ describe('makeBinding', () => {
 describe('PROVIDER_LABEL', () => {
   it('names each provider the way a person knows it', () => {
     expect(PROVIDER_LABEL).toEqual({ google: 'Google', microsoft: 'Microsoft' });
+  });
+});
+
+describe('parsePending (issue #317)', () => {
+  const token = 'T'.repeat(43);
+
+  it('reads back what an invitation page or the account screen kept', () => {
+    for (const purpose of ['staff_invite', 'vendor_invite', 'join'] as const) {
+      expect(parsePending(JSON.stringify({ purpose, token }))).toEqual({
+        purpose,
+        token,
+      });
+    }
+    expect(parsePending(JSON.stringify({ purpose: 'link' }))).toEqual({
+      purpose: 'link',
+    });
+  });
+
+  it('is nothing for anything else, so a login is never taken for something it is not', () => {
+    for (const text of [
+      null,
+      '',
+      'not json',
+      'null',
+      JSON.stringify({ purpose: 'login' }),
+      JSON.stringify({ purpose: 'staff_invite' }),
+      JSON.stringify({ purpose: 'join', token: 'short' }),
+      JSON.stringify({ purpose: 'join', token: `${token}/../x` }),
+    ]) {
+      expect(parsePending(text), String(text)).toBeNull();
+    }
   });
 });

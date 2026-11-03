@@ -34,7 +34,13 @@ import type Database from 'better-sqlite3';
 
 import { appendPlatformEvent } from './audit-write.js';
 import { createAccount, getAccountByEmail, type Account } from './accounts.js';
-import { EmailTakenError, InvitationUnusableError } from './invitations.js';
+import {
+  credentialHash,
+  EmailTakenError,
+  InvitationUnusableError,
+  linkInvitedIdentity,
+  type InvitationCredential,
+} from './invitations.js';
 
 export interface StaffInvitation {
   readonly id: number;
@@ -286,12 +292,11 @@ export function peekStaffInvitationTenant(
   return row?.tenant_id ?? null;
 }
 
-export interface AcceptStaffInvitationOptions {
+/** A password or a provider's identity (`InvitationCredential`), and the link's token. */
+export type AcceptStaffInvitationOptions = InvitationCredential & {
   readonly token: string;
-  /** From `hashPassword`: never a raw password. */
-  readonly passwordHash: string;
   readonly now?: Date;
-}
+};
 
 /**
  * Uses a link: creates an `owner` account that is staff of the inviting tenant, in the
@@ -319,7 +324,7 @@ export function acceptStaffInvitation(
       const invitation = fromRow(row, now);
       const account = createAccount(db, {
         email: row.email,
-        passwordHash: options.passwordHash,
+        passwordHash: credentialHash(options),
         actor: { actor: { kind: 'account', id: row.invited_by }, label: null },
         joinTenant: { tenantId: row.tenant_id, role: invitation.role },
       });
@@ -330,6 +335,7 @@ export function acceptStaffInvitation(
         )
         .run(now.toISOString(), account.id, row.id).changes;
       if (changed !== 1) throw new InvitationUnusableError();
+      linkInvitedIdentity(db, account, options, now);
       appendPlatformEvent(db, {
         actor: { actor: { kind: 'account', id: account.id }, label: account.email },
         action: 'invitation.accepted',

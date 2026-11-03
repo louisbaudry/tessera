@@ -63,6 +63,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'auth.sso_login_failed',
   'account.sso_linked',
   'account.sso_unlinked',
+  'tenant.sso_policy_set',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -259,7 +260,9 @@ export interface AuditDetail {
   'auth.login': null;
   /** Kept in the log, never told apart in the HTTP response. */
   'auth.login_failed': {
-    readonly reason: 'unknown_email' | 'wrong_password' | 'not_on_this_host';
+    /** `sso_required`: the password was right, and the tenant requires its staff to use a provider. */
+    readonly reason:
+      'unknown_email' | 'wrong_password' | 'not_on_this_host' | 'sso_required';
   };
   'auth.logout': null;
   'account.created': null;
@@ -273,6 +276,15 @@ export interface AuditDetail {
   /** Subject: the account. An identity at a provider was tied to it. */
   'account.sso_linked': { readonly provider: SsoProvider };
   'account.sso_unlinked': { readonly provider: SsoProvider };
+  /**
+   * Subject: the tenant. Its single sign-on policy as set (`planning/sso-spec.md` D7, §2a): a
+   * directory id and a Workspace domain are an organisation's, not a person's.
+   */
+  'tenant.sso_policy_set': {
+    readonly require_sso: boolean;
+    readonly microsoft_tid: string | null;
+    readonly google_hd: string | null;
+  };
   /**
    * Subject: the project. The grantee is an account id, installation-local
    * and not personal (audit-spec.md §2.5); `#45`.

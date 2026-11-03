@@ -417,6 +417,34 @@ function projectUrl(key: string, suffix = ''): string {
 const glossaryUrl = (name: string, fileId: number) =>
   projectUrl(name, `/files/${fileId}/glossary/session`);
 
+/** A sign-in linked to the account: the provider and dates, never the subject. */
+export interface LinkedIdentity {
+  readonly id: number;
+  readonly provider: SsoProvider;
+  readonly linkedAt: string;
+  readonly lastLoginAt: string | null;
+}
+
+/** A tenant's single sign-on policy as the screen shows and sets it (`sso-spec.md` D7). */
+export interface SsoPolicyView {
+  readonly requireSso: boolean;
+  readonly microsoftTid: string | null;
+  readonly googleHd: string | null;
+}
+
+/** Where each invitation purpose starts and finishes a provider sign-in (issue #317). */
+const INVITE_SSO_PATHS = {
+  staff_invite: {
+    start: '/api/staff-invitations/sso/start',
+    finish: '/api/staff-invitations/sso/accept',
+  },
+  vendor_invite: {
+    start: '/api/invitations/sso/start',
+    finish: '/api/invitations/sso/accept',
+  },
+  join: { start: '/api/invitations/sso/join-start', finish: '/api/invitations/sso/join' },
+} as const;
+
 export const api = {
   login: (email: string, password: string) =>
     call<{ token: string; expiresAt: string; account: Account }>('/api/login', null, {
@@ -443,6 +471,58 @@ export const api = {
       },
     ),
   logout: (token: string) => call<{ ok: true }>('/api/logout', token, { method: 'POST' }),
+  /**
+   * An invitation page leaves for a provider (issue #317): where to send the browser, for a staff
+   * link, a vendor link, or a vendor with an account joining. The link's token goes with it.
+   */
+  inviteSsoStart: (
+    purpose: 'staff_invite' | 'vendor_invite' | 'join',
+    inviteToken: string,
+    provider: SsoProvider,
+    binding: string,
+  ) =>
+    call<{ url: string }>(INVITE_SSO_PATHS[purpose].start, null, {
+      method: 'POST',
+      body: { token: inviteToken, provider, binding },
+    }),
+  /** Accepts (or joins with) the link by the code a returning sign-in brought back: a session. */
+  inviteSsoFinish: (
+    purpose: 'staff_invite' | 'vendor_invite' | 'join',
+    inviteToken: string,
+    code: string,
+    binding: string,
+  ) =>
+    call<{ token: string; expiresAt: string; account: Account }>(
+      INVITE_SSO_PATHS[purpose].finish,
+      null,
+      { method: 'POST', body: { token: inviteToken, code, binding } },
+    ),
+  /** The signed-in account's linked sign-ins, and the providers that can be linked. */
+  identities: (token: string, signal?: AbortSignal) =>
+    call<{
+      identities: LinkedIdentity[];
+      providers: SsoProvider[];
+      hasPassword: boolean;
+    }>('/api/me/identities', token, { signal }),
+  identityStart: (token: string, provider: SsoProvider, binding: string) =>
+    call<{ url: string }>('/api/me/identities/start', token, {
+      method: 'POST',
+      body: { provider, binding },
+    }),
+  identityRedeem: (token: string, code: string, binding: string) =>
+    call<{ identities: LinkedIdentity[] }>('/api/me/identities/redeem', token, {
+      method: 'POST',
+      body: { code, binding },
+    }),
+  unlinkIdentity: (token: string, id: number) =>
+    call<{ identities: LinkedIdentity[] }>(`/api/me/identities/${id}`, token, {
+      method: 'DELETE',
+    }),
+  /** The tenant's single sign-on policy (an admin's; issue #317). */
+  ssoPolicy: (token: string, signal?: AbortSignal) =>
+    call<SsoPolicyView>('/api/tenant/sso-policy', token, { signal }),
+  setSsoPolicy: (token: string, policy: SsoPolicyView) =>
+    call<SsoPolicyView>('/api/tenant/sso-policy', token, { method: 'PUT', body: policy }),
   /** The signed-in vendor's feed across every tenant that engages them (backlog #52a). */
   vendorFeed: (token: string, signal?: AbortSignal) =>
     call<VendorFeed>('/api/vendor/feed', token, { signal }),

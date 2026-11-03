@@ -64,7 +64,8 @@ export interface IdentityWriteOptions {
   readonly now?: Date;
 }
 
-type IdentityKey = Pick<SsoIdentity, 'provider' | 'issuer' | 'subject'>;
+type IdentityKey = Pick<SsoIdentity, 'provider' | 'issuer' | 'subject'> &
+  Partial<Pick<SsoIdentity, 'hostedDomain'>>;
 
 interface IdentityRow {
   id: number;
@@ -138,10 +139,18 @@ export function linkIdentity(
     const linkedAt = (options.now ?? new Date()).toISOString();
     const info = db
       .prepare(
-        `INSERT INTO account_identity (account_id, provider, issuer, subject, linked_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO account_identity
+           (account_id, provider, issuer, subject, linked_at, hosted_domain)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(accountId, identity.provider, identity.issuer, identity.subject, linkedAt);
+      .run(
+        accountId,
+        identity.provider,
+        identity.issuer,
+        identity.subject,
+        linkedAt,
+        identity.hostedDomain ?? null,
+      );
     appendPlatformEvent(db, {
       actor: options.actor,
       action: 'account.sso_linked',
@@ -215,11 +224,14 @@ export function createSsoSession(
 ): { readonly expiresAt: string } {
   return db.transaction(() => {
     const now = options.now ?? new Date();
+    // The Workspace domain is refreshed with every sign-in: an account moved to another domain
+    // is checked against the lock on the domain it has now (sso-spec §2a).
     db.prepare(
-      `UPDATE account_identity SET last_login_at = ?
+      `UPDATE account_identity SET last_login_at = ?, hosted_domain = ?
        WHERE account_id = ? AND provider = ? AND issuer = ? AND subject = ?`,
     ).run(
       now.toISOString(),
+      identity.hostedDomain ?? null,
       accountId,
       identity.provider,
       identity.issuer,

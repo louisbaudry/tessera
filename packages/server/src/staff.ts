@@ -27,6 +27,8 @@ import {
   createAccountSession,
   createStaffInvitation,
   EmailTakenError,
+  getSsoPolicy,
+  IdentityTakenError,
   InvitationUnusableError,
   LastAdminError,
   listStaffInvitations,
@@ -36,20 +38,30 @@ import {
   peekStaffInvitationTenant,
   removeTenantStaff,
   revokeStaffInvitation,
+  setSsoPolicy,
+  SsoLockoutError,
   StaffInvitationError,
+  tenantIdentityAllowed,
   type Account,
   type openPlatformDb,
   type StaffInvitation,
   type Tenant,
 } from '@cat-tool/db';
 import { passwordProblem } from '@cat-tool/vendor-core';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+
+import type { SsoFlow } from './sso.js';
 
 type Platform = ReturnType<typeof openPlatformDb>;
 
 /** The two routes a staff invitee uses before they have a session. */
 export const OPEN_STAFF_INVITATION_PATH = '/api/staff-invitations/open';
 export const ACCEPT_STAFF_INVITATION_PATH = '/api/staff-invitations/accept';
+/** The same by a Microsoft or Google sign-in instead of a password (slice 2, `sso-spec.md` §2a). */
+export const STAFF_SSO_START_PATH = '/api/staff-invitations/sso/start';
+export const STAFF_SSO_ACCEPT_PATH = '/api/staff-invitations/sso/accept';
+/** A tenant's single sign-on policy (D7): the admin's. */
+export const SSO_POLICY_PATH = '/api/tenant/sso-policy';
 
 export interface StaffRouteDeps {
   readonly platform: Platform;
@@ -57,6 +69,8 @@ export interface StaffRouteDeps {
   /** The session's tenant if its role may manage staff; null for a vendor; throws for a pm. */
   readonly tenant: (req: FastifyRequest) => Tenant | null;
   readonly sessionActor: (req: FastifyRequest) => AuditActor;
+  /** The sign-in steps an invitation page shares with the login (`sso.ts`). */
+  readonly sso: SsoFlow;
 }
 
 /** What an admin sees of a staff invitation: never the token, which only the creating response carries. */
@@ -255,5 +269,126 @@ export function registerStaffRoutes(app: FastifyInstance, deps: StaffRouteDeps):
       }
       throw err;
     }
+  });
+
+  /** The link's token, if it may be used on this host and is still pending; else the request is answered. */
+  function usableToken(req: FastifyRequest, reply: FastifyReply): string | null {
+    const token = tokenOf(req.body);
+    if (
+      token === null ||
+      wrongHost(req, token) ||
+      !openStaffInvitation(platform, token)
+    ) {
+      void reply.code(404).send(NOT_VALID);
+      return null;
+    }
+    return token;
+  }
+
+  app.post(STAFF_SSO_START_PATH, async (req, reply) => {
+    if (usableToken(req, reply) === null) return reply;
+    return deps.sso.start(req as never, reply, 'staff_invite');
+  });
+
+  // Opens the staff account with the provider's identity and no password (D3.1): the link is the
+  // proof, and no address is compared. The tenant's lock is asked first, so nobody is given an
+  // account whose only way in its policy would refuse.
+  app.post(STAFF_SSO_ACCEPT_PATH, async (req, reply) => {
+    const token = usableToken(req, reply);
+    if (token === null) return reply;
+    const identity = deps.sso.takeIdentity(req as never, reply, 'staff_invite');
+    if (identity === null) return reply;
+    const tenantId = peekStaffInvitationTenant(platform, token);
+    if (tenantId === null) return reply.code(404).send(NOT_VALID);
+    if (!tenantIdentityAllowed(platform, tenantId, identity)) {
+      return reply.code(403).send({
+        error:
+          'your organisation accepts only its own Microsoft directory or Google Workspace domain',
+      });
+    }
+    try {
+      const { account } = acceptStaffInvitation(platform, { token, identity });
+      const session = generateSessionToken();
+      const { expiresAt } = createAccountSession(platform, account.id, session, {
+        actor: { actor: { kind: 'account', id: account.id }, label: account.email },
+      });
+      return reply.code(201).send({
+        token: session,
+        expiresAt,
+        account: {
+          id: account.id,
+          email: account.email,
+          role: account.role,
+          createdAt: account.createdAt,
+        },
+      });
+    } catch (err) {
+      if (err instanceof InvitationUnusableError) return reply.code(404).send(NOT_VALID);
+      if (err instanceof IdentityTakenError) {
+        return reply.code(409).send({
+          error: 'that Microsoft or Google account already opens another Tessera account',
+        });
+      }
+      if (err instanceof EmailTakenError) {
+        return reply.code(409).send({
+          error: 'an account with this address already exists: sign in instead',
+        });
+      }
+      throw err;
+    }
+  });
+
+  const policyView = (tenantId: number) => {
+    const policy = getSsoPolicy(platform, tenantId);
+    return {
+      requireSso: policy?.requireSso ?? false,
+      microsoftTid: policy?.microsoftTid ?? null,
+      googleHd: policy?.googleHd ?? null,
+    };
+  };
+
+  // A vendor has no tenant and so no policy to read: the 404 of a missing object.
+  app.get(SSO_POLICY_PATH, async (req, reply) => {
+    const tenant = deps.tenant(req);
+    if (!tenant) return reply.code(404).send({ error: 'not found' });
+    return policyView(tenant.id);
+  });
+
+  app.put<{
+    Body:
+      { requireSso?: unknown; microsoftTid?: unknown; googleHd?: unknown } | undefined;
+  }>(SSO_POLICY_PATH, async (req, reply) => {
+    const tenant = deps.tenant(req);
+    if (!tenant) return reply.code(403).send({ error: 'only an admin can do that' });
+    const { requireSso, microsoftTid, googleHd } = req.body ?? {};
+    const textOrNull = (v: unknown) =>
+      v === null || (typeof v === 'string' && v.trim() !== '');
+    if (
+      typeof requireSso !== 'boolean' ||
+      !textOrNull(microsoftTid) ||
+      !textOrNull(googleHd)
+    ) {
+      return reply.code(400).send({
+        error: 'requireSso must be true or false, and each lock a text or null',
+      });
+    }
+    try {
+      setSsoPolicy(
+        platform,
+        tenant.id,
+        {
+          requireSso,
+          microsoftTid: microsoftTid === null ? null : (microsoftTid as string).trim(),
+          googleHd: googleHd === null ? null : (googleHd as string).trim(),
+        },
+        { actor: deps.sessionActor(req), accountId: deps.account(req).id },
+      );
+    } catch (err) {
+      if (err instanceof SsoLockoutError)
+        return reply.code(409).send({ error: err.message });
+      if (err instanceof RangeError) return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+    return policyView(tenant.id);
   });
 }

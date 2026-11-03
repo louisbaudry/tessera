@@ -8,11 +8,28 @@
  * that cannot be used, for any reason, is one plain message. If the address already
  * has an account the server says so (a 409) and the page asks them to sign in with
  * it instead, which joins that owner's roster as themselves in one step (backlog #187).
+ *
+ * Each step can be taken with Microsoft or Google instead of a password (issue #317,
+ * `planning/sso-spec.md` §2a): the page leaves for the provider keeping the link's token, and
+ * comes back here (`returning`) with the code, which accepts or joins with the link again.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import type { SsoProvider } from '@cat-tool/core';
 
 import { api, ApiError } from './api.js';
 import { acceptProblem } from './invitations.js';
+import {
+  clearBinding,
+  leaveForProvider,
+  loadBinding,
+  PROVIDER_LABEL,
+  type SsoFragment,
+} from './sso.js';
+
+type InvitePurpose = 'staff_invite' | 'vendor_invite' | 'join';
+
+/** The one thing said when a sign-in with a provider does not work, whatever the reason. */
+const SSO_FAILED = 'That sign-in did not work. Try again, or use a password.';
 
 type Opened =
   | { readonly state: 'loading' }
@@ -26,19 +43,95 @@ export function Accept({
   token,
   onToken,
   kind = 'vendor',
+  returning,
 }: {
   token: string;
   /** Whose link this is: a vendor's roster link or a colleague's staff link. */
   kind?: 'vendor' | 'staff';
   /** Called with the new vendor's session; the shell stores it and goes home. */
   onToken: (session: string) => void;
+  /** Back from a provider: what the sign-in was for, and what it brought back. */
+  returning?: { readonly purpose: InvitePurpose; readonly fragment: SsoFragment };
 }) {
   const staff = kind === 'staff';
   const [opened, setOpened] = useState<Opened>({ state: 'loading' });
   const [password, setPassword] = useState('');
   const [repeat, setRepeat] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(
+    returning?.fragment.kind === 'refused' ? SSO_FAILED : null,
+  );
+  const [busy, setBusy] = useState(returning?.fragment.kind === 'code');
+  const [providers, setProviders] = useState<SsoProvider[]>([]);
+  // The code is single use: a second run of the effect (React's development double run) must not spend it again.
+  const finishing = useRef(false);
+
+  useEffect(() => {
+    let live = true;
+    api.ssoProviders().then(
+      (found) => {
+        if (live) setProviders(found.providers);
+      },
+      // The buttons are an extra: without them the password form is as it was.
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (returning?.fragment.kind !== 'code' || finishing.current) return;
+    finishing.current = true;
+    const binding = loadBinding();
+    clearBinding();
+    const { purpose } = returning;
+    const code = returning.fragment.code;
+    (binding === null
+      ? Promise.reject(new Error('no browser secret'))
+      : api.inviteSsoFinish(purpose, token, code, binding)
+    ).then(
+      (done) => onToken(done.token),
+      (err: unknown) => {
+        setBusy(false);
+        if (err instanceof ApiError && err.status === 404)
+          setOpened({ state: 'invalid' });
+        else if (err instanceof ApiError && (err.status === 403 || err.status === 409))
+          setError(err.message);
+        else setError(SSO_FAILED);
+      },
+    );
+  }, [returning, token, onToken]);
+
+  const continueWith = async (provider: SsoProvider, purpose: InvitePurpose) => {
+    setBusy(true);
+    setError(null);
+    const problem = await leaveForProvider(
+      (binding) => api.inviteSsoStart(purpose, token, provider, binding),
+      { purpose, token },
+    );
+    if (problem !== '') {
+      setError(problem);
+      setBusy(false);
+    }
+  };
+
+  const providerButtons = (purpose: InvitePurpose, verb: string) =>
+    providers.length > 0 && (
+      <div className="sso">
+        <span>or</span>
+        {providers.map((provider) => (
+          <button
+            key={provider}
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => void continueWith(provider, purpose)}
+          >
+            {verb} {PROVIDER_LABEL[provider]}
+          </button>
+        ))}
+      </div>
+    );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,6 +238,7 @@ export function Accept({
           <button type="submit" disabled={busy || password === ''}>
             {busy ? 'Joining\u2026' : 'Sign in and join'}
           </button>
+          {providerButtons('join', 'Join with')}
         </form>
       )}
       {opened.state === 'open' && (
@@ -186,6 +280,7 @@ export function Accept({
           <button type="submit" disabled={busy || problem !== null}>
             {busy ? 'Joining…' : 'Set password and join'}
           </button>
+          {providerButtons(staff ? 'staff_invite' : 'vendor_invite', 'Join with')}
         </form>
       )}
     </main>
