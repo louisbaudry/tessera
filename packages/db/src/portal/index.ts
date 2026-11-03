@@ -20,3 +20,4 @@ export * from './files.js';
 export * from './audit.js';
 export * from './client-resources.js';
 export * from './currency.js';
+export * from './contacts.js';

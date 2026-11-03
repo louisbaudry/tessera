@@ -236,6 +236,38 @@ What slice 2 settled while building D3, D7 and D9. Stack unchanged (D8).
   subject), links another through slice 1's routes and unlinks one unless it is the last way in; an
   admin sees the policy below it.
 
+### 2b. Slice 3, decided (issue #318, 2026-11-03)
+
+**The portal has its own callback (Louis, 2026-11-03).** D6 said the portal "reaches the callback
+host by the same D4 hand-off", but the callback host is the CAT server's and finds an attempt in
+`platform.sqlite`, while a portal attempt lives in the tenant's `portal.sqlite`, which the CAT server
+must never read (`portal-v0-spec.md`). Three ways were weighed: the portal's own callback, a shared
+callback with a signed state and a secret common to both servers, or deferring the slice. Louis chose
+**the portal's own callback**:
+
+- One neutral portal address (`PORTAL_SSO_CALLBACK_ORIGIN`, for example `https://portal-auth.<domain>`),
+  added as a second redirect URL to the same two provider registrations (an operator step, §4). The
+  portal gateway answers that host with the callback route and a fixed 404 for everything else, as the
+  CAT server's callback host does.
+- The portal state carries the tenant's registry number before its random part, so the gateway knows
+  which tenant's file to look the attempt up in; the attempt is still found by the hash of the whole
+  state in that one file, so a state naming the wrong tenant finds nothing.
+- The hand-off returns the browser to that tenant's portal host (`/client.html#sso=<code>`); the portal
+  app redeems it and mints a **contact session**, never a link token.
+- The outbound half (`sso-http.ts`: the code exchange and the key fetch, fixed hosts, no redirect, no
+  body in an error) is shared with the CAT server, never copied: it moves to a package both depend on.
+
+**Phases.** Slice 3 is built in two, each its own PR:
+
+- **A (#318):** `client_contact` (id, client, email, created_at, disabled_at; email unique within the
+  portal file, lower case) and `client_contact_identity` (D2's shape keyed to a contact), and the admin's
+  contact screen: list, add by address, disable and enable. No sign-in yet, so nothing changes for a
+  client. Writes are not audited, like the portal's other client and rate writes (`CLAUDE.md`, the
+  portal's audit note).
+- **B (#342):** the sign-in itself (start, the portal callback, redeem, contact sessions, the
+  client page's buttons), `client.link_enabled` with the admin's switch (it comes with B because turning
+  a link off before a contact can sign in would shut the client out), and the shared outbound package.
+
 ## 3. Per audience
 
 | Who | Gets in by | Lock |
@@ -306,7 +338,7 @@ Each is written before the code that enforces it, with a fake provider:
 | - | ---- | ---- | ----- |
 | 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions. **Built** (#214), with the login screen's buttons and the link and unlink routes; no settings screen | L | none |
 | 2 | SSO in staff and vendor invitation acceptance, linking and unlinking from settings, `tenant_sso_policy`. **Built** (#317, §2a) | M | 1 |
-| 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen | L | 1 |
+| 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen. In two phases (§2b): A, the contacts and their screen; B, the sign-in and the link switch | L | 1 |
 
 One session on one slice: slices 1 and 2 both change `platform/schema.ts`, and
 migration numbers are checked against `main` just before merge. Slice 3 changes the

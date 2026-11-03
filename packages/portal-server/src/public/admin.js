@@ -428,7 +428,7 @@ async function renderClients(justMade) {
         : ''
     }
     <table>
-      <tr><th>#</th><th>Name</th><th>Email</th><th>Private link</th><th>Rates</th></tr>
+      <tr><th>#</th><th>Name</th><th>Email</th><th>Private link</th><th>Rates</th><th>Contacts</th></tr>
       ${
         clients
           .map(
@@ -438,9 +438,10 @@ async function renderClients(justMade) {
           <td>${escapeHtml(c.email)}</td>
           <td><button class="secondary" data-copy="${c.id}">Copy link</button></td>
           <td><button class="secondary" data-client-rates="${c.id}">Rates</button></td>
+          <td><button class="secondary" data-client-contacts="${c.id}">Contacts</button></td>
         </tr>`,
           )
-          .join('') || '<tr><td colspan="5" class="muted">No clients yet.</td></tr>'
+          .join('') || '<tr><td colspan="6" class="muted">No clients yet.</td></tr>'
       }
     </table>
 
@@ -467,6 +468,11 @@ async function renderClients(justMade) {
         window.prompt("Copy this client's private link:", link);
       }
     });
+  });
+  app.querySelectorAll('[data-client-contacts]').forEach((btn) => {
+    btn.addEventListener('click', () =>
+      renderContacts(clients.find((c) => String(c.id) === btn.dataset.clientContacts)),
+    );
   });
   app.querySelectorAll('[data-client-rates]').forEach((btn) => {
     btn.addEventListener('click', () =>
@@ -584,6 +590,75 @@ async function renderRates(client) {
     try {
       await postJson(base, body);
       renderRates(client);
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  });
+}
+
+/**
+ * A client's contacts (issue #318): the people at the client who will sign in with Microsoft or
+ * Google beside the private link. Signing in is not built yet, so adding one changes nothing for
+ * the client today.
+ */
+async function renderContacts(client) {
+  const base = `/api/admin/clients/${encodeURIComponent(client.id)}/contacts`;
+  let contacts;
+  try {
+    contacts = await api(base);
+  } catch (err) {
+    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  app.innerHTML = `
+    ${navHtml('clients')}
+    <h2>Contacts for ${escapeHtml(client.name)}</h2>
+    <p class="muted">People at this client who will sign in with Microsoft or Google. Each is an
+    email address and nothing else. The private link keeps working.</p>
+    <table>
+      <tr><th>Email</th><th>Added</th><th>Status</th><th></th></tr>
+      ${
+        contacts
+          .map(
+            (c) => `<tr>
+          <td>${escapeHtml(c.email)}</td>
+          <td>${escapeHtml(new Date(c.createdAt).toLocaleDateString())}</td>
+          <td>${c.disabledAt ? 'Disabled' : 'Active'}</td>
+          <td><button class="secondary" data-contact="${escapeHtml(c.id)}" data-verb="${c.disabledAt ? 'enable' : 'disable'}">${c.disabledAt ? 'Enable' : 'Disable'}</button></td>
+        </tr>`,
+          )
+          .join('') || '<tr><td colspan="4" class="muted">No contacts yet.</td></tr>'
+      }
+    </table>
+
+    <h3>Add a contact</h3>
+    <form id="new-contact" class="card" style="max-width:28rem">
+      <label>Email<input type="email" name="email" required maxlength="254" /></label>
+      <button type="submit">Add contact</button>
+      <p class="error" id="contact-error"></p>
+    </form>
+  `;
+  wireNav();
+  app.querySelectorAll('[data-contact]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await postJson(
+          `${base}/${encodeURIComponent(btn.dataset.contact)}/${btn.dataset.verb}`,
+          {},
+        );
+        renderContacts(client);
+      } catch (err) {
+        app.querySelector('#contact-error').textContent = err.message;
+      }
+    });
+  });
+  app.querySelector('#new-contact').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = app.querySelector('#contact-error');
+    errorEl.textContent = '';
+    try {
+      await postJson(base, { email: e.target.email.value });
+      renderContacts(client);
     } catch (err) {
       errorEl.textContent = err.message;
     }

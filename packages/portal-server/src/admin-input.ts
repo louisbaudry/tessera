@@ -13,6 +13,23 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const CLIENT_NAME_MAX_LENGTH = 200;
 export const EMAIL_MAX_LENGTH = 254;
 
+/**
+ * A contact's address once trimmed and lower case (issue #318), or the message to send back. The
+ * same shape check as a client's address.
+ */
+export function checkContactInput(
+  body: unknown,
+): { email: string } | { problem: string } {
+  const { email } = (body ?? {}) as { email?: unknown };
+  if (typeof email !== 'string' || !EMAIL.test(email.trim())) {
+    return { problem: 'email must be an email address' };
+  }
+  if (email.trim().length > EMAIL_MAX_LENGTH) {
+    return { problem: `email must be at most ${EMAIL_MAX_LENGTH} characters` };
+  }
+  return { email: email.trim().toLowerCase() };
+}
+
 /** The values of a new client once trimmed, or the message to send back. */
 export function checkClientInput(
   body: unknown,

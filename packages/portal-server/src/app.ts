@@ -23,7 +23,11 @@ import {
   deleteAdminSession,
   getAdminUserByEmail,
   getAdminUserBySessionToken,
+  ContactTakenError,
+  createContact,
   getClient,
+  listContacts,
+  setContactDisabled,
   getClientByToken,
   ClientResourceError,
   clientExportFilename,
@@ -91,7 +95,7 @@ import Fastify, {
 
 import type { TenantPortalConfig } from './tenants.js';
 import { SmtpNotificationService } from './notification/smtp.js';
-import { checkClientInput, checkRateInput } from './admin-input.js';
+import { checkClientInput, checkContactInput, checkRateInput } from './admin-input.js';
 import { DEFAULT_PORTAL_NAME, renderPortalPage } from './page.js';
 import {
   attachmentDisposition,
@@ -953,6 +957,45 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       throw err;
     }
   });
+
+  // A client's contacts (issue #318, sso-spec.md §2b, phase A): who will sign in with Microsoft or
+  // Google beside the private link. An address only; another client's contact is a 404.
+  app.get('/api/admin/clients/:id/contacts', async (req, reply) => {
+    const client = getClient(db, Number((req.params as { id: string }).id));
+    if (!client) return reply.code(404).send({ error: 'client not found' });
+    return listContacts(db, client.id);
+  });
+
+  app.post('/api/admin/clients/:id/contacts', async (req, reply) => {
+    const client = getClient(db, Number((req.params as { id: string }).id));
+    if (!client) return reply.code(404).send({ error: 'client not found' });
+    const input = checkContactInput(req.body);
+    if ('problem' in input) return reply.code(400).send({ error: input.problem });
+    try {
+      createContact(db, client.id, input.email);
+    } catch (err) {
+      if (err instanceof ContactTakenError) {
+        return reply.code(409).send({ error: 'that address is already a contact' });
+      }
+      throw err;
+    }
+    return listContacts(db, client.id);
+  });
+
+  for (const [verb, disabled] of [
+    ['disable', true],
+    ['enable', false],
+  ] as const) {
+    app.post(`/api/admin/clients/:id/contacts/:contactId/${verb}`, async (req, reply) => {
+      const { id, contactId } = req.params as { id: string; contactId: string };
+      const client = getClient(db, Number(id));
+      if (!client) return reply.code(404).send({ error: 'client not found' });
+      if (!setContactDisabled(db, client.id, Number(contactId), disabled)) {
+        return reply.code(404).send({ error: 'contact not found' });
+      }
+      return listContacts(db, client.id);
+    });
+  }
 
   app.get('/api/admin/rates', async () => listRates(db));
 
