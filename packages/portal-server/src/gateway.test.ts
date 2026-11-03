@@ -15,6 +15,7 @@ import { hashPassword } from '@cat-tool/portal-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { PortalConfig } from './config.js';
+import { PUBLIC_CONTACT_SSO_PATHS } from './contact-sso.js';
 import { buildGateway, type PortalGateway } from './gateway.js';
 import type { PortalTenant } from './tenants.js';
 
@@ -231,6 +232,8 @@ describe('two tenants share no credential', () => {
     for (const route of api) {
       const [method, pattern] = route.split(' ') as [string, string];
       if (route === 'POST /api/admin/login') continue;
+      // A contact signing in has no credential yet (issue #342); its own tests prove each refusal.
+      if (PUBLIC_CONTACT_SSO_PATHS.includes(pattern)) continue;
       const url = fill(pattern);
       // a fresh session per route: logout revokes the one it is sent with, and a token that was
       // revoked on A would be refused on B for the wrong reason

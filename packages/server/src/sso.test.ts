@@ -32,7 +32,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
 import { openOrCreateRoster } from './roster.js';
-import { CLIENT_IDS, CLIENT_SECRETS, DIRECTORY, FakeProvider } from './sso.fixture.js';
+import {
+  CLIENT_IDS,
+  CLIENT_SECRETS,
+  DIRECTORY,
+  FakeProvider,
+} from '@cat-tool/sso-http/testing';
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
 const BASE = 'platform.localhost';

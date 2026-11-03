@@ -10,7 +10,13 @@
  * exchange is not retried.
  */
 
-import { SSO_ENDPOINTS, type SsoProvider } from '@cat-tool/core';
+import {
+  SSO_ENDPOINTS,
+  SsoTokenError,
+  verifyIdToken,
+  type SsoIdentity,
+  type SsoProvider,
+} from '@cat-tool/core';
 import type { JSONWebKeySet } from 'jose';
 
 /** What the exchange needs, all of it already validated by the caller. */
@@ -132,5 +138,116 @@ export function createSsoHttp(options: SsoHttpOptions = {}): SsoHttp {
         throw new SsoHttpError('key fetch failed: not a key set', reply.status);
       return parsed as JSONWebKeySet;
     },
+  };
+}
+
+/** The operator's app at each provider, read from the environment; never logged or returned. */
+export type SsoProviders = Readonly<
+  Partial<
+    Record<SsoProvider, { readonly clientId: string; readonly clientSecret: string }>
+  >
+>;
+
+/**
+ * The providers whose client id and secret are both set (`GOOGLE_OAUTH_CLIENT_ID` and `_SECRET`,
+ * `MICROSOFT_OAUTH_CLIENT_ID` and `_SECRET`). One reading for both servers, which share the two
+ * registrations (`sso-spec.md` D4, §2b).
+ */
+export function ssoProvidersOf(env: NodeJS.ProcessEnv): SsoProviders {
+  const providers: Partial<
+    Record<SsoProvider, { clientId: string; clientSecret: string }>
+  > = {};
+  const pairs: readonly [SsoProvider, string | undefined, string | undefined][] = [
+    ['google', env.GOOGLE_OAUTH_CLIENT_ID, env.GOOGLE_OAUTH_CLIENT_SECRET],
+    ['microsoft', env.MICROSOFT_OAUTH_CLIENT_ID, env.MICROSOFT_OAUTH_CLIENT_SECRET],
+  ];
+  for (const [provider, clientId, clientSecret] of pairs) {
+    if (clientId && clientSecret) providers[provider] = { clientId, clientSecret };
+  }
+  return providers;
+}
+
+const isLocalHost = (host: string): boolean =>
+  host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1';
+
+/**
+ * A callback origin as typed in the environment variable `name`, checked: a bare origin, https, or
+ * plain http on the local machine only.
+ *
+ * @returns The origin (`https://auth.example.org`).
+ * @throws if it is not a URL, carries a path, query, fragment or credentials, or is plain http
+ *   elsewhere than the local machine.
+ */
+export function callbackOrigin(raw: string, name: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${name} "${raw}" is not a URL`);
+  }
+  const host = url.hostname.toLowerCase();
+  if (
+    host === '' ||
+    (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocalHost(host))) ||
+    url.pathname !== '/' ||
+    url.search !== '' ||
+    url.hash !== '' ||
+    url.username !== '' ||
+    url.password !== ''
+  ) {
+    throw new Error(
+      `${name} "${raw}" must be a bare https origin (http only on the local machine)`,
+    );
+  }
+  return url.origin;
+}
+
+/** How long a provider's published keys are kept before they are read again. */
+const JWKS_TTL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Verifies a provider's ID token against its published keys, cached six hours and read again once
+ * when a token names a key the cache lacks (a rotation, not yet a forgery). One per server, shared
+ * by the CAT server and the portal (`sso-spec.md` D5).
+ *
+ * @returns `verify(provider, idToken, nonce, clientId)`, which resolves to the identity or rejects
+ *   with `SsoTokenError` (from `core`) carrying the reason.
+ */
+export function createTokenVerifier(
+  http: SsoHttp,
+  now: () => Date,
+): (
+  provider: SsoProvider,
+  idToken: string,
+  nonce: string,
+  clientId: string,
+) => Promise<SsoIdentity> {
+  const keyCache = new Map<SsoProvider, { jwks: JSONWebKeySet; at: number }>();
+
+  async function keysFor(
+    provider: SsoProvider,
+    force: boolean,
+  ): Promise<{ jwks: JSONWebKeySet; fresh: boolean }> {
+    const held = keyCache.get(provider);
+    if (!force && held && now().getTime() - held.at < JWKS_TTL_MS) {
+      return { jwks: held.jwks, fresh: false };
+    }
+    const jwks = await http.fetchJwks(provider);
+    keyCache.set(provider, { jwks, at: now().getTime() });
+    return { jwks, fresh: true };
+  }
+
+  return async (provider, idToken, nonce, clientId) => {
+    const expected = { clientId, nonce, now: now() };
+    const first = await keysFor(provider, false);
+    try {
+      return await verifyIdToken(provider, idToken, first.jwks, expected);
+    } catch (err) {
+      if (err instanceof SsoTokenError && err.reason === 'signature' && !first.fresh) {
+        const second = await keysFor(provider, true);
+        return verifyIdToken(provider, idToken, second.jwks, expected);
+      }
+      throw err;
+    }
   };
 }

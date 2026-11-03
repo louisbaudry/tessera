@@ -5,7 +5,8 @@
  */
 import { resolve } from 'node:path';
 
-import { normaliseHost, type SsoProvider } from '@cat-tool/core';
+import { normaliseHost } from '@cat-tool/core';
+import { callbackOrigin, ssoProvidersOf, type SsoProviders } from '@cat-tool/sso-http';
 
 /**
  * Single sign-on (`planning/sso-spec.md` D4): the one address provider callbacks come back to and
@@ -20,11 +21,7 @@ export interface SsoConfig {
    */
   readonly callbackOrigin: string;
   /** Read from the environment only; never logged, returned or put in an error. */
-  readonly providers: Readonly<
-    Partial<
-      Record<SsoProvider, { readonly clientId: string; readonly clientSecret: string }>
-    >
-  >;
+  readonly providers: SsoProviders;
 }
 
 export interface ServerConfig {
@@ -71,16 +68,12 @@ export interface ServerConfig {
 /** The mid tier, until the D7 benchmark says otherwise (D13). */
 export const DEFAULT_DRAFT_MODEL = 'claude-sonnet-5-5';
 
-/** A host a person can reach without TLS: the machine they are sitting at. */
-const isLocalHost = (host: string): boolean =>
-  host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1';
-
 /**
  * The callback origin: `SSO_CALLBACK_ORIGIN`, or `https://auth.<baseDomain>`. With a base domain
  * the callback host is that one name and no other, because the server recognises it by name
  * (an override is for a deployment with no base domain, and for development).
  *
- * @throws if the value is not a bare origin, is plain http outside the local machine, or names
+ * @throws if the value is not a bare origin (`callbackOrigin`, shared with the portal), or names
  *   another host than `auth.<baseDomain>` when there is a base domain.
  */
 function callbackOriginOf(
@@ -88,51 +81,25 @@ function callbackOriginOf(
   baseDomain: string | undefined,
 ): string | null {
   if (!raw) return baseDomain ? `https://auth.${baseDomain}` : null;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error(`SSO_CALLBACK_ORIGIN "${raw}" is not a URL`);
-  }
-  const host = normaliseHost(url.host);
-  if (
-    host === null ||
-    (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocalHost(host))) ||
-    url.pathname !== '/' ||
-    url.search !== '' ||
-    url.hash !== '' ||
-    url.username !== '' ||
-    url.password !== ''
-  ) {
-    throw new Error(
-      `SSO_CALLBACK_ORIGIN "${raw}" must be a bare https origin (http only on the local machine)`,
-    );
-  }
-  if (baseDomain && host !== `auth.${baseDomain}`) {
+  const origin = callbackOrigin(raw, 'SSO_CALLBACK_ORIGIN');
+  if (baseDomain && normaliseHost(new URL(origin).host) !== `auth.${baseDomain}`) {
     throw new Error(
       `SSO_CALLBACK_ORIGIN must be https://auth.${baseDomain} when CAT_BASE_DOMAIN is set`,
     );
   }
-  return url.origin;
+  return origin;
 }
 
-/** The providers whose client id and secret are both set, as `{ clientId, clientSecret }`. */
+/** The providers whose client id and secret are both set, and where they call back to. */
 function ssoOf(
   env: NodeJS.ProcessEnv,
   baseDomain: string | undefined,
 ): SsoConfig | undefined {
-  const providers: Record<string, { clientId: string; clientSecret: string }> = {};
-  const pairs: readonly [SsoProvider, string | undefined, string | undefined][] = [
-    ['google', env.GOOGLE_OAUTH_CLIENT_ID, env.GOOGLE_OAUTH_CLIENT_SECRET],
-    ['microsoft', env.MICROSOFT_OAUTH_CLIENT_ID, env.MICROSOFT_OAUTH_CLIENT_SECRET],
-  ];
-  for (const [provider, clientId, clientSecret] of pairs) {
-    if (clientId && clientSecret) providers[provider] = { clientId, clientSecret };
-  }
+  const providers = ssoProvidersOf(env);
   // Read even with no provider, so a malformed value fails at startup and not later.
-  const callbackOrigin = callbackOriginOf(env.SSO_CALLBACK_ORIGIN, baseDomain);
-  if (callbackOrigin === null || Object.keys(providers).length === 0) return undefined;
-  return { callbackOrigin, providers };
+  const origin = callbackOriginOf(env.SSO_CALLBACK_ORIGIN, baseDomain);
+  if (origin === null || Object.keys(providers).length === 0) return undefined;
+  return { callbackOrigin: origin, providers };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {

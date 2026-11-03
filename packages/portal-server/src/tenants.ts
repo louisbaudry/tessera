@@ -253,6 +253,13 @@ export function loadTenants(config: PortalConfig): PortalTenant[] {
 /** A portal's config once its sender is settled: what `buildApp` takes. */
 export type TenantPortalConfig = Omit<PortalConfig, 'smtp'> & {
   readonly smtp: SmtpConfig | undefined;
+  /**
+   * Which tenant this app is, for a contact's sign-in (issue #342): its registry number (`0` for the
+   * single portal), carried in the state so the gateway can hand the callback to this app, and its
+   * host, where the callback sends the person back (`null`: the host they came from).
+   */
+  readonly tenantNumber?: number;
+  readonly host?: string | null;
 };
 
 /**
@@ -271,6 +278,8 @@ export function configForTenant(
   const { smtp: shared, ...base } = config;
   const rest = {
     ...base,
+    tenantNumber: tenant.tenantId ?? 0,
+    host: tenant.host,
     ...(tenant.displayName === undefined ? {} : { displayName: tenant.displayName }),
     ...(tenant.currency === undefined ? {} : { currency: tenant.currency }),
   };

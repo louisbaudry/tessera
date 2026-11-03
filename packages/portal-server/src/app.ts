@@ -26,6 +26,10 @@ import {
   ContactTakenError,
   createContact,
   getClient,
+  getClientByContactSession,
+  issueContactSigninLink,
+  LinkSwitchError,
+  setClientLinkEnabled,
   listContacts,
   setContactDisabled,
   getClientByToken,
@@ -95,6 +99,9 @@ import Fastify, {
 
 import type { TenantPortalConfig } from './tenants.js';
 import { SmtpNotificationService } from './notification/smtp.js';
+import { createSsoHttp, type SsoHttp } from '@cat-tool/sso-http';
+
+import { registerContactSsoRoutes } from './contact-sso.js';
 import { checkClientInput, checkContactInput, checkRateInput } from './admin-input.js';
 import { DEFAULT_PORTAL_NAME, renderPortalPage } from './page.js';
 import {
@@ -164,6 +171,8 @@ export interface BuildAppOptions {
    * probed without anyone remembering to (backlog #208).
    */
   readonly onRoute?: (route: { readonly method: string; readonly url: string }) => void;
+  /** A contact's sign-in (issue #342): tests pass a provider that never leaves the process. */
+  readonly sso?: { readonly http?: SsoHttp; readonly now?: () => Date };
 }
 
 function serializeOrder(order: TranslationOrder) {
@@ -306,10 +315,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return getAdminUserBySessionToken(db, header.slice('Bearer '.length));
   }
 
+  // The client's private link (while its admin keeps it on) or a signed-in contact's session (issue
+  // #342): either opens that one client's orders and nothing else.
   function requireClient(req: { headers: Record<string, unknown> }) {
     const header = req.headers['authorization'];
     if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null;
-    return getClientByToken(db, header.slice('Bearer '.length));
+    const token = header.slice('Bearer '.length);
+    return getClientByToken(db, token) ?? getClientByContactSession(db, token);
   }
 
   // --- file helpers ---------------------------------------------------
@@ -954,6 +966,54 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           .code(409)
           .send({ error: 'a client with this email address already exists' });
       }
+      throw err;
+    }
+  });
+
+  // A client contact's sign-in (issue #342, sso-spec.md §2b): public routes, no credential yet.
+  registerContactSsoRoutes(app, {
+    db,
+    config,
+    http: options.sso?.http ?? createSsoHttp(),
+    now: options.sso?.now ?? (() => new Date()),
+  });
+
+  // A contact's one-time sign-in link (issue #342): returned once, kept only as its hash, shown to
+  // the admin to pass on and never mailed. The page builds the address from it.
+  app.post(
+    '/api/admin/clients/:id/contacts/:contactId/signin-link',
+    async (req, reply) => {
+      const { id, contactId } = req.params as { id: string; contactId: string };
+      const client = getClient(db, Number(id));
+      if (!client) return reply.code(404).send({ error: 'client not found' });
+      const token = issueContactSigninLink(
+        db,
+        client.id,
+        Number(contactId),
+        generateSessionToken(),
+      );
+      if (!token) return reply.code(404).send({ error: 'contact not found or disabled' });
+      return { token };
+    },
+  );
+
+  // The client's private link, on or off (issue #342). Off is refused until a contact can sign in.
+  app.post('/api/admin/clients/:id/link', async (req, reply) => {
+    const { enabled } = (req.body ?? {}) as { enabled?: unknown };
+    if (typeof enabled !== 'boolean') {
+      return reply.code(400).send({ error: 'enabled must be true or false' });
+    }
+    try {
+      const client = setClientLinkEnabled(
+        db,
+        Number((req.params as { id: string }).id),
+        enabled,
+      );
+      if (!client) return reply.code(404).send({ error: 'client not found' });
+      return client;
+    } catch (err) {
+      if (err instanceof LinkSwitchError)
+        return reply.code(409).send({ error: err.message });
       throw err;
     }
   });
