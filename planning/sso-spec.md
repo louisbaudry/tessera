@@ -325,7 +325,9 @@ the operator's (`CLAUDE.md`, shared rules: credentials and consent):
   warning; whether it is required here is unconfirmed.
 - The ids and secrets are server environment variables (`GOOGLE_OAUTH_CLIENT_ID`,
   `GOOGLE_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET`),
-  read at start; a provider with no pair is off and its button absent. They are never in
+  read at start; a provider with no pair is off and its button absent. The portal (§2b) reads the same four
+  and its own `PORTAL_SSO_CALLBACK_ORIGIN`, and each registration carries a second redirect URI,
+  `<that origin>/api/client/sso/callback`. They are never in
   this repo, a log or an error. `SSO_CALLBACK_ORIGIN` is `https://auth.<base domain>` by
   default and may be set only where there is no base domain (development: `http://localhost:3400`
   is allowed, plain http nowhere else); with a base domain the server recognises the callback
@@ -369,7 +371,7 @@ Each is written before the code that enforces it, with a fake provider:
 | - | ---- | ---- | ----- |
 | 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions. **Built** (#214), with the login screen's buttons and the link and unlink routes; no settings screen | L | none |
 | 2 | SSO in staff and vendor invitation acceptance, linking and unlinking from settings, `tenant_sso_policy`. **Built** (#317, §2a) | M | 1 |
-| 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen. In two phases (§2b): A, the contacts and their screen; B, the sign-in and the link switch | L | 1 |
+| 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen. In two phases (§2b): A, the contacts and their screen; B, the sign-in and the link switch. **Built** (#318, #342) | L | 1 |
 
 One session on one slice: slices 1 and 2 both change `platform/schema.ts`, and
 migration numbers are checked against `main` just before merge. Slice 3 changes the
