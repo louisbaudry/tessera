@@ -392,3 +392,51 @@ describe('a client’s own rates screen (issue #331)', () => {
     expect(renders.at(-1)).toContain('data-client-rates="3"');
   });
 });
+
+describe('a client’s contacts screen (issue #318)', () => {
+  const client = { id: 3, name: PWN('name'), email: 'c@example.com', accessToken: 't' };
+
+  it('shows the client and each contact as text, with a button to disable or enable', async () => {
+    const { renders, context } = await loadPage(
+      'admin.js',
+      {
+        '/api/admin/clients/3/contacts': {
+          json: [
+            {
+              id: 1,
+              clientId: 3,
+              email: PWN('mail'),
+              createdAt: '2026-11-03T00:00:00Z',
+              disabledAt: null,
+            },
+            {
+              id: 2,
+              clientId: 3,
+              email: 'off@example.com',
+              createdAt: '2026-11-03T00:00:00Z',
+              disabledAt: '2026-11-03T01:00:00Z',
+            },
+          ],
+        },
+        '/api/admin/clients': { json: [client] },
+      },
+      { portal_admin_token: 't' },
+    );
+    await (context.renderContacts as (c: unknown) => Promise<void>)(client);
+    expectOnlyText(renders, ['name', 'mail']);
+    const page = renders.at(-1)!;
+    expect(page).toContain('data-contact="1" data-verb="disable"');
+    expect(page).toContain('data-contact="2" data-verb="enable"');
+    expect(page).toContain('id="new-contact"');
+  });
+
+  it('is reached from a Contacts button on each client', async () => {
+    const { renders, context } = await loadPage(
+      'admin.js',
+      { '/api/admin/clients': { json: [client] } },
+      { portal_admin_token: 't' },
+    );
+    await (context.renderClients as () => Promise<void>)();
+    expect(renders.at(-1)).toContain('data-client-contacts="3"');
+  });
+});

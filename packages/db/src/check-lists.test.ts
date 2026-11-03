@@ -82,6 +82,7 @@ const DATABASES: Readonly<Record<string, Case>> = {
     lists: {
       'translation_order.status': ORDER_STATUSES,
       'client_resource.kind': CLIENT_RESOURCE_KINDS,
+      'client_contact_identity.provider': SSO_PROVIDERS,
       'audit_event.action': PORTAL_AUDIT_ACTIONS,
     },
   },

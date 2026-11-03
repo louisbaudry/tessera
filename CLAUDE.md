@@ -196,7 +196,7 @@ it is now `?tenant=<tenant id>`. Keep true:
 
 ## Single sign-on (slices 1 and 2 built; slice 3 not)
 
-`planning/sso-spec.md` (Epic 15, backlog #214 and #215 built, issue #318 open): Microsoft 365 and Google
+`planning/sso-spec.md` (Epic 15, backlog #214 and #215 built, issue #342 open): Microsoft 365 and Google
 sign-in. Slice 1 signs in an account that exists, by `server/src/sso.ts`; slice 2 accepts staff and vendor
 invitations by a provider, adds the Account screen and a tenant's policy (§2a); the portal's client contacts
 are the next card. Keep true:
@@ -225,7 +225,10 @@ are the next card. Keep true:
   acting admin holds one; a staff invitation outside the lock is refused before the account exists. A lock
   check fails closed (a Google token with no `hd` meets no Google lock). Every staff sign-in by a provider
   asks `staffIdentityAllowed`.
-- **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6, slice 3).
+- **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6, slice 3;
+  phase A built: `client_contact`, `db/portal/contacts.ts`, the admin's Contacts screen). **The portal signs
+  its contacts in through its own callback** (§2b, Louis 2026-11-03), never the CAT server's: that one reads
+  `platform.sqlite` and must never read a portal file. Phase B (#342) builds the sign-in.
 
 ## The working rhythm
 

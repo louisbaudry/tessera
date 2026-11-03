@@ -5272,7 +5272,18 @@ A staff or vendor invitation can be accepted with Microsoft or Google, a vendor 
 - **The isolation matrix gained the eight routes**, and tenant B now holds a policy whose domain is a marker, so a policy read that leaked across tenants would fail it.
 - Verified: core, db and server tests for every rule above (`sso-slice2.test.ts`, the `slice 2` block in `sso.test.ts`), the isolation matrix, the web tests (`account-settings`, `parsePending`), the full suite, and a browser run against the built server and SPA: the Account screen lists links, refuses to require SSO without one (the server's message shown), saves a domain lock, and the staff invitation page offers "Join with Google" and leaves for the provider. **Not verified:** a real Microsoft or Google sign-in, the `hd` claim of a real Workspace token, and the invitation return trip in a browser (it needs a provider to come back from).
 
-**#216 · SSO slice 3: portal client contacts sign in with SSO · L** · [issue #318]
+**#216 · SSO slice 3: portal client contacts sign in with SSO · L** · [issue #342]
+
+Phased (`sso-spec.md` §2b). **Phase A, ~~contacts and their screen~~, done** (2026-11-03; card #318):
+`client_contact` and `client_contact_identity` (portal v11, `db/portal/contacts.ts`), the admin's routes
+(`/api/admin/clients/:id/contacts`, `.../:contactId/disable|enable`) and the Contacts screen
+(`public/admin.js`). Decided with Louis while starting it: the portal gets **its own callback** on a
+neutral portal address, because the CAT server's callback finds attempts in `platform.sqlite` and must
+never read a portal file; D6's "the same D4 hand-off" could not have worked as written. Phase B (the
+sign-in, the private-link switch and the shared outbound code) is the open issue. What phase A taught:
+an address-only contact, unique per portal file in lower case, needs no tenant column (the file is the
+tenant's), and the gateway's credential walk covered the four new routes with no change. Contact writes
+are not audited, like the portal's other client and rate writes.
 
 ## Not in this backlog (Epics 0–7)
 
@@ -5318,4 +5329,4 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51
-[issue #318]: https://github.com/louisbaudry/tessera/issues/318
+[issue #342]: https://github.com/louisbaudry/tessera/issues/342

@@ -533,6 +533,14 @@ portal's currency is what says which money it is.
   button (which states the amount it approves) and the rates screen, where a per-word rate keeps up to four
   places. No page writes a symbol of its own. Mail quotes no price, so it has nothing to format.
 
+## 9d. Client contacts (issue #318, 2026-11-03)
+
+A client may have **contacts**: people at the client who will sign in to the tenant's portal with
+Microsoft or Google, beside the private link (`sso-spec.md` D6, §2b). Phase A is built: `client_contact`
+(portal v11; an address only, unique per portal file in lower case, disabled without being deleted) and
+`client_contact_identity`, with the admin's Contacts screen. Nothing changes for a client until phase B
+(#342) builds the sign-in and the switch that turns a client's private link off.
+
 ## 10. A client plan: a monthly word allowance (idea #220, designed, not built)
 
 Decided 2026-10-11 (Louis): this feature is written down now and built when

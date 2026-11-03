@@ -1641,3 +1641,69 @@ describe('a client’s own rates (issue #331)', () => {
     });
   });
 });
+
+describe('a client’s contacts (issue #318, phase A)', () => {
+  it('are added by address, listed per client, disabled and enabled, and refused plainly', async () => {
+    const admin = await adminLogin();
+    const call = (method: 'GET' | 'POST', url: string, payload?: object) =>
+      app.inject({ method, url, headers: auth(admin), ...(payload ? { payload } : {}) });
+    const added = await call('POST', `/api/admin/clients/${ada.id}/contacts`, {
+      email: ' Pat@Client.Example ',
+    });
+    expect(added.statusCode, added.body).toBe(200);
+    const [pat] = added.json() as Array<{
+      id: number;
+      email: string;
+      disabledAt: string | null;
+    }>;
+    expect(pat).toMatchObject({ email: 'pat@client.example', disabledAt: null });
+    expect((await call('GET', `/api/admin/clients/${other.id}/contacts`)).json()).toEqual(
+      [],
+    );
+
+    expect(
+      (
+        await call('POST', `/api/admin/clients/${other.id}/contacts`, {
+          email: 'PAT@client.example',
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await call('POST', `/api/admin/clients/${ada.id}/contacts`, {
+          email: 'not an address',
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect((await call('GET', '/api/admin/clients/999/contacts')).statusCode).toBe(404);
+
+    const disabled = await call(
+      'POST',
+      `/api/admin/clients/${ada.id}/contacts/${pat!.id}/disable`,
+    );
+    expect(
+      (disabled.json() as Array<{ disabledAt: string | null }>)[0]!.disabledAt,
+    ).not.toBeNull();
+    // another client's id with this contact is the same 404 as a missing one
+    expect(
+      (await call('POST', `/api/admin/clients/${other.id}/contacts/${pat!.id}/enable`))
+        .statusCode,
+    ).toBe(404);
+    const enabled = await call(
+      'POST',
+      `/api/admin/clients/${ada.id}/contacts/${pat!.id}/enable`,
+    );
+    expect(
+      (enabled.json() as Array<{ disabledAt: string | null }>)[0]!.disabledAt,
+    ).toBeNull();
+  });
+
+  it('are the admin’s alone: a client’s own token reaches none of these routes', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/admin/clients/${ada.id}/contacts`,
+      headers: auth(ada.accessToken),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

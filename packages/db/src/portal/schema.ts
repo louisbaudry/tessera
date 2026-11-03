@@ -388,6 +388,44 @@ const v10: Migration = {
   },
 };
 
+/**
+ * v11 — a client's contacts (issue #318, `planning/sso-spec.md` D6, §2b, phase A): people at a
+ * client who will sign in to this tenant's portal with Microsoft or Google, beside the private link.
+ * A contact is an address and nothing else (no name, so erasure has only an address to remove),
+ * unique within the file in lower case, made by the tenant's admin; `disabled_at` turns one off
+ * without losing its row. `client_contact_identity` is the platform's `account_identity` keyed to a
+ * contact instead of an account (D2): a sign-in will be matched on `(provider, issuer, subject)`,
+ * never on the address. No `tenant_id`: the file is the tenant's (`portal-v0-spec.md` §9a).
+ */
+const v11: Migration = {
+  version: 11,
+  description: 'client_contact and client_contact_identity (issue #318)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE client_contact (
+        id          INTEGER PRIMARY KEY,
+        client_id   INTEGER NOT NULL REFERENCES client(id),
+        email       TEXT    NOT NULL UNIQUE CHECK (email = lower(email) AND length(email) BETWEEN 3 AND 254),
+        created_at  TEXT    NOT NULL,
+        disabled_at TEXT
+      );
+      CREATE INDEX client_contact_client ON client_contact(client_id);
+
+      CREATE TABLE client_contact_identity (
+        id            INTEGER PRIMARY KEY,
+        contact_id    INTEGER NOT NULL REFERENCES client_contact(id),
+        provider      TEXT    NOT NULL CHECK (provider IN ('google', 'microsoft')),
+        issuer        TEXT    NOT NULL CHECK (length(issuer) > 0),
+        subject       TEXT    NOT NULL CHECK (length(subject) > 0),
+        linked_at     TEXT    NOT NULL,
+        last_login_at TEXT,
+        UNIQUE (provider, issuer, subject)
+      );
+      CREATE INDEX client_contact_identity_contact ON client_contact_identity(contact_id);
+    `);
+  },
+};
+
 export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -399,4 +437,5 @@ export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v8,
   v9,
   v10,
+  v11,
 ];
