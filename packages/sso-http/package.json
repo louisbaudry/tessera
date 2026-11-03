@@ -1,0 +1,34 @@
+{
+  "name": "@cat-tool/sso-http",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "The outbound half of single sign-on (sso-spec.md D4, D5): the code exchange and the key fetch, shared by the CAT server and the portal.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.check.json"
+  },
+  "dependencies": {
+    "@cat-tool/core": "workspace:*",
+    "jose": "^6.2.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1"
+  }
+}

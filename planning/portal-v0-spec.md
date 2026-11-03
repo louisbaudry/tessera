@@ -538,8 +538,11 @@ portal's currency is what says which money it is.
 A client may have **contacts**: people at the client who will sign in to the tenant's portal with
 Microsoft or Google, beside the private link (`sso-spec.md` D6, §2b). Phase A is built: `client_contact`
 (portal v11; an address only, unique per portal file in lower case, disabled without being deleted) and
-`client_contact_identity`, with the admin's Contacts screen. Nothing changes for a client until phase B
-(#342) builds the sign-in and the switch that turns a client's private link off.
+`client_contact_identity`, with the admin's Contacts screen. Phase B (#342) is built too: a contact is
+linked by a one-time sign-in link the admin copies (never by an address), then signs in with Microsoft or
+Google through the portal's own callback host and holds a contact session that opens that client's orders
+only. The admin can turn a client's private link off once a contact can sign in (`client.link_enabled`,
+portal v12); every existing client keeps its link. Decisions and refusals: `sso-spec.md` §2b.
 
 ## 10. A client plan: a monthly word allowance (idea #220, designed, not built)
 

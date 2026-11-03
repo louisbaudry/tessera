@@ -428,7 +428,7 @@ async function renderClients(justMade) {
         : ''
     }
     <table>
-      <tr><th>#</th><th>Name</th><th>Email</th><th>Private link</th><th>Rates</th><th>Contacts</th></tr>
+      <tr><th>#</th><th>Name</th><th>Email</th><th>Private link</th><th>Link</th><th>Rates</th><th>Contacts</th></tr>
       ${
         clients
           .map(
@@ -437,11 +437,12 @@ async function renderClients(justMade) {
           <td>${escapeHtml(c.name)}</td>
           <td>${escapeHtml(c.email)}</td>
           <td><button class="secondary" data-copy="${c.id}">Copy link</button></td>
+          <td><button class="secondary" data-link-switch="${c.id}" data-enabled="${c.linkEnabled === false ? 'false' : 'true'}">${c.linkEnabled === false ? 'Off, turn on' : 'On, turn off'}</button></td>
           <td><button class="secondary" data-client-rates="${c.id}">Rates</button></td>
           <td><button class="secondary" data-client-contacts="${c.id}">Contacts</button></td>
         </tr>`,
           )
-          .join('') || '<tr><td colspan="6" class="muted">No clients yet.</td></tr>'
+          .join('') || '<tr><td colspan="7" class="muted">No clients yet.</td></tr>'
       }
     </table>
 
@@ -466,6 +467,22 @@ async function renderClients(justMade) {
       } catch {
         // No clipboard (an insecure context, a denied permission): show it to copy by hand.
         window.prompt("Copy this client's private link:", link);
+      }
+    });
+  });
+  // The private link on or off (issue #342): off is refused until a contact of the client can sign in.
+  app.querySelectorAll('[data-link-switch]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await postJson(
+          `/api/admin/clients/${encodeURIComponent(btn.dataset.linkSwitch)}/link`,
+          {
+            enabled: btn.dataset.enabled !== 'true',
+          },
+        );
+        renderClients();
+      } catch (err) {
+        window.alert(err.message);
       }
     });
   });
@@ -613,10 +630,11 @@ async function renderContacts(client) {
   app.innerHTML = `
     ${navHtml('clients')}
     <h2>Contacts for ${escapeHtml(client.name)}</h2>
-    <p class="muted">People at this client who will sign in with Microsoft or Google. Each is an
-    email address and nothing else. The private link keeps working.</p>
+    <p class="muted">People at this client who sign in with Microsoft or Google. Each is an email
+    address and nothing else. Send each one its sign-in link once: it ties their Microsoft or Google
+    account to them, and works one time.</p>
     <table>
-      <tr><th>Email</th><th>Added</th><th>Status</th><th></th></tr>
+      <tr><th>Email</th><th>Added</th><th>Status</th><th></th><th></th></tr>
       ${
         contacts
           .map(
@@ -625,9 +643,10 @@ async function renderContacts(client) {
           <td>${escapeHtml(new Date(c.createdAt).toLocaleDateString())}</td>
           <td>${c.disabledAt ? 'Disabled' : 'Active'}</td>
           <td><button class="secondary" data-contact="${escapeHtml(c.id)}" data-verb="${c.disabledAt ? 'enable' : 'disable'}">${c.disabledAt ? 'Enable' : 'Disable'}</button></td>
+          <td>${c.disabledAt ? '' : `<button class="secondary" data-signin-link="${escapeHtml(c.id)}">Copy sign-in link</button>`}</td>
         </tr>`,
           )
-          .join('') || '<tr><td colspan="4" class="muted">No contacts yet.</td></tr>'
+          .join('') || '<tr><td colspan="5" class="muted">No contacts yet.</td></tr>'
       }
     </table>
 
@@ -639,6 +658,26 @@ async function renderContacts(client) {
     </form>
   `;
   wireNav();
+  // A one-time link, shown to the admin to pass on and never mailed; a new one replaces the last.
+  app.querySelectorAll('[data-signin-link]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        const { token } = await postJson(
+          `${base}/${encodeURIComponent(btn.dataset.signinLink)}/signin-link`,
+          {},
+        );
+        const link = `${location.origin}/client.html#contact=${encodeURIComponent(token)}`;
+        try {
+          await navigator.clipboard.writeText(link);
+          btn.textContent = 'Copied';
+        } catch {
+          window.prompt("Copy this contact's one-time sign-in link:", link);
+        }
+      } catch (err) {
+        app.querySelector('#contact-error').textContent = err.message;
+      }
+    });
+  });
   app.querySelectorAll('[data-contact]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       try {

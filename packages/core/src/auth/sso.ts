@@ -43,6 +43,14 @@ export const SSO_PURPOSES = [
 ] as const;
 export type SsoPurpose = (typeof SSO_PURPOSES)[number];
 
+/**
+ * What a portal sign-in is for (`planning/sso-spec.md` §2b): a contact linking an identity through
+ * the one-time link the admin passed on, or a linked contact signing in. A frozen literal in the
+ * portal migration (`sso_attempt.purpose`).
+ */
+export const PORTAL_SSO_PURPOSES = ['contact_link', 'contact_login'] as const;
+export type PortalSsoPurpose = (typeof PORTAL_SSO_PURPOSES)[number];
+
 /** Where a provider is reached. Fixed in code: no request and no setting can point it elsewhere. */
 export interface SsoEndpoints {
   readonly authorizationEndpoint: string;

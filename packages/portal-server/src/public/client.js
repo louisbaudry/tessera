@@ -9,8 +9,120 @@ function tokenFromHash() {
     : localStorage.getItem('portal_client_token');
 }
 
-const token = tokenFromHash();
+let token = tokenFromHash();
 if (token) localStorage.setItem('portal_client_token', token);
+
+// --- Signing in with Microsoft or Google (issue #342, sso-spec.md §2b) ---------------------------
+// A contact either opens the one-time link its admin passed on (`#contact=<token>`), which ties its
+// first identity, or signs in from here with no link. The provider comes back through the portal's
+// callback host to `#sso=<code>`, which this page redeems with the secret it kept for the trip. All
+// three values live in the fragment, which a browser never sends to a server, and are read once.
+
+const SSO_FAILED =
+  'That sign-in did not work. Try again, or use the private link you were sent.';
+
+function takeFragment(name) {
+  const match = new RegExp(`^#${name}=([A-Za-z0-9_.-]{1,200})$`).exec(location.hash);
+  if (!match) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  return match[1];
+}
+
+/** Session storage for the trip to the provider: read once (and removed), or written. */
+function kept(key, value) {
+  try {
+    if (value === undefined) {
+      const held = sessionStorage.getItem(key);
+      sessionStorage.removeItem(key);
+      return held;
+    }
+    sessionStorage.setItem(key, value);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function newBinding() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+async function leaveForProvider(provider, link) {
+  const binding = newBinding();
+  if (kept('portal_sso_binding', binding) === null) {
+    return 'This browser will not keep what a sign-in needs. Use the private link you were sent.';
+  }
+  if (link) kept('portal_contact_link', link);
+  const res = await fetch('/api/client/sso/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(link ? { provider, binding, link } : { provider, binding }),
+  });
+  if (!res.ok) {
+    return res.status === 404
+      ? 'This sign-in link is not valid any more. Ask for a new one.'
+      : SSO_FAILED;
+  }
+  location.assign((await res.json()).url);
+  return '';
+}
+
+const PROVIDER_LABEL = { google: 'Google', microsoft: 'Microsoft' };
+
+async function renderSignIn(message, link) {
+  let providers = [];
+  try {
+    const res = await fetch('/api/client/sso/providers');
+    if (res.ok) providers = (await res.json()).providers;
+  } catch {
+    // no buttons: the private link is still the way in
+  }
+  app.innerHTML = `
+    ${message ? `<p class="error">${escapeHtml(message)}</p>` : ''}
+    <p>${
+      link
+        ? 'Sign in with your Microsoft or Google account to finish setting up your access.'
+        : providers.length > 0
+          ? 'Sign in with your Microsoft or Google account, or use the private link you were sent.'
+          : 'No access link found. Use the private link you were sent.'
+    }</p>
+    <div class="sso">${providers
+      .map(
+        (p) =>
+          `<button data-provider="${escapeHtml(p)}">Continue with ${escapeHtml(PROVIDER_LABEL[p] || p)}</button>`,
+      )
+      .join(' ')}</div>
+  `;
+  app.querySelectorAll('[data-provider]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const problem = await leaveForProvider(btn.dataset.provider, link);
+      if (problem) renderSignIn(problem, link);
+    });
+  });
+}
+
+/** Back from a provider: redeems the code, linking first when a sign-in link started the trip. */
+async function redeemReturn(code) {
+  const binding = kept('portal_sso_binding');
+  const link = kept('portal_contact_link');
+  if (code === 'refused' || !binding) return renderSignIn(SSO_FAILED, link);
+  const res = await fetch('/api/client/sso/redeem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(link ? { code, binding, link } : { code, binding }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return renderSignIn(res.status === 409 ? body.error || SSO_FAILED : SSO_FAILED, link);
+  }
+  token = (await res.json()).token;
+  localStorage.setItem('portal_client_token', token);
+  return renderHome();
+}
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -19,7 +131,9 @@ async function api(path, options = {}) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `request failed (${res.status})`);
+    const error = new Error(body.error || `request failed (${res.status})`);
+    error.status = res.status;
+    throw error;
   }
   return res.json();
 }
@@ -174,10 +288,7 @@ function resourcesSection(resources) {
 }
 
 async function renderHome() {
-  if (!token) {
-    app.innerHTML = `<p class="error">No access link found. Use the private link you were sent.</p>`;
-    return;
-  }
+  if (!token) return renderSignIn('');
 
   let me, orders, rates, resources;
   try {
@@ -188,6 +299,12 @@ async function renderHome() {
       api('/api/client/resources'),
     ]);
   } catch (err) {
+    // A link the admin turned off, or a session that ended: sign in again.
+    if (err.status === 401) {
+      localStorage.removeItem('portal_client_token');
+      token = null;
+      return renderSignIn('');
+    }
     app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     return;
   }
@@ -334,4 +451,8 @@ async function renderHome() {
   });
 }
 
-renderHome();
+const returning = takeFragment('sso');
+const contactLink = returning === null ? takeFragment('contact') : null;
+if (returning !== null) redeemReturn(returning);
+else if (contactLink !== null) renderSignIn('', contactLink);
+else renderHome();

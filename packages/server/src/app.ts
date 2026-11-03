@@ -168,7 +168,7 @@ import {
 } from './invitations.js';
 import { JobRegistry, MAX_RUNNING_JOBS } from './jobs.js';
 import { PUBLIC_SSO_PATHS, registerSsoRoutes, SSO_CALLBACK_PATH } from './sso.js';
-import { createSsoHttp, type SsoHttp } from './sso-http.js';
+import { createSsoHttp, type SsoHttp } from '@cat-tool/sso-http';
 import { registerTenantAuditRoutes } from './tenant-audit.js';
 import {
   ACCEPT_STAFF_INVITATION_PATH,

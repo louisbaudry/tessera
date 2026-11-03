@@ -56,6 +56,32 @@ describe('loadConfig', () => {
     }
   });
 
+  it('turns contact sign-in on only with a callback origin and a provider pair (issue #342)', () => {
+    const pair = { GOOGLE_OAUTH_CLIENT_ID: 'id', GOOGLE_OAUTH_CLIENT_SECRET: 'secret' };
+    expect(loadConfig(pair).sso).toBeUndefined();
+    expect(
+      loadConfig({ PORTAL_SSO_CALLBACK_ORIGIN: 'https://portal-auth.example.org' }).sso,
+    ).toBeUndefined();
+    expect(
+      loadConfig({
+        ...pair,
+        PORTAL_SSO_CALLBACK_ORIGIN: 'https://portal-auth.example.org',
+      }).sso,
+    ).toEqual({
+      callbackOrigin: 'https://portal-auth.example.org',
+      providers: { google: { clientId: 'id', clientSecret: 'secret' } },
+    });
+    for (const bad of [
+      'http://portal-auth.example.org',
+      'https://x.example.org/path',
+      'nope',
+    ]) {
+      expect(() => loadConfig({ PORTAL_SSO_CALLBACK_ORIGIN: bad }), bad).toThrow(
+        /PORTAL_SSO_CALLBACK_ORIGIN/,
+      );
+    }
+  });
+
   it('reads the portal name from PORTAL_DISPLAY_NAME, trimmed, a blank one meaning none (issue #310)', () => {
     expect(loadConfig({}).displayName).toBeUndefined();
     expect(loadConfig({ PORTAL_DISPLAY_NAME: '   ' }).displayName).toBeUndefined();

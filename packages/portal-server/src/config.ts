@@ -6,6 +6,7 @@
 import { resolve } from 'node:path';
 
 import { isCurrencyCode } from '@cat-tool/portal-core';
+import { callbackOrigin, ssoProvidersOf, type SsoProviders } from '@cat-tool/sso-http';
 
 /**
  * The currency a portal's prices are in when nothing names one: what every price showed before
@@ -49,6 +50,12 @@ export interface PortalConfig {
    * start, and fixed there once an order has a price (`settlePortalCurrency`).
    */
   readonly currency: string;
+  /**
+   * A client contact's sign-in with Microsoft or Google (issue #342, `sso-spec.md` §2b): the portal's
+   * own callback origin (`PORTAL_SSO_CALLBACK_ORIGIN`) and the operator's two provider apps, the same
+   * environment variables the CAT server reads. Absent when either is missing: sign-in is then off.
+   */
+  readonly sso?: { readonly callbackOrigin: string; readonly providers: SsoProviders };
   // Set only when PORTAL_SMTP_HOST is configured — absence is the signal
   // to fall back to ConsoleNotificationService (portal-v0-spec.md §5),
   // same "no real email adapter yet" default v0 shipped with.
@@ -65,8 +72,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PortalConfig {
       ? { displayName: env.PORTAL_DISPLAY_NAME.trim() }
       : {}),
     currency: loadCurrency(env),
+    ...loadSso(env),
     smtp: loadSmtpConfig(env),
   };
+}
+
+function loadSso(env: NodeJS.ProcessEnv): Pick<PortalConfig, 'sso'> {
+  const raw = env.PORTAL_SSO_CALLBACK_ORIGIN?.trim();
+  // Read even with no provider, so a malformed origin fails at startup and not later.
+  const origin = raw ? callbackOrigin(raw, 'PORTAL_SSO_CALLBACK_ORIGIN') : null;
+  const providers = ssoProvidersOf(env);
+  return origin !== null && Object.keys(providers).length > 0
+    ? { sso: { callbackOrigin: origin, providers } }
+    : {};
 }
 
 function loadCurrency(env: NodeJS.ProcessEnv): string {

@@ -21,3 +21,4 @@ export * from './audit.js';
 export * from './client-resources.js';
 export * from './currency.js';
 export * from './contacts.js';
+export * from './contact-sso.js';

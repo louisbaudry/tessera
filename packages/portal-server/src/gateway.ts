@@ -18,7 +18,8 @@ import { dirname } from 'node:path';
 import type { NotificationService } from '@cat-tool/portal-core';
 import type { FastifyInstance } from 'fastify';
 
-import { buildApp } from './app.js';
+import { buildApp, type BuildAppOptions } from './app.js';
+import { CONTACT_SSO_CALLBACK_PATH, tenantNumberOfState } from './contact-sso.js';
 import type { PortalConfig } from './config.js';
 import {
   configForTenant,
@@ -33,6 +34,8 @@ export interface GatewayOptions {
   readonly tenants?: readonly PortalTenant[];
   readonly notifications?: NotificationService;
   readonly logger?: boolean;
+  /** See `BuildAppOptions.sso`: tests pass a provider that never leaves the process. */
+  readonly sso?: BuildAppOptions['sso'];
   /** See `BuildAppOptions.onRoute`. */
   readonly onRoute?: (route: { readonly method: string; readonly url: string }) => void;
 }
@@ -41,6 +44,13 @@ export interface PortalGateway {
   readonly tenants: readonly PortalTenant[];
   /** The app a request for `host` belongs to, or `null` when no tenant answers there. */
   appFor(host: string | undefined): FastifyInstance | null;
+  /**
+   * The app a request belongs to, the portal's sign-in callback host included (issue #342): that
+   * host answers the callback alone, handed to the tenant its state names, and a fixed 404 otherwise.
+   * On a tenant's own host the callback is not answered, so a state is claimed only where it was meant
+   * to come back. `null` is the 404.
+   */
+  routeFor(host: string | undefined, method: string, url: string): FastifyInstance | null;
   /** Starts listening; resolves with the address. */
   listen(port: number, host?: string): Promise<AddressInfo>;
   close(): Promise<void>;
@@ -59,6 +69,7 @@ export async function buildGateway(options: GatewayOptions): Promise<PortalGatew
       ...(options.notifications ? { notifications: options.notifications } : {}),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
       ...(options.onRoute ? { onRoute: options.onRoute } : {}),
+      ...(options.sso ? { sso: options.sso } : {}),
     });
     await app.ready();
     apps.set(tenant.host, app);
@@ -72,13 +83,37 @@ export async function buildGateway(options: GatewayOptions): Promise<PortalGatew
     return name === null ? null : (apps.get(name) ?? null);
   };
 
+  // The portal's own neutral callback host, when it is not the portal's host itself (sso-spec.md §2b).
+  const callbackHost =
+    options.config.sso && !only
+      ? normaliseHost(new URL(options.config.sso.callbackOrigin).host)
+      : null;
+  const byNumber = new Map<number, FastifyInstance>();
+  for (const tenant of tenants) {
+    if (tenant.tenantId !== null) byNumber.set(tenant.tenantId, apps.get(tenant.host)!);
+  }
+
+  const routeFor = (host: string | undefined, method: string, url: string) => {
+    const path = url.split('?')[0];
+    if (callbackHost !== null && normaliseHost(host) === callbackHost) {
+      if (method !== 'GET' || path !== CONTACT_SSO_CALLBACK_PATH) return null;
+      const state =
+        new URL(url, 'http://callback.invalid').searchParams.get('state') ?? '';
+      const number = tenantNumberOfState(state);
+      return number === null ? null : (byNumber.get(number) ?? null);
+    }
+    if (callbackHost !== null && path === CONTACT_SSO_CALLBACK_PATH) return null;
+    return appFor(host);
+  };
+
   let server: Server | null = null;
   return {
     tenants,
     appFor,
+    routeFor,
     async listen(port, host = '0.0.0.0') {
       server = createServer((req, res) => {
-        const app = appFor(req.headers.host);
+        const app = routeFor(req.headers.host, req.method ?? 'GET', req.url ?? '/');
         if (!app) {
           res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
           res.end(NOT_FOUND);

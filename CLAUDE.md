@@ -194,12 +194,12 @@ it is now `?tenant=<tenant id>`. Keep true:
   (`project_authorization_not_staff`, `roster_membership_not_staff`), as a vendor on staff is
   (D3): the schema, not a route, holds each.
 
-## Single sign-on (slices 1 and 2 built; slice 3 not)
+## Single sign-on (slices 1 to 3 built)
 
-`planning/sso-spec.md` (Epic 15, backlog #214 and #215 built, issue #342 open): Microsoft 365 and Google
+`planning/sso-spec.md` (Epic 15, backlog #214 to #216 built): Microsoft 365 and Google
 sign-in. Slice 1 signs in an account that exists, by `server/src/sso.ts`; slice 2 accepts staff and vendor
-invitations by a provider, adds the Account screen and a tenant's policy (§2a); the portal's client contacts
-are the next card. Keep true:
+invitations by a provider, adds the Account screen and a tenant's policy (§2a); slice 3 signs the portal's
+client contacts in (§2b). Keep true:
 
 - **SSO signs in someone who exists and creates no one** (D1). A sign-in is matched on the provider's
   `(provider, issuer, sub)` through `account_identity` (`db/platform/identities.ts`), never on an email, and
@@ -225,10 +225,16 @@ are the next card. Keep true:
   acting admin holds one; a staff invitation outside the lock is refused before the account exists. A lock
   check fails closed (a Google token with no `hd` meets no Google lock). Every staff sign-in by a provider
   asks `staffIdentityAllowed`.
-- **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6, slice 3;
-  phase A built: `client_contact`, `db/portal/contacts.ts`, the admin's Contacts screen). **The portal signs
-  its contacts in through its own callback** (§2b, Louis 2026-11-03), never the CAT server's: that one reads
-  `platform.sqlite` and must never read a portal file. Phase B (#342) builds the sign-in.
+- **A client keeps the private link** and gains client contacts in the tenant's own portal file (D6, §2b).
+  **The portal signs its contacts in through its own callback** (Louis 2026-11-03), never the CAT server's,
+  which reads `platform.sqlite` and must never read a portal file: the gateway answers that host with the
+  callback alone and hands it to the tenant its state names (`<registry number>.<random>`). A contact is
+  linked by a **one-time sign-in link** the admin copies, never by an address (`db/portal/contact-sso.ts`);
+  `requireClient` accepts the private link while `client.link_enabled` holds or an enabled contact's
+  session, and the link can be turned off only once a contact can sign in.
+- **The outbound half of SSO is one package, `@cat-tool/sso-http`**: the code exchange, the key fetch,
+  the cached token verifier (`createTokenVerifier`), the reading of the provider variables and of a callback
+  origin, and the fake provider for tests (`@cat-tool/sso-http/testing`). Neither server keeps a copy.
 
 ## The working rhythm
 

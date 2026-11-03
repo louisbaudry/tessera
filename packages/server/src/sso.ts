@@ -16,7 +16,7 @@
  * Every way a sign-in can fail is one answer to the person (`REFUSED`) and a reason in the log
  * (`auth.sso_login_failed`): the form cannot be asked who has an account or who works for whom
  * (D9). The provider hosts are fixed in code and an error never carries what a provider said
- * (`sso-http.ts`).
+ * (`@cat-tool/sso-http`).
  */
 
 import {
@@ -27,7 +27,6 @@ import {
   pkceChallenge,
   SSO_PROVIDERS,
   SsoTokenError,
-  verifyIdToken,
   type AuditActor,
   type SsoFailure,
   type SsoIdentity,
@@ -56,10 +55,9 @@ import {
   type SsoAttempt,
 } from '@cat-tool/db';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { JSONWebKeySet } from 'jose';
 
 import type { ServerConfig } from './config.js';
-import { SsoHttpError, type SsoHttp } from './sso-http.js';
+import { createTokenVerifier, SsoHttpError, type SsoHttp } from '@cat-tool/sso-http';
 
 type Platform = ReturnType<typeof openPlatformDb>;
 
@@ -78,9 +76,6 @@ export const PUBLIC_SSO_PATHS: readonly string[] = [
   SSO_CALLBACK_PATH,
   SSO_REDEEM_PATH,
 ];
-
-/** How long a provider's published keys are kept before they are read again. */
-const JWKS_TTL_MS = 6 * 60 * 60 * 1000;
 
 const MIN_BINDING = 16;
 const MAX_FIELD = 512;
@@ -147,44 +142,8 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps): Sso
 
   const hostTenantId = (req: FastifyRequest): number | null => req.hostTenant?.id ?? null;
 
-  // --- the provider's keys, cached and refreshed once on a key it has not seen -----------------
-
-  const keyCache = new Map<SsoProvider, { jwks: JSONWebKeySet; at: number }>();
-
-  /** The keys, and whether they were read just now (so a miss against them is final). */
-  async function keysFor(
-    provider: SsoProvider,
-    force: boolean,
-  ): Promise<{ jwks: JSONWebKeySet; fresh: boolean }> {
-    const held = keyCache.get(provider);
-    if (!force && held && now().getTime() - held.at < JWKS_TTL_MS) {
-      return { jwks: held.jwks, fresh: false };
-    }
-    const jwks = await http.fetchJwks(provider);
-    keyCache.set(provider, { jwks, at: now().getTime() });
-    return { jwks, fresh: true };
-  }
-
-  /** The identity a token proves, or a `SsoTokenError`. A key the cache lacks is read for once. */
-  async function verify(
-    provider: SsoProvider,
-    idToken: string,
-    nonce: string,
-    clientId: string,
-  ): Promise<SsoIdentity> {
-    const expected = { clientId, nonce, now: now() };
-    const first = await keysFor(provider, false);
-    try {
-      return await verifyIdToken(provider, idToken, first.jwks, expected);
-    } catch (err) {
-      if (err instanceof SsoTokenError && err.reason === 'signature' && !first.fresh) {
-        // The provider rotates its keys: a token signed with a new one is not forged, yet.
-        const second = await keysFor(provider, true);
-        return verifyIdToken(provider, idToken, second.jwks, expected);
-      }
-      throw err;
-    }
-  }
+  // The provider's keys, cached and read again once on a key the cache has not seen (shared).
+  const verify = createTokenVerifier(http, now);
 
   // --- what the person is told, and what is logged --------------------------------------------
 

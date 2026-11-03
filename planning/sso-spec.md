@@ -268,6 +268,37 @@ callback with a signed state and a secret common to both servers, or deferring t
   client page's buttons), `client.link_enabled` with the admin's switch (it comes with B because turning
   a link off before a contact can sign in would shut the client out), and the shared outbound package.
 
+**Phase B, as built (2026-11-03).**
+
+- **A contact is linked by a one-time sign-in link, never by an address.** "Linked at first sign-in"
+  (§3) cannot mean matching the provider's email (D1). As for a staff or vendor invitation (D3.1), the
+  admin copies a one-time link for a contact (`/client.html#contact=<token>`, stored only as its hash,
+  valid for `INVITATION_TTL_MS`, a new one replacing the old) and passes it on; the portal mails nothing.
+  The contact opens it, signs in with Microsoft or Google, and that identity is linked to the contact and
+  the link spent, in one transaction. Later sign-ins start from the client page with no link and are
+  matched on `(provider, issuer, subject)` alone. An identity already linked to another contact is
+  refused, and the link stays usable.
+- **The portal's callback.** `PORTAL_SSO_CALLBACK_ORIGIN` names the neutral host; the gateway answers
+  `GET /api/client/sso/callback` there and a fixed 404 for everything else. The state is
+  `<registry number>.<random>` (`0` for the single portal), so the gateway hands the callback to that
+  tenant's app, whose own `sso_attempt` row is found by the hash of the whole state. With no registry, or
+  in development, the callback is on the portal's own host. The two provider registrations are the
+  operator's, as in §4, with this second redirect URL added; the client ids and secrets are the same
+  environment variables the CAT server reads. Portal sign-in is off without them or without a callback
+  origin, and the buttons are then absent.
+- **A contact session, beside the link.** Redeeming mints a `client_contact_session` (hashed token,
+  `SESSION_TTL_MS`). The client routes accept either the client's access token, while
+  `client.link_enabled` holds, or a live session of an enabled contact, and either way see that client's
+  orders only. Disabling a contact ends its sessions.
+- **The link switch never shuts a client out.** `POST /api/admin/clients/:id/link` turns a client's
+  private link off or on; off is refused (409) unless the client has an enabled contact with a linked
+  identity, so someone can still get in. An existing client keeps its link (the column defaults to 1).
+- **Every refusal is one answer.** An unmatched identity, a disabled contact, a spent or wrong code and
+  another tenant's state all answer `sign-in failed`; nothing is logged with an address or a subject. The
+  portal's `audit_event` records `auth.contact_login` (the provider and the contact's number; actor
+  `client:<id>`, as every client act is, since the portal has no actor kind for a contact and a number is
+  not personal) and `auth.contact_login_failed` (a reason), widened in its CHECK by a migration.
+
 ## 3. Per audience
 
 | Who | Gets in by | Lock |
@@ -294,7 +325,9 @@ the operator's (`CLAUDE.md`, shared rules: credentials and consent):
   warning; whether it is required here is unconfirmed.
 - The ids and secrets are server environment variables (`GOOGLE_OAUTH_CLIENT_ID`,
   `GOOGLE_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET`),
-  read at start; a provider with no pair is off and its button absent. They are never in
+  read at start; a provider with no pair is off and its button absent. The portal (§2b) reads the same four
+  and its own `PORTAL_SSO_CALLBACK_ORIGIN`, and each registration carries a second redirect URI,
+  `<that origin>/api/client/sso/callback`. They are never in
   this repo, a log or an error. `SSO_CALLBACK_ORIGIN` is `https://auth.<base domain>` by
   default and may be set only where there is no base domain (development: `http://localhost:3400`
   is allowed, plain http nowhere else); with a base domain the server recognises the callback
@@ -338,7 +371,7 @@ Each is written before the code that enforces it, with a fake provider:
 | - | ---- | ---- | ----- |
 | 1 | `account_identity`, `sso_attempt`, token verification (`jose`), callback host, `login` by SSO, `NO_PASSWORD_HASH`, audit actions. **Built** (#214), with the login screen's buttons and the link and unlink routes; no settings screen | L | none |
 | 2 | SSO in staff and vendor invitation acceptance, linking and unlinking from settings, `tenant_sso_policy`. **Built** (#317, §2a) | M | 1 |
-| 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen. In two phases (§2b): A, the contacts and their screen; B, the sign-in and the link switch | L | 1 |
+| 3 | Portal `client_contact`, its identity link, `client.link_enabled`, the admin's contact screen. In two phases (§2b): A, the contacts and their screen; B, the sign-in and the link switch. **Built** (#318, #342) | L | 1 |
 
 One session on one slice: slices 1 and 2 both change `platform/schema.ts`, and
 migration numbers are checked against `main` just before merge. Slice 3 changes the

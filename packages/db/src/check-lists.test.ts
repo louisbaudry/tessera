@@ -25,6 +25,7 @@ import {
   SEGMENT_STATUSES,
   SSO_PROVIDERS,
   SSO_PURPOSES,
+  PORTAL_SSO_PURPOSES,
   VENDOR_AUDIT_ACTIONS,
 } from '@cat-tool/core';
 import { CLIENT_RESOURCE_KINDS, ORDER_STATUSES } from '@cat-tool/portal-core';
@@ -83,6 +84,8 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'translation_order.status': ORDER_STATUSES,
       'client_resource.kind': CLIENT_RESOURCE_KINDS,
       'client_contact_identity.provider': SSO_PROVIDERS,
+      'sso_attempt.provider': SSO_PROVIDERS,
+      'sso_attempt.purpose': PORTAL_SSO_PURPOSES,
       'audit_event.action': PORTAL_AUDIT_ACTIONS,
     },
   },

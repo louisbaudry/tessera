@@ -5272,7 +5272,23 @@ A staff or vendor invitation can be accepted with Microsoft or Google, a vendor 
 - **The isolation matrix gained the eight routes**, and tenant B now holds a policy whose domain is a marker, so a policy read that leaked across tenants would fail it.
 - Verified: core, db and server tests for every rule above (`sso-slice2.test.ts`, the `slice 2` block in `sso.test.ts`), the isolation matrix, the web tests (`account-settings`, `parsePending`), the full suite, and a browser run against the built server and SPA: the Account screen lists links, refuses to require SSO without one (the server's message shown), saves a domain lock, and the staff invitation page offers "Join with Google" and leaves for the provider. **Not verified:** a real Microsoft or Google sign-in, the `hd` claim of a real Workspace token, and the invitation return trip in a browser (it needs a provider to come back from).
 
-**#216 · SSO slice 3: portal client contacts sign in with SSO · L** · [issue #342]
+**#216 · ~~SSO slice 3: portal client contacts sign in with SSO~~ · DONE — `packages/sso-http` (new), `db/portal/{contacts,contact-sso}.ts` (portal v11, v12), `portal-server/src/{contact-sso,gateway,app,config,tenants}.ts`, `public/{client,admin}.js`** (2026-11-03; cards #318, #342, Epic 15, `sso-spec.md` D6, §2b)
+
+Phase B (#342) built the sign-in. What it taught:
+
+- **"Linked at first sign-in" needed a proof, and an address could not be it** (D1). A contact gets a
+  one-time sign-in link from the admin, as a staff or vendor invitation does; the link ties its first
+  identity and is spent, and every later sign-in matches the identity alone.
+- **The outbound code moved before the portal used it.** `sso-http` became a package (with the token
+  verifier, the env readers and the fake provider as `/testing`), so the portal and the CAT server share one
+  of each; `pnpm deploy` carries it into both images.
+- **A gateway guard that a fake state could not test.** The first test of "the callback is not answered on
+  a tenant's host" passed with the guard removed, because its made-up state found no attempt anyway; it now
+  starts a real attempt and sends its state to the wrong host.
+- **The link switch cannot shut a client out**: off is refused until an enabled contact has a linked
+  identity, and disabling a contact ends its sessions.
+- Not verified: a real Microsoft or Google sign-in, and the portal's callback host on a real certificate and
+  DNS (the deployment keeps SSO off; `deploy/README.md`).
 
 Phased (`sso-spec.md` §2b). **Phase A, ~~contacts and their screen~~, done** (2026-11-03; card #318):
 `client_contact` and `client_contact_identity` (portal v11, `db/portal/contacts.ts`), the admin's routes
@@ -5329,4 +5345,3 @@ licensing are now Epics 8 and 11 and the commercial horizon in
 [issue #30]: https://github.com/louisbaudry/tessera/issues/30
 [issue #50]: https://github.com/louisbaudry/tessera/issues/50
 [issue #51]: https://github.com/louisbaudry/tessera/issues/51
-[issue #342]: https://github.com/louisbaudry/tessera/issues/342

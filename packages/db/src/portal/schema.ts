@@ -426,6 +426,70 @@ const v11: Migration = {
   },
 };
 
+/** `audit_event.action` as of portal v12: v6's list and the two contact sign-in actions. Frozen. */
+const V12_AUDIT_ACTIONS = [
+  ...V6_AUDIT_ACTIONS,
+  'auth.contact_login',
+  'auth.contact_login_failed',
+] as const satisfies readonly PortalAuditAction[];
+
+/**
+ * v12 — a client contact signs in with Microsoft or Google (issue #342, `planning/sso-spec.md` §2b).
+ *
+ * `client.link_enabled` lets the admin turn a client's private link off (default on, so every existing
+ * client keeps it). `client_contact_signin_link` is the one-time link that ties a contact to its first
+ * identity, stored only as its hash, one per contact (a table of its own: SQLite cannot add a UNIQUE
+ * column to `client_contact`). `sso_attempt` is the portal's own sign-in in flight, as the platform's
+ * (no tenant, no account: the file is the tenant's, and a contact is found by its identity).
+ * `client_contact_session` is a signed-in contact, the token stored only as its hash. The two new audit
+ * actions widen `audit_event`.
+ */
+const v12: Migration = {
+  version: 12,
+  description:
+    'client.link_enabled, contact sign-in links, sso_attempt and contact sessions (issue #342)',
+  up: (db) => {
+    db.exec(`
+      ALTER TABLE client ADD COLUMN link_enabled INTEGER NOT NULL DEFAULT 1
+        CHECK (link_enabled BETWEEN 0 AND 1);
+
+      CREATE TABLE client_contact_signin_link (
+        contact_id INTEGER PRIMARY KEY REFERENCES client_contact(id),
+        token_hash TEXT    NOT NULL UNIQUE,
+        created_at TEXT    NOT NULL,
+        expires_at TEXT    NOT NULL
+      );
+
+      CREATE TABLE sso_attempt (
+        id                 INTEGER PRIMARY KEY,
+        state_hash         TEXT    NOT NULL UNIQUE,
+        binding_hash       TEXT    NOT NULL,
+        nonce              TEXT    NOT NULL,
+        code_verifier      TEXT    NOT NULL,
+        provider           TEXT    NOT NULL CHECK (provider IN ('google', 'microsoft')),
+        purpose            TEXT    NOT NULL CHECK (purpose IN ('contact_link', 'contact_login')),
+        created_at         TEXT    NOT NULL,
+        expires_at         TEXT    NOT NULL,
+        callback_at        TEXT,
+        handoff_hash       TEXT    UNIQUE,
+        handoff_expires_at TEXT,
+        issuer             TEXT,
+        subject            TEXT
+      );
+
+      CREATE TABLE client_contact_session (
+        id         INTEGER PRIMARY KEY,
+        contact_id INTEGER NOT NULL REFERENCES client_contact(id),
+        token_hash TEXT    NOT NULL UNIQUE,
+        created_at TEXT    NOT NULL,
+        expires_at TEXT    NOT NULL
+      );
+      CREATE INDEX client_contact_session_contact ON client_contact_session(contact_id);
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V12_AUDIT_ACTIONS));
+  },
+};
+
 export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -438,4 +502,5 @@ export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v9,
   v10,
   v11,
+  v12,
 ];

@@ -2,14 +2,15 @@
  * Test scaffolding: a provider that never leaves the process. It holds a signing key, publishes
  * the matching key set and signs the ID tokens a test asks for, with whatever a test wants wrong,
  * and it stands in for the network (`SsoHttp`) so no sign-in test reaches Google or Microsoft.
- * Like every `*.fixture.ts` it is excluded from the build.
+ * A subpath of its own (`@cat-tool/sso-http/testing`), never the package index, so the CAT server's
+ * and the portal's tests share one fake and no production module imports it.
  */
 
 import { type SsoProvider } from '@cat-tool/core';
 import { exportJWK, generateKeyPair, SignJWT, type JSONWebKeySet } from 'jose';
 
-import type { CodeExchange, SsoHttp } from './sso-http.js';
-import { SsoHttpError } from './sso-http.js';
+import type { CodeExchange, SsoHttp } from './index.js';
+import { SsoHttpError } from './index.js';
 
 type SigningKey = Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
 

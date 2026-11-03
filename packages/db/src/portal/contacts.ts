@@ -101,6 +101,10 @@ export function setContactDisabled(
   disabled: boolean,
   now: Date = new Date(),
 ): ClientContact | null {
+  // A disabled contact opens nothing: its sessions end with it (issue #342).
+  if (disabled && getContact(db, clientId, contactId)) {
+    db.prepare('DELETE FROM client_contact_session WHERE contact_id = ?').run(contactId);
+  }
   db.prepare(
     disabled
       ? 'UPDATE client_contact SET disabled_at = COALESCE(disabled_at, ?) WHERE id = ? AND client_id = ?'

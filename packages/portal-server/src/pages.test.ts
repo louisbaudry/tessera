@@ -427,6 +427,9 @@ describe('a client’s contacts screen (issue #318)', () => {
     const page = renders.at(-1)!;
     expect(page).toContain('data-contact="1" data-verb="disable"');
     expect(page).toContain('data-contact="2" data-verb="enable"');
+    // only an active contact can be sent a sign-in link
+    expect(page).toContain('data-signin-link="1"');
+    expect(page).not.toContain('data-signin-link="2"');
     expect(page).toContain('id="new-contact"');
   });
 
@@ -438,5 +441,6 @@ describe('a client’s contacts screen (issue #318)', () => {
     );
     await (context.renderClients as () => Promise<void>)();
     expect(renders.at(-1)).toContain('data-client-contacts="3"');
+    expect(renders.at(-1)).toContain('data-link-switch="3" data-enabled="true"');
   });
 });
