@@ -1707,3 +1707,49 @@ describe('a client’s contacts (issue #318, phase A)', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('the admin’s sign-in link and private-link switch (issue #342)', () => {
+  it('mints a one-time link for an active contact only, and refuses the switch until a contact can sign in', async () => {
+    const admin = await adminLogin();
+    const call = (method: 'GET' | 'POST', url: string, payload?: object) =>
+      app.inject({ method, url, headers: auth(admin), ...(payload ? { payload } : {}) });
+    const [pat] = (
+      await call('POST', `/api/admin/clients/${ada.id}/contacts`, {
+        email: 'pat@client.example',
+      })
+    ).json() as Array<{ id: number }>;
+    const minted = await call(
+      'POST',
+      `/api/admin/clients/${ada.id}/contacts/${pat!.id}/signin-link`,
+    );
+    expect(minted.statusCode).toBe(200);
+    expect((minted.json() as { token: string }).token.length).toBeGreaterThan(20);
+    expect(
+      (
+        await call(
+          'POST',
+          `/api/admin/clients/${other.id}/contacts/${pat!.id}/signin-link`,
+        )
+      ).statusCode,
+    ).toBe(404);
+
+    const off = await call('POST', `/api/admin/clients/${ada.id}/link`, {
+      enabled: false,
+    });
+    expect(off.statusCode).toBe(409);
+    expect(
+      (await call('POST', `/api/admin/clients/${ada.id}/link`, { enabled: 'no' }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await call('POST', '/api/admin/clients/999/link', { enabled: true })).statusCode,
+    ).toBe(404);
+    // the client's private link still opens the portal
+    const me = await app.inject({
+      method: 'GET',
+      url: '/api/client/me',
+      headers: auth(ada.accessToken),
+    });
+    expect(me.statusCode).toBe(200);
+  });
+});

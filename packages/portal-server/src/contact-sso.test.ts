@@ -197,15 +197,20 @@ describe('a client contact signing in (issue #342)', () => {
         )
       ).statusCode,
     ).toBe(404);
-    expect(
-      (
-        await send(
-          HOST_A,
-          'GET',
-          '/api/client/sso/callback?state=1.abcdefghijklmnopqrstuvwxyz',
-        )
-      ).statusCode,
-    ).toBe(404);
+    // a real state, sent back to the tenant's own host, is not claimed there
+    const started = await send(HOST_A, 'POST', '/api/client/sso/start', {
+      provider: 'google',
+      binding: BINDING,
+    });
+    const state = new URL((started.json() as { url: string }).url).searchParams.get(
+      'state',
+    )!;
+    const onTenant = await send(
+      HOST_A,
+      'GET',
+      `/api/client/sso/callback?code=x&state=${encodeURIComponent(state)}`,
+    );
+    expect(onTenant.statusCode).toBe(404);
   });
 
   it('keeps the private link working until the admin turns it off, and then refuses it', async () => {
