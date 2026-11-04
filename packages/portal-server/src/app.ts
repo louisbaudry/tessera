@@ -61,6 +61,7 @@ import {
   setClientRate,
   setRate,
   setStatus,
+  setOrderDue,
   setWordCountAndPrice,
   suggestedFileWordCount,
   sumSourceWordCounts,
@@ -73,6 +74,9 @@ import {
 } from '@cat-tool/db';
 import {
   assertCanUpdate,
+  deadlineAgenda,
+  isCalendarDate,
+  quoteFor,
   ConsoleNotificationService,
   estimateChangedWords,
   estimateOrder,
@@ -104,6 +108,7 @@ import { createSsoHttp, type SsoHttp } from '@cat-tool/sso-http';
 import { registerContactSsoRoutes } from './contact-sso.js';
 import { checkClientInput, checkContactInput, checkRateInput } from './admin-input.js';
 import { DEFAULT_PORTAL_NAME, renderPortalPage } from './page.js';
+import { renderQuoteHtml } from './quote-page.js';
 import {
   attachmentDisposition,
   deliveredFilePath,
@@ -177,6 +182,16 @@ export interface BuildAppOptions {
 
 function serializeOrder(order: TranslationOrder) {
   return { ...order };
+}
+
+/**
+ * An order as a client sees it: without the translator's own due date (issue #179,
+ * solo-translator-spec.md D4), which is planning and not a promise. Dropped by name, as
+ * `clientFile` drops the advisory counts.
+ */
+function clientOrder(order: TranslationOrder) {
+  const { dueAt: _dueAt, ...rest } = order;
+  return rest;
 }
 
 /**
@@ -445,7 +460,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const client = requireClient(req);
     if (!client)
       return reply.code(401).send({ error: 'invalid or missing access token' });
-    return listOrdersForClient(db, client.id).map(serializeOrder);
+    return listOrdersForClient(db, client.id).map(clientOrder);
   });
 
   // The client's own memory and glossary, when the operator has linked them
@@ -607,7 +622,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     );
 
     return reply.code(201).send({
-      order: serializeOrder(order),
+      order: clientOrder(order),
       files: listSourceFiles(db, order.id).map(clientFile),
     });
   });
@@ -622,7 +637,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return reply.code(404).send({ error: 'order not found' });
     }
     return {
-      order: serializeOrder(order),
+      order: clientOrder(order),
       sourceFiles: listSourceFiles(db, id).map(clientFile),
       deliveredFiles: listDeliveredFiles(db, id).map(clientFile),
       events: listOrderEvents(db, id).map(clientOrderEvent),
@@ -950,6 +965,80 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       order: serializeOrder(updated),
       deliveredFiles: listDeliveredFiles(db, id).map(serializeFile),
     };
+  });
+
+  // The printable quote (issue #179, solo-translator-spec.md D3): only for an order with a price,
+  // and its total is that price. HTML the admin page opens from a blob; nothing is logged, since
+  // it reads only what `order.priced` recorded.
+  app.get('/api/admin/orders/:id/quote', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const order = getOrder(db, id);
+    if (!order || order.price === null || order.wordCount === null) {
+      return reply.code(404).send({ error: 'no priced order' });
+    }
+    const client = getClient(db, order.clientId);
+    if (!client) return reply.code(404).send({ error: 'no priced order' });
+    const files = listSourceFiles(db, id);
+    const perFile = files.length > 0 && files.every((f) => f.confirmedWordCount !== null);
+    const quote = quoteFor({
+      srcLang: order.srcLang,
+      tgtLangs: order.tgtLangs,
+      wordCount: order.wordCount,
+      price: order.price,
+      fileWordCounts: perFile ? files.map((f) => f.confirmedWordCount!) : [],
+      rates: listRatesForClient(db, order.clientId),
+    });
+    return reply
+      .header('content-type', 'text/html; charset=utf-8')
+      .header('cache-control', 'no-store')
+      .send(
+        renderQuoteHtml({
+          portalName: fill.name,
+          clientName: client.name,
+          orderId: order.id,
+          currency,
+          // The admin's own date when the page sends it (D5's reason), else the server's.
+          issuedOn: isCalendarDate(String((req.query as { today?: unknown }).today))
+            ? String((req.query as { today?: unknown }).today)
+            : new Date().toISOString().slice(0, 10),
+          quote,
+        }),
+      );
+  });
+
+  // The translator's own due date on an order (issue #179, solo-translator-spec.md D4).
+  app.put('/api/admin/orders/:id/due', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const body = (req.body ?? {}) as { dueAt?: unknown };
+    if (
+      body.dueAt !== null &&
+      (typeof body.dueAt !== 'string' || !isCalendarDate(body.dueAt))
+    ) {
+      return reply
+        .code(400)
+        .send({ error: 'dueAt must be a date written YYYY-MM-DD, or null' });
+    }
+    if (!getOrder(db, id)) return reply.code(404).send({ error: 'order not found' });
+    return serializeOrder(
+      setOrderDue(db, id, body.dueAt, { actor: adminSessionActor(req) }),
+    );
+  });
+
+  // The deadline view (D5): open orders by due date against the admin's own today.
+  app.get('/api/admin/deadlines', async (req, reply) => {
+    const today = (req.query as { today?: unknown }).today;
+    if (typeof today !== 'string' || !isCalendarDate(today)) {
+      return reply.code(400).send({ error: 'today must be a date written YYYY-MM-DD' });
+    }
+    const names = new Map(listClients(db).map((c) => [c.id, c.name]));
+    const agenda = deadlineAgenda(
+      listOrders(db).map((o) => ({
+        ...serializeOrder(o),
+        clientName: names.get(o.clientId) ?? null,
+      })),
+      today,
+    );
+    return agenda;
   });
 
   app.get('/api/admin/clients', async () => listClients(db));

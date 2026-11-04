@@ -544,6 +544,12 @@ Google through the portal's own callback host and holds a contact session that o
 only. The admin can turn a client's private link off once a contact can sign in (`client.link_enabled`,
 portal v12); every existing client keeps its link. Decisions and refusals: `sso-spec.md` §2b.
 
+## 9e. A quote and the translator's own due dates (issue #179, 2026-11-04)
+
+For a solo translator, and useful to any tenant: a printable quote for a priced order, whose total is always the
+order's stored price, and an admin-only due date per order (`due_at`, portal v13) with a Deadlines screen. Neither
+reaches a client route. Decisions, and what waits for Epic 13, are in `solo-translator-spec.md`.
+
 ## 10. A client plan: a monthly word allowance (idea #220, designed, not built)
 
 Decided 2026-10-11 (Louis): this feature is written down now and built when

@@ -156,6 +156,35 @@ describe('the admin page', () => {
   });
 });
 
+describe('the admin deadlines screen and due date (issue #179)', () => {
+  it('shows the deadline groups and an order’s due date as text', async () => {
+    const due = { ...order, dueAt: PWN('due'), clientName: PWN('client') };
+    const { renders, context } = await loadPage(
+      'admin.js',
+      {
+        '/api/admin/orders': { json: [order] },
+        '/api/admin/orders/1': {
+          json: { ...detail, order: { ...order, dueAt: PWN('due') } },
+        },
+        '/api/admin/deadlines': {
+          json: { overdue: [due], today: [], later: [], undated: [] },
+        },
+      },
+      { portal_admin_token: 't' },
+    );
+    await (context.renderDeadlines as () => Promise<void>)();
+    expect(renders.at(-1)).toContain('Overdue (1)');
+    expect(renders.at(-1)).toContain('data-nav="deadlines"');
+    expectOnlyText(renders, ['due', 'client', 'src', 'tgt']);
+    const before = renders.length;
+    await (context.renderOrderDetail as (id: number) => Promise<void>)(1);
+    const page = renders.slice(before).join('\n');
+    expect(page).toContain('id="due-form"');
+    // No price yet: no quote to open.
+    expect(page).not.toContain('id="quote"');
+  });
+});
+
 describe('the admin clients and rates screens (issue #328)', () => {
   const pwnClient = {
     id: 3,
@@ -211,7 +240,7 @@ describe('the admin clients and rates screens (issue #328)', () => {
     await (context.renderClients as () => Promise<void>)();
     await (context.renderRates as () => Promise<void>)();
     for (const html of renders.slice(-2)) {
-      for (const tab of ['orders', 'clients', 'rates']) {
+      for (const tab of ['orders', 'deadlines', 'clients', 'rates']) {
         expect(html).toContain(`data-nav="${tab}"`);
       }
       expect(html).toContain('id="logout"');

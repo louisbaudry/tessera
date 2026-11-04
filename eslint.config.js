@@ -3,7 +3,15 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', 'code/**'],
+    // `.claude/hooks/` is copied verbatim by the claude-shared sync (a CommonJS script for the
+    // agent harness, not product code), so it is not linted here.
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/coverage/**',
+      'code/**',
+      '.claude/hooks/**',
+    ],
   },
   ...tseslint.configs.recommended,
   {

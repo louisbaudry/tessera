@@ -1753,3 +1753,151 @@ describe('the admin’s sign-in link and private-link switch (issue #342)', () =
     expect(me.statusCode).toBe(200);
   });
 });
+
+describe('solo-translator mode: a quote and the translator’s own deadlines (issue #179)', () => {
+  const put = (admin: string, orderId: number, payload: object) =>
+    app.inject({
+      method: 'PUT',
+      url: `/api/admin/orders/${orderId}/due`,
+      headers: auth(admin),
+      payload,
+    });
+
+  it('prints a quote whose total is the stored price, names the client escaped, and never logs', async () => {
+    const db = openPortalDb(config.dbPath);
+    const tricky = createClient(
+      db,
+      '<b>Client</b> & Co',
+      'tricky@example.com',
+      'tricky-token',
+    );
+    db.close();
+    const { order } = await submitOrder(tricky.accessToken, [
+      { name: 'a.txt', body: 'a' },
+    ]);
+    const admin = await adminLogin();
+    const noPrice = await app.inject({
+      method: 'GET',
+      url: `/api/admin/orders/${order.id}/quote`,
+      headers: auth(admin),
+    });
+    expect(noPrice.statusCode).toBe(404);
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${order.id}`,
+      headers: auth(admin),
+      payload: { wordCount: 1000 },
+    });
+    const before = readLogs(
+      (d) =>
+        (d.prepare('SELECT COUNT(*) AS n FROM audit_event').get() as { n: number }).n,
+    );
+    const quote = await app.inject({
+      method: 'GET',
+      url: `/api/admin/orders/${order.id}/quote?today=2026-11-04`,
+      headers: auth(admin),
+    });
+    expect(quote.statusCode).toBe(200);
+    expect(quote.headers['content-type']).toContain('text/html');
+    expect(quote.body).toContain('$100.00');
+    expect(quote.body).toContain('Date: 2026-11-04');
+    expect(quote.body).toContain('&lt;b&gt;Client&lt;/b&gt; &amp; Co');
+    expect(quote.body).not.toContain('<b>Client</b>');
+    expect(quote.body).not.toContain('<script');
+    expect(quote.body).toContain('This is a quote, not an invoice.');
+    expect(
+      readLogs(
+        (d) =>
+          (d.prepare('SELECT COUNT(*) AS n FROM audit_event').get() as { n: number }).n,
+      ),
+    ).toBe(before);
+    // A client never reaches it.
+    const asClient = await app.inject({
+      method: 'GET',
+      url: `/api/admin/orders/${order.id}/quote`,
+      headers: auth(tricky.accessToken),
+    });
+    expect(asClient.statusCode).toBe(401);
+  });
+
+  it('keeps a due date off every client route', async () => {
+    const { order } = await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'a' }]);
+    const admin = await adminLogin();
+    const set = await put(admin, order.id, { dueAt: '2026-11-20' });
+    expect(set.statusCode, set.body).toBe(200);
+    expect((set.json() as { dueAt: string }).dueAt).toBe('2026-11-20');
+    for (const url of ['/api/client/orders', `/api/client/orders/${order.id}`]) {
+      const res = await app.inject({
+        method: 'GET',
+        url,
+        headers: auth(ada.accessToken),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain('dueAt');
+      expect(res.body).not.toContain('2026-11-20');
+    }
+  });
+
+  it('refuses a due date that is not a day, and logs one that is', async () => {
+    const { order } = await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'a' }]);
+    const admin = await adminLogin();
+    for (const dueAt of ['2026-02-30', 'tomorrow', 20261120, undefined]) {
+      expect((await put(admin, order.id, { dueAt })).statusCode).toBe(400);
+    }
+    expect((await put(admin, 999, { dueAt: '2026-11-20' })).statusCode).toBe(404);
+    expect((await put(admin, order.id, { dueAt: '2026-11-20' })).statusCode).toBe(200);
+    expect((await put(admin, order.id, { dueAt: null })).statusCode).toBe(200);
+    const events = readLogs((db) =>
+      listEvents(db, { subjectType: 'translation_order', subjectId: String(order.id) })
+        .filter((e) => e.action === 'order.due_set')
+        .map((e) => [
+          e.actor,
+          typeof e.detail === 'string' ? (JSON.parse(e.detail) as unknown) : e.detail,
+        ]),
+    );
+    expect(events).toEqual([
+      ['admin:1', { due_at: '2026-11-20' }],
+      ['admin:1', { due_at: null }],
+    ]);
+  });
+
+  it('lists open orders by due date against the admin’s today', async () => {
+    const admin = await adminLogin();
+    const ids: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      ids.push(
+        (await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'a' }])).order.id,
+      );
+    }
+    await put(admin, ids[0]!, { dueAt: '2026-11-01' });
+    await put(admin, ids[1]!, { dueAt: '2026-11-04' });
+    await put(admin, ids[2]!, { dueAt: '2026-12-01' });
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${ids[2]}`,
+      headers: auth(admin),
+      payload: { status: 'cancelled' },
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/deadlines?today=2026-11-04',
+      headers: auth(admin),
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const agenda = res.json() as Record<
+      string,
+      Array<{ id: number; clientName: string }>
+    >;
+    expect(agenda.overdue!.map((o) => o.id)).toEqual([ids[0]]);
+    expect(agenda.today!.map((o) => o.id)).toEqual([ids[1]]);
+    expect(agenda.later).toEqual([]);
+    expect(agenda.undated!.map((o) => o.id)).toEqual([ids[3]]);
+    expect(agenda.overdue![0]!.clientName).toBe('Ada');
+    const bad = await app.inject({
+      method: 'GET',
+      url: '/api/admin/deadlines?today=yesterday',
+      headers: auth(admin),
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+});

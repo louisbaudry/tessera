@@ -836,6 +836,11 @@ engine, but follows the same discipline:
   (`source_file.confirmed_word_count`, dropped from a client's file by name in
   `clientFile`); `translation_order.word_count` stays their sum, the actual
   words, so the billed words exist only in the price.
+- **A quote's total is the order's stored price, and a due date is the translator's alone**
+  (issue #179, `planning/solo-translator-spec.md`). `quoteFor` shows a breakdown only when it adds
+  up to the price, else one line; the quote is HTML the browser prints, so no PDF library. `due_at`
+  (portal v13) is dropped from every client route by name (`clientOrder`) and leaves `updated_at`
+  alone. A solo translator is a tenant with one admin, never a flag.
 - **A price is set only while `submitted`, and approval is consent to
   that price** (backlog `#63`, `portal-v0-spec.md` §2–§3). The rules
   are `assertCanPrice`/`assertCanApprove` in `portal-core`, run by

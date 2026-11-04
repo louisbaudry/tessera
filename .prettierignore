@@ -14,3 +14,7 @@ code/
 
 # Machine-written and never edited after writing (research README, rule 2).
 research/semantic-matching/results/**/*.json
+
+# Owned by the claude-shared sync and copied verbatim ("do not edit it in the repo"):
+# reformatting it here would make the next sync a diff, and leaving it failed format:check.
+.claude/hooks/

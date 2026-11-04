@@ -490,6 +490,30 @@ const v12: Migration = {
   },
 };
 
+const V13_AUDIT_ACTIONS = [
+  ...V12_AUDIT_ACTIONS,
+  'order.due_set',
+] as const satisfies readonly PortalAuditAction[];
+
+/**
+ * v13 — the translator's own due date on an order (issue #179, `planning/solo-translator-spec.md`
+ * D4). `due_at` is a calendar day (`YYYY-MM-DD`), absent until the admin sets one; setting or
+ * clearing it is `order.due_set`, which widens `audit_event`. The index serves the deadline view,
+ * which reads open orders by date.
+ */
+const v13: Migration = {
+  version: 13,
+  description: 'translation_order.due_at and order.due_set (issue #179)',
+  up: (db) => {
+    db.exec(`
+      ALTER TABLE translation_order ADD COLUMN due_at TEXT
+        CHECK (due_at IS NULL OR due_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]');
+      CREATE INDEX translation_order_due ON translation_order(status, due_at);
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V13_AUDIT_ACTIONS));
+  },
+};
+
 export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -503,4 +527,5 @@ export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v10,
   v11,
   v12,
+  v13,
 ];

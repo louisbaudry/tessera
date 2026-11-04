@@ -22,6 +22,7 @@ import {
   assertCanApprove,
   assertCanPrice,
   assertValidTransition,
+  isCalendarDate,
   type OrderStatus,
 } from '@cat-tool/portal-core';
 import type Database from 'better-sqlite3';
@@ -40,6 +41,11 @@ export interface TranslationOrder {
   readonly price: number | null;
   /** The delivered order this one is a new version of (spec §4a), or `null`. */
   readonly previousOrderId: number | null;
+  /**
+   * The translator's own due date, `YYYY-MM-DD`, or `null` (issue #179, solo-translator-spec.md
+   * D4). An admin's planning date: never sent on a client route.
+   */
+  readonly dueAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -66,6 +72,7 @@ interface OrderRow {
   word_count: number | null;
   price: number | null;
   previous_order_id: number | null;
+  due_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -88,6 +95,7 @@ function withTgtLangs(db: Database.Database, row: OrderRow): TranslationOrder {
     wordCount: row.word_count,
     price: row.price,
     previousOrderId: row.previous_order_id,
+    dueAt: row.due_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -182,6 +190,7 @@ export function createOrder(
       word_count: null,
       price: null,
       previous_order_id: order.previousOrderId ?? null,
+      due_at: null,
       created_at: now,
       updated_at: now,
     });
@@ -374,6 +383,48 @@ function assertFileCounts(
       `the order's word count ${wordCount} is not the sum of its files' confirmed counts, ${sum}`,
     );
   }
+}
+
+/**
+ * Sets or clears the translator's own due date on an order and records `order.due_set` in the same
+ * transaction (issue #179, solo-translator-spec.md D4). Any status may carry one: a date is
+ * planning, not a transition. Setting the date the order already has changes and records nothing.
+ *
+ * @param dueAt - A calendar day, `YYYY-MM-DD`, or `null` to clear it.
+ * @returns The order as stored.
+ * @throws RangeError if `dueAt` is not a calendar date.
+ * @throws Error if the order does not exist.
+ */
+export function setOrderDue(
+  db: Database.Database,
+  orderId: number,
+  dueAt: string | null,
+  options: OrderWriteOptions,
+): TranslationOrder {
+  if (dueAt !== null && !isCalendarDate(dueAt)) {
+    throw new RangeError(`a due date must be a calendar date (YYYY-MM-DD), got ${dueAt}`);
+  }
+  return db.transaction((): TranslationOrder => {
+    const current = getOrder(db, orderId);
+    if (!current) {
+      throw new Error(`order ${orderId} not found`);
+    }
+    if (current.dueAt === dueAt) return current;
+    // `updated_at` is left alone: the client reads it, and a planning date is not theirs to see
+    // move (spec D4).
+    db.prepare('UPDATE translation_order SET due_at = ? WHERE id = ?').run(
+      dueAt,
+      orderId,
+    );
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'order.due_set',
+      subjectType: 'translation_order',
+      subjectId: String(orderId),
+      detail: { due_at: dueAt },
+    });
+    return getOrder(db, orderId)!;
+  })();
 }
 
 export function listOrderEvents(db: Database.Database, orderId: number): OrderEvent[] {
