@@ -43,8 +43,9 @@ accounting:
 Related cards, which this spec narrows rather than replaces: `#158` (vendor
 statement, then self-billing and e-invoice export; its "later" is §6 here),
 `#178` (pay-after-delivery terms; its "an invoice generated at delivery" is
-§5 here, its payment half stays out), `#179` (solo-translator mode, which
-needs an invoice and is not decided, §10.4), `#153` (the payables ledger,
+§5 here, its payment half stays out), `#179` (solo-translator mode: a
+customer segment since 2026-11-04, `solo-translator-spec.md`; its invoice waits
+for §10.4), `#153` (the payables ledger,
 built). The epic is **Epic 13** in `v1-backlog.md`.
 
 ## 2. The regulatory landscape (as of 2026-10-11, to be re-verified)

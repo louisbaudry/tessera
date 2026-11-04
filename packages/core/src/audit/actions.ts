@@ -78,6 +78,7 @@ export const PORTAL_AUDIT_ACTIONS = [
   'resource.exported',
   'auth.contact_login',
   'auth.contact_login_failed',
+  'order.due_set',
 ] as const;
 
 /**
@@ -394,6 +395,11 @@ export interface AuditDetail {
   'order.priced': OrderPrice & { readonly files?: Readonly<Record<string, number>> };
   /** The price as it stood when portal v4 began recording (spec §6). */
   'order.price_baseline': OrderPrice;
+  /**
+   * The translator's own due date on an order (issue #179, solo-translator-spec.md D4): the date set,
+   * or `null` when cleared. A day, never a client-facing promise.
+   */
+  'order.due_set': { readonly due_at: string | null };
   // A client's linked memory/glossary (backlog #162). The file's name is not
   // in a detail: it often is the client's name, and a detail is hashed.
   'resource.linked': ClientResourceDetail;

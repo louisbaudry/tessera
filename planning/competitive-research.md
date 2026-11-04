@@ -116,8 +116,9 @@ These are not cheap to reverse, so none was decided:
   side (PM, client, or both). An agent that writes needs a named human
   actor on every write, and the price-approval step stays human.
 - **#158, #178, #179**: tax and VAT rules for self-billing and invoices,
-  payment credentials and a provider, and whether individual translators
-  are a customer segment at all. The e-invoice part of these (a European
+  payment credentials and a provider. (Whether individual translators are
+  a customer segment was settled on 2026-11-04: they are,
+  `solo-translator-spec.md`.) The e-invoice part of these (a European
   standard, an approved platform, who owns the number) was taken up on
   2026-10-11 as Epic 13, `e-invoicing-spec.md`; its open decisions are §10
   there.

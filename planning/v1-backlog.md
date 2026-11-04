@@ -4901,6 +4901,23 @@ default; TypeScript, not Rust/Wasm, for a lookup per order line. What it taught:
 - Not built: rates per service, domain or volume; an audit event for a rate write (none for defaults either). Not
   verified: the screen in a real browser.
 
+**#222 · ~~Solo-translator mode, first slice: a quote and the translator's own deadlines~~ · DONE — `planning/solo-translator-spec.md`, `portal-core/src/{quote,deadlines}.ts`, `db/portal/orders.ts` (portal v13, `due_at`, `order.due_set`), `portal-server/src/{quote-page,app}.ts`, `public/admin.js`** (2026-11-04; card #179, `solo-translator-spec.md` D1 to D5)
+
+Louis decided individual translators are a customer segment, and chose a spec plus a slice that needs no tax
+decision; TypeScript, not Rust/Wasm, since nothing here has a measured cost. What it taught:
+
+- **A solo translator is a tenant with one admin, with no flag** (D1). A `solo` column would disagree with the roster
+  the day a vendor joins; the tenant model already fits, so the slice adds nothing to it.
+- **A quote shows the stored price as its total, always** (D3). Its breakdown is recomputed from the client's rates
+  and shown only when it adds up to that price, else one line; a test fails when the guard is removed (checked).
+  It is HTML the browser prints to PDF, so no PDF library entered the build and no licence needed recording.
+- **A due date is the translator's, never the client's** (D4). `clientOrder` drops `dueAt` by name, and setting it
+  leaves `updated_at` alone, since the client reads that; a test fails if `dueAt` reaches a client route (checked).
+  A client-facing delivery date stays with #160.
+- **"Today" is the admin's local date, sent by the page**, so a deadline does not turn overdue at UTC midnight.
+- Not built: an invoice (Epic 13, `e-invoicing-spec.md` §10.3, §10.4), a currency per client, a calendar grid or
+  iCalendar export, deadlines from CAT projects. Not verified: the quote printed from a real browser.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

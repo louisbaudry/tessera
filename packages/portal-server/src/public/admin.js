@@ -161,6 +161,34 @@ function perFileForm(order, sourceFiles, suggested) {
   <p class="muted">${hint}</p>`;
 }
 
+/** The admin's own date, `YYYY-MM-DD` in local time (solo-translator-spec.md D5), never UTC's. */
+function localToday() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Opens an order's printable quote (issue #179, D3). The window opens before the fetch, so a popup
+ * blocker sees the click; the page comes back as HTML with no script and is shown from a blob.
+ */
+async function openQuote(orderId) {
+  const win = window.open('', '_blank');
+  try {
+    const res = await fetch(
+      `/api/admin/orders/${orderId}/quote?today=${encodeURIComponent(localToday())}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) throw new Error((await res.json()).error || 'no quote');
+    const url = URL.createObjectURL(new Blob([await res.text()], { type: 'text/html' }));
+    if (win) win.location.href = url;
+    else location.href = url;
+  } catch (err) {
+    win?.close();
+    alert(err.message);
+  }
+}
+
 async function renderOrderDetail(id) {
   const {
     order,
@@ -198,8 +226,19 @@ async function renderOrderDetail(id) {
             : ''
       }</p>`
       }
-      <p>Price: <strong>${money(order.price)}</strong></p>
+      <p>Price: <strong>${money(order.price)}</strong>
+        ${order.price == null ? '' : '<button class="secondary" id="quote" type="button">Quote</button>'}</p>
       <p class="error" id="wc-error"></p>
+    </div>
+
+    <div class="card">
+      <label for="due-at">Due date (yours; the client does not see it)</label>
+      <form id="due-form" style="display:flex; gap:0.5rem; align-items:end">
+        <input type="date" id="due-at" name="dueAt" value="${escapeHtml(order.dueAt ?? '')}" style="width:12rem" />
+        <button type="submit" style="margin-top:0">Save</button>
+        ${order.dueAt == null ? '' : '<button type="button" class="secondary" id="due-clear" style="margin-top:0">Clear</button>'}
+      </form>
+      <p class="error" id="due-error"></p>
     </div>
 
     <div class="card">
@@ -233,6 +272,25 @@ async function renderOrderDetail(id) {
   `;
 
   app.querySelector('#back').addEventListener('click', renderOrderList);
+  app.querySelector('#quote')?.addEventListener('click', () => openQuote(order.id));
+  const saveDue = async (dueAt) => {
+    try {
+      await api(`/api/admin/orders/${id}/due`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueAt }),
+      });
+      renderOrderDetail(id);
+    } catch (err) {
+      app.querySelector('#due-error').textContent = err.message;
+    }
+  };
+  app.querySelector('#due-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const value = e.target.dueAt.value;
+    void saveDue(value === '' ? null : value);
+  });
+  app.querySelector('#due-clear')?.addEventListener('click', () => saveDue(null));
   app.querySelector('#previous-order')?.addEventListener('click', (e) => {
     e.preventDefault();
     renderOrderDetail(order.previousOrderId);
@@ -366,19 +424,77 @@ async function renderOrderList() {
   wireNav();
 }
 
+/**
+ * Open orders by the translator's own due date (issue #179, solo-translator-spec.md D5): overdue,
+ * today, later, then those with no date, so none is forgotten for lacking one.
+ */
+async function renderDeadlines() {
+  let agenda;
+  try {
+    agenda = await api(`/api/admin/deadlines?today=${encodeURIComponent(localToday())}`);
+  } catch (err) {
+    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  const group = (title, orders, cls = '') =>
+    orders.length === 0
+      ? ''
+      : `<h3 class="${cls}">${title} (${orders.length})</h3>
+    <table>
+      <tr><th>Due</th><th>#</th><th>Client</th><th>Languages</th><th>Status</th></tr>
+      ${orders
+        .map(
+          (o) => `
+        <tr data-open="${o.id}" style="cursor:pointer">
+          <td>${escapeHtml(o.dueAt ?? '—')}</td>
+          <td>${o.id}</td>
+          <td>${escapeHtml(o.clientName ?? `client #${o.clientId}`)}</td>
+          <td>${escapeHtml(o.srcLang)} → ${escapeHtml(o.tgtLangs.join(', '))}</td>
+          <td>${statusBadge(o.status)}</td>
+        </tr>`,
+        )
+        .join('')}
+    </table>`;
+  const empty =
+    agenda.overdue.length +
+      agenda.today.length +
+      agenda.later.length +
+      agenda.undated.length ===
+    0;
+  app.innerHTML = `
+    ${navHtml('deadlines')}
+    <h2>Deadlines</h2>
+    <p class="muted">Open orders by the due date you set on each. Clients never see these dates.</p>
+    ${empty ? '<p class="muted">No open orders.</p>' : ''}
+    ${group('Overdue', agenda.overdue, 'error')}
+    ${group('Due today', agenda.today)}
+    ${group('Later', agenda.later)}
+    ${group('No due date', agenda.undated)}
+  `;
+  app.querySelectorAll('[data-open]').forEach((row) => {
+    row.addEventListener('click', () => renderOrderDetail(row.dataset.open));
+  });
+  wireNav();
+}
+
 /** The navigation bar every list screen shares, with the log-out button. */
 function navHtml(active) {
   const tab = (id, label) =>
     `<button class="${active === id ? '' : 'secondary'}" data-nav="${id}">${label}</button>`;
   return `<div style="margin-bottom:1rem">
-    ${tab('orders', 'Orders')} ${tab('clients', 'Clients')} ${tab('rates', 'Rates')}
+    ${tab('orders', 'Orders')} ${tab('deadlines', 'Deadlines')} ${tab('clients', 'Clients')} ${tab('rates', 'Rates')}
     <button class="secondary" id="logout" style="float:right">Log out</button>
   </div>`;
 }
 
 /** Makes the bar `navHtml` drew work. Call it after setting `app.innerHTML`. */
 function wireNav() {
-  const screens = { orders: renderOrderList, clients: renderClients, rates: renderRates };
+  const screens = {
+    orders: renderOrderList,
+    deadlines: renderDeadlines,
+    clients: renderClients,
+    rates: renderRates,
+  };
   app.querySelectorAll('[data-nav]').forEach((btn) => {
     btn.addEventListener('click', () => screens[btn.dataset.nav]());
   });
