@@ -340,6 +340,33 @@ modelled the same way in every repo, by the public
 
 - The kind-specific checks are in `CODING.md` or `NON-CODING.md`.
 
+## Session log
+
+Every substantive session leaves one short entry in Louis's private
+`louisbaudry/ai-work-log` repo, so he can see what he delegates, where it
+goes wrong and what to automate next (decision, Louis, 2026-11-03).
+
+- **Substantive** means the session pushed a commit, opened or updated a
+  PR, or changed something outside the repo. A one-line answer needs no
+  entry.
+- **When:** before the session's final report, and again (same file) if
+  more work follows. The `session-log` skill has the format and steps.
+- **How:** attach the repo (`add_repo`, push access) and push the entry
+  straight to its `main`, as one new file under `logs/`. This is a
+  standing authorization limited to that repo and that folder; it is the
+  exception to "Working across repositories" and to "never merge".
+- **What goes in:** what was asked, what was done, the friction, whether
+  the task repeats, one lesson. Never a transcript, message content, a
+  credential, or any health, family or money detail. Metadata a session
+  cannot read is `unknown`, never estimated.
+- **Can't reach the repo?** Put the entry in the final reply under
+  "Session log" so Louis can file it.
+- **A rule alone may not hold, so a hook backs it.** Each repo merges
+  `session-log-gate.json` from `settings/` in `claude-shared` into its
+  `.claude/settings.json` (with `stop-session-log.sh` copied to
+  `.claude/hooks/`). It blocks the stop once per session when the session
+  pushed or opened a PR and wrote no entry.
+
 ## Glossary
 
 Every repo has a `GLOSSARY.md` at its root. Terms drift between sessions
