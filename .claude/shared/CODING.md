@@ -160,6 +160,29 @@ deployed.
 - Fixtures use synthetic data. Real client or personal data never goes in
   a fixture, even trimmed (see the public-repo rules in `UNIVERSAL.md`).
 
+## Commercial and confidential material
+
+A code repo holds product decisions, not business ones. Pricing,
+customers and prospects, contracts and terms, go-to-market,
+intellectual-property strategy and legal drafts go in the private
+repository the repo's `CLAUDE.md` names for them, never in the code repo.
+
+- **Warn before it lands.** A session about to write such material into a
+  code repo (a file, a commit message, an issue, a PR or a comment) stops,
+  tells Louis what it found, and writes it only if he confirms it is
+  product text that names nothing commercial.
+- **A rule alone did not hold, so a hook backs it.** The sync installs it in
+  every code repo: `.claude/hooks/commercial-guard.js` (owned by the sync; do
+  not edit it in the repo) and its entry in `.claude/settings.json`. Before a write to a file inside the repo, a commit or
+  tag, a `gh pr` or `gh issue`, or a GitHub write to the same repository,
+  it answers "ask" with the markers it found (a customer key, a prospect,
+  pricing, an amount of money, sales figures, go-to-market, a contract, IP
+  strategy, a confidentiality marking). A repo adds its own markers, such
+  as the name of its business repository, one regular expression per line
+  in `.claude/commercial-markers.txt`. It is a keyword check, never a
+  guarantee; the session still owns the rule. Its tests are
+  `settings/commercial-guard.test.js` in `claude-shared`.
+
 ## Supabase permissions
 
 Permission rules are read from the session repo's own `.claude/settings.json`,
