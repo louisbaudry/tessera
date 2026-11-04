@@ -1788,7 +1788,10 @@ describe('solo-translator mode: a quote and the translator’s own deadlines (is
       headers: auth(admin),
       payload: { wordCount: 1000 },
     });
-    const before = readLogs((d) => listEvents(d, {}).length);
+    const before = readLogs(
+      (d) =>
+        (d.prepare('SELECT COUNT(*) AS n FROM audit_event').get() as { n: number }).n,
+    );
     const quote = await app.inject({
       method: 'GET',
       url: `/api/admin/orders/${order.id}/quote?today=2026-11-04`,
@@ -1802,7 +1805,12 @@ describe('solo-translator mode: a quote and the translator’s own deadlines (is
     expect(quote.body).not.toContain('<b>Client</b>');
     expect(quote.body).not.toContain('<script');
     expect(quote.body).toContain('This is a quote, not an invoice.');
-    expect(readLogs((d) => listEvents(d, {}).length)).toBe(before);
+    expect(
+      readLogs(
+        (d) =>
+          (d.prepare('SELECT COUNT(*) AS n FROM audit_event').get() as { n: number }).n,
+      ),
+    ).toBe(before);
     // A client never reaches it.
     const asClient = await app.inject({
       method: 'GET',
