@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture: every string is invented for this repository. It has the shape of
+     planning/software-localisation-spec.md section 4 (one unit per key, a ph per variable,
+     a plural group expanded to Ukrainian's categories, notes, translate="no", targets in
+     the state initial). It is not the output of any tool. -->
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.1" srcLang="en" trgLang="uk">
+  <file id="f1" original="catalogue.json" xml:space="preserve">
+    <notes>
+      <note id="n1" category="checksum">0000000000000000000000000000000000000000000000000000000000000000</note>
+    </notes>
+    <unit id="saveButton" name="saveButton">
+      <notes>
+        <note category="context">Button, toolbar of the plant page. Imperative verb.</note>
+      </notes>
+      <segment state="initial">
+        <source>Save</source>
+        <target>Зберегти</target>
+      </segment>
+    </unit>
+    <unit id="cancelButton" name="cancelButton">
+      <notes>
+        <note category="context">Button beside Save. Imperative verb.</note>
+      </notes>
+      <segment state="translated">
+        <source>Cancel</source>
+        <target>Скасувати</target>
+      </segment>
+    </unit>
+    <unit id="welcomeBack" name="welcomeBack">
+      <notes>
+        <note category="context">Greeting on the home page. The name is a person's first name.</note>
+      </notes>
+      <segment state="initial">
+        <source>Welcome back, <ph id="1" equiv="{{name}}" disp="{{name}}"/>.</source>
+        <target>Ласкаво просимо назад, <ph id="1" equiv="{{name}}" disp="{{name}}"/>.</target>
+      </segment>
+    </unit>
+    <group id="itemCount">
+      <unit id="itemCount_one" name="itemCount_one">
+        <notes>
+          <note category="context">Plural, category "one" in Ukrainian (1, 21, 31, not 11).</note>
+        </notes>
+        <segment state="initial">
+          <source><ph id="1" equiv="{{count}}" disp="{{count}}"/> item</source>
+          <target><ph id="1" equiv="{{count}}" disp="{{count}}"/> елемент</target>
+        </segment>
+      </unit>
+      <unit id="itemCount_few" name="itemCount_few">
+        <notes>
+          <note category="context">Plural, category "few" in Ukrainian (2 to 4, 22 to 24, not 12 to 14).</note>
+        </notes>
+        <segment state="initial">
+          <source><ph id="1" equiv="{{count}}" disp="{{count}}"/> items</source>
+          <target><ph id="1" equiv="{{count}}" disp="{{count}}"/> елементи</target>
+        </segment>
+      </unit>
+      <unit id="itemCount_many" name="itemCount_many">
+        <notes>
+          <note category="context">Plural, category "many" in Ukrainian (0, 5 to 20, 25 to 30).</note>
+        </notes>
+        <segment state="initial">
+          <source><ph id="1" equiv="{{count}}" disp="{{count}}"/> items</source>
+          <target><ph id="1" equiv="{{count}}" disp="{{count}}"/> елементів</target>
+        </segment>
+      </unit>
+      <unit id="itemCount_other" name="itemCount_other">
+        <notes>
+          <note category="context">Plural, category "other" in Ukrainian (fractions only).</note>
+        </notes>
+        <segment state="initial">
+          <source><ph id="1" equiv="{{count}}" disp="{{count}}"/> items</source>
+          <target><ph id="1" equiv="{{count}}" disp="{{count}}"/> елемента</target>
+        </segment>
+      </unit>
+    </group>
+    <unit id="productName" name="productName" translate="no">
+      <notes>
+        <note category="context">The product's name. Never translated.</note>
+      </notes>
+      <segment state="initial">
+        <source>Garden Ledger</source>
+        <target>Garden Ledger</target>
+      </segment>
+    </unit>
+    <unit id="bandUnlikely" name="bandUnlikely" translate="no">
+      <notes>
+        <note category="context">One of seven fixed words of a scale. Kept in English.</note>
+      </notes>
+      <segment state="initial">
+        <source>unlikely</source>
+        <target>unlikely</target>
+      </segment>
+    </unit>
+    <unit id="emptyState" name="emptyState">
+      <notes>
+        <note category="context">Shown on a page with nothing on it yet.</note>
+      </notes>
+      <segment>
+        <source>Nothing to show yet.</source>
+      </segment>
+    </unit>
+  </file>
+</xliff>
