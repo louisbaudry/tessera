@@ -1655,3 +1655,19 @@ button.chip-button:hover {
   color: var(--text);
   background: var(--surface);
 }
+
+/* A unit's key and notes under its source and target (issue #351): muted, one
+   grid row spanning both text columns, wrapped, never editable. */
+.row .unit-context {
+  grid-column: 2 / 4;
+  padding: 0 0.75rem 6px;
+  font-size: 0.8em;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  white-space: pre-line;
+}
+.row .unit-context .unit-name {
+  font-family: ui-monospace, monospace;
+}

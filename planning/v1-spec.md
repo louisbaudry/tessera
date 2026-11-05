@@ -719,6 +719,15 @@ from the format table, the existing `<target>` content replaced (a self-closing
 `state` is set to `translated` (or `initial` for a `draft`); a start tag with no
 `state` gets one. A segment without a target is left alone.
 
+**A unit's context is read and shown, never interpreted** (issue #351,
+`software-localisation-spec.md` G1). The unit's `name` and the text of the
+`<note>`s directly under its own `<notes>` (not a group's or the file's) are
+stored on each of its segments (`segment.unit_name`, `unit_notes`, project schema
+v21; notes one per line, whitespace inside a note collapsed). They are shown
+read-only under the row in the editor and sent, escaped and bounded, in the
+draft prompt (`translation-engine-spec.md` D24); they take no part in a hash, a
+match, a QA rule or an export, which still slices the original.
+
 **What it does not do** (named so a pass is not read as more): it does not
 interpret the modules (Translation Candidates is not imported as a memory, the
 Glossary module not as a glossary, `fs`/`its` markup is carried and not

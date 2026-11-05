@@ -353,7 +353,7 @@ describe('accepting a draft', () => {
       provenance: {
         engine: 'tessera',
         model: 'm-secret-1',
-        prompt_version: 'tessera-draft-v1',
+        prompt_version: 'tessera-draft-v2',
       },
     });
     expect(getDraftSuggestion(db, id)).toBeNull();

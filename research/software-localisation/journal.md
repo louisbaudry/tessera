@@ -54,3 +54,19 @@ of a hypothesis, so nothing is confirmatory.
 Not done: no results file exists, because nothing was run against a hypothesis; the
 probes are tests. S1 to S4 and the workbench's export in a reviewed state are not
 built, so no round can start.
+
+## 2026-11-05, S1: unit context
+
+Built (issue #351): a unit's `name` and its own notes are read at import, stored on the
+segment, shown read-only in the editor and sent in the draft prompt (`tessera-draft-v2`).
+Nothing was run against a hypothesis; the change is tested for its mechanics (escaping,
+bounds, round trip, migration, a byte-identical zero-edit export), and no draft was
+compared with or without the context.
+
+Observed while building: the S0 fixture's notes already carry the plural category and
+the register ("Imperative verb"), so the text H1 would judge is written for the
+translator, not for the engine; and a note repeated word for word on every plural unit
+costs prompt characters (500 each, at most three notes) without saying anything the key
+does not. Whether the context helps a draft is for round 1 (S6) to count, not assumed.
+
+Not done: no results file. H1 to H3 are still untested.

@@ -471,6 +471,13 @@ not percentages (D3). Raising a bound is a new `PROMPT_VERSION`
 (`tessera-draft-v1`). Neighbours are plain source text; their tags carry
 nothing the draft needs.
 
+*Amended for `tessera-draft-v2` (issue #351, `software-localisation-spec.md`
+G1):* an XLIFF unit's `name` and `<note>`s may precede the source in a
+`<unit_context>` block, escaped like every other input and bounded (3 notes, 500
+characters each, a 200-character name, from the front); a unit with none builds
+the prompt exactly as v1 did. Rule 4 of the system prompt names the unit context
+as data. DeepL is still sent the marked text and nothing else.
+
 ### Decided while building slice 3a (backlog #135, 2026-10-15)
 
 Slice 3 is split in two: 3a is the `db` half (the suggestion store, retrieval

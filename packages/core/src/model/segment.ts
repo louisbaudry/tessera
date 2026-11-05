@@ -103,6 +103,19 @@ export interface Segment {
    * like any other, counted once — as its twin (backlog #34).
    */
   readonly fallbackCopy: boolean;
+  /**
+   * The key of a keyed-strings unit (an XLIFF `name`): where the text is shown,
+   * as the file's author wrote it. Absent or null when the file gave none.
+   * Context for the translator and the draft prompt, never part of the text
+   * (`planning/software-localisation-spec.md` G1).
+   */
+  readonly unitName?: string | null;
+  /**
+   * The unit's notes, one per line, as the file gave them; absent or null when
+   * there were none. Third-party text: shown read-only and escaped wherever it
+   * is sent on.
+   */
+  readonly unitNotes?: string | null;
   readonly updatedAt: string;
 }
 

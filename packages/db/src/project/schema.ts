@@ -723,6 +723,24 @@ const v20: Migration = {
 };
 
 /**
+ * `segment.unit_name` and `segment.unit_notes` (`planning/software-localisation-spec.md`
+ * G1, issue #351): the context an XLIFF unit carries for the person translating
+ * it, read at import and never again. Both are nullable with no default, so every
+ * segment already stored simply has none, and a DOCX or PPTX segment never does.
+ * They are plain text, not part of any hash, and not a fact export reads: export
+ * slices the original file, which still holds them byte for byte.
+ */
+const v21: Migration = {
+  version: 21,
+  description:
+    'segment.unit_name and segment.unit_notes, nullable (software-localisation-spec.md G1, issue #351)',
+  up: (db) => {
+    db.exec('ALTER TABLE segment ADD COLUMN unit_name TEXT;');
+    db.exec('ALTER TABLE segment ADD COLUMN unit_notes TEXT;');
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -748,4 +766,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v18,
   v19,
   v20,
+  v21,
 ];

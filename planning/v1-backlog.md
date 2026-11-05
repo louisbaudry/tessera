@@ -5350,6 +5350,28 @@ changes it must change the test on purpose):
 - Not verified: no real Trados, memoQ or Phrase XLIFF has been read (the fixture is hand-written, like the others in
   its folder), and the pricing basis for a Chinese assignment is still unknown (S7).
 
+**#351 · ~~Software localisation S1: unit context (name and notes) reaches the editor and the draft prompt~~ · DONE —
+`core/src/xliff/document.ts` (`unitName`, `unitNotes`), `core/src/project/assemble-xliff.ts` (`joinNotes`),
+`Segment.unitName`/`unitNotes`, project schema v21 (`segment.unit_name`, `unit_notes`), `core/src/draft/prompt.ts`
+(`tessera-draft-v2`, `<unit_context>`), `db/src/project/draft.ts`, `web/src/Grid.tsx` (`UnitContext`).**
+
+A keyed string's meaning is in where it is shown, and the file already says so; the filter carried that text and
+nothing used it. What it taught:
+
+- **Read the unit's own notes only.** A `<note>` under the file or a group (the fixture's checksum note) belongs to
+  that element, so it is not copied onto every segment; a test pins it.
+- **Notes are one per line, whitespace collapsed.** That makes the prompt's "3 notes" bound mean three notes, not
+  three lines of one; the original file is kept verbatim, so nothing is lost.
+- **The context is in no hash.** Two units with the same source and different notes are still repeats of each other
+  (that is S2's problem, not this slice's), and a zero-edit export is still the original, byte for byte.
+- **The row grew a sibling, not a child.** `sourceCaret` reads the source cell's children as the source's pieces, so
+  the context is its own grid cell spanning both text columns; the virtualizer measures the row, so it needs no
+  height estimate.
+- **A prompt change is a new version.** `tessera-draft-v2`; a unit with no context builds the same prompt text as v1
+  (the hash differs only through the version). Mutation checks: with escaping removed, or the note bound widened, a
+  test fails.
+- Not verified: how much the context improves a draft. That is round 1 (S6), not a unit test, and DeepL never gets it.
+
 Slices S1 to S9 are in the spec's §6, one card each when taken.
 
 ## Not in this backlog (Epics 0–7)

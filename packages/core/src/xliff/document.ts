@@ -24,6 +24,17 @@ export interface XliffSegment {
   readonly segOrd: number;
   /** The unit's `id`, for messages; never used to find anything. */
   readonly unitId: string;
+  /**
+   * The unit's `name` attribute: for keyed software strings the key, the one
+   * thing that says where the text is shown. Null when the unit has none.
+   */
+  readonly unitName: string | null;
+  /**
+   * The text of each `<note>` directly under the unit's `<notes>`, in document
+   * order, entities decoded and inline markup (if any) flattened to its text.
+   * Notes of an enclosing `<group>` or `<file>` are not read (spec G1).
+   */
+  readonly unitNotes: readonly string[];
   /** `translate="no"` held on the unit or an enclosing group or file. */
   readonly translateNo: boolean;
   /** The `<segment>` element. */
@@ -42,6 +53,33 @@ export interface XliffDocument {
   readonly srcLang: string;
   readonly trgLang: string | null;
   readonly segments: readonly XliffSegment[];
+}
+
+/** Every text node under `el`, joined: a `<note>` holds text, but be tolerant of markup. */
+function textOf(el: XElement): string {
+  let out = '';
+  for (const node of el.children) {
+    out += node.kind === 'text' ? node.text : textOf(node);
+  }
+  return out;
+}
+
+/**
+ * The non-blank `<note>` texts under a unit's own `<notes>` element(s), in
+ * order. A unit's context is third-party text: it is carried and shown, never
+ * interpreted.
+ */
+function readNotes(unit: XElement): string[] {
+  const notes: string[] = [];
+  for (const group of elementChildren(unit)) {
+    if (!isCore(group, 'notes')) continue;
+    for (const note of elementChildren(group)) {
+      if (!isCore(note, 'note')) continue;
+      const text = textOf(note).trim();
+      if (text !== '') notes.push(text);
+    }
+  }
+  return notes;
 }
 
 const decoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
@@ -106,6 +144,8 @@ export function readXliff(bytes: Uint8Array): XliffDocument {
       const unitId = child.attrs.get('id');
       if (unitId === undefined)
         throw new XliffError(`a <unit> at offset ${child.start} has no id`);
+      const unitName = child.attrs.get('name') ?? null;
+      const unitNotes = readNotes(child);
       let segOrd = 0;
       for (const piece of elementChildren(child)) {
         if (!isCore(piece, 'segment')) continue;
@@ -118,6 +158,8 @@ export function readXliff(bytes: Uint8Array): XliffDocument {
           unitOrd,
           segOrd: segOrd++,
           unitId,
+          unitName,
+          unitNotes,
           translateNo: no,
           segment: piece,
           source,

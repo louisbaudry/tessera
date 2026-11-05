@@ -322,6 +322,10 @@ export async function draftSuggestions(
             terms: draftTerms(entries, segment.sourceTokens, srcLang),
             before,
             after,
+            unit: {
+              name: segment.unitName ?? null,
+              notes: segment.unitNotes ? segment.unitNotes.split('\n') : [],
+            },
           },
           (prompt) => {
             appendAuditEvent(db, {

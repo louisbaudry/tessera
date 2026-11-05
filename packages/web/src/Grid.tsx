@@ -1204,9 +1204,35 @@ const SegmentRow = memo(function SegmentRow({
           )
         )}
       </div>
+      {(segment.unitName || segment.unitNotes) && (
+        <UnitContext name={segment.unitName} notes={segment.unitNotes} lang={srcLang} />
+      )}
     </div>
   );
 });
+
+/**
+ * What the file said about a unit: its key and its notes, read-only, under the
+ * source and the target (a keyed string's meaning is in where it is shown). Plain
+ * text nodes only: the text is the document's, never markup, and a cell of its
+ * own so the source cell's children stay the source's pieces (`sourceCaret`).
+ */
+function UnitContext({
+  name,
+  notes,
+  lang,
+}: {
+  name: string | null | undefined;
+  notes: string | null | undefined;
+  lang: string;
+}) {
+  return (
+    <div className="unit-context" role="note" lang={lang}>
+      {name ? <code className="unit-name">{name}</code> : null}
+      {notes ? <span className="unit-notes">{notes}</span> : null}
+    </div>
+  );
+}
 
 /**
  * The caret the translator put in a source cell: which segment, and the
