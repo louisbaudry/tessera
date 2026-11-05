@@ -42,11 +42,12 @@ packages/
     qa/        QA rule engine — all thirteen v1-spec.md §6.4 rules, locale tables, numeral matching
   db/          @cat-tool/db     versioned SQLite migration runner; project, platform, portal, .ctm TM, and .ctg glossary schemas; typed repositories over all; TMX import/export, .sdltm import, memory merge; the vendor roster (.ctv, with eligibility and client vendor pools); a read-only open for files another process owns; the client export of a linked memory and glossary; worker-thread jobs for bulk operations
   cli/         @cat-tool/cli    headless driver — init, add-file, add-tm, pretranslate, qa, export, history, audit-verify (v1-spec.md §2.4)
+  sso-http/    @cat-tool/sso-http the outbound half of Microsoft and Google sign-in, shared by both servers: code exchange, cached token verifier, provider settings, and a fake provider for tests (planning/sso-spec.md)
   server/      @cat-tool/server Fastify API — login, accounts, projects, file import, memory imports as cancellable jobs, and the built SPA (v1-spec.md §2.5)
   web/         @cat-tool/web    React SPA — login, project/file picker, the virtualised segment grid (v1-spec.md §7.1) and its tag-aware target editor (§7.2), glossary and QA panels, a command palette and an add-a-term key; `pnpm --filter @cat-tool/web dev` against a running server
-  portal-core/ @cat-tool/portal-core   pure TS — pricing, order lifecycle, notification/production-adapter interfaces for the client-facing translation portal (planning/portal-v0-spec.md)
+  portal-core/ @cat-tool/portal-core   pure TS — pricing (with a client's own rates), order lifecycle, quotes, the deadline agenda, notification/production-adapter interfaces for the client-facing translation portal (planning/portal-v0-spec.md, planning/solo-translator-spec.md)
   vendor-core/ @cat-tool/vendor-core   pure TS — the assignment lifecycle state machine, rate tiers, capacity statuses, payables, deadline notices, webhook rules and the advisory eligibility rule for Language Provider tools (planning/vendor-spec.md)
-  portal-server/ @cat-tool/portal-server Fastify API + minimal static UI for the translation portal (client intake/approval, admin order management, SMTP email notifications, a client's own memory and glossary download, update orders quoted on what changed)
+  portal-server/ @cat-tool/portal-server Fastify API + minimal static UI for the translation portal (client intake/approval, admin order management, SMTP email notifications, a client's own memory and glossary download, update orders quoted on what changed, client contacts signing in with Microsoft or Google, a printable quote, the translator's own due dates and a Deadlines view)
 planning/      specs and backlog
 fixtures/      real-world DOCX structure with synthetic content (docx/), used by every gate test; hand-written XLIFF 2.x files (xliff/) and two PPTX decks (pptx/, one LibreOffice-written); the golden end-to-end job's memory and transcript (golden/)
 site/          public landing page, deployed to GitHub Pages
@@ -195,7 +196,9 @@ operator registers an app with each provider and sets `GOOGLE_OAUTH_CLIENT_ID` a
 (secrets: environment only, a provider with half a pair is off). Every provider calls back to one
 address, `https://auth.<CAT_BASE_DOMAIN>` (`SSO_CALLBACK_ORIGIN` names it only where there is no
 base domain, such as `http://localhost:3400` in development). It signs in accounts that already
-exist and creates none.
+exist and creates none. The portal signs its client contacts in the same way through its own
+callback host, named by `PORTAL_SSO_CALLBACK_ORIGIN`, which needs a second redirect URI with each
+provider (`deploy/README.md`).
 
 ```sh
 pnpm --filter @cat-tool/server run create-account -- you@example.com <password>   # once per deployment
@@ -229,6 +232,8 @@ full row of green checks — see CLAUDE.md's gotcha list.
 | [`planning/v1-backlog.md`](planning/v1-backlog.md)                         | Sequenced issue list, v1 (Ring 0) through v4 (Ring 3)                                                                               |
 | [`planning/portal-v0-spec.md`](planning/portal-v0-spec.md)                 | Translation Portal v0 (Epic 10a) — order lifecycle, pricing, notifications, auth                                                    |
 | [`planning/smart-glossary-spec.md`](planning/smart-glossary-spec.md)       | Smart glossary (Epic 8a) — the `.ctg` format, detection/flagging pipeline, session state machine                                    |
+| [`planning/sso-spec.md`](planning/sso-spec.md)                             | Single sign-on (Epic 15): Microsoft 365 and Google sign-in for staff, vendors and portal client contacts                            |
+| [`planning/solo-translator-spec.md`](planning/solo-translator-spec.md)     | Solo-translator mode (#179): a one-person tenant, quotes and the translator's own deadlines                                         |
 | [`planning/multi-session-workflow.md`](planning/multi-session-workflow.md) | The phased, one-phase-per-session pattern large backlog items (TMX/`.sdltm` import, exact matching) are built with across sessions  |
 
 ## Decisions worth knowing before contributing
