@@ -19,15 +19,19 @@ const FIXTURES = join(
 );
 const load = (name: string) => new Uint8Array(readFileSync(join(FIXTURES, name)));
 const EN_DE = { srcLang: 'en', tgtLang: 'de' };
+const EN_UK = { srcLang: 'en', tgtLang: 'uk' };
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 /** What `insertFile` + `listSegments` would hand back, without a database. */
-function persisted(name: string): {
+function persisted(
+  name: string,
+  langs: { srcLang: string; tgtLang: string } = EN_DE,
+): {
   file: ProjectFile;
   segments: Segment[];
   assembled: AssembledFile;
 } {
-  const assembled = assembleXliff(load(name), EN_DE);
+  const assembled = assembleXliff(load(name), langs);
   const file: ProjectFile = {
     id: 3,
     kind: 'xliff',
@@ -308,5 +312,112 @@ describe('exportFileBytes for XLIFF', () => {
     expect(() => exportFileBytes(file, [{ ...segments[0]!, paraKey: '77' }])).toThrow(
       /not in the original/,
     );
+  });
+});
+
+/**
+ * The software-strings fixture (backlog Epic 16, planning/software-localisation-spec.md
+ * section 5, slice S0): a catalogue's keys as XLIFF, in the shape the workbench's exporter
+ * writes. Invented strings; **not the output of any tool**, so these prove the filter agrees
+ * with the shape the spec describes and nothing more.
+ */
+describe('the software-strings fixture (en to uk)', () => {
+  const NAME = 'software-strings.en-uk.xlf';
+
+  it('a zero-edit export is the original, byte for byte', () => {
+    const { file, segments } = persisted(NAME, EN_UK);
+    const { bytes } = exportFileBytes(file, segments);
+    expect(Buffer.from(bytes).equals(Buffer.from(file.originalBlob))).toBe(true);
+  });
+
+  it('makes one segment per unit, a plural group included, in document order', () => {
+    const { assembled } = persisted(NAME, EN_UK);
+    expect(assembled.segments.map((s) => plainText(s.sourceTokens))).toEqual([
+      'Save',
+      'Cancel',
+      // A <ph> is a placeholder token, and plainText leaves a placeholder out: the variable
+      // is not in the plain text a glossary, a QA rule or a memory's text index reads.
+      'Welcome back, .',
+      ' item',
+      ' items',
+      ' items',
+      ' items',
+      'Garden Ledger',
+      'unlikely',
+      'Nothing to show yet.',
+    ]);
+    // A group does not merge its units: each category keeps its own segment (para_key).
+    expect(new Set(assembled.segments.map((s) => s.paraKey)).size).toBe(10);
+  });
+
+  it('keeps every {{variable}} as one placeholder token, the same in source and target', () => {
+    const { assembled } = persisted(NAME, EN_UK);
+    const placeholders = (tokens: readonly Token[]) =>
+      tokens.filter((t) => t.t === 'ph').length;
+    const withVariable = assembled.segments.filter((x) =>
+      x.sourceTokens.some((t) => t.t === 'ph'),
+    );
+    expect(withVariable).toHaveLength(5);
+    for (const s of withVariable) {
+      expect(placeholders(s.sourceTokens)).toBe(1);
+      expect(placeholders(s.targetTokens ?? [])).toBe(1);
+    }
+  });
+
+  it('reads the arriving targets as drafts (initial) or translated, a locked unit as locked and an absent one as new', () => {
+    const { assembled } = persisted(NAME, EN_UK);
+    expect(assembled.segments.map((s) => [plainText(s.sourceTokens), s.status])).toEqual([
+      ['Save', 'draft'],
+      ['Cancel', 'translated'],
+      ['Welcome back, .', 'draft'],
+      [' item', 'draft'],
+      [' items', 'draft'],
+      [' items', 'draft'],
+      [' items', 'draft'],
+      // A locked unit's arriving target is kept and the segment is locked, never a draft.
+      ['Garden Ledger', 'locked'],
+      ['unlikely', 'locked'],
+      ['Nothing to show yet.', 'new'],
+    ]);
+  });
+
+  it('gives the plural siblings that share an English form one source hash (the mechanism behind H2)', () => {
+    const { assembled } = persisted(NAME, EN_UK);
+    const hash = (i: number) => assembled.segments[i]!.sourceHash;
+    // few, many and other are all "{{count}} items": identical source, so a memory hit or a
+    // propagation donor for one is a hit for the others, in a language where they differ.
+    expect(new Set([hash(4), hash(5), hash(6)]).size).toBe(1);
+    expect(hash(3)).not.toBe(hash(4));
+  });
+
+  it('locks the product name and the fixed scale word (translate="no") and nothing else', () => {
+    const { assembled } = persisted(NAME, EN_UK);
+    expect(
+      assembled.segments.filter((s) => s.locked).map((s) => plainText(s.sourceTokens)),
+    ).toEqual(['Garden Ledger', 'unlikely']);
+  });
+
+  it('writes a new target into the empty unit and the result reads back, the rest untouched', () => {
+    const { file, segments } = persisted(NAME, EN_UK);
+    const last = segments.length - 1;
+    const edited = segments.map((s, i) =>
+      i === last
+        ? {
+            ...s,
+            status: 'confirmed' as const,
+            targetTokens: [{ t: 'text', v: 'Поки що нічого показувати.' } as Token],
+          }
+        : s,
+    );
+    const out = exportFileBytes(file, edited).bytes;
+    const text = decode(out);
+    expect(text).toContain('Поки що нічого показувати.');
+    // Only that segment's text changed: removing the new target gives back the original.
+    expect(
+      text.replace(/\s*<target>Поки що нічого показувати\.<\/target>/, ''),
+    ).toContain('<source>Nothing to show yet.</source>');
+    const again = readXliff(out);
+    expect(again.segments).toHaveLength(segments.length);
+    expect(() => assembleXliff(out, EN_UK)).not.toThrow();
   });
 });

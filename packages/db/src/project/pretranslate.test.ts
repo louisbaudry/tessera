@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   assembleFile,
+  assembleXliff,
   carryHiddenTags,
   fuzzyOrigin,
   plainText,
@@ -669,6 +670,63 @@ describe('pretranslate: fuzzy matches (v1-spec.md §6.1a)', () => {
 
     pretranslate(db, { actor: TEST_ACTOR });
     expect(getSegment(db, segment.id)!.origin).toBe('tm_exact');
+    db.close();
+  });
+});
+
+/**
+ * S0 probe (planning/software-localisation-spec.md sections 5 and 6, Epic 16): what happens to
+ * a target that arrives in an XLIFF file when the memory also holds an exact hit for the same
+ * source. A recorded observation, not a design: if the precedence is changed on purpose, this
+ * test changes with it and the research journal says why.
+ */
+describe('pretranslate against targets that arrived in an XLIFF file (probe)', () => {
+  const xliff = () =>
+    assembleXliff(
+      new Uint8Array(
+        readFileSync(
+          join(
+            dirname(fileURLToPath(import.meta.url)),
+            '../../../../fixtures/xliff/software-strings.en-uk.xlf',
+          ),
+        ),
+      ),
+      { srcLang: 'en', tgtLang: 'uk' },
+    );
+
+  it('an exact memory hit replaces an arriving draft and an arriving translated target; a locked unit is skipped', () => {
+    const db = openProjectDb(dbPath());
+    createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'uk' });
+    const file = insertFile(db, 'catalogue.xlf', xliff(), { actor: TEST_ACTOR });
+    const [save, cancel, , , , , , product] = listSegments(db, file.id);
+    expect(save!.status).toBe('draft');
+    expect(cancel!.status).toBe('translated');
+    expect(product!.status).toBe('locked');
+
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    for (const segment of [save!, cancel!, product!]) {
+      insertTmUnit(tm, {
+        srcLang: 'en',
+        srcHash: segment.sourceHash,
+        tgtLang: 'uk',
+        targetTokens: [{ t: 'text', v: 'З пам\u2019яті' }],
+      });
+    }
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
+    expect(summary.exact).toBe(2);
+    expect(summary.skipped).toBeGreaterThanOrEqual(1);
+
+    for (const id of [save!.id, cancel!.id]) {
+      const after = getSegment(db, id)!;
+      expect(after.status).toBe('translated');
+      expect(after.origin).toBe('tm_exact');
+      expect(after.targetTokens).toEqual([{ t: 'text', v: 'З пам\u2019яті' }]);
+    }
+    // The locked product name keeps the target it arrived with.
+    expect(plainText(getSegment(db, product!.id)!.targetTokens!)).toBe('Garden Ledger');
     db.close();
   });
 });

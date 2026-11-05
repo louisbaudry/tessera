@@ -5318,6 +5318,40 @@ an address-only contact, unique per portal file in lower case, needs no tenant c
 tenant's), and the gateway's credential walk covered the four new routes with no change. Contact writes
 are not audited, like the portal's other client and rate writes.
 
+### Epic 16 — Software localisation (spec'd 2026-10-31, decisions taken 2026-11-01, S0 built 2026-11-05)
+
+Design in `planning/software-localisation-spec.md` (decisions D1 to D9): the translation of the OSINT
+Workbench's interface is Tessera's first real keyed-strings scenario, run as dogfood on Tessera's own tenant
+through XLIFF 2.x. Numbers live in `research/software-localisation/` (protocol of the other research records).
+Stack decided: TypeScript, no Rust/Wasm for S0 to S5 (D5).
+
+**#349 · ~~Software localisation S0: the fixture, the research record (H1 to H3) and the probes~~ · DONE —
+`fixtures/xliff/software-strings.en-uk.xlf`, `research/software-localisation/` (README, `hypotheses.md`,
+`journal.md`, `results/`), tests in `core/src/project/xliff.test.ts`, `core/src/qa/software-localisation.probe.test.ts`,
+`db/src/project/pretranslate.test.ts`, `server/src/deepl-engine.test.ts`.**
+
+No behaviour change: S0 only pins what the code does today for `uk`, `ru` and `zh-Hans` on invented strings, and
+commits H1 to H3 with their thresholds before any round. What it taught (each is a passing test, so a later slice that
+changes it must change the test on purpose):
+
+- **A `<ph>` placeholder is not in `plainText`.** The variable segments read as `Welcome back, .`, so anything that
+  compares or matches on plain text (a glossary, a length rule, the QA rules) cannot see `{{name}}` or `{{count}}`.
+- **Plural siblings share one source hash.** The `_few`, `_many` and `_other` units of one group carry the same
+  source, so the exact-hash tier treats them as repeats of each other: propagation between siblings is wrong by
+  construction (S2).
+- **An exact TM hit replaces a target that arrived in the file**, draft or `translated`, because only `confirmed` and
+  `locked` are protected. `translate="no"` units arrive `locked` and survive.
+- **QA misfires for the scenario's languages.** `num.altered` fires on uk and ru number formats (the table in
+  `core/qa/locale.ts` has no uk, ru or zh); `punct.terminal` is ASCII-only, so it fires on `\u3002` and `\uFF1F`;
+  glossary `missing_preferred` fires on inflected uk and ru renderings (endings exist only for de, es, fr, en) and on
+  zh inside a sentence (word-boundary matching does not hold for CJK). These scope S5.
+- **DeepL's adapter list serves `uk` and `ru` and refuses `zh-Hans`.** Read from the adapter's own short list; DeepL's
+  own language list was not checked.
+- Not verified: no real Trados, memoQ or Phrase XLIFF has been read (the fixture is hand-written, like the others in
+  its folder), and the pricing basis for a Chinese assignment is still unknown (S7).
+
+Slices S1 to S9 are in the spec's §6, one card each when taken.
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,

@@ -198,3 +198,29 @@ describe('the pairs DeepL is asked for', () => {
     expect(deeplSource('vi')).toBeNull();
   });
 });
+
+/**
+ * S0 probe (planning/software-localisation-spec.md sections 5 and 6, Epic 16): which of the
+ * scenario's pairs the adapter's own list serves. This reads the adapter's list only; whether
+ * DeepL serves each language is **not** checked against DeepL's own list here (no network, and
+ * the adapter's comment says adding a language is one line once that check is done).
+ */
+describe('the pairs of the software-localisation scenario (probe)', () => {
+  const supports = createDeeplAdapter({ apiKey: KEY }).supports!;
+
+  it('serves English into Ukrainian and Russian, and refuses Simplified Chinese', () => {
+    expect(supports('en', 'uk')).toBe(true);
+    expect(supports('en', 'ru')).toBe(true);
+    expect(supports('en', 'zh-Hans')).toBe(false);
+    expect(supports('en', 'zh')).toBe(false);
+  });
+
+  it('names the codes it would send for them', () => {
+    expect([deeplSource('en'), deeplTarget('uk'), deeplTarget('ru')]).toEqual([
+      'EN',
+      'UK',
+      'RU',
+    ]);
+    expect(deeplTarget('zh-Hans')).toBeNull();
+  });
+});

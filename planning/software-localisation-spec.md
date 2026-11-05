@@ -187,7 +187,7 @@ not of any other tool's output. The spec does not claim more.
 A pass here proves the loop runs and says where Tessera is wrong for this text. It does not prove translation quality;
 that is H1 on reviewed data, and it is only as good as the reviewers.
 
-## 6. Slices (proposed cards, none filed)
+## 6. Slices (cards; status lives on the issues, S0 is #349)
 
 Each is one card, one branch, one PR, and each starts with the standing question of working rhythm 6 (D5).
 
