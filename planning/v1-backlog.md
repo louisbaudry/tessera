@@ -5372,6 +5372,35 @@ nothing used it. What it taught:
   test fails.
 - Not verified: how much the context improves a draft. That is round 1 (S6), not a unit test, and DeepL never gets it.
 
+**#353 · ~~Software localisation S2: plural forms of an XLIFF group are not repeats of one another~~ · DONE —
+`core/src/model/siblings.ts` (`inSameGroup`, `ambiguousSiblingIds`), `core/src/xliff/document.ts` (`groupId`),
+`Segment.unitGroup`, project schema v22 (`segment.unit_group`), `db/src/project/pretranslate.ts`,
+`db/src/project/qa-issues.ts`.**
+
+A plural set's English source is often one sentence for several categories while each target is a different form, and
+three rules of the tool read that as a repeat. What it taught:
+
+- **The group had to be stored.** `para_key` is the unit's ordinal and the unit's id means nothing here, so nothing said
+  which units belong together; the innermost enclosing `<group>` id is now on the segment, read once at import.
+- **"Ambiguous" is the narrow case.** A form is kept out only when another form of its own group has the same source
+  text. An English `one` form beside an `other` form is its own in the group and is pre-translated as before, as is a
+  repeat outside any group (each has a control in the tests). It is one definition in `core/model`, used by the
+  pre-translate run and the QA pass alike.
+- **No placement at all, not a downgrade.** An exact hit, a propagation or a fuzzy one on such a form is wrong for all
+  but one of its siblings and the memory does not say which, so pre-translate leaves the form as it arrived (counted in
+  `skipped`; the CLI line now says "confirmed, locked or plural forms", and the golden transcript's one line moved with
+  it, a wording change and no count). This is also what stops S0's finding that an exact hit replaces an arrived target
+  from hurting a plural set.
+- **The spec listed a rule that needed no change.** `seg.untranslated` compares a target with its own source and has no
+  cross-unit part; only `consistency.target_differs` compares units, and the spec now says so.
+- **The memory is not group-aware, on purpose.** Confirming the forms still writes each to it, so a later project can
+  find three targets for one source; key-scoped matching (D4 b) changes the memory's contract and waits for H2's count.
+- Mutation checks: with the pre-translate rule removed, both pre-translate tests fail; with the QA exclusion removed,
+  the group test fails and its control (the same pair outside a group) still warns.
+- Not verified: how a real tool's group is shaped (the fixture is hand-written), a group whose units are not plural
+  forms at all (a group of related strings with a repeated word is treated the same way, as it must be: the file said
+  they belong together), and whether H2's polysemy count needs more.
+
 Slices S1 to S9 are in the spec's §6, one card each when taken.
 
 ## Not in this backlog (Epics 0–7)

@@ -70,3 +70,17 @@ costs prompt characters (500 each, at most three notes) without saying anything 
 does not. Whether the context helps a draft is for round 1 (S6) to count, not assumed.
 
 Not done: no results file. H1 to H3 are still untested.
+
+## 2026-11-05, S2: plural siblings
+
+Built (issue #353): the XLIFF group of a unit is stored; pre-translate places nothing on the
+forms of a group that share a source with another form of it, and `consistency.target_differs`
+no longer compares units of one group. Nothing was run against a hypothesis; the tests cover the
+mechanics with a control outside a group.
+
+Observed: `seg.untranslated`, which the spec listed beside `consistency.target_differs`, compares a
+target with its own source and needed no change. The memory still receives every confirmed form, so
+a second project over the same strings can find three targets for one source; that is the
+polysemy question H2 counts, not something S2 settles.
+
+Not done: no results file. H1 to H3 are still untested.

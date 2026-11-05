@@ -100,6 +100,7 @@ export function assembleXliff(
       locked,
       fallbackCopy: false,
       unitName: seg.unitName,
+      unitGroup: seg.groupId,
       unitNotes: joinNotes(seg.unitNotes),
       ...(hasTarget ? { targetTokens } : {}),
     };

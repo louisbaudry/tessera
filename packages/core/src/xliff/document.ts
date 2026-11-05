@@ -35,6 +35,13 @@ export interface XliffSegment {
    * Notes of an enclosing `<group>` or `<file>` are not read (spec G1).
    */
   readonly unitNotes: readonly string[];
+  /**
+   * The `id` of the innermost `<group>` enclosing the unit, or null for a unit
+   * directly under the `<file>`. Units that share it are the file's own answer
+   * to "these belong together", which for keyed software strings is a plural
+   * set (`software-localisation-spec.md` G2).
+   */
+  readonly groupId: string | null;
   /** `translate="no"` held on the unit or an enclosing group or file. */
   readonly translateNo: boolean;
   /** The `<segment>` element. */
@@ -131,14 +138,18 @@ export function readXliff(bytes: Uint8Array): XliffDocument {
   const segments: XliffSegment[] = [];
   let unitOrd = 0;
 
-  const walk = (container: XElement, translateNo: boolean) => {
+  const walk = (container: XElement, translateNo: boolean, groupId: string | null) => {
     for (const child of elementChildren(container)) {
       if (!isCore(child, 'file') && !isCore(child, 'group') && !isCore(child, 'unit'))
         continue;
       const own = child.attrs.get('translate');
       const no = translateNo || own === 'no';
       if (!isCore(child, 'unit')) {
-        walk(child, no);
+        walk(
+          child,
+          no,
+          isCore(child, 'group') ? (child.attrs.get('id') ?? groupId) : groupId,
+        );
         continue;
       }
       const unitId = child.attrs.get('id');
@@ -160,6 +171,7 @@ export function readXliff(bytes: Uint8Array): XliffDocument {
           unitId,
           unitName,
           unitNotes,
+          groupId,
           translateNo: no,
           segment: piece,
           source,
@@ -170,7 +182,7 @@ export function readXliff(bytes: Uint8Array): XliffDocument {
       unitOrd++;
     }
   };
-  walk(root, false);
+  walk(root, false, null);
 
   return {
     xml,

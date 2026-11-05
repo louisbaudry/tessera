@@ -35,6 +35,8 @@ export interface AssembledSegment {
   readonly fallbackCopy: boolean;
   /** The unit's name (an XLIFF key), when the file gave one; absent for a DOCX or PPTX. */
   readonly unitName?: string | null;
+  /** The `id` of the XLIFF `<group>` the unit sits in, when it sits in one. */
+  readonly unitGroup?: string | null;
   /** The unit's notes, one per line, when the file gave any (XLIFF only, spec G1). */
   readonly unitNotes?: string | null;
   /**

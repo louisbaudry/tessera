@@ -111,6 +111,12 @@ export interface Segment {
    */
   readonly unitName?: string | null;
   /**
+   * The `id` of the innermost XLIFF `<group>` the unit sits in, or null when it
+   * sits in none. Segments of one file that share it are siblings
+   * (`siblingsOf` in `./siblings.ts`).
+   */
+  readonly unitGroup?: string | null;
+  /**
    * The unit's notes, one per line, as the file gave them; absent or null when
    * there were none. Third-party text: shown read-only and escaped wherever it
    * is sent on.

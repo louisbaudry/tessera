@@ -2,6 +2,7 @@
 
 import {
   QA_RULES,
+  inSameGroup,
   plainText,
   type AuditActor,
   runQaChecks,
@@ -219,6 +220,8 @@ export function replaceQaIssues(
 
 interface TranslatedRow {
   id: number;
+  file_id: number;
+  unit_group: string | null;
   source_hash: string;
   source_tokens: string;
   target_tokens: string;
@@ -233,25 +236,38 @@ interface TranslatedRow {
  * for one save of a segment with a few hundred repetitions (backlog #29).
  * A source is decoded only when a match needs it.
  */
+interface SourceRow {
+  readonly id: number;
+  readonly fileId: number;
+  readonly unitGroup: string | null;
+  readonly target: string;
+}
+
 interface TranslatedIndex {
-  readonly bySource: ReadonlyMap<string, readonly { id: number; target: string }[]>;
+  readonly bySource: ReadonlyMap<string, readonly SourceRow[]>;
   readonly byTarget: ReadonlyMap<string, readonly TranslatedRow[]>;
 }
 
 function readTranslated(db: Database.Database): TranslatedIndex {
   const rows = db
     .prepare(
-      `SELECT id, source_hash, source_tokens, target_tokens FROM segment
+      `SELECT id, file_id, unit_group, source_hash, source_tokens, target_tokens FROM segment
        WHERE target_tokens IS NOT NULL`,
     )
     .all() as TranslatedRow[];
-  const bySource = new Map<string, { id: number; target: string }[]>();
+  const bySource = new Map<string, SourceRow[]>();
   const byTarget = new Map<string, TranslatedRow[]>();
   for (const row of rows) {
     const target = plainText(JSON.parse(row.target_tokens) as Token[]);
+    const entry: SourceRow = {
+      id: row.id,
+      fileId: row.file_id,
+      unitGroup: row.unit_group,
+      target,
+    };
     const sameSource = bySource.get(row.source_hash);
-    if (sameSource) sameSource.push({ id: row.id, target });
-    else bySource.set(row.source_hash, [{ id: row.id, target }]);
+    if (sameSource) sameSource.push(entry);
+    else bySource.set(row.source_hash, [entry]);
     const sameTarget = byTarget.get(target);
     if (sameTarget) sameTarget.push(row);
     else byTarget.set(target, [row]);
@@ -265,8 +281,17 @@ function readTranslated(db: Database.Database): TranslatedIndex {
  * project's translated segments.
  */
 function siblingContext(index: TranslatedIndex, segment: Segment): QaSiblingContext {
+  // A plural form beside its siblings is not a repeat of them: the file keeps those
+  // units apart on purpose and each wants a different target (G2).
   const sameSourceOtherTargets = (index.bySource.get(segment.sourceHash) ?? [])
-    .filter((row) => row.id !== segment.id)
+    .filter(
+      (row) =>
+        row.id !== segment.id &&
+        !inSameGroup(
+          { id: row.id, fileId: row.fileId, unitGroup: row.unitGroup },
+          segment,
+        ),
+    )
     .map((row) => row.target);
   if (segment.targetTokens === null) {
     return { sameSourceOtherTargets, sameTargetOtherSources: [] };

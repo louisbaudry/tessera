@@ -741,6 +741,22 @@ const v21: Migration = {
 };
 
 /**
+ * `segment.unit_group` (`planning/software-localisation-spec.md` G2, issue #353):
+ * the id of the XLIFF `<group>` a unit sits in, so the plural forms of one string
+ * can be told apart from a repeat. Nullable with no default: a segment already
+ * stored, a DOCX one and an ungrouped unit simply have none, and nothing about
+ * them changes. Read at import and never again.
+ */
+const v22: Migration = {
+  version: 22,
+  description:
+    'segment.unit_group, nullable (software-localisation-spec.md G2, issue #353)',
+  up: (db) => {
+    db.exec('ALTER TABLE segment ADD COLUMN unit_group TEXT;');
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -767,4 +783,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v19,
   v20,
   v21,
+  v22,
 ];

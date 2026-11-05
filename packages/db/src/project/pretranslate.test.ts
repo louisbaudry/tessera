@@ -730,3 +730,111 @@ describe('pretranslate against targets that arrived in an XLIFF file (probe)', (
     db.close();
   });
 });
+
+/**
+ * Plural forms (issue #353, `software-localisation-spec.md` G2): units of one XLIFF
+ * `<group>` that share a source text want different targets, so no placement may pick
+ * one for them. The control in each test is the same situation outside a group.
+ */
+describe('pretranslate and the plural forms of a group', () => {
+  const fixture = () =>
+    assembleXliff(
+      new Uint8Array(
+        readFileSync(
+          join(
+            dirname(fileURLToPath(import.meta.url)),
+            '../../../../fixtures/xliff/software-strings.en-uk.xlf',
+          ),
+        ),
+      ),
+      { srcLang: 'en', tgtLang: 'uk' },
+    );
+
+  function withMemoryFor(db: Database.Database, hashes: readonly string[]) {
+    const tm = createTm(ctmPath('a.ctm'), { name: 'a', generator: 'test' });
+    for (const srcHash of hashes) {
+      insertTmUnit(tm, {
+        srcLang: 'en',
+        srcHash,
+        tgtLang: 'uk',
+        targetTokens: [{ t: 'text', v: 'З пам\u2019яті' }],
+      });
+    }
+    tm.close();
+    addTmRef(db, { actor: TEST_ACTOR, path: ctmPath('a.ctm'), priority: 1 });
+  }
+
+  it('places no memory hit on forms that share a source in a group, and keeps what arrived', () => {
+    const db = openProjectDb(dbPath());
+    createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'uk' });
+    const file = insertFile(db, 'catalogue.xlf', fixture(), { actor: TEST_ACTOR });
+    const segments = listSegments(db, file.id);
+    const [save, , , one, few, many, other] = segments;
+    // few, many and other share " items"; one has " item" and is its own in the group.
+    expect(new Set([few!, many!, other!].map((s) => s.sourceHash)).size).toBe(1);
+    expect(one!.sourceHash).not.toBe(few!.sourceHash);
+    const arrived = [few!, many!, other!].map((s) => plainText(s.targetTokens!));
+
+    withMemoryFor(db, [save!.sourceHash, one!.sourceHash, few!.sourceHash]);
+    const summary = pretranslate(db, { actor: TEST_ACTOR });
+
+    for (const [i, s] of [few!, many!, other!].entries()) {
+      const after = getSegment(db, s.id)!;
+      expect(plainText(after.targetTokens!)).toBe(arrived[i]);
+      expect(after.status).toBe('draft');
+      expect(after.origin).toBeNull();
+    }
+    // Control: a unit that is its own in the group, and an ungrouped one, are placed.
+    for (const s of [save!, one!]) {
+      const after = getSegment(db, s.id)!;
+      // `one` carries a placeholder the memory unit lacks, so it lands as a tag-diff hit.
+      expect(after.origin).toMatch(/^tm_exact/);
+      expect(plainText(after.targetTokens!)).toContain('З пам\u2019яті');
+    }
+    expect(summary.exact + summary.tagdiff).toBe(2);
+    expect(summary.skipped).toBeGreaterThanOrEqual(3);
+    db.close();
+  });
+
+  it('propagates nothing from a confirmed form to its siblings, but still to a repeat outside the group', () => {
+    const xml = (grouped: boolean) => `<?xml version="1.0"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en" trgLang="uk">
+  <file id="f">
+    ${grouped ? '<group id="g">' : ''}
+      <unit id="a"><segment><source>items</source></segment></unit>
+      <unit id="b"><segment><source>items</source></segment></unit>
+    ${grouped ? '</group>' : ''}
+  </file>
+</xliff>`;
+    const run = (grouped: boolean) => {
+      const db = openProjectDb(dbPath());
+      createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'uk' });
+      const file = insertFile(
+        db,
+        'k.xlf',
+        assembleXliff(new TextEncoder().encode(xml(grouped)), {
+          srcLang: 'en',
+          tgtLang: 'uk',
+        }),
+        { actor: TEST_ACTOR },
+      );
+      const [a, b] = listSegments(db, file.id);
+      setSegmentTarget(db, a!.id, {
+        targetTokens: [{ t: 'text', v: 'елементи' }],
+        status: 'confirmed',
+        origin: null,
+        actor: TEST_ACTOR,
+      });
+      const summary = pretranslate(db, { actor: TEST_ACTOR });
+      const after = getSegment(db, b!.id)!;
+      db.close();
+      return { summary, after };
+    };
+    const grouped = run(true);
+    expect(grouped.after.targetTokens).toBeNull();
+    expect(grouped.summary.propagated).toBe(0);
+    const repeat = run(false);
+    expect(repeat.summary.propagated).toBe(1);
+    expect(plainText(repeat.after.targetTokens!)).toBe('елементи');
+  });
+});

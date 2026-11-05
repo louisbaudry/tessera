@@ -45,7 +45,7 @@ export function pretranslate(args: readonly string[], io: CliIo): number {
       `Pre-translated: ${s.exact} exact, ${s.tagdiff} tag-diff (draft), ` +
         `${s.fuzzy} fuzzy (draft), ` +
         `${s.propagated} propagated, ${s.unmatched} unmatched, ` +
-        `${s.skipped} skipped (confirmed or locked)`,
+        `${s.skipped} skipped (confirmed, locked or plural forms)`,
     );
   } finally {
     db.close();

@@ -158,6 +158,23 @@ describe('a unit context in a project (issue #351)', () => {
     reopened.close();
   });
 
+  it('stores the group of each unit (issue #353)', () => {
+    const { db, file } = uk();
+    expect(listSegments(db, file.id).map((s) => s.unitGroup)).toEqual([
+      null,
+      null,
+      null,
+      'itemCount',
+      'itemCount',
+      'itemCount',
+      'itemCount',
+      null,
+      null,
+      null,
+    ]);
+    db.close();
+  });
+
   it('changes nothing about the file: a zero-edit export is still the original', () => {
     const { db, file } = uk();
     const out = exportFile(db, file.id, { actor: TEST_ACTOR });

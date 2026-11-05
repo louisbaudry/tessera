@@ -15,6 +15,7 @@
  */
 
 import {
+  ambiguousSiblingIds,
   fuzzyOrigin,
   hasSpacedWords,
   isFuzzyThreshold,
@@ -81,7 +82,11 @@ export interface PretranslateSummary {
   readonly propagated: number;
   /** Eligible but nothing matched — left untouched. */
   readonly unmatched: number;
-  /** Confirmed or locked; never touched (v1-spec.md §6.1). */
+  /**
+   * Confirmed or locked, or one of several plural forms the file keeps apart in a
+   * group while they share a source text (`ambiguousSiblingIds`); never touched
+   * (v1-spec.md §6.1, software-localisation-spec.md G2).
+   */
   readonly skipped: number;
 }
 
@@ -132,6 +137,11 @@ export function pretranslate(
 
   const run = db.transaction((): PretranslateSummary => {
     const allSegments = listAllSegments(db);
+    // Plural forms of one string share a source text and want different targets, so
+    // no placement (an exact hit, a propagation, a fuzzy one) may pick one for them:
+    // whatever the memory holds for that text was written for one of the forms, and
+    // which one is not recorded. What arrived in the file is kept as it is.
+    const siblings = ambiguousSiblingIds(allSegments);
     const candidates =
       options.fileId === undefined
         ? allSegments
@@ -201,7 +211,7 @@ export function pretranslate(
     const placements: Placement[] = [];
 
     for (const segment of candidates) {
-      if (isProtectedFromPretranslate(segment)) {
+      if (isProtectedFromPretranslate(segment) || siblings.has(segment.id)) {
         skipped++;
         continue;
       }

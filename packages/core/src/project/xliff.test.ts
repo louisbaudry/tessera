@@ -357,6 +357,40 @@ describe('the software-strings fixture (en to uk)', () => {
     ).toBe(false);
   });
 
+  it('records the group a unit sits in, the innermost one, and null outside any (issue #353)', () => {
+    const { assembled } = persisted(NAME, EN_UK);
+    expect(assembled.segments.map((s) => s.unitGroup)).toEqual([
+      null,
+      null,
+      null,
+      'itemCount',
+      'itemCount',
+      'itemCount',
+      'itemCount',
+      null,
+      null,
+      null,
+    ]);
+    const nested = `<?xml version="1.0"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en" trgLang="uk">
+  <file id="f">
+    <group id="outer">
+      <unit id="a"><segment><source>A</source></segment></unit>
+      <group id="inner">
+        <unit id="b"><segment><source>B</source></segment></unit>
+      </group>
+      <unit id="c"><segment><source>C</source></segment></unit>
+    </group>
+    <unit id="d"><segment><source>D</source></segment></unit>
+  </file>
+</xliff>`;
+    expect(
+      assembleXliff(new TextEncoder().encode(nested), EN_UK).segments.map(
+        (s) => s.unitGroup,
+      ),
+    ).toEqual(['outer', 'inner', 'outer', null]);
+  });
+
   it('keeps a unit with no name and no notes as null, several notes one per line', () => {
     const xml = `<?xml version="1.0"?>
 <xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en" trgLang="uk">
