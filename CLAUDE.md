@@ -654,8 +654,15 @@ editor strip. The benchmark (slice 5) is not. Keep true:
   over the segment's _visible_ tags only. `validateDraft` maps markers to the
   source's own ids or returns a named reason, and an accepted draft holds no
   hidden tag (`carryHiddenTags` supplies them at write). Raising a prompt bound
-  or changing the wording is a new `PROMPT_VERSION`. The interface is
-  `DraftEngineAdapter`: `DraftEngine` is the `tessera`/`deepl` union.
+  or changing the wording is a new `PROMPT_VERSION` (v2 since #351). The
+  interface is `DraftEngineAdapter`: `DraftEngine` is the `tessera`/`deepl` union.
+- **A unit's key and notes are context, never text** (backlog #351, spec G1).
+  The XLIFF filter reads a unit's `name` and its own `<note>`s into
+  `segment.unit_name`/`unit_notes` (project schema v21), the editor shows them
+  read-only under the row (`UnitContext`, a sibling of the cells so
+  `sourceCaret`'s children stay the source's pieces), and `buildPrompt` sends them
+  escaped and bounded in `<unit_context>`. They enter no hash, match or QA rule;
+  DeepL never gets them; no portal or client-facing route returns a segment.
 - **DeepL is sent the marked text and nothing else, and only for a pair it is
   known to serve** (backlog #139, spec D40). `supports` on the adapter is asked
   once per run before the gate and any `ai.requested`, so an unserved pair is no

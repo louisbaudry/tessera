@@ -287,3 +287,29 @@ describe('v19: file.kind (issue #169)', () => {
     db.close();
   });
 });
+
+describe('v21: segment.unit_name and unit_notes (issue #351)', () => {
+  it('a v20 file keeps its segments, with no context', () => {
+    const path = dbPath();
+    openAndMigrate(path, {
+      applicationId: PROJECT_APPLICATION_ID,
+      migrations: PROJECT_MIGRATIONS.slice(0, 20),
+    }).close();
+    const seeded = new Database(path);
+    seeded.exec(`
+      INSERT INTO file (id, rel_path, original_blob, skeleton, part_map, imported_at)
+        VALUES (1, 'a.docx', x'00', '[]', '[]', '2026-01-01');
+      INSERT INTO segment
+        (id, file_id, part, ord, para_key, para_ord, source_tokens, format_table, source_hash, status, updated_at)
+        VALUES (1, 1, 'document', 0, 'p1', 0, '[]', '[]', 'h1', 'new', '2026-01-01');
+    `);
+    seeded.close();
+
+    const db = openProjectDb(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(PROJECT_MIGRATIONS.length);
+    expect(db.prepare('SELECT id, unit_name, unit_notes FROM segment').all()).toEqual([
+      { id: 1, unit_name: null, unit_notes: null },
+    ]);
+    db.close();
+  });
+});

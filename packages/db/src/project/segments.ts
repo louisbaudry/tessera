@@ -44,6 +44,8 @@ interface SegmentRow {
   origin: string | null;
   locked: number;
   fallback_copy: number;
+  unit_name: string | null;
+  unit_notes: string | null;
   updated_at: string;
 }
 
@@ -64,6 +66,8 @@ const fromRow = (row: SegmentRow): Segment => ({
   origin: row.origin as Origin | null,
   locked: Boolean(row.locked),
   fallbackCopy: Boolean(row.fallback_copy),
+  unitName: row.unit_name,
+  unitNotes: row.unit_notes,
   updatedAt: row.updated_at,
 });
 

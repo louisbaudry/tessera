@@ -41,6 +41,16 @@ export function statusOfState(state: string): SegmentStatus {
 }
 
 /**
+ * A unit's notes as one stored text, one note per line. Whitespace inside a note
+ * (a line break, a run of spaces) is collapsed to one space so the line count is
+ * the note count; the file itself is kept verbatim, so nothing is lost.
+ */
+export function joinNotes(notes: readonly string[]): string | null {
+  const lines = notes.map((n) => n.replace(/\s+/g, ' ').trim()).filter((n) => n !== '');
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
  * Reads an XLIFF 2.x file into the `file` row and `segment` rows a project
  * stores.
  *
@@ -89,6 +99,8 @@ export function assembleXliff(
       status,
       locked,
       fallbackCopy: false,
+      unitName: seg.unitName,
+      unitNotes: joinNotes(seg.unitNotes),
       ...(hasTarget ? { targetTokens } : {}),
     };
   });

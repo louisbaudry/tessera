@@ -33,6 +33,10 @@ export interface AssembledSegment {
   readonly locked: boolean;
   /** Inside an `mc:Fallback` (`fallbackRegionKeys`): counted as its twin. */
   readonly fallbackCopy: boolean;
+  /** The unit's name (an XLIFF key), when the file gave one; absent for a DOCX or PPTX. */
+  readonly unitName?: string | null;
+  /** The unit's notes, one per line, when the file gave any (XLIFF only, spec G1). */
+  readonly unitNotes?: string | null;
   /**
    * A target the file arrived with (XLIFF only, §3.8); its status is the
    * segment's `status`. A DOCX import never has one.

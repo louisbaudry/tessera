@@ -10,7 +10,7 @@ import { plainText, type Token } from '../model/token.js';
 import { readXliff } from '../xliff/document.js';
 import { XliffError } from '../xliff/scan.js';
 import type { AssembledFile } from './assemble.js';
-import { assembleXliff } from './assemble-xliff.js';
+import { assembleXliff, joinNotes } from './assemble-xliff.js';
 import { exportFileBytes } from './export-any.js';
 
 const FIXTURES = join(
@@ -328,6 +328,66 @@ describe('the software-strings fixture (en to uk)', () => {
     const { file, segments } = persisted(NAME, EN_UK);
     const { bytes } = exportFileBytes(file, segments);
     expect(Buffer.from(bytes).equals(Buffer.from(file.originalBlob))).toBe(true);
+  });
+
+  it("reads each unit's key and notes (issue #351), and never the file's own note", () => {
+    const { assembled } = persisted(NAME, EN_UK);
+    const byKey = new Map(assembled.segments.map((s) => [s.unitName, s.unitNotes]));
+    expect(byKey.get('saveButton')).toBe(
+      'Button, toolbar of the plant page. Imperative verb.',
+    );
+    expect(byKey.get('itemCount_few')).toBe(
+      'Plural, category "few" in Ukrainian (2 to 4, 22 to 24, not 12 to 14).',
+    );
+    expect(assembled.segments.map((s) => s.unitName)).toEqual([
+      'saveButton',
+      'cancelButton',
+      'welcomeBack',
+      'itemCount_one',
+      'itemCount_few',
+      'itemCount_many',
+      'itemCount_other',
+      'productName',
+      'bandUnlikely',
+      'emptyState',
+    ]);
+    // The file-level `<note category="checksum">` belongs to the file, not to any unit.
+    expect(
+      assembled.segments.some((s) => (s.unitNotes ?? '').includes('0000000000')),
+    ).toBe(false);
+  });
+
+  it('keeps a unit with no name and no notes as null, several notes one per line', () => {
+    const xml = `<?xml version="1.0"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en" trgLang="uk">
+  <file id="f">
+    <unit id="a"><segment><source>Open</source></segment></unit>
+    <unit id="b" name="statusOpen">
+      <notes>
+        <note>An adjective: the ticket is open.</note>
+        <note>  Two
+          lines &amp; <b>markup</b>  </note>
+        <note>   </note>
+      </notes>
+      <segment><source>Open</source></segment>
+    </unit>
+  </file>
+</xliff>`;
+    const { segments } = assembleXliff(new TextEncoder().encode(xml), EN_UK);
+    expect(segments[0]!.unitName).toBeNull();
+    expect(segments[0]!.unitNotes).toBeNull();
+    expect(segments[1]!.unitName).toBe('statusOpen');
+    expect(segments[1]!.unitNotes).toBe(
+      'An adjective: the ticket is open.\nTwo lines & markup',
+    );
+    // Two units, one source text: the context never enters the hash, so it never splits a repeat.
+    expect(segments[0]!.sourceHash).toBe(segments[1]!.sourceHash);
+  });
+
+  it('joins notes one per line and collapses whitespace inside a note', () => {
+    expect(joinNotes([])).toBeNull();
+    expect(joinNotes([' ', ''])).toBeNull();
+    expect(joinNotes(['a\n b', 'c'])).toBe('a b\nc');
   });
 
   it('makes one segment per unit, a plural group included, in document order', () => {

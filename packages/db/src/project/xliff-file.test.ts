@@ -118,3 +118,71 @@ describe('an XLIFF file in a project', () => {
     db.close();
   });
 });
+
+describe('a unit context in a project (issue #351)', () => {
+  function uk() {
+    dir = mkdtempSync(join(tmpdir(), 'cat-xliff-'));
+    const db = openProjectDb(join(dir, 'project.catdb'));
+    createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'uk' });
+    const bytes = load('xliff/software-strings.en-uk.xlf');
+    const file = insertFile(
+      db,
+      'catalogue.xlf',
+      assembleXliff(bytes, { srcLang: 'en', tgtLang: 'uk' }),
+      { actor: TEST_ACTOR },
+    );
+    return { db, file, path: join(dir, 'project.catdb') };
+  }
+
+  it('is stored with each segment and survives closing and reopening the project', () => {
+    const { db, file, path } = uk();
+    db.close();
+    const reopened = openProjectDb(path);
+    const segments = listSegments(reopened, file.id);
+    expect(segments[0]).toMatchObject({
+      unitName: 'saveButton',
+      unitNotes: 'Button, toolbar of the plant page. Imperative verb.',
+    });
+    expect(segments.map((s) => s.unitName)).toEqual([
+      'saveButton',
+      'cancelButton',
+      'welcomeBack',
+      'itemCount_one',
+      'itemCount_few',
+      'itemCount_many',
+      'itemCount_other',
+      'productName',
+      'bandUnlikely',
+      'emptyState',
+    ]);
+    reopened.close();
+  });
+
+  it('changes nothing about the file: a zero-edit export is still the original', () => {
+    const { db, file } = uk();
+    const out = exportFile(db, file.id, { actor: TEST_ACTOR });
+    expect(
+      Buffer.from(out.bytes).equals(
+        Buffer.from(load('xliff/software-strings.en-uk.xlf')),
+      ),
+    ).toBe(true);
+    db.close();
+  });
+
+  it('is absent for a DOCX segment', () => {
+    dir = mkdtempSync(join(tmpdir(), 'cat-xliff-'));
+    const db = openProjectDb(join(dir, 'project.catdb'));
+    createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'de' });
+    const docx = load('docx/form-minimal.docx');
+    const file = insertFile(db, 'a.docx', assembleFile(docx, rulesFor('en')), {
+      actor: TEST_ACTOR,
+    });
+    const segments = listSegments(db, file.id);
+    expect(segments.length).toBeGreaterThan(0);
+    for (const s of segments) {
+      expect(s.unitName).toBeNull();
+      expect(s.unitNotes).toBeNull();
+    }
+    db.close();
+  });
+});
