@@ -69,6 +69,9 @@ in a way a reviewer will meet at once:
   `source_hash` is populated with it as a draft.
 - *Exact placement* (§6.1, 3): an exact hit is placed as `translated`.
 - `consistency.target_differs` warns when one source has different targets.
+  *(S2 note, 2026-11-05: `seg.untranslated`, listed with it when this was first
+  written, compares a target with its own source and has no cross-unit part, so
+  it needed no change; only `consistency.target_differs` compares units.)*
 
 A plural group is the clean case. Ukrainian `itemCount` has four forms whose English source is the same sentence for
 `few`, `many` and `other`; confirming the `few` unit would propagate its wording into the other three, and the rule would

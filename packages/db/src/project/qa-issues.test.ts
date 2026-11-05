@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assembleFile, rulesFor } from '@cat-tool/core';
+import { assembleFile, assembleXliff, rulesFor } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -577,5 +577,54 @@ describe('runQaRules', () => {
     expect(found).toBeDefined();
     expect(found!.message).toContain('A different source sentence');
     db.close();
+  });
+});
+
+describe('consistency.target_differs and the plural forms of a group (issue #353)', () => {
+  const xml = (grouped: boolean) => `<?xml version="1.0"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en" trgLang="uk">
+  <file id="f">
+    ${grouped ? '<group id="g">' : ''}
+      <unit id="a"><segment><source>items</source></segment></unit>
+      <unit id="b"><segment><source>items</source></segment></unit>
+    ${grouped ? '</group>' : ''}
+  </file>
+</xliff>`;
+
+  function rulesFiredFor(grouped: boolean): string[] {
+    const db = openProjectDb(dbPath());
+    createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'uk' });
+    const file = insertFile(
+      db,
+      'k.xlf',
+      assembleXliff(new TextEncoder().encode(xml(grouped)), {
+        srcLang: 'en',
+        tgtLang: 'uk',
+      }),
+      { actor: TEST_ACTOR },
+    );
+    const [a, b] = listSegments(db, file.id);
+    for (const [seg, v] of [
+      [a!, 'елементи'],
+      [b!, 'елементів'],
+    ] as const) {
+      setSegmentTarget(db, seg.id, {
+        targetTokens: [{ t: 'text', v }],
+        status: 'translated',
+        origin: null,
+        actor: TEST_ACTOR,
+      });
+    }
+    const fired = [a!, b!].flatMap((s) => runQaRules(db, s.id).map((i) => i.rule));
+    db.close();
+    return fired;
+  }
+
+  it('does not warn that two plural forms of one group were translated differently', () => {
+    expect(rulesFiredFor(true)).not.toContain('consistency.target_differs');
+  });
+
+  it('still warns for the same two units outside a group', () => {
+    expect(rulesFiredFor(false)).toContain('consistency.target_differs');
   });
 });

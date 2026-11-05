@@ -663,6 +663,15 @@ editor strip. The benchmark (slice 5) is not. Keep true:
   `sourceCaret`'s children stay the source's pieces), and `buildPrompt` sends them
   escaped and bounded in `<unit_context>`. They enter no hash, match or QA rule;
   DeepL never gets them; no portal or client-facing route returns a segment.
+- **Plural forms of an XLIFF group are not repeats of one another** (backlog #353,
+  spec G2). The filter stores the innermost enclosing `<group>` id on each segment
+  (`segment.unit_group`, project schema v22). `ambiguousSiblingIds` (`core/model/siblings.ts`,
+  the one definition) names the forms of a group that share a source text with another
+  form of it; pre-translate places nothing on them (they count as `skipped`), and
+  `consistency.target_differs` does not compare units of one group (`inSameGroup`).
+  A unit that is its own in its group, and a repeat outside any group, are untouched.
+  The memory is not group-aware: confirming the forms still writes each to it, and
+  key-scoped matching stays a decision for H2's count (spec D4).
 - **DeepL is sent the marked text and nothing else, and only for a pair it is
   known to serve** (backlog #139, spec D40). `supports` on the adapter is asked
   once per run before the gate and any `ai.requested`, so an unserved pair is no

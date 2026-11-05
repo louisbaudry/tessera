@@ -18,7 +18,7 @@ Attached <job>/job.ctm as TM #2 (priority 2, write target)
 exit 0
 
 ## $ cat-tool pretranslate <job>/job.catdb
-Pre-translated: 14 exact, 1 tag-diff (draft), 1 fuzzy (draft), 0 propagated, 1 unmatched, 1 skipped (confirmed or locked)
+Pre-translated: 14 exact, 1 tag-diff (draft), 1 fuzzy (draft), 0 propagated, 1 unmatched, 1 skipped (confirmed, locked or plural forms)
 exit 0
 
 ## $ cat-tool qa <job>/job.catdb

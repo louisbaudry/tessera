@@ -1146,7 +1146,13 @@ On pre-translate, for each unlocked segment:
    confirmed segment.
 
 Pre-translate is idempotent and never touches `confirmed` or `locked`
-segments.
+segments, nor the **plural forms of an XLIFF group** (issue #353,
+`software-localisation-spec.md` G2): a unit that shares a source text with
+another unit of its own `<group>` gets no exact hit, no propagation and no fuzzy
+hit, so it keeps the target it arrived with. Which forms those are is
+`ambiguousSiblingIds` (`core/src/model/siblings.ts`); a repeat outside a group,
+or a form whose source is its own in the group, is pre-translated as before.
+They are counted in `skipped`.
 
 ### 6.1a Fuzzy matching (backlog #61)
 
