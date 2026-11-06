@@ -33,6 +33,7 @@ import {
   isFuzzyThreshold,
   isSlug,
   normaliseHost,
+  parseGlossaryCsv,
   parseTokens,
   primarySubtag,
   rulesFor,
@@ -60,6 +61,8 @@ import {
   createAccountSession,
   createGlossary,
   createProject,
+  GlossaryImportError,
+  importGlossaryRows,
   createTm,
   deleteAccountSession,
   confirmEditedSegment,
@@ -1814,6 +1817,59 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     mkdirSync(dirname(path), { recursive: true });
     createGlossary(path, { name: slug, generator: GLOSSARY_GENERATOR }).close();
     return reply.code(201).send({ slug });
+  });
+
+  // A glossary CSV into an existing glossary (Epic 16 slice S3, issue #356):
+  // JSON `{ csv, srcLang }`, because a file is a body and never a path. The file is
+  // read whole first and refused with every bad line; it is written all or nothing,
+  // by the actor of the session, through the one rendering write the editor uses.
+  app.post<{
+    Params: { name: string };
+    Body: { csv?: unknown; srcLang?: unknown } | undefined;
+  }>('/api/glossaries/:name/import', async (req, reply) => {
+    const tenant = ownTenant(req);
+    // No tenant (a vendor) has no glossaries: the 404 a missing one gets.
+    if (!tenant)
+      return reply.code(404).send({ error: `no glossary named "${req.params.name}"` });
+    const { csv, srcLang } = req.body ?? {};
+    let file: string;
+    try {
+      file = glossaryPath(config.storageRoot, tenant, req.params.name);
+    } catch (err) {
+      if (err instanceof InvalidNameError)
+        return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+    if (!existsSync(file)) {
+      return reply.code(404).send({ error: `no glossary named "${req.params.name}"` });
+    }
+    if (typeof csv !== 'string' || typeof srcLang !== 'string') {
+      return reply.code(400).send({ error: 'csv and srcLang are required, as text' });
+    }
+    const parsed = parseGlossaryCsv(csv, srcLang);
+    if (parsed.refusals.length > 0) {
+      return reply.code(422).send({
+        error: `the file has ${parsed.refusals.length} problem${parsed.refusals.length === 1 ? '' : 's'}; nothing was imported`,
+        refusals: parsed.refusals,
+      });
+    }
+    const glossary = openGlossary(file);
+    try {
+      return importGlossaryRows(glossary, parsed.rows, {
+        srcLang,
+        actor: sessionActor(req),
+      });
+    } catch (err) {
+      if (err instanceof GlossaryImportError) {
+        return reply.code(422).send({
+          error: `${err.message}; nothing was imported`,
+          refusals: [{ line: err.line, message: err.message }],
+        });
+      }
+      throw err;
+    } finally {
+      glossary.close();
+    }
   });
 
   /** A project's attached glossaries as the API shows them: slugs, never paths. */

@@ -527,6 +527,24 @@ const ROUTES: Record<string, Entry> = {
       },
     ],
   },
+  'POST /api/glossaries/:name/import': {
+    kind: 'object',
+    pairs: () => [
+      {
+        actual: {
+          method: 'POST',
+          url: '/api/glossaries/b-gl/import',
+          body: { csv: 'term,lang,rendering\nsource,uk,x\n', srcLang: 'en' },
+        },
+        missing: {
+          method: 'POST',
+          url: '/api/glossaries/b-gone/import',
+          body: { csv: 'term,lang,rendering\nsource,uk,x\n', srcLang: 'en' },
+        },
+        echo: ['b-gl', 'b-gone'],
+      },
+    ],
+  },
   'DELETE /api/webhooks/:id': {
     kind: 'object',
     pairs: (w) => [

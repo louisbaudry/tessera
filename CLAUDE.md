@@ -506,6 +506,12 @@ format for glossaries, through the same shared migration runner —
   commit makes, never a second path into the `.ctg`. The editor's `Ctrl+Shift+D`
   reads the DOM selection as the box opens (one selection exists, so one side is
   selected and the other typed).
+- **A glossary CSV enters through `importGlossaryRows`, all or nothing** (backlog #356,
+  `core/glossary/import.ts`, `POST /api/glossaries/:name/import`). The parser refuses with a
+  line for each problem and never repairs; the write is `termForSource` then `writeRendering`
+  (`custom` for a rendering, `deprecation` for each `avoid`), the one write path, so a second
+  way into the `.ctg` is a bug. A `.ctg` has no term status: `review` and `keep` are notes on
+  the rendering.
 - **A glossary session is held in server memory, and detection consults
   only the project's write-target `.ctg`** (backlog #43a,
   `smart-glossary-spec.md` §5a.1). A `termId` is a row in one file;
@@ -752,7 +758,7 @@ run under the same protocol as semantic matching, in
 - **Numbers only, no strings and no reviewer's name**, even though the strings are
   public; the reviewer stays in Tessera's audit log.
 - **Every session on this feature ends with a `journal.md` entry**, append-only,
-  even when nothing was measured. Slices S0 to S2 are built; S3 to S9 are in the
+  even when nothing was measured. Slices S0 to S3 are built; S4 to S9 are in the
   spec's §6, one card each.
 - **The fixtures are invented and the output of no tool**, so they prove the
   filter agrees with the shape the spec describes and nothing more.

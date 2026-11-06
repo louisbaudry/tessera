@@ -73,3 +73,4 @@ export * from './audit/actions.js';
 export * from './audit/chain.js';
 export * from './delivery/content-disposition.js';
 export * from './glossary/export.js';
+export * from './glossary/import.js';
