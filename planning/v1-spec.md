@@ -719,6 +719,17 @@ from the format table, the existing `<target>` content replaced (a self-closing
 `state` is set to `translated` (or `initial` for a `draft`); a start tag with no
 `state` gets one. A segment without a target is left alone.
 
+**The reviewed-state option** (issue #358, `software-localisation-spec.md` G5). The
+state a segment gets is `translated` whatever a person did, so a file cannot say which
+segments were confirmed. An export may be asked (`reviewedState`, `?reviewed=1` on the
+download route, `--reviewed-state` on the CLI) to write `final` for a `confirmed`
+segment instead; every other segment is exactly as above, an arrived `final` or
+`reviewed` is never lowered, and without the option nothing changes (a zero-edit export is
+still the original bytes). It applies to XLIFF only, and `project.exported` records
+`reviewedState: true` in its detail only for an export that applied it. `final` here
+means "a person confirmed this segment in Tessera", not that a reviewer approved it: a
+vendor assignment's `reviewed` status (`vendor-spec.md`) is not carried into the file.
+
 **A unit's context is read and shown, never interpreted** (issue #351,
 `software-localisation-spec.md` G1). The unit's `name` and the text of the
 `<note>`s directly under its own `<notes>` (not a group's or the file's) are

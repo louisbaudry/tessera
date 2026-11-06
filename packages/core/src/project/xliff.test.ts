@@ -275,6 +275,53 @@ describe('exportFileBytes for XLIFF', () => {
     ).toBe(decode(file.originalBlob));
   });
 
+  describe('the reviewed state (issue #358)', () => {
+    const states = (xml: string): (string | undefined)[] =>
+      [...xml.matchAll(/<xlf:segment\b([^>]*)>/g)].map(
+        (m) => /state="([^"]*)"/.exec(m[1]!)?.[1],
+      );
+
+    it('writes final for a confirmed segment only when asked, and leaves the rest as they are', () => {
+      const { file, segments } = persisted('prefilled.en-de.xlf');
+      // 0 translated (kept), 1 draft (confirmed here), 2 final already (translated by status).
+      const edited = segments.map((s, i) =>
+        i === 1 ? { ...s, status: 'confirmed' as const } : s,
+      );
+      const asked = decode(exportFileBytes(file, edited, { reviewedState: true }).bytes);
+      expect(states(asked).slice(0, 3)).toEqual(['translated', 'final', 'final']);
+      const plain = decode(exportFileBytes(file, edited).bytes);
+      expect(states(plain).slice(0, 3)).toEqual(['translated', 'translated', 'final']);
+      // The option changes the state attribute and nothing else.
+      expect(
+        asked.replace(
+          'state="final">\n        <xlf:source>Knock',
+          'state="translated">\n        <xlf:source>Knock',
+        ),
+      ).toBe(plain);
+    });
+
+    it('does not lower a final that arrived, nor touch a translated one that is not confirmed', () => {
+      const { file, segments } = persisted('prefilled.en-de.xlf');
+      const out = exportFileBytes(file, segments, { reviewedState: true });
+      expect(Buffer.from(out.bytes).equals(Buffer.from(file.originalBlob))).toBe(true);
+    });
+
+    it('is a no-op for a confirmed segment the file already calls final, so the export stays the original', () => {
+      const { file, segments } = persisted('prefilled.en-de.xlf');
+      const edited = segments.map((s, i) =>
+        i === 2 ? { ...s, status: 'confirmed' as const } : s,
+      );
+      const out = exportFileBytes(file, edited, { reviewedState: true });
+      expect(Buffer.from(out.bytes).equals(Buffer.from(file.originalBlob))).toBe(true);
+    });
+
+    it('leaves a draft as initial even when asked', () => {
+      const { file, segments } = persisted('prefilled.en-de.xlf');
+      const out = decode(exportFileBytes(file, segments, { reviewedState: true }).bytes);
+      expect(states(out)[1]).toBe('initial');
+    });
+  });
+
   it('round-trips a translated export through the reader', () => {
     const { file, segments } = persisted('basic.en-de.xlf');
     const edited = segments.map((s) =>

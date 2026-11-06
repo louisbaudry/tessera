@@ -13,17 +13,21 @@ import {
   type CliIo,
 } from '../support.js';
 
-export const EXPORT_USAGE = 'cat-tool export <project.catdb> [--out <dir>] [--file <id>]';
+export const EXPORT_USAGE =
+  'cat-tool export <project.catdb> [--out <dir>] [--file <id>] [--reviewed-state]';
 
 /**
  * Writes every file (or one) back to its own format (DOCX, or XLIFF by the
  * file's kind) under its original `rel_path` in `--out`, targets spliced in per
- * v1-spec.md §3.4's fold rule (§3.8 for XLIFF).
+ * v1-spec.md §3.4's fold rule (§3.8 for XLIFF). `--reviewed-state` writes `final`
+ * for the confirmed segments of an XLIFF file (issue #358); other kinds are
+ * unaffected.
  */
 export function exportCommand(args: readonly string[], io: CliIo): number {
   const { values, positionals } = parse(args, {
     out: { type: 'string' },
     file: { type: 'string' },
+    'reviewed-state': { type: 'boolean' },
   });
   const projectPath = positional(positionals, 0, 'project path', EXPORT_USAGE);
   const fileId = integer(values.file, '--file');
@@ -44,7 +48,10 @@ export function exportCommand(args: readonly string[], io: CliIo): number {
 
     const actor = cliActor();
     for (const id of ids) {
-      const { file, bytes, summary } = exportFile(db, id, { actor });
+      const { file, bytes, summary } = exportFile(db, id, {
+        actor,
+        reviewedState: values['reviewed-state'] === true,
+      });
       const outPath = join(outDir, file.relPath);
       mkdirSync(dirname(outPath), { recursive: true });
       writeFileSync(outPath, bytes);

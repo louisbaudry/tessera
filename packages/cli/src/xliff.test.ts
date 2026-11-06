@@ -50,6 +50,19 @@ describe('cat-tool: XLIFF', () => {
     expect(readFileSync(written).equals(readFileSync(BASIC))).toBe(true);
   });
 
+  it('export --reviewed-state is accepted, and with nothing confirmed still writes the original (issue #358)', () => {
+    const project = join(dir, 'project.catdb');
+    run('init', project, '--src', 'en', '--tgt', 'de');
+    run('add-file', project, BASIC);
+    const out = join(dir, 'out');
+    const exported = run('export', project, '--out', out, '--reviewed-state');
+    expect(exported.err).toBe('');
+    expect(exported.code).toBe(0);
+    expect(readFileSync(join(out, 'basic.en-de.xlf')).equals(readFileSync(BASIC))).toBe(
+      true,
+    );
+  });
+
   it('imports a source language that has no segmentation rules, which a DOCX cannot', () => {
     const file = join(dir, 'ja.xlf');
     writeFileSync(

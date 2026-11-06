@@ -321,6 +321,11 @@ client contacts in (§2b). Keep true:
   `exportFileBytes` dispatches on it, and the column has no CHECK on purpose
   (`file` is referenced, `rebuildTable` refuses it). The fixtures in
   `fixtures/xliff/` are hand-written: no real tool's XLIFF has been read.
+- **An XLIFF export writes `final` for a confirmed segment only when asked** (issue #358,
+  `XliffExportOptions.reviewedState`, `?reviewed=1`, `--reviewed-state`). Off by default, so a
+  zero-edit export stays the original bytes; it never lowers an arrived `final` or `reviewed`;
+  `project.exported` records it only for an XLIFF export that applied it. `final` means a person
+  confirmed the segment in Tessera, not that a vendor review passed.
 - **A translated export is validated differentially, never against an
   absolute bar** (issue #265, `v1-spec.md` §3.7, `pnpm test:ooxml`). The Open
   XML SDK validator (`scripts/ooxml-validate`, a CI-only .NET tool) must find
@@ -758,7 +763,7 @@ run under the same protocol as semantic matching, in
 - **Numbers only, no strings and no reviewer's name**, even though the strings are
   public; the reviewer stays in Tessera's audit log.
 - **Every session on this feature ends with a `journal.md` entry**, append-only,
-  even when nothing was measured. Slices S0 to S3 are built; S4 to S9 are in the
+  even when nothing was measured. Slices S0 to S4 are built; S5 to S9 are in the
   spec's §6, one card each.
 - **The fixtures are invented and the output of no tool**, so they prove the
   filter agrees with the shape the spec describes and nothing more.

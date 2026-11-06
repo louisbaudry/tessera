@@ -98,3 +98,16 @@ and `keep`, became notes on the rendering, so a person sees them but no rule rea
 question S5's numbers should answer, not a guess made here.
 
 Not done: no results file. H1 to H3 are still untested, and no real termbase was read.
+
+## 2026-11-06, S4: reviewed state on export
+
+Built (issue #358): an XLIFF export may write `final` for a confirmed segment (off by default;
+`reviewedState`, `?reviewed=1`, `--reviewed-state`), logged in the export event only when applied.
+Nothing was run against a hypothesis; the tests cover the mechanics, with a control that the default
+export is unchanged.
+
+Observed: the segment has no field for "a native reader approved this", because a vendor review is an
+assignment status in the roster. So `final` can say only "confirmed in Tessera", and the distinction G5 wanted
+(translator versus reader) is not in the file. Round 1 should say whether the workbench needs it.
+
+Not done: no results file. H1 to H3 are still untested, and no real tool's XLIFF was read.

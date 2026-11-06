@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   assembleFile,
+  assembleXliff,
   importDocx,
   readDocx,
   rulesFor,
@@ -13,6 +14,7 @@ import {
 } from '@cat-tool/core';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { listEvents } from '../audit/events.js';
 import { exportFile, ProjectExportError } from './export.js';
 import { insertFile } from './files.js';
 import { openProjectDb } from './index.js';
@@ -75,6 +77,63 @@ describe('exportFile', () => {
     expect(texts.some((t) => t.includes('TRADUIT'))).toBe(true);
     expect(texts.length).toBe(translatableSegments(importDocx(bytes)).length);
     db.close();
+  });
+
+  describe('the reviewed state (issue #358)', () => {
+    const XLIFF = new Uint8Array(
+      readFileSync(join(FIXTURES, '../xliff/basic.en-de.xlf')),
+    );
+    function xliffProject() {
+      dir = mkdtempSync(join(tmpdir(), 'cat-export-'));
+      const db = openProjectDb(join(dir, 'project.catdb'));
+      createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'de' });
+      const file = insertFile(
+        db,
+        'basic.en-de.xlf',
+        assembleXliff(XLIFF, { srcLang: 'en', tgtLang: 'de' }),
+        {
+          actor: TEST_ACTOR,
+        },
+      );
+      const seg = listSegments(db, file.id).find((s) => !s.locked)!;
+      setSegmentTarget(db, seg.id, {
+        actor: TEST_ACTOR,
+        targetTokens: [{ t: 'text', v: 'Das Gartentor ist offen.' }],
+        status: 'confirmed',
+        origin: null,
+      });
+      return { db, file };
+    }
+    const exportedDetails = (db: ReturnType<typeof openProjectDb>) =>
+      listEvents(db, { subjectType: 'file' })
+        .filter((e) => e.action === 'project.exported')
+        .map((e) => (typeof e.detail === 'string' ? JSON.parse(e.detail) : e.detail));
+
+    it('writes final for confirmed segments when asked, and records that in the event', () => {
+      const { db, file } = xliffProject();
+      const plain = exportFile(db, file.id, { actor: TEST_ACTOR });
+      const asked = exportFile(db, file.id, { actor: TEST_ACTOR, reviewedState: true });
+      const text = (b: Uint8Array) => new TextDecoder().decode(b);
+      expect(text(plain.bytes)).not.toContain('state="final"');
+      expect(text(asked.bytes)).toContain('state="final"');
+      expect(exportedDetails(db)).toEqual([
+        { sha256: plain.sha256 },
+        { sha256: asked.sha256, reviewedState: true },
+      ]);
+      db.close();
+    });
+
+    it('is ignored, and not logged, for a DOCX, which has no such state', () => {
+      const { db, file } = projectWith('form-minimal.docx');
+      const plain = exportFile(db, file.id, { actor: TEST_ACTOR });
+      const asked = exportFile(db, file.id, { actor: TEST_ACTOR, reviewedState: true });
+      expect(asked.sha256).toBe(plain.sha256);
+      expect(exportedDetails(db)).toEqual([
+        { sha256: plain.sha256 },
+        { sha256: plain.sha256 },
+      ]);
+      db.close();
+    });
   });
 
   it('refuses an unknown file id', () => {
