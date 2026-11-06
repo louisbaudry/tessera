@@ -84,3 +84,17 @@ a second project over the same strings can find three targets for one source; th
 polysemy question H2 counts, not something S2 settles.
 
 Not done: no results file. H1 to H3 are still untested.
+
+## 2026-11-06, S3: glossary import
+
+Built (issue #356): a glossary CSV (`term,lang,rendering,status,avoid,keep`) is read whole, refused
+by line, and written all or nothing into a `.ctg` through the one rendering write. Nothing was run
+against a hypothesis; the tests cover the mechanics (parser refusals, transaction, notes, a second
+import, the route's isolation).
+
+Observed while building: the workbench's two glossary facts that a `.ctg` has no home for, `status`
+and `keep`, became notes on the rendering, so a person sees them but no rule reads them. Whether an
+`official` rendering should weigh more than a `review` one in `term.glossary_mismatch` is the kind of
+question S5's numbers should answer, not a guess made here.
+
+Not done: no results file. H1 to H3 are still untested, and no real termbase was read.

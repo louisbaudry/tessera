@@ -5318,7 +5318,7 @@ an address-only contact, unique per portal file in lower case, needs no tenant c
 tenant's), and the gateway's credential walk covered the four new routes with no change. Contact writes
 are not audited, like the portal's other client and rate writes.
 
-### Epic 16 — Software localisation (spec'd 2026-10-31, decisions taken 2026-11-01, S0 to S2 built 2026-11-05)
+### Epic 16 — Software localisation (spec'd 2026-10-31, decisions taken 2026-11-01, S0 to S3 built 2026-11-05/06)
 
 Design in `planning/software-localisation-spec.md` (decisions D1 to D9): the translation of the OSINT
 Workbench's interface is Tessera's first real keyed-strings scenario, run as dogfood on Tessera's own tenant
@@ -5401,7 +5401,39 @@ three rules of the tool read that as a repeat. What it taught:
   forms at all (a group of related strings with a repeated word is treated the same way, as it must be: the file said
   they belong together), and whether H2's polysemy count needs more.
 
-Slices S1 to S9 are in the spec's §6, one card each when taken.
+**#356 · ~~Software localisation S3: glossary import from CSV into a `.ctg`~~ · DONE —
+`core/src/glossary/import.ts` (`parseGlossaryCsv`), `db/src/glossary/session.ts` (`importGlossaryRows`,
+`GlossaryImportError`), `POST /api/glossaries/:name/import` in `server/src/app.ts`.**
+
+A glossary of 100 terms in three languages could be held by a `.ctg` and entered only one term at a time. What it taught:
+
+- **A file is read whole and refused whole.** The parser never throws and never repairs: every bad line is a refusal
+  with its own line number (quotes that do not close, a cell short of the header, a status that is neither `official`
+  nor `review`, the source language as a target, a second rendering of one term in one language), and one refusal
+  refuses the file. A `GlossaryImportError` from the glossary itself rolls the transaction back and names the row.
+- **Columns:** `term,lang,rendering` required, `status,avoid,keep` optional, any order. `term` is in the import's source
+  language (a request field, not a column: two source languages are two files). `avoid` is split on `|`, because a comma
+  is the column's and a semicolon turns up inside terms. `keep` means the rendering is the term itself, so the
+  `rendering` cell may be empty or equal to it and anything else is refused as a contradiction.
+- **One write path.** Each row is `termForSource` (the lookup and creation `addTermFromText` already made, now shared)
+  and then `writeRendering` with kind `custom`; each `avoid` entry is `writeRendering` with kind `deprecation`, which
+  is what makes a variant `forbidden`. No second route into the file, and the actor is required.
+- **`status` has no column in a `.ctg`.** `review` is kept as a note on the rendering (`under review`) and `keep` as
+  `kept as in the source language`, never dropped; a plain `official` row clears a note an earlier import wrote and
+  leaves any note a person typed, and an import appends its own after theirs once. Whether a `review` rendering should
+  be withheld from QA until a person settles it is not decided here; it is imported as preferred like any `custom`.
+- **Importing twice moves nothing but the log**: no variant changes (`rev` stays), and each rendering gets one more
+  `custom` decision. A test pins it.
+- **The route is one body, not a path** (`{ csv, srcLang }`), owner-side and named by slug, with the same 404 for a
+  missing glossary, another tenant's and a vendor's; the isolation matrix has its entry. There is no screen: the
+  workbench's 100 terms go in through the route, and a screen is a card when someone wants one.
+- Mutation checks: with the duplicate rule removed, the parser test for it fails; with the transaction removed, the
+  all-or-nothing test fails; with `avoid` written as `custom`, the forbidden test fails.
+- Not verified: no real termbase CSV was read (the fixture CSVs are invented, like the others), a file from a spreadsheet
+  program (its quoting, encoding and delimiter) beyond RFC 4180 with a BOM, and a 20,000-row file's time (the limit is a
+  guess at what one request should carry).
+
+Slices S4 to S9 are in the spec's §6, one card each when taken.
 
 ## Not in this backlog (Epics 0–7)
 

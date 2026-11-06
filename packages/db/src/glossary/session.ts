@@ -14,6 +14,7 @@
 import {
   formatActor,
   primarySubtag,
+  type GlossaryImportRow,
   termKey,
   type AuditActor,
   type GlossarySession,
@@ -80,16 +81,21 @@ function termFor(
     }
     return termId;
   }
-  const found = findTermBySource(db, langs.srcLang, term);
-  if (found !== null) return found;
-  const created = insertTerm(db);
-  addVariant(db, {
-    termId: created.id,
-    lang: langs.srcLang,
-    text: term,
-    updatedBy: decidedBy,
-  });
-  return created.id;
+  return termForSource(db, langs.srcLang, term, decidedBy).termId;
+}
+
+/** The live term with this source form, or a new one holding it. */
+function termForSource(
+  db: Database.Database,
+  srcLang: string,
+  source: string,
+  decidedBy: string,
+): { termId: number; created: boolean } {
+  const found = findTermBySource(db, srcLang, source);
+  if (found !== null) return { termId: found, created: false };
+  const termId = insertTerm(db).id;
+  addVariant(db, { termId, lang: srcLang, text: source, updatedBy: decidedBy });
+  return { termId, created: true };
 }
 
 /** A rendering of a term in the target language, and the decision that settles it. */
@@ -102,6 +108,8 @@ interface RenderingWrite {
   readonly decidedBy: string;
   readonly sourceProject?: string;
   readonly sourceSegment?: number;
+  /** A note on the rendering's variant; omitted leaves an existing note alone, null clears it. */
+  readonly note?: string | null;
 }
 
 /**
@@ -125,6 +133,7 @@ function writeRendering(db: Database.Database, write: RenderingWrite): void {
       termId: write.termId,
       lang,
       text: write.rendering,
+      note: write.note ?? undefined,
       forbidden: forbid,
       updatedBy: write.decidedBy,
     });
@@ -134,8 +143,13 @@ function writeRendering(db: Database.Database, write: RenderingWrite): void {
     // already holds is a decision (logged below), not an edit of the entry.
     // Choosing a forbidden one clears it — the translator is the authority
     // (decision 5), and the decision row is where that is recorded.
-    if (existing.forbidden !== forbid) {
-      updateVariant(db, existing.id, { forbidden: forbid, updatedBy: write.decidedBy });
+    const noteChanged = write.note !== undefined && write.note !== existing.note;
+    if (existing.forbidden !== forbid || noteChanged) {
+      updateVariant(db, existing.id, {
+        forbidden: forbid,
+        ...(noteChanged ? { note: write.note } : {}),
+        updatedBy: write.decidedBy,
+      });
     }
   }
 
@@ -205,17 +219,7 @@ export function addTermFromText(
   if (termKey(target) === '') throw new TermError('a term needs a rendering');
   const decidedBy = options.actor.label ?? formatActor(options.actor.actor);
   return db.transaction((): AddTermResult => {
-    let termId = findTermBySource(db, options.srcLang, source);
-    const created = termId === null;
-    if (termId === null) {
-      termId = insertTerm(db).id;
-      addVariant(db, {
-        termId,
-        lang: options.srcLang,
-        text: source,
-        updatedBy: decidedBy,
-      });
-    }
+    const { termId, created } = termForSource(db, options.srcLang, source, decidedBy);
     writeRendering(db, {
       termId,
       tgtLang: options.tgtLang,
@@ -226,6 +230,142 @@ export function addTermFromText(
       sourceProject: options.sourceProject,
     });
     return { termId, created };
+  })();
+}
+
+/** The note a `keep` row's rendering carries. */
+export const KEEP_NOTE = 'kept as in the source language';
+/** The note a `review` row's rendering carries (a `.ctg` has no term status). */
+export const REVIEW_NOTE = 'under review';
+
+/** Every note an import can write, so a later import knows which ones are its own. */
+const IMPORT_NOTES: ReadonlySet<string> = new Set([
+  KEEP_NOTE,
+  REVIEW_NOTE,
+  `${KEEP_NOTE}; ${REVIEW_NOTE}`,
+]);
+
+export interface ImportGlossaryOptions {
+  /** The language of every row's `term`. */
+  readonly srcLang: string;
+  /** Who imported — required, never defaulted (as {@link CommitGlossaryOptions}). */
+  readonly actor: AuditActor;
+  readonly sourceProject?: string;
+}
+
+export interface ImportGlossaryResult {
+  /** Terms the file created. */
+  readonly termsCreated: number;
+  /** Terms the file added a rendering to that were already in the glossary. */
+  readonly termsExisting: number;
+  /** Renderings written (one `custom` decision each). */
+  readonly renderings: number;
+  /** Renderings written as `forbidden` (one `deprecation` decision each). */
+  readonly forbidden: number;
+  /** Rows carrying `review`, whose renderings were noted rather than withheld. */
+  readonly review: number;
+}
+
+/** Thrown by {@link importGlossaryRows} with the row's own line; the file is left as it was. */
+export class GlossaryImportError extends Error {
+  constructor(
+    readonly line: number,
+    message: string,
+  ) {
+    super(`line ${line}: ${message}`);
+    this.name = 'GlossaryImportError';
+  }
+}
+
+/**
+ * Imports rows `parseGlossaryCsv` accepted (Epic 16 slice S3, issue #356):
+ * all of them or none. Each row finds or creates its term by source form, then
+ * writes its rendering as a `custom` decision through {@link writeRendering},
+ * the same write the editor's add-term and a session's commit make, and each
+ * `avoid` entry as a `forbidden` rendering (a `deprecation` decision). A `keep`
+ * or `review` row says so in the rendering's note. One transaction, so a row the
+ * `.ctg` refuses (a `TermError`) rolls back everything before it and is reported
+ * with its line.
+ *
+ * Importing the same file twice adds a second decision per rendering and moves
+ * nothing else: the log records that someone chose it again.
+ *
+ * @throws {GlossaryImportError} on a row the glossary refuses.
+ */
+export function importGlossaryRows(
+  db: Database.Database,
+  rows: readonly GlossaryImportRow[],
+  options: ImportGlossaryOptions,
+): ImportGlossaryResult {
+  const decidedBy = options.actor.label ?? formatActor(options.actor.actor);
+  return db.transaction((): ImportGlossaryResult => {
+    let termsCreated = 0;
+    let termsExisting = 0;
+    let renderings = 0;
+    let forbidden = 0;
+    let review = 0;
+    for (const row of rows) {
+      try {
+        const { termId, created } = termForSource(
+          db,
+          options.srcLang,
+          row.term,
+          decidedBy,
+        );
+        if (created) termsCreated++;
+        else termsExisting++;
+        const notes = [
+          row.keep ? KEEP_NOTE : null,
+          row.status === 'review' ? REVIEW_NOTE : null,
+        ];
+        const wanted = notes.filter((n) => n !== null).join('; ');
+        // A row that is plain `official` clears the notes an earlier import
+        // wrote, and only those.
+        const held = listVariants(db, termId).find(
+          (v) =>
+            v.plain === termKey(row.rendering) &&
+            primarySubtag(v.lang) === primarySubtag(row.lang),
+        )?.note;
+        const ours = held == null || IMPORT_NOTES.has(held);
+        // A note a person typed is theirs: ours is added after it, once, never over it.
+        const note =
+          wanted === ''
+            ? ours && held != null
+              ? null
+              : undefined
+            : ours
+              ? wanted
+              : held.includes(wanted)
+                ? undefined
+                : `${held}; ${wanted}`;
+        const base = {
+          termId,
+          tgtLang: row.lang,
+          rejected: [] as string[],
+          decidedBy,
+          sourceProject: options.sourceProject,
+        };
+        writeRendering(db, {
+          ...base,
+          rendering: row.rendering,
+          kind: 'custom',
+          note,
+        });
+        // The parse refused an `avoid` entry equal to the rendering, so no
+        // forbidden write here can flip the variant the line above settled.
+        for (const avoided of row.avoid) {
+          writeRendering(db, { ...base, rendering: avoided, kind: 'deprecation' });
+          forbidden++;
+        }
+        renderings++;
+        if (row.status === 'review') review++;
+      } catch (err) {
+        if (err instanceof TermError)
+          throw new GlossaryImportError(row.line, err.message);
+        throw err;
+      }
+    }
+    return { termsCreated, termsExisting, renderings, forbidden, review };
   })();
 }
 

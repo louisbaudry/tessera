@@ -208,6 +208,84 @@ describe('glossaries under the account root', () => {
   });
 });
 
+describe('importing a glossary CSV', () => {
+  const importCsv = (token: string, name: string, payload: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/glossaries/${name}/import`,
+      headers: auth(token),
+      payload,
+    });
+  const glossaryFile = () =>
+    join(config.storageRoot, alice.storageRoot, 'glossaries', 'acme.ctg');
+  const CSV =
+    'term,lang,rendering,status,avoid,keep\nsource,uk,джерело,official,джерела,\nOSINT,uk,,review,,yes\n';
+
+  it('writes the rows as the session’s decisions and answers with the counts', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    await createGlossaryNamed(token, 'acme');
+    const res = await importCsv(token, 'acme', { csv: CSV, srcLang: 'en' });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toEqual({
+      termsCreated: 2,
+      termsExisting: 0,
+      renderings: 2,
+      forbidden: 1,
+      review: 1,
+    });
+    const glossary = openGlossary(glossaryFile());
+    expect(countTerms(glossary)).toBe(2);
+    const by = glossary
+      .prepare('SELECT DISTINCT decided_by AS by FROM term_decision')
+      .all();
+    expect(by).toEqual([{ by: expect.stringContaining('alice@example.com') }]);
+    glossary.close();
+  });
+
+  it('refuses a file with bad lines as a whole, naming every line, and writes nothing', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    await createGlossaryNamed(token, 'acme');
+    const res = await importCsv(token, 'acme', {
+      csv: 'term,lang,rendering\nok,uk,добре\n,uk,x\nbad,u k,y\n',
+      srcLang: 'en',
+    });
+    expect(res.statusCode).toBe(422);
+    expect(
+      (res.json() as { refusals: { line: number }[] }).refusals.map((r) => r.line),
+    ).toEqual([3, 4]);
+    const glossary = openGlossary(glossaryFile());
+    expect(countTerms(glossary)).toBe(0);
+    glossary.close();
+  });
+
+  it('answers 400 to a body that is not text or a name outside the slug alphabet, and 404 for a glossary that is not there', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    await createGlossaryNamed(token, 'acme');
+    expect((await importCsv(token, 'acme', { csv: 3, srcLang: 'en' })).statusCode).toBe(
+      400,
+    );
+    expect((await importCsv(token, 'acme', { csv: CSV })).statusCode).toBe(400);
+    expect((await importCsv(token, 'nope', { csv: CSV, srcLang: 'en' })).statusCode).toBe(
+      404,
+    );
+    expect(
+      (await importCsv(token, '..%2Fx', { csv: CSV, srcLang: 'en' })).statusCode,
+    ).toBe(400);
+  });
+
+  it('does not let another account import into this one’s glossary', async () => {
+    const a = await login('alice@example.com', 'alice-pw');
+    const b = await login('bob@example.com', 'bob-pw');
+    await createGlossaryNamed(a, 'acme');
+    expect((await importCsv(b, 'acme', { csv: CSV, srcLang: 'en' })).statusCode).toBe(
+      404,
+    );
+    const glossary = openGlossary(glossaryFile());
+    expect(countTerms(glossary)).toBe(0);
+    glossary.close();
+  });
+});
+
 describe('attaching a glossary to a project', () => {
   it('attaches after the others, moves the write target, shows slugs not paths, and logs each change under the session', async () => {
     const token = await login('alice@example.com', 'alice-pw');
