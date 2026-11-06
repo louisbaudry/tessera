@@ -61,6 +61,7 @@ understand them (`v1-spec.md` §3.8, "what it does not do"); a search of `packag
 and the draft prompt's `<context>` block holds only the neighbouring segments (`core/draft/prompt.ts`). For keyed UI
 text this is the largest quality lever: "Open" is a verb on a button, an adjective on a status, and a neighbouring key is
 not its neighbouring sentence. The unit's `name` or `id` is likewise dropped (`para_key` is the unit's *ordinal*, by design).
+*(Closed by S1, #351: the unit's `name` and its own notes are stored, shown in the editor and sent in the draft prompt.)*
 
 **G2. A source text does not decide the target.** Three rules in Tessera say it does, and for keyed text each is wrong
 in a way a reviewer will meet at once:
@@ -77,6 +78,7 @@ A plural group is the clean case. Ukrainian `itemCount` has four forms whose Eng
 `few`, `many` and `other`; confirming the `few` unit would propagate its wording into the other three, and the rule would
 then warn when the translator correctly writes them differently. Polysemy ("Open", "Close", "Set") is the quieter case:
 the same English string under two keys that want two translations.
+*(The plural half is closed by S2, #353: the forms of a group are kept out of propagation, exact placement and the consistency warning. The polysemy half stays open and waits for H2's count, D4.)*
 
 **G3. The glossary has no bulk entry.** TBX and CSV import are named and deferred (`smart-glossary-spec.md` §8). The
 workbench has an official glossary of 100 terms in three languages, each with a status (`official` or `review`), a list
@@ -190,7 +192,7 @@ not of any other tool's output. The spec does not claim more.
 A pass here proves the loop runs and says where Tessera is wrong for this text. It does not prove translation quality;
 that is H1 on reviewed data, and it is only as good as the reviewers.
 
-## 6. Slices (cards; status lives on the issues, S0 is #349)
+## 6. Slices (cards; status lives on the issues: S0 is #349, S1 #351, S2 #353)
 
 Each is one card, one branch, one PR, and each starts with the standing question of working rhythm 6 (D5).
 
