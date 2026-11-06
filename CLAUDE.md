@@ -1323,6 +1323,11 @@ pattern.
   (read by `vitest.config.ts`), because the starved test changes from run to
   run (#131 hit three different suites in three runs) and per-suite limits
   chase it; Linux and macOS keep the strict 5 s.
+- **On CI a test's limit is 20 s, not vitest's 5 s** (issue #276, `vitest.config.ts`: `CI` set, which
+  GitHub Actions does). Two server suites each timed out once on a loaded shared runner in a PR that
+  did not touch them; they take about half a second on a quiet machine, so the cause was the runner,
+  not the code, and the fix is a limit several times the quiet time, never a skip. Locally the 5 s
+  stays, so a test that becomes slow is still seen. A test that fails at 20 s is slow, not starved.
 - **A matrix job's real check name is the expanded one.**
   `name: 🚦 roundtrip gate` with a two-OS matrix produces
   `🚦 roundtrip gate (ubuntu-latest)` and `(windows-latest)`; the bare
