@@ -5318,7 +5318,7 @@ an address-only contact, unique per portal file in lower case, needs no tenant c
 tenant's), and the gateway's credential walk covered the four new routes with no change. Contact writes
 are not audited, like the portal's other client and rate writes.
 
-### Epic 16 — Software localisation (spec'd 2026-10-31, decisions taken 2026-11-01, S0 to S3 built 2026-11-05/06)
+### Epic 16 — Software localisation (spec'd 2026-10-31, decisions taken 2026-11-01, S0 to S4 built 2026-11-05/06)
 
 Design in `planning/software-localisation-spec.md` (decisions D1 to D9): the translation of the OSINT
 Workbench's interface is Tessera's first real keyed-strings scenario, run as dogfood on Tessera's own tenant
@@ -5433,7 +5433,31 @@ A glossary of 100 terms in three languages could be held by a `.ctg` and entered
   program (its quoting, encoding and delimiter) beyond RFC 4180 with a BOM, and a 20,000-row file's time (the limit is a
   guess at what one request should carry).
 
-Slices S4 to S9 are in the spec's §6, one card each when taken.
+**#358 · ~~Software localisation S4: reviewed state on XLIFF export~~ · DONE —
+`core/src/project/export-xliff.ts` (`XliffExportOptions.reviewedState`, `wantedState`, `stateSays`),
+`export-any.ts`, `db/src/project/export.ts` (`ExportFileOptions.reviewedState`), `GET .../files/:fileId/export?reviewed=1`,
+`cat-tool export --reviewed-state`, `project.exported` detail (`reviewedState`).**
+
+The file said `translated` for every segment a person had worked on, so the workbench could not tell a confirmed segment
+from a pre-translated one. What it taught:
+
+- **Off by default, and byte-identical when off.** The option is a third argument, not a changed default; the golden
+  transcript did not move. A confirmed segment the file already calls `final` is a no-op, so even an export with the
+  option on can be the original bytes.
+- **`final` is only ever added, never lowered.** `stateSays` keeps `translated` satisfied by any state but `initial`
+  (a `reviewed` or `final` that arrived stays), and `final` is satisfied only by `final`. A draft stays `initial` with
+  the option on, and a `locked` (`translate="no"`) segment is untouched as before.
+- **What `final` claims is narrow.** It means a person confirmed the segment in Tessera. A vendor assignment's `reviewed`
+  status lives in the roster (`.ctv`), not on the segment, and is not carried into the file; whether the workbench wants
+  that is for round 1 (S6) to say, so it is not guessed here.
+- **The log says what the option did, not what was asked.** `project.exported` carries `reviewedState: true` only when an
+  XLIFF file was exported with it; a DOCX or PPTX ignores the option and its event is as before (a test pins both). The
+  event's detail type allows the optional key and no old row changes.
+- Mutation checks: with the option ignored, the core test fails; with the log written for a DOCX too, the db test fails.
+- Not verified: how a real tool treats a `state="final"` on re-import (none was read), and `state` values beyond the four
+  XLIFF 2.x names.
+
+Slices S5 to S9 are in the spec's §6, one card each when taken.
 
 ## Not in this backlog (Epics 0–7)
 

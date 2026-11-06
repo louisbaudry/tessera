@@ -38,6 +38,12 @@ export interface ExportFileResult extends ExportedFile {
 export interface ExportFileOptions {
   /** Who exported it — required (audit-spec.md decision 3). */
   readonly actor: AuditActor;
+  /**
+   * Write `final` for confirmed segments of an XLIFF file (issue #358). Off by
+   * default; ignored for a DOCX or PPTX, which have no such state, and recorded
+   * in `project.exported`'s detail only where it was applied.
+   */
+  readonly reviewedState?: boolean;
 }
 
 /**
@@ -55,14 +61,16 @@ export function exportFile(
     if (!file) {
       throw new ProjectExportError(`no file with id ${fileId}`);
     }
-    const exported = exportFileBytes(file, listSegments(db, fileId));
+    // Only an XLIFF file has a state to write, so only there is the option applied, and logged.
+    const reviewedState = options.reviewedState === true && file.kind === 'xliff';
+    const exported = exportFileBytes(file, listSegments(db, fileId), { reviewedState });
     const sha256 = createHash('sha256').update(exported.bytes).digest('hex');
     appendAuditEvent(db, {
       actor: options.actor,
       action: 'project.exported',
       subjectType: 'file',
       subjectId: String(fileId),
-      detail: { sha256 },
+      detail: reviewedState ? { sha256, reviewedState: true } : { sha256 },
     });
     return { file, ...exported, sha256 };
   })();

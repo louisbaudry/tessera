@@ -912,49 +912,53 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // The delivered file, DOCX or XLIFF by its kind: `exportFile`, exactly the CLI's `export`. The
   // project's log records it produced (`project.exported`); this file's
   // records it left, to whom (`file.downloaded`) — before the first byte.
-  app.get<{ Params: { name: string; fileId: string } }>(
-    '/api/projects/:name/files/:fileId/export',
-    async (req, reply) => {
-      const opened = openProject(req, reply, req.params.name, 'manage');
-      if (!opened) return reply;
-      const { db } = opened;
-      const actor = sessionActor(req);
-      let exported: ReturnType<typeof exportFile>;
-      try {
-        const fileId = Number(req.params.fileId);
-        if (!Number.isInteger(fileId)) {
-          return reply.code(404).send({ error: `no file #${req.params.fileId}` });
-        }
-        exported = exportFile(db, fileId, { actor });
-      } catch (err) {
-        if (err instanceof ProjectExportError) {
-          return reply.code(404).send({ error: err.message });
-        }
-        throw err;
-      } finally {
-        db.close();
+  // `?reviewed=1` (XLIFF only) writes `final` for the segments a person confirmed (issue #358).
+  app.get<{
+    Params: { name: string; fileId: string };
+    Querystring: { reviewed?: string };
+  }>('/api/projects/:name/files/:fileId/export', async (req, reply) => {
+    const opened = openProject(req, reply, req.params.name, 'manage');
+    if (!opened) return reply;
+    const { db } = opened;
+    const actor = sessionActor(req);
+    let exported: ReturnType<typeof exportFile>;
+    try {
+      const fileId = Number(req.params.fileId);
+      if (!Number.isInteger(fileId)) {
+        return reply.code(404).send({ error: `no file #${req.params.fileId}` });
       }
-      const name = exported.file.relPath.split(/[\\/]/).pop() || exported.file.relPath;
-      recordDownload(platform, {
+      exported = exportFile(db, fileId, {
         actor,
-        project: { tenantId: opened.tenant.id, name: req.params.name },
-        fileId: exported.file.id,
-        name: exported.file.relPath,
-        sha256: exported.sha256,
+        reviewedState: req.query.reviewed === '1',
       });
-      return reply
-        .header(
-          'content-type',
-          exported.file.kind === 'xliff'
-            ? XLIFF_TYPE
-            : exported.file.kind === 'pptx'
-              ? PPTX_TYPE
-              : DOCX_TYPE,
-        )
-        .header('content-disposition', attachmentDisposition(name))
-        .send(Buffer.from(exported.bytes));
-    },
-  );
+    } catch (err) {
+      if (err instanceof ProjectExportError) {
+        return reply.code(404).send({ error: err.message });
+      }
+      throw err;
+    } finally {
+      db.close();
+    }
+    const name = exported.file.relPath.split(/[\\/]/).pop() || exported.file.relPath;
+    recordDownload(platform, {
+      actor,
+      project: { tenantId: opened.tenant.id, name: req.params.name },
+      fileId: exported.file.id,
+      name: exported.file.relPath,
+      sha256: exported.sha256,
+    });
+    return reply
+      .header(
+        'content-type',
+        exported.file.kind === 'xliff'
+          ? XLIFF_TYPE
+          : exported.file.kind === 'pptx'
+            ? PPTX_TYPE
+            : DOCX_TYPE,
+      )
+      .header('content-disposition', attachmentDisposition(name))
+      .send(Buffer.from(exported.bytes));
+  });
 
   // One segment's target, as the translator left it: `editSegmentTarget`
   // with the session's actor, so the edit lands in the *project's* log

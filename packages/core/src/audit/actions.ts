@@ -178,8 +178,11 @@ export interface AuditDetail {
     /** The fuzzy threshold the run used, or null when fuzzy was off (or the source unspaced). */
     readonly fuzzy_threshold?: number | null;
   };
-  /** The digest of the document produced — what exactly left. */
-  'project.exported': { readonly sha256: string };
+  /**
+   * The digest of the document produced — what exactly left. `reviewedState`
+   * is present only when an XLIFF export was asked to write `final` (issue #358).
+   */
+  'project.exported': { readonly sha256: string; readonly reviewedState?: true };
   'project.setting_changed': {
     readonly key: string;
     readonly from: JsonValue;

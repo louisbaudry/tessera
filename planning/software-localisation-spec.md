@@ -100,6 +100,7 @@ language with no list, which matters only to detection (not used here) but must 
 `locked`; `reviewed` is an *assignment* status (`vendor-spec.md`). The XLIFF export writes `translated` (or `initial`
 for a draft), whatever the segment's status. So the file the workbench receives cannot tell "a translator confirmed
 this" from "a native reader approved this", which is the one distinction its interface wants to state honestly.
+*(S4, #358, writes `final` for a confirmed segment on request. It says "a person confirmed this in Tessera"; carrying a vendor review into the file is not done, and S6's round will say whether it is wanted.)*
 
 **G6. Chinese is a script, not a primary subtag.** TM and glossary lookup match on `primary_subtag` (`db/lang-match.ts`),
 so `zh-Hans` and `zh-Hant` would be one language to the memory. DeepL's list excludes CJK on purpose (D14,
@@ -193,7 +194,7 @@ not of any other tool's output. The spec does not claim more.
 A pass here proves the loop runs and says where Tessera is wrong for this text. It does not prove translation quality;
 that is H1 on reviewed data, and it is only as good as the reviewers.
 
-## 6. Slices (cards; status lives on the issues: S0 is #349, S1 #351, S2 #353, S3 #356)
+## 6. Slices (cards; status lives on the issues: S0 is #349, S1 #351, S2 #353, S3 #356, S4 #358)
 
 Each is one card, one branch, one PR, and each starts with the standing question of working rhythm 6 (D5).
 
@@ -203,7 +204,7 @@ Each is one card, one branch, one PR, and each starts with the standing question
 | S1 | **Unit context (G1).** Read `name` and `<notes>` into nullable columns on the segment (a project-schema migration), show them read-only in the editor under the source, add a bounded, escaped `<note>` block to the draft prompt (`PROMPT_VERSION` bumped, per its own rule). Third-party text, so it follows the escaping of every other prompt input; never on a client-facing surface | M | needs S0 |
 | S2 | **Plural siblings (G2).** Units sharing an XLIFF `<group>` take no propagation from one another, are excluded from `consistency.target_differs` and `seg.untranslated` against one another, and an exact hit is never placed *between* siblings. Bounded and deterministic. Key-scoped matching for polysemy is the wider option (D4) and waits for H2's count | M | needs S0 |
 | S3 | **Glossary import (G3).** A CSV (`term,lang,rendering,status,avoid,keep`) into a `.ctg`, each row one `custom` decision through `writeRendering` (the one write path), `avoid` as `forbidden` renderings, `keep` as a rendering equal to the term with a note, the actor required, all or nothing with refusals by line | M | built (#356): `|` separates `avoid`, `review` and `keep` are notes on the rendering, entry is `POST /api/glossaries/:name/import`, no screen |
-| S4 | **Reviewed state on export (G5).** An export option, off by default and logged in the event's detail, that writes `final` for `confirmed` segments and leaves the rest; a zero-edit export without it stays byte-identical | S | |
+| S4 | **Reviewed state on export (G5).** An export option, off by default and logged in the event's detail, that writes `final` for `confirmed` segments and leaves the rest; a zero-edit export without it stays byte-identical | S | built (#358): `reviewedState`, `?reviewed=1`, `--reviewed-state`; `final` means confirmed, not a vendor review |
 | S5 | **`uk`, `ru` and `zh-Hans` in glossary matching and QA (G4, G6).** Scoped by S0's findings and H3: at most a substring rule for CJK, ending lists as data for a language where the data are checked by a reader, and script-aware language matching for `zh-Hans` against `zh-Hant`. Not started without S0's numbers | M | needs S0, H3 |
 | S6 | **Round 1: `uk` and `ru`.** An operation, recorded in the research record and the backlog: counts, defects found, hours spent, what Tessera could not do | S | needs the workbench's L2 and S1 to S4 |
 | S7 | **Round 2: `zh-Hans`.** The first new language; the Tessera engine only (D14), the pricing basis of G6 settled or left `null`, the first look at script-aware matching | S | needs S6, S5 as needed |

@@ -25,13 +25,42 @@ interface Edit {
 
 const encoder = new TextEncoder();
 
-/** The `state` a segment's status asks for: only a pre-fill stays `initial`. */
-const wantedState = (segment: Segment): 'initial' | 'translated' =>
-  segment.status === 'draft' ? 'initial' : 'translated';
+type WantedState = 'initial' | 'translated' | 'final';
 
-/** Whether the state the file has already says what `wanted` does. */
-const stateSays = (current: string, wanted: 'initial' | 'translated'): boolean =>
-  wanted === 'initial' ? current === 'initial' : current !== 'initial';
+/** What an XLIFF export may be asked for beyond the targets. */
+export interface XliffExportOptions {
+  /**
+   * Write `final` for a `confirmed` segment (Epic 16 slice S4, issue #358,
+   * `software-localisation-spec.md` G5), so the file says which segments a
+   * person confirmed and which are only translated. Off by default: without
+   * it the export is exactly what it was, and a zero-edit one is still the
+   * original bytes. Segments that are not `confirmed` are left as they are.
+   */
+  readonly reviewedState?: boolean;
+}
+
+/**
+ * The `state` a segment's status asks for: only a pre-fill stays `initial`,
+ * and a confirmed segment is `final` only when the export was asked to say so.
+ */
+const wantedState = (segment: Segment, reviewedState: boolean): WantedState =>
+  segment.status === 'draft'
+    ? 'initial'
+    : reviewedState && segment.status === 'confirmed'
+      ? 'final'
+      : 'translated';
+
+/**
+ * Whether the state the file has already says what `wanted` does. `translated`
+ * accepts any state but `initial`, so a `reviewed` or `final` that arrived is
+ * never lowered; `final` is satisfied only by `final`.
+ */
+const stateSays = (current: string, wanted: WantedState): boolean =>
+  wanted === 'initial'
+    ? current === 'initial'
+    : wanted === 'final'
+      ? current === 'final'
+      : current !== 'initial';
 
 /** The `<segment>` start tag with its `state` set. */
 function withState(startTag: string, state: string): string {
@@ -59,6 +88,7 @@ const prefixOf = (name: string): string =>
 export function exportXliffFile(
   file: ProjectFile,
   segments: readonly Segment[],
+  options: XliffExportOptions = {},
 ): ExportedFile {
   const foreign = segments.find((s) => s.fileId !== file.id);
   if (foreign) {
@@ -115,7 +145,7 @@ export function exportXliffFile(
       rendered++;
     }
 
-    const wanted = wantedState(segment);
+    const wanted = wantedState(segment, options.reviewedState === true);
     if (!stateSays(original.state, wanted) && !original.translateNo) {
       const seg = original.segment;
       edits.push({

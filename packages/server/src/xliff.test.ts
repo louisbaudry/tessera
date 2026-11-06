@@ -4,13 +4,19 @@
  * client sees. Fastify's `inject`, real files, no browser.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { hashPassword, type AuditActor } from '@cat-tool/core';
-import { createAccount, openPlatformDb } from '@cat-tool/db';
+import {
+  createAccount,
+  listSegments,
+  openPlatformDb,
+  openProjectDb,
+  setSegmentTarget,
+} from '@cat-tool/db';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -113,6 +119,37 @@ describe('XLIFF over the API', () => {
     expect(exported.body).toContain(
       '<source>The garden gate is open.</source><target>Das Gartentor ist offen.</target>',
     );
+  });
+
+  it('writes final for a confirmed segment only when ?reviewed=1 asks, and logs that it did (issue #358)', async () => {
+    const token = await setup();
+    await upload(token, 'basic.en-de.xlf', fixture('basic.en-de.xlf'));
+    const headers = { authorization: `Bearer ${token}` };
+    const projectFile = readdirSync(config.storageRoot, { recursive: true })
+      .map(String)
+      .find((f) => f.endsWith('job.catdb'))!;
+    const db = openProjectDb(join(config.storageRoot, projectFile));
+    const first = listSegments(db, 1).find((s) => !s.locked)!;
+    setSegmentTarget(db, first.id, {
+      actor: SETUP,
+      targetTokens: [{ t: 'text', v: 'Das Gartentor ist offen.' }],
+      status: 'confirmed',
+      origin: null,
+    });
+    db.close();
+
+    const get = (query: string) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/projects/job/files/1/export${query}`,
+        headers,
+      });
+    const plain = (await get('')).body;
+    const asked = (await get('?reviewed=1')).body;
+    expect(plain).toContain('state="translated"');
+    expect(plain).not.toContain('state="final"');
+    expect(asked).toContain('state="final"');
+    expect(asked.replace('state="final"', 'state="translated"')).toBe(plain);
   });
 
   it('refuses XLIFF 1.2, a wrong language pair and broken XML with a 422 that says why', async () => {
