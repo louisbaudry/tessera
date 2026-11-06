@@ -740,6 +740,23 @@ and the protocol in the spec's §6 binds any session that touches it:
   analysis or pay** (spec §4). Fuzzy bands set prices; a cosine
   similarity shown as one would be priced as one.
 
+## Software localisation is research-tracked
+
+`planning/software-localisation-spec.md` (Epic 16: the OSINT Workbench's interface
+as Tessera's first keyed-strings scenario, through the existing XLIFF filter) is
+run under the same protocol as semantic matching, in
+`research/software-localisation/`:
+
+- **H1 to H3 are committed with their thresholds before round 1** and are not
+  edited afterwards (a revision gets a new id). A result seen first is exploratory.
+- **Numbers only, no strings and no reviewer's name**, even though the strings are
+  public; the reviewer stays in Tessera's audit log.
+- **Every session on this feature ends with a `journal.md` entry**, append-only,
+  even when nothing was measured. Slices S0 to S2 are built; S3 to S9 are in the
+  spec's §6, one card each.
+- **The fixtures are invented and the output of no tool**, so they prove the
+  filter agrees with the shape the spec describes and nothing more.
+
 ## The translation portal (`portal-core`/`portal-server`)
 
 Epic 10a (`planning/portal-v0-spec.md`) pulled a client-facing intake/

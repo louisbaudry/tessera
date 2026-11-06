@@ -38,8 +38,9 @@ applied here unchanged.
 
 ## What exists
 
-| Id                   | What                                                                                      | Status                                                     |
-| -------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| S0 probes            | Five recorded observations, as tests (see the journal of 2026-11-05 for where each lives) | Done; observations, not runs of a hypothesis               |
-| H1, H2, H3           | Hypotheses and thresholds, committed before round 1 (`hypotheses.md`)                     | Open; no run yet                                           |
-| Round 1 (`uk`, `ru`) | The first run, slice S6                                                                   | Not started; needs the workbench's L2 (built) and S1 to S4 |
+| Id                   | What                                                                                                  | Status                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| S0 probes            | Five recorded observations, as tests (see the journal of 2026-11-05 for where each lives)             | Done; observations, not runs of a hypothesis                            |
+| S1, S2 (built)       | Unit context in the editor and the prompt; plural forms kept out of repeats. Mechanics tested, no run | Done; observations in the journal, no hypothesis tested                 |
+| H1, H2, H3           | Hypotheses and thresholds, committed before round 1 (`hypotheses.md`)                                 | Open; no run yet                                                        |
+| Round 1 (`uk`, `ru`) | The first run, slice S6                                                                               | Not started; needs the workbench's L2 (built) and S3, S4 (S1, S2 built) |

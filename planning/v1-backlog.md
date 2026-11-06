@@ -5318,7 +5318,7 @@ an address-only contact, unique per portal file in lower case, needs no tenant c
 tenant's), and the gateway's credential walk covered the four new routes with no change. Contact writes
 are not audited, like the portal's other client and rate writes.
 
-### Epic 16 — Software localisation (spec'd 2026-10-31, decisions taken 2026-11-01, S0 built 2026-11-05)
+### Epic 16 — Software localisation (spec'd 2026-10-31, decisions taken 2026-11-01, S0 to S2 built 2026-11-05)
 
 Design in `planning/software-localisation-spec.md` (decisions D1 to D9): the translation of the OSINT
 Workbench's interface is Tessera's first real keyed-strings scenario, run as dogfood on Tessera's own tenant
