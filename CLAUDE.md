@@ -517,6 +517,10 @@ format for glossaries, through the same shared migration runner —
   (`custom` for a rendering, `deprecation` for each `avoid`), the one write path, so a second
   way into the `.ctg` is a bug. A `.ctg` has no term status: `review` and `keep` are notes on
   the rendering.
+- **TBX is a labelled subset, never ISO 30042 conformance** (backlog #336, `core/glossary/tbx.ts`).
+  The standard has not been read and no other tool's TBX has been checked (#365). Import maps one
+  `termEntry` to one row through `importGlossaryRows`; export takes `exportGlossaryRows`' rows, so
+  the client rule holds. Nothing says the product is TBX-compliant.
 - **A glossary session is held in server memory, and detection consults
   only the project's write-target `.ctg`** (backlog #43a,
   `smart-glossary-spec.md` §5a.1). A `termId` is a row in one file;

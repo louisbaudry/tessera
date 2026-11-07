@@ -57,7 +57,7 @@ and the clauses it meets go in the clause map (§5). Louis decided on
 | -------- | ---------------- | ------------- |
 | **ISO 21720:2017** (XLIFF 2.0, OASIS) | Exchange of bilingual files | XLIFF 2.x read and written as a string, zero-edit byte-identical (`v1-spec.md` §3.8). Only hand-written fixtures; no real tool's file read. |
 | **ISO/IEC 29500** (Office Open XML) | DOCX and PPTX | Roundtrip gate byte-identical; differential validation with the Open XML SDK in CI (`v1-spec.md` §3.7). |
-| **ISO 30042:2019** (TBX) | Glossary exchange | **Missing.** Named and deferred in `smart-glossary-spec.md` §8. #336. |
+| **ISO 30042:2019** (TBX) | Glossary exchange | **Partial, not conformance.** A labelled TBX subset reads and writes a `.ctg` (`core/glossary/tbx.ts`, #336). The standard has not been read here and no other tool's TBX has been checked; the open checks are in #365. |
 | **ISO 639 / ISO 15924 / ISO 3166** via **BCP 47** (IETF RFC 5646) | Language tags | Language tags are BCP 47, split once by `primarySubtag` (`core/model/lang.ts`). |
 | **ISO 4217** | Currency codes | Vendor ledger: three-letter code (`CHECK (length(currency) = 3)`), never converted. Portal (#327): one currency per portal, validated against the runtime's ISO 4217 list (`isCurrencyCode`, `core/model/currency.ts`), formatted with `Intl.NumberFormat`. The vendor ledger still checks length only; it can use the same function. |
 | **ISO 8601** | Timestamps in files and APIs | Timestamps written with `toISOString()` throughout `db` and the servers. |

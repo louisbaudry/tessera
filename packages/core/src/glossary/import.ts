@@ -168,7 +168,7 @@ function readFlag(cell: string): boolean | null {
 }
 
 /** A language tag's shape (BCP 47): a refusal here is a typo, not a registry check. */
-const LANG_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+export const LANG_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
 /**
  * Reads a glossary CSV. `srcLang` is the language of every `term`; a row whose
