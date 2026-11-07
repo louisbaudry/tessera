@@ -2686,6 +2686,17 @@ Design in `v1-spec.md` §7.9. Louis lifted the card's "not before someone asks" 
 - **Seen in a browser:** an upload with a label, the row, a script renamed `.pdf` refused in the server's words, the file opened from a `blob:` URL and removed. The one console line is the 415.
 - **Not built:** inline preview (it opens in a tab), renaming or replacing in place, office documents and text, the style guide (#148) and a limit on the project's total beyond twenty files of 10 MB.
 
+**#180 · ~~Large-document mode: a tested segment ceiling~~ · DONE — `core/src/project/export-xliff.ts` (one-pass splice), `scripts/bench-project.mjs` (`pnpm bench:project`), `v1-spec.md` §7.10**
+(2026-11-07; closes issue #180; the QA half is issue #361)
+
+Louis took the card (it said "not before #37") and chose TypeScript over Rust/Wasm. What it taught:
+
+- **Measure first found one real problem, and it was not the one the card named.** Live QA on every edit costs 0.13 s at 100,000 segments; the XLIFF download cost 4.8 s at 10,000 and would have been minutes at 100,000, because it rebuilt the whole document for each edit (edits times file size). The fix is eight lines of join, with a failing test first (15.9 s for 20,000 units, 0.2 s after).
+- **The ceiling is a number with a method.** 150,000 segments, through the API, from a script anyone can rerun; the table and what it leaves out are in §7.10. The browser was not driven, and the spec says so rather than claim an editor ceiling.
+- **A defensive check came with the fix.** Edits from distinct elements cannot overlap; the splice now throws `ExportError` if two do, instead of writing a corrupt file the way a descending-order splice silently would.
+- **Deferred QA is carded, not built.** The measurement removed its motive here and its cost is a gate (export, review and the CLI's exit status would each have to run QA first). Numbers and constraints are on the new issue.
+- Not verified: a client's real large file, and the grid in a browser at 100,000 segments.
+
 ---
 
 ## Sequencing
