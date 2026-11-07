@@ -127,6 +127,7 @@ export function parseTbx(text: string, srcLang: string): ParsedTbx {
 
   const rows: GlossaryImportRow[] = [];
   const refusals: GlossaryImportRefusal[] = [];
+  const seenKeys = new Map<string, number>();
   const srcSub = primarySubtag(srcLang);
 
   entries.forEach((entry, index) => {
@@ -170,14 +171,21 @@ export function parseTbx(text: string, srcLang: string): ParsedTbx {
       refuse(`the entry has no ${srcLang} term`);
       return;
     }
+    // The source form is the preferred term, or the one non-deprecated term when
+    // there is no preferred one. Several candidates would make the file's order
+    // pick the form, so that is refused, as it is on the target side.
     const sourcePreferred = source.tigs.filter((t) => t.status === 'preferred');
-    const sourceTerm =
-      sourcePreferred[0]?.term ??
-      source.tigs.find((t) => t.status !== 'deprecated')?.term;
-    if (!sourceTerm || sourcePreferred.length > 1) {
-      refuse(`the ${srcLang} side needs one preferred term`);
+    const sourceCandidates = source.tigs.filter((t) => t.status !== 'deprecated');
+    if (
+      sourcePreferred.length > 1 ||
+      (sourcePreferred.length === 0 && sourceCandidates.length !== 1)
+    ) {
+      refuse(
+        `the ${srcLang} side needs one preferred term, or one term when none is preferred`,
+      );
       return;
     }
+    const sourceTerm = (sourcePreferred[0] ?? sourceCandidates[0])!.term;
 
     for (const [sub, target] of byLang) {
       if (sub === srcSub) continue;
@@ -206,6 +214,18 @@ export function parseTbx(text: string, srcLang: string): ParsedTbx {
         refuse(`a deprecated ${target.tag} term contains "${GLOSSARY_AVOID_SEPARATOR}"`);
         return;
       }
+      // Two entries with one source form and one target language would make the
+      // later write the preferred rendering silently (`preferredVariant` takes the
+      // newest decision), so a key seen twice is refused, as the CSV parser does.
+      const key = `${termKey(sourceTerm)}\u0000${sub}`;
+      const earlier = seenKeys.get(key);
+      if (earlier !== undefined) {
+        refuse(
+          `${target.tag} already has a rendering of "${sourceTerm}" on entry ${earlier}`,
+        );
+        return;
+      }
+      seenKeys.set(key, line);
       rows.push({
         line,
         term: sourceTerm,

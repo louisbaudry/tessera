@@ -149,7 +149,9 @@ describe('parseTbx', () => {
     it('two preferred terms on the source side, or two in the target language', () => {
       expect(
         refusalsOf(file(set('en', ['a', PREF], ['b', PREF]) + set('uk', ['x', PREF]))),
-      ).toEqual(['1: the en side needs one preferred term']);
+      ).toEqual([
+        '1: the en side needs one preferred term, or one term when none is preferred',
+      ]);
       expect(
         refusalsOf(file(set('en', ['a', PREF]) + set('uk', ['x', PREF], ['y', PREF]))),
       ).toEqual(['1: uk has two preferred terms']);
@@ -184,6 +186,25 @@ describe('parseTbx', () => {
           file(set('en', ['a', PREF]) + set('uk', ['x', PREF]) + set('uk', ['y', PREF])),
         ),
       ).toEqual(['1: language uk appears in two langSets']);
+    });
+
+    it('two entries with one source form and one target language, refused on the second', () => {
+      expect(
+        refusalsOf(
+          file(
+            set('en', ['bank', PREF]) + set('fr', ['banque', PREF]),
+            set('en', ['bank', PREF]) + set('fr', ['rive', PREF]),
+          ),
+        ),
+      ).toEqual(['2: fr already has a rendering of "bank" on entry 1']);
+    });
+
+    it('several admitted source terms and no preferred one', () => {
+      expect(
+        refusalsOf(file(set('en', ['a', ADM], ['b', ADM]) + set('fr', ['x', PREF]))),
+      ).toEqual([
+        '1: the en side needs one preferred term, or one term when none is preferred',
+      ]);
     });
 
     it('refuses the file whole: a good entry is not returned beside a bad one', () => {
