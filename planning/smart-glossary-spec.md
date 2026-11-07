@@ -792,7 +792,7 @@ client-specific rendering is never inherited _upward_ by accident.
 
 - **Promotion to the base glossary** — moving a term from a client `.ctg`
   to the base one. Needs a UI; needs the merge code (§3.5). Later.
-- **Import/export** (TBX, CSV). TBX is the TMX of termbases; same
+- **Import/export** (TBX, CSV). *(TBX import is built as a labelled subset, #336, `core/glossary/tbx.ts`; the standard is unread and the owner's export route waits on an audit action, #365.)* TBX is the TMX of termbases; same
   argument as `tm-format-spec.md` §8 — interoperate, don't adopt.
   Separate item once a real client glossary needs to come in from Trados
   MultiTerm.

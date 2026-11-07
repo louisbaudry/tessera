@@ -5412,6 +5412,21 @@ three rules of the tool read that as a repeat. What it taught:
   forms at all (a group of related strings with a repeated word is treated the same way, as it must be: the file said
   they belong together), and whether H2's polysemy count needs more.
 
+**#336 · ~~TBX (ISO 30042) import for glossaries~~ · DONE, A LABELLED SUBSET, NOT CONFORMANCE — `core/src/glossary/tbx.ts` (`parseTbx`, `glossaryTbx`), `POST /api/glossaries/:name/import-tbx` (`server/src/app.ts`); export route not built**
+(2026-11-07; the open checks are issue #365)
+
+The card's gate was to read ISO 30042:2019 and check a real TBX from another tool before any code. Neither was available, and the register forbids claiming conformance to an unread standard. Louis chose to build a labelled subset now. What it taught:
+
+- **The subset is the common TBX-Basic shape, from public description, and is marked as that everywhere it appears** (the module, the route's reply, the register row). A file a stricter reader accepts may be refused here, and the first real file may break it, as the `.sdltm` importer's did.
+- **Reuse the XML reader.** `scanTree` in `core/xliff/scan.ts` already reads generic XML; a second reader would be the duplicate the invariant forbids.
+- **Export goes through the client rule.** `glossaryTbx` takes `exportGlossaryRows`' rows, which carry no decision log, notes or people, so the file cannot carry what the CSV does not.
+- **One `langSet` per language, not per rendering.** The first writer put each rendering in its own `langSet`, and the parser (correctly) refused a language twice. TBX groups a language's terms in one `langSet`; a round-trip test found it.
+- **Import maps one entry to one row.** The source term is the row's term; the preferred rendering (else the one admitted) is its rendering; deprecated terms are `avoid`. Anything it cannot settle is refused with the entry number, and the file is refused whole.
+- **The owner's export route is not built.** A glossary export leaves the system, so it needs an audit action first; that is in #365, not guessed here.
+- Mutation checks: a swapped preferred status fails the round-trip test; a parser that returns rows beside refusals fails the refuse-whole test.
+- Not verified: ISO 30042 (not read), a TBX from another tool (none checked), a glossary of production size.
+
+
 **#356 · ~~Software localisation S3: glossary import from CSV into a `.ctg`~~ · DONE —
 `core/src/glossary/import.ts` (`parseGlossaryCsv`), `db/src/glossary/session.ts` (`importGlossaryRows`,
 `GlossaryImportError`), `POST /api/glossaries/:name/import` in `server/src/app.ts`.**
