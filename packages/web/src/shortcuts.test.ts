@@ -67,6 +67,34 @@ describe('refusalOf', () => {
     );
   });
 
+  it("refuses the editor's undo and redo, with Ctrl and with Meta (Cmd), and Ctrl+Shift+Z", () => {
+    const meta = (code: string, shift = false): Combo => ({
+      ctrl: false,
+      shift,
+      alt: false,
+      meta: true,
+      code,
+    });
+    expect(refusalOf('palette', ctrl('KeyZ'), DEFAULT_BINDINGS)).toMatch(/standard key/);
+    expect(refusalOf('palette', ctrl('KeyY'), DEFAULT_BINDINGS)).toMatch(/standard key/);
+    expect(refusalOf('palette', ctrl('KeyZ', true), DEFAULT_BINDINGS)).toMatch(
+      /standard key/,
+    );
+    expect(refusalOf('palette', meta('KeyZ'), DEFAULT_BINDINGS)).toMatch(/standard key/);
+    expect(refusalOf('palette', meta('KeyZ', true), DEFAULT_BINDINGS)).toMatch(
+      /standard key/,
+    );
+    expect(refusalOf('palette', meta('KeyB'), DEFAULT_BINDINGS)).toMatch(/standard key/);
+    // Alt is not the command modifier, so Alt+Z is free.
+    expect(
+      refusalOf(
+        'palette',
+        { ctrl: false, shift: false, alt: true, meta: false, code: 'KeyZ' },
+        DEFAULT_BINDINGS,
+      ),
+    ).toBeNull();
+  });
+
   it('refuses a key the browser or the editor already uses', () => {
     expect(refusalOf('palette', ctrl('KeyT'), DEFAULT_BINDINGS)).toMatch(/standard key/);
     expect(refusalOf('palette', ctrl('KeyB'), DEFAULT_BINDINGS)).toMatch(/standard key/);

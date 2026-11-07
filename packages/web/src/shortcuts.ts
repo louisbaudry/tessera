@@ -122,7 +122,7 @@ const RESERVED_CTRL_CODES: ReadonlySet<string> = new Set([
   'End',
 ]);
 
-/** Ctrl+Shift combinations the browser owns (reopen a tab, the dev tools, a window). */
+/** Ctrl+Shift combinations the browser or the editor owns (reopen a tab, the dev tools, a window). */
 const RESERVED_CTRL_SHIFT_CODES: ReadonlySet<string> = new Set([
   'KeyC',
   'KeyI',
@@ -130,6 +130,8 @@ const RESERVED_CTRL_SHIFT_CODES: ReadonlySet<string> = new Set([
   'KeyN',
   'KeyT',
   'KeyW',
+  // The editor's own redo (`Shift-Mod-z`), beside undo in the same keymap.
+  'KeyZ',
 ]);
 
 /** Keys the browser owns on their own, whatever the modifiers. */
@@ -150,7 +152,8 @@ export function refusalOf(
   if (!combo.ctrl && !combo.alt && !combo.meta) {
     return 'a shortcut needs Ctrl, Alt or Meta, or it would type over the text';
   }
-  if (combo.ctrl && !combo.alt && !combo.meta) {
+  // Meta is Cmd on a Mac and does what Ctrl does, so both reserve the same keys.
+  if ((combo.ctrl || combo.meta) && !combo.alt) {
     const reserved = combo.shift ? RESERVED_CTRL_SHIFT_CODES : RESERVED_CTRL_CODES;
     if (reserved.has(combo.code)) {
       return `${formatCombo(combo)} is a standard key of the browser or the editor`;
