@@ -1,7 +1,8 @@
 /**
  * The signed-in account's own settings (issue #317, `planning/sso-spec.md` D3, D7, §2a):
  * the Microsoft and Google sign-ins linked to it, a button to link another and one to unlink each
- * (refused for the last way in), and, for a tenant's admin, the single sign-on policy.
+ * (refused for the last way in), for a tenant's admin the single sign-on policy, and the editor's
+ * keys (issue #193), kept in this browser only.
  *
  * Linking leaves for the provider and comes back here with a code (`returning`), which the
  * server redeems for this session's own account only.
@@ -26,6 +27,7 @@ import {
   PROVIDER_LABEL,
   type SsoFragment,
 } from './sso.js';
+import { ShortcutSettings } from './ShortcutSettings.js';
 import { useAction } from './use-action.js';
 import { useLoad } from './use-load.js';
 
@@ -44,6 +46,7 @@ export function Account({
       <h2>Account</h2>
       <LinkedSignIns returning={returning} />
       {staffRole === 'admin' && <Policy />}
+      <ShortcutSettings />
     </div>
   );
 }

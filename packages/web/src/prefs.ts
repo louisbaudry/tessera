@@ -5,7 +5,10 @@
  */
 
 import {
+  DEFAULT_BINDINGS,
   parseBindings,
+  sameCombo,
+  SHORTCUT_ACTIONS,
   serializeBindings,
   type Combo,
   type ShortcutAction,
@@ -130,7 +133,11 @@ export function loadShortcuts(): Record<ShortcutAction, Combo> {
 /** Keeps a changed set for this browser; the defaults are stored as no value at all. */
 export function saveShortcuts(bindings: Readonly<Record<ShortcutAction, Combo>>): void {
   try {
-    localStorage.setItem(SHORTCUTS, serializeBindings(bindings));
+    if (SHORTCUT_ACTIONS.every((a) => sameCombo(bindings[a], DEFAULT_BINDINGS[a]))) {
+      localStorage.removeItem(SHORTCUTS);
+    } else {
+      localStorage.setItem(SHORTCUTS, serializeBindings(bindings));
+    }
   } catch {
     // Not persisted; the keys still change for this page.
   }
