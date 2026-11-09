@@ -9,7 +9,7 @@ import {
 } from './shell-password.js';
 
 /** A terminal that types `lines` one at a time, each when a prompt is written. */
-function terminal(lines: readonly string[]) {
+function terminal(lines: readonly (string | readonly Buffer[])[]) {
   const input = new PassThrough() as PassThrough & PasswordInput;
   input.isTTY = true;
   const raw: boolean[] = [];
@@ -25,7 +25,12 @@ function terminal(lines: readonly string[]) {
     shown.push(text);
     if (text.endsWith(': ')) {
       const line = lines[next++] ?? '';
-      setImmediate(() => input.write(line));
+      // A line is one chunk, or several (a character split across reads, as a pasted one can be).
+      const chunks = typeof line === 'string' ? [line] : line;
+      chunks.forEach((chunk, i) => {
+        // Each chunk on its own turn, so each is its own `data` event.
+        setTimeout(() => input.write(chunk), i * 5);
+      });
     }
   });
   return { input, output, shown, raw };
@@ -46,6 +51,18 @@ describe('readNewPassword (issue #364)', () => {
     const t = terminal(['abcxx\u007f\u007fdef\u001b\r', 'abcdef\r']);
     await expect(readNewPassword({ input: t.input, output: t.output })).resolves.toBe(
       'abcdef',
+    );
+  });
+
+  it('keeps a multi-byte character that is split across two reads', async () => {
+    // "é" is 0xC3 0xA9; the first read ends in the middle of it.
+    const split = [
+      Buffer.from([...Buffer.from('abcdefghijkl'), 0xc3]),
+      Buffer.from([0xa9, 0x0d]),
+    ];
+    const t = terminal([split, split]);
+    await expect(readNewPassword({ input: t.input, output: t.output })).resolves.toBe(
+      'abcdefghijkl\u00e9',
     );
   });
 

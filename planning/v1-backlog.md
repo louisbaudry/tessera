@@ -5473,6 +5473,10 @@ The first deployment lost the admin's password and the way back was editing `por
   beside `osUserActor` because both servers need it. It stops at the first Enter of a chunk and drops the rest, as a
   keyboard never sends one; the test types one prompt at a time for that reason (a pasted multi-line chunk would lose
   its second line).
+- **Terminal input is decoded as a stream.** A review caught that each read was decoded alone, so a character whose bytes
+  arrived in two reads became replacement characters, and two identically split entries would match and set a password
+  nobody could retype. `readHidden` now keeps a `StringDecoder` per prompt; the test splits `é` between reads, and fails
+  with the decoder removed.
 - **A reset ends the person's sessions and nobody else's.** Both repository tests keep a second account and a live
   session of it, and the server tests go through the real login route, so a reset that left a session alive, or took
   another's, fails.

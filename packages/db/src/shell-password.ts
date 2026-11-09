@@ -6,6 +6,7 @@
  * which `create-admin` and `create-account` accept for a first password and a recovery must not.
  * One definition for both servers' commands, as `osUserActor` is for the actor.
  */
+import { StringDecoder } from 'node:string_decoder';
 import type { Readable, Writable } from 'node:stream';
 
 export class PasswordInputError extends Error {
@@ -35,6 +36,9 @@ function readHidden(prompt: string, io: PasswordIo): Promise<string> {
   const { input, output } = io;
   return new Promise((resolve, reject) => {
     let typed: string[] = [];
+    // One decoder per prompt: a character's bytes can arrive in two reads, and decoding each read
+    // alone would turn both halves into replacement characters (a password nobody can retype).
+    const decoder = new StringDecoder('utf8');
     const finish = (): void => {
       input.off('data', onData);
       input.setRawMode?.(false);
@@ -42,7 +46,9 @@ function readHidden(prompt: string, io: PasswordIo): Promise<string> {
       output.write('\n');
     };
     const onData = (chunk: Buffer | string): void => {
-      for (const char of chunk.toString('utf8')) {
+      for (const char of decoder.write(
+        typeof chunk === 'string' ? Buffer.from(chunk) : chunk,
+      )) {
         if (char === '\r' || char === '\n') {
           finish();
           resolve(typed.join(''));
