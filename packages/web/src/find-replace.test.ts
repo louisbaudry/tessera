@@ -8,7 +8,6 @@ import {
   describeJob,
   formProblem,
   isFinished,
-  isReplaceKey,
   scanSummary,
   toggled,
   EMPTY_FORM,
@@ -164,22 +163,5 @@ describe('formProblem', () => {
   it('needs something to find, and nothing else from the page', () => {
     expect(formProblem(EMPTY_FORM)).toBe('Type what to find.');
     expect(formProblem({ ...EMPTY_FORM, pattern: 'x' })).toBeNull();
-  });
-});
-
-describe('isReplaceKey', () => {
-  const key = {
-    ctrlKey: true,
-    metaKey: false,
-    altKey: false,
-    shiftKey: true,
-    code: 'KeyH',
-  };
-  it('is Ctrl+Shift+H and nothing else', () => {
-    expect(isReplaceKey(key)).toBe(true);
-    expect(isReplaceKey({ ...key, shiftKey: false })).toBe(false);
-    expect(isReplaceKey({ ...key, ctrlKey: false })).toBe(false);
-    expect(isReplaceKey({ ...key, metaKey: true })).toBe(false);
-    expect(isReplaceKey({ ...key, code: 'KeyL' })).toBe(false);
   });
 });

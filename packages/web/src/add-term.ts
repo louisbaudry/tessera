@@ -63,14 +63,3 @@ export function draftProblem(draft: TermDraft): string | null {
   }
   return null;
 }
-
-/** Whether a key event is the "add a term" key: Ctrl+Shift+D, literal Ctrl on every platform. */
-export function isAddTermKey(e: {
-  readonly ctrlKey: boolean;
-  readonly metaKey: boolean;
-  readonly altKey: boolean;
-  readonly shiftKey: boolean;
-  readonly code: string;
-}): boolean {
-  return e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === 'KeyD';
-}

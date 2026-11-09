@@ -176,14 +176,3 @@ export function formProblem(form: ReplaceForm): string | null {
 export function applyLabel(count: number): string {
   return count === 1 ? 'Replace in 1 segment' : `Replace in ${n(count)} segments`;
 }
-
-/** Whether a key event is the find-and-replace key: Ctrl+Shift+H, literal Ctrl on every platform. */
-export function isReplaceKey(e: {
-  readonly ctrlKey: boolean;
-  readonly metaKey: boolean;
-  readonly altKey: boolean;
-  readonly shiftKey: boolean;
-  readonly code: string;
-}): boolean {
-  return e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === 'KeyH';
-}

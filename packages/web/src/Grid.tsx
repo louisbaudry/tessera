@@ -37,22 +37,13 @@ import {
 import { AddTermDialog } from './AddTermDialog.js';
 import { ConcordanceDialog } from './ConcordanceDialog.js';
 import { FindReplaceDialog } from './FindReplaceDialog.js';
-import { isReplaceKey } from './find-replace.js';
-import {
-  draftFromSelection,
-  isAddTermKey,
-  type TermDraft,
-  type TermSide,
-} from './add-term.js';
+import { draftFromSelection, type TermDraft, type TermSide } from './add-term.js';
 import { nextUnconfirmed } from './advance.js';
-import { isPaletteKey, nextMarked } from './commands.js';
+import { nextMarked } from './commands.js';
+import { formatCombo, resolveKey } from './shortcuts.js';
 import { FilterBar } from './FilterBar.js';
 import { CommandPalette, type PaletteCommand } from './CommandPalette.js';
-import {
-  isConcordanceKey,
-  startFromSelection,
-  type ConcordanceStart,
-} from './concordance.js';
+import { startFromSelection, type ConcordanceStart } from './concordance.js';
 import { GlossaryPanel } from './GlossaryPanel.js';
 import { ResourcesPanel } from './ResourcesPanel.js';
 import { JobPayable } from './JobPayable.js';
@@ -69,6 +60,7 @@ import { estimateRowHeight } from './layout.js';
 import { toPieces } from './pieces.js';
 import {
   loadFullTags,
+  loadShortcuts,
   loadGlossaryPanel,
   loadResourcesPanel,
   loadQaPanel,
@@ -574,16 +566,6 @@ function SegmentGrid({
       return kept;
     });
   };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Literal Ctrl on every platform, as the editor's other keys (§7.2).
-      if (!e.ctrlKey || e.altKey || e.metaKey || e.code !== 'KeyM') return;
-      e.preventDefault();
-      void restructure(e.shiftKey ? 'split' : 'merge');
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [restructure]);
 
   // The QA panel (backlog #33). A jump scrolls the segment into view and
   // opens it, as a click on its target would; a locked one is only shown.
@@ -611,28 +593,8 @@ function SegmentGrid({
     pendingJump.current = null;
     jumpTo(id);
   }, [shown, jumpTo]);
-  // The filter bar's key: literal Ctrl on every platform, as the editor's.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.code !== 'KeyF') return;
-      e.preventDefault();
-      filterRef.current?.focus();
-      filterRef.current?.select();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-  // The command palette (backlog #115): Ctrl+K or Cmd+K opens it, and again closes it.
+  // The command palette (backlog #115): its key opens it, and again closes it.
   const [paletteOpen, setPaletteOpen] = useState(false);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!isPaletteKey(e)) return;
-      e.preventDefault();
-      setPaletteOpen((open) => !open);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
   // Adding a term (backlog #129): Ctrl+Shift+D reads the selection as the box opens, since
   // the DOM keeps one selection and a box that took focus first would lose it. The palette
   // opens the box empty.
@@ -646,16 +608,6 @@ function SegmentGrid({
     // A box already open keeps what is typed in it.
     setAddingTerm((open) => open ?? next);
   }, []);
-  useEffect(() => {
-    if (foreign) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!isAddTermKey(e)) return;
-      e.preventDefault();
-      openAddTerm(true);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [foreign, openAddTerm]);
   // Concordance (issue #170): Ctrl+Shift+L reads the selection as the box opens, for the same
   // reason as the add-term key; the palette opens it empty. The owner's memories, so never in
   // a grantee's view (`foreign`): the route is `manage`.
@@ -665,29 +617,55 @@ function SegmentGrid({
     // A box already open keeps what is typed in it.
     setConcordance((open) => open ?? start);
   }, []);
-  useEffect(() => {
-    if (foreign) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!isConcordanceKey(e)) return;
-      e.preventDefault();
-      openConcordance(true);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [foreign, openConcordance]);
   // Find and replace (issue #170, §7.8): Ctrl+Shift+H, the owner's alone like the concordance
   // box, since it rewrites across the project.
   const [replacing, setReplacing] = useState(false);
+  // The editor's keys (issue #193): one listener resolves a key press to an action under the
+  // person's bindings (the defaults unless they changed one). Four of them are the owner's
+  // alone (`foreign`). Tags, copy source, the draft and confirm are the target editor's own
+  // (`TargetEditor.tsx`), which reads the same bindings, so they fall through here.
+  const [bindings] = useState(loadShortcuts);
   useEffect(() => {
-    if (foreign) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!isReplaceKey(e)) return;
-      e.preventDefault();
-      setReplacing(true);
+      const action = resolveKey(e, bindings);
+      if (action === null) return;
+      switch (action) {
+        case 'merge':
+        case 'split':
+          e.preventDefault();
+          void restructure(action);
+          return;
+        case 'filter':
+          e.preventDefault();
+          filterRef.current?.focus();
+          filterRef.current?.select();
+          return;
+        case 'palette':
+          e.preventDefault();
+          setPaletteOpen((open) => !open);
+          return;
+        case 'addTerm':
+          if (foreign) return;
+          e.preventDefault();
+          openAddTerm(true);
+          return;
+        case 'concordance':
+          if (foreign) return;
+          e.preventDefault();
+          openConcordance(true);
+          return;
+        case 'findReplace':
+          if (foreign) return;
+          e.preventDefault();
+          setReplacing(true);
+          return;
+        default:
+          return;
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [foreign]);
+  }, [bindings, restructure, foreign, openAddTerm, openConcordance]);
   const commands = useMemo<PaletteCommand[]>(() => {
     const from = () => segmentsNow.current.findIndex((s) => s.id === activeNow.current);
     const goTo = (index: number | null, none: string) => {
@@ -724,13 +702,13 @@ function SegmentGrid({
       {
         id: 'merge',
         title: 'Merge with next segment',
-        hint: 'Ctrl+M',
+        hint: formatCombo(bindings.merge),
         run: () => void restructure('merge'),
       },
       {
         id: 'split',
         title: 'Split at source caret',
-        hint: 'Ctrl+Shift+M',
+        hint: formatCombo(bindings.split),
         run: () => void restructure('split'),
       },
       {
@@ -752,21 +730,21 @@ function SegmentGrid({
               id: 'add-term',
               title: 'Add a term to the glossary',
               keywords: 'terminology define rendering',
-              hint: 'Ctrl+Shift+D',
+              hint: formatCombo(bindings.addTerm),
               run: () => openAddTerm(false),
             },
             {
               id: 'concordance',
               title: 'Search the memories (concordance)',
               keywords: 'find lookup translation memory tm phrase',
-              hint: 'Ctrl+Shift+L',
+              hint: formatCombo(bindings.concordance),
               run: () => openConcordance(false),
             },
             {
               id: 'find-replace',
               title: 'Find and replace across the project',
               keywords: 'search regex regular expression change terminology',
-              hint: 'Ctrl+Shift+H',
+              hint: formatCombo(bindings.findReplace),
               run: () => setReplacing(true),
             },
             {
@@ -786,7 +764,7 @@ function SegmentGrid({
         id: 'focus-filter',
         title: 'Focus the filter',
         keywords: 'search find',
-        hint: 'Ctrl+Shift+F',
+        hint: formatCombo(bindings.filter),
         run: () => {
           filterRef.current?.focus();
           filterRef.current?.select();
@@ -807,6 +785,7 @@ function SegmentGrid({
     ];
     return list;
   }, [
+    bindings,
     jumpTo,
     marks,
     restructure,
@@ -943,7 +922,7 @@ function SegmentGrid({
               // Keep the caret where it is: a split reads it.
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => void restructure('merge')}
-              title="Merge the open segment with the next one of its paragraph (Ctrl+M)"
+              title={`Merge the open segment with the next one of its paragraph (${formatCombo(bindings.merge)})`}
             >
               Merge with next
             </button>
@@ -952,7 +931,7 @@ function SegmentGrid({
               className="link"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => void restructure('split')}
-              title="Split at the caret you put in a source (Ctrl+Shift+M)"
+              title={`Split at the caret you put in a source (${formatCombo(bindings.split)})`}
             >
               Split at source caret
             </button>
@@ -968,6 +947,7 @@ function SegmentGrid({
           filter={filter}
           segments={segments}
           shown={shown.length}
+          keyHint={formatCombo(bindings.filter)}
           onChange={setFilter}
         />
         <div className="row head" role="row">

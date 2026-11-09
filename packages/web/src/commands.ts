@@ -1,6 +1,7 @@
 /**
  * The editor's command palette (backlog #115; issue #175): what a query finds
- * among the commands, how the highlighted row moves, and which key opens it.
+ * among the commands and how the highlighted row moves. The key that opens it is
+ * `shortcuts.ts`'s (issue #193).
  * Pure, so each is provable in node; `CommandPalette.tsx` renders and
  * `Grid.tsx` says what the commands do.
  */
@@ -52,27 +53,6 @@ export function moveActive(active: number, delta: -1 | 1, length: number): numbe
 /** Keeps the highlight on a real row when the list shrinks under it. */
 export const clampActive = (active: number, length: number): number =>
   length <= 0 ? 0 : Math.min(Math.max(active, 0), length - 1);
-
-/**
- * Whether a key event opens (or closes) the palette: `K` with Ctrl, or with
- * Cmd on a Mac, and nothing else held. `code` is the physical key, so a
- * keyboard layout that moves the letter does not move the shortcut.
- */
-export function isPaletteKey(e: {
-  readonly ctrlKey: boolean;
-  readonly metaKey: boolean;
-  readonly altKey: boolean;
-  readonly shiftKey: boolean;
-  readonly code: string;
-}): boolean {
-  return (
-    e.code === 'KeyK' &&
-    (e.ctrlKey || e.metaKey) &&
-    !(e.ctrlKey && e.metaKey) &&
-    !e.altKey &&
-    !e.shiftKey
-  );
-}
 
 /**
  * The next segment after `from` (an index; -1 for "before the first") with a

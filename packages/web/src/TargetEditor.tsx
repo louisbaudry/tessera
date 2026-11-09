@@ -42,6 +42,8 @@ import 'prosemirror-view/style/prosemirror.css';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { DRAFT_DELAY_MS } from './drafts.js';
+import { loadShortcuts } from './prefs.js';
+import { formatCombo, pmKeyName } from './shortcuts.js';
 import { fullTagLabel, tagLabel, tagTitle, toPieces } from './pieces.js';
 import { describeFormat } from './tag-label.js';
 import {
@@ -149,6 +151,8 @@ export function TargetEditor({
   // the editor keeps its own state (caret, undo) rather than restart.
   const [opened] = useState(segment);
   const [firstClick] = useState(clickAt);
+  // The keys, read once as the editor opens (issue #193): the keymap and the tooltips agree.
+  const [shortcuts] = useState(loadShortcuts);
   const formats = opened.formatTable;
   const groups = useMemo(
     () => pairGroups(opened.sourceTokens, opened.formatTable),
@@ -213,35 +217,37 @@ export function TargetEditor({
         else dispatch?.(plan.tr);
         return true;
       };
+    const keys = shortcuts;
+    const confirmKey: Command = (_state, _dispatch, editor) => {
+      if (editor) confirmNow.current(editor);
+      return true;
+    };
+    const keyHandlers: Record<string, Command> = {
+      [pmKeyName(keys.nextTag)]: (state, dispatch) =>
+        place(nextUnplaced(state, palette, opened.formatTable))(state, dispatch),
+      [pmKeyName(keys.tagList)]: () => {
+        setListOpen(true);
+        return true;
+      },
+      [pmKeyName(keys.copySource)]: (state, dispatch) => {
+        dispatch?.(copySource(state, opened.sourceTokens, opened.formatTable, groups));
+        return true;
+      },
+      // A key that does nothing when no draft is on offer, so it never swallows a
+      // keystroke for nothing.
+      [pmKeyName(keys.acceptDraft)]: () => acceptNow.current(),
+      [pmKeyName(keys.confirm)]: confirmKey,
+    };
+    // Cmd on a Mac where confirm is bound to Ctrl, as it always was.
+    if (keys.confirm.ctrl && !keys.confirm.meta && !keys.confirm.alt) {
+      keyHandlers[pmKeyName({ ...keys.confirm, ctrl: false, meta: true })] = confirmKey;
+    }
     const loaded = createTargetState(visible, opened.formatTable, groups, [
       history(),
       keymap({
-        'Ctrl-,': (state, dispatch) =>
-          place(nextUnplaced(state, palette, opened.formatTable))(state, dispatch),
-        'Ctrl-Shift-,': () => {
-          setListOpen(true);
-          return true;
-        },
-        Escape: () => {
-          callbacks.current.onLeave();
-          return true;
-        },
-        'Ctrl-Insert': (state, dispatch) => {
-          dispatch?.(copySource(state, opened.sourceTokens, opened.formatTable, groups));
-          return true;
-        },
-        // Literal Ctrl, like Ctrl+, and Ctrl+Ins; a key that does nothing when no
-        // draft is on offer, so it never swallows a keystroke for nothing.
-        'Ctrl-.': () => acceptNow.current(),
-        // Cmd+Enter on a Mac, where Ctrl+Enter is the same key for the hand.
-        'Ctrl-Enter': (_state, _dispatch, editor) => {
-          if (editor) confirmNow.current(editor);
-          return true;
-        },
-        'Mod-Enter': (_state, _dispatch, editor) => {
-          if (editor) confirmNow.current(editor);
-          return true;
-        },
+        // The keys the person may have changed (issue #193), named as ProseMirror names
+        // them. The rest below are the editor's own and are not assignable.
+        ...keyHandlers,
         'Mod-z': undo,
         'Mod-y': redo,
         'Shift-Mod-z': redo,
@@ -363,7 +369,16 @@ export function TargetEditor({
       editor.destroy();
       view.current = null;
     };
-  }, [opened, project, groups, palette, tgtLang, firstClick, registerPageHide]);
+  }, [
+    opened,
+    project,
+    groups,
+    palette,
+    tgtLang,
+    firstClick,
+    registerPageHide,
+    shortcuts,
+  ]);
 
   // After the one above: a failed write is sent again on leaving, whether
   // it failed before the editor opened or while it is open.
@@ -466,7 +481,7 @@ export function TargetEditor({
               tryAccept();
               view.current?.focus();
             }}
-            title="Use suggestion (Ctrl+.)"
+            title={`Use suggestion (${formatCombo(shortcuts.acceptDraft)})`}
           >
             Use suggestion
           </button>
