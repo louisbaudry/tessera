@@ -11,3 +11,4 @@ export * from './glossary/index.js';
 export * from './portal/index.js';
 export * from './vendor/index.js';
 export * from './read-only.js';
+export * from './shell-password.js';

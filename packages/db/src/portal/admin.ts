@@ -60,6 +60,42 @@ export function getAdminUserByEmail(
   return row ? userFromRow(row) : null;
 }
 
+/**
+ * Sets a new password for the admin with this address, ends every session it holds and records
+ * `admin.password_reset`, in one transaction (issue #364, `portal-v0-spec.md` §7a). It is the
+ * operator's recovery, run from the host: nothing here proves who asks, the actor says who ran it.
+ *
+ * @param passwordHash - an already-hashed password (`hashPassword`); the clear text never reaches `db`.
+ * @returns the number of sessions it ended, or `null` when no admin has this address (no row is
+ *   written, and the caller must not say whether the address exists beyond that).
+ */
+export function setAdminPassword(
+  db: Database.Database,
+  email: string,
+  passwordHash: string,
+  options: { readonly actor: AuditActor },
+): { readonly sessionsEnded: number } | null {
+  return db.transaction((): { readonly sessionsEnded: number } | null => {
+    const user = getAdminUserByEmail(db, email);
+    if (!user) return null;
+    db.prepare('UPDATE admin_user SET password_hash = ? WHERE id = ?').run(
+      passwordHash,
+      user.id,
+    );
+    const sessionsEnded = db
+      .prepare('DELETE FROM admin_session WHERE admin_user_id = ?')
+      .run(user.id).changes;
+    appendAuditEvent(db, {
+      actor: options.actor,
+      action: 'admin.password_reset',
+      subjectType: 'admin_user',
+      subjectId: String(user.id),
+      detail: { sessions_ended: sessionsEnded },
+    });
+    return { sessionsEnded };
+  })();
+}
+
 export interface AdminSessionOptions {
   /** The admin itself (`admin:<id>`): logging in is its own act. */
   readonly actor: AuditActor;

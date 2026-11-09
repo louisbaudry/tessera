@@ -1002,6 +1002,11 @@ founding admin's `storage_root`, so the paths above are unchanged. Since backlog
 (schema v9) the server builds every path from the session's tenant, and a project of
 another tenant is reached only through a grant, by `?tenant=<tenant id>`.
 
+**Recovery (2026-11-07, issue #364).** A lost password is recovered from the host with
+`reset-account-password <email>`, which sets the new password, ends the account's sessions and logs
+`account.password_reset`; it is the twin of the portal admin's command and the rules are in
+`planning/portal-v0-spec.md` §7a.
+
 ### 4.2 TM database — own format
 
 The TM is **not** a loose SQLite schema. It is a specified, versioned,

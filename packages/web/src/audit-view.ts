@@ -45,6 +45,7 @@ export const ACTION_LABEL: Record<PlatformAuditAction, string> = {
   'account.sso_unlinked': 'A Microsoft or Google account was unlinked',
   'tenant.sso_policy_set': 'The single sign-on policy changed',
   'tenant.slug_set': 'The organisation’s web address was set',
+  'account.password_reset': 'The operator set a new password',
 };
 
 const isKnown = (action: string): action is PlatformAuditAction => action in ACTION_LABEL;

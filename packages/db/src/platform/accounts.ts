@@ -196,6 +196,44 @@ export function listAccounts(db: Database.Database): Account[] {
   );
 }
 
+/**
+ * Sets a new password for the account with this address, ends every session it holds and records
+ * `account.password_reset` in the account's tenant's slice of the log, in one transaction
+ * (issue #364, `v1-spec.md` §4.1a). The operator's recovery, run from the host: the actor says who
+ * ran it. An account that signed in only with a provider has no password (`NO_PASSWORD_HASH`) and
+ * gets one here; a tenant's `require_sso` policy still decides whether staff may use it.
+ *
+ * @param passwordHash - an already-hashed password (`hashPassword`); the clear text never reaches `db`.
+ * @returns the number of sessions it ended, or `null` when no account has this address.
+ */
+export function setAccountPassword(
+  db: Database.Database,
+  email: string,
+  passwordHash: string,
+  options: { readonly actor: AuditActor },
+): { readonly sessionsEnded: number } | null {
+  return db.transaction((): { readonly sessionsEnded: number } | null => {
+    const account = getAccountByEmail(db, email);
+    if (!account) return null;
+    db.prepare('UPDATE account SET password_hash = ? WHERE id = ?').run(
+      passwordHash,
+      account.id,
+    );
+    const sessionsEnded = db
+      .prepare('DELETE FROM account_session WHERE account_id = ?')
+      .run(account.id).changes;
+    appendPlatformEvent(db, {
+      actor: options.actor,
+      action: 'account.password_reset',
+      tenantId: tenantOfAccount(db, account.id),
+      subjectType: 'account',
+      subjectId: String(account.id),
+      detail: { sessions_ended: sessionsEnded },
+    });
+    return { sessionsEnded };
+  })();
+}
+
 export interface SessionWriteOptions {
   /** The account itself: logging in and out are its own acts (spec §2.5). */
   readonly actor: AuditActor;

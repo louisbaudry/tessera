@@ -112,8 +112,30 @@ sudo crontab -e   # 15 3 * * * /home/<user>/tessera/deploy/backup.sh >>/var/log/
 
 An archive on the same disk is not a backup against losing the disk. Copy
 `/var/backups/tessera` off the host (the provider's snapshots, or `rsync` to another
-machine) before relying on it. **Restore** is untested until you do it once on a
-scratch volume: stop the app, extract the archive into the volume, start it.
+machine) before relying on it.
+
+**Verified on the host (2026-11-05):** one backup run by hand; the portal archive extracted into a scratch
+folder and opened (`integrity_check` ok, rows present, the data held in the `-wal` file, so the three
+`portal.sqlite*` files must travel together); the nightly job and a nightly pull to a second server scheduled.
+**Not yet run:** restoring into the live volume. Stop the service, remove the old `portal.sqlite*` files first
+(a stale `-wal` beside a restored file can corrupt it), extract the archive into the volume, start it.
+
+## A lost password
+
+Neither login can be recovered by email yet (mail is off by default). Run the command on the host, in
+`deploy/`; it asks for the new password twice, hidden, and refuses fewer than 12 characters. It ends every
+session of that person and records who ran it.
+
+```sh
+# The portal admin (/admin.html):
+docker compose run --rm portal node dist/reset-admin-password.js you@example.com
+# A Tessera app account (/):
+docker compose run --rm tessera node dist/reset-account-password.js you@example.com
+```
+
+From a script, pipe the password (never pass it as an argument) and add `-T`:
+`printf '%s' "$PW" | docker compose run -T --rm portal node dist/reset-admin-password.js you@example.com`.
+The first run after an update applies the new migration, with the usual backup beside the file.
 
 ## Updating
 

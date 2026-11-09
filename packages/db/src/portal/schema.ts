@@ -514,6 +514,24 @@ const v13: Migration = {
   },
 };
 
+const V14_AUDIT_ACTIONS = [
+  ...V13_AUDIT_ACTIONS,
+  'admin.password_reset',
+] as const satisfies readonly PortalAuditAction[];
+
+/**
+ * v14 — an operator can reset the admin's password (issue #364, `planning/portal-v0-spec.md` §7a).
+ * No new table: the reset rewrites `admin_user.password_hash`, ends its sessions and is logged as
+ * `admin.password_reset`, which widens `audit_event`.
+ */
+const v14: Migration = {
+  version: 14,
+  description: 'admin.password_reset (issue #364)',
+  up: (db) => {
+    rebuildTable(db, 'audit_event', auditEventDdl(V14_AUDIT_ACTIONS));
+  },
+};
+
 export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -528,4 +546,5 @@ export const PORTAL_MIGRATIONS: readonly Migration[] = [
   v11,
   v12,
   v13,
+  v14,
 ];

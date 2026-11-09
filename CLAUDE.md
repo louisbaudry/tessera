@@ -833,7 +833,9 @@ engine, but follows the same discipline:
   `portal-core`); `db/src/portal/admin.ts` is the repository that stores
   and looks them up. One admin account exists in practice, created once
   via `pnpm --filter @cat-tool/portal-server run create-admin`, not an
-  HTTP endpoint. Client auth is still a private-link `access_token`,
+  HTTP endpoint. A lost password is recovered from the host with
+  `reset-admin-password` (and `reset-account-password` for the CAT app; `portal-v0-spec.md` §7a): the
+  password is read from a hidden prompt or a pipe, never an argument, and every session of that person ends. Client auth is still a private-link `access_token`,
   deliberately — see `portal-v0-spec.md` §7 before changing either.
 - **Every portal transition, login, delivery and download names its
   actor** (backlog #58, `audit-spec.md` §2.6). `adminActor`/`clientActor` in

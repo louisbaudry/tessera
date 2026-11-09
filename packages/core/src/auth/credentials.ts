@@ -20,6 +20,23 @@ const SCRYPT_KEYLEN = 64;
 /** A session stays valid for 30 days from creation. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * The shortest password the recovery commands accept (issue #364). `create-admin` and
+ * `create-account` predate it and take anything; a recovery is the moment to be strict, because the
+ * operator is choosing a password for a login that is reachable from the internet.
+ */
+export const MIN_PASSWORD_LENGTH = 12;
+
+/**
+ * Why a password is refused, or `null` when it is acceptable. It checks length only, counted in
+ * characters (code points), not bytes, so a passphrase in any script is judged alike.
+ */
+export function passwordProblem(password: string): string | null {
+  return [...password].length >= MIN_PASSWORD_LENGTH
+    ? null
+    : `the password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+}
+
 /** `scrypt` salt:hash, both hex — self-contained, no separate salt column needed. */
 export function hashPassword(password: string): string {
   const salt = randomBytes(16);

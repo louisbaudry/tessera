@@ -64,6 +64,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'account.sso_linked',
   'account.sso_unlinked',
   'tenant.sso_policy_set',
+  'account.password_reset',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -79,6 +80,7 @@ export const PORTAL_AUDIT_ACTIONS = [
   'auth.contact_login',
   'auth.contact_login_failed',
   'order.due_set',
+  'admin.password_reset',
 ] as const;
 
 /**
@@ -403,6 +405,14 @@ export interface AuditDetail {
    * or `null` when cleared. A day, never a client-facing promise.
    */
   'order.due_set': { readonly due_at: string | null };
+  /**
+   * Subject: the portal admin. An operator set a new password from the host and ended its sessions
+   * (issue #364, `portal-v0-spec.md` §7a). The count is how many sessions ended; never the password,
+   * its hash or the address.
+   */
+  'admin.password_reset': { readonly sessions_ended: number };
+  /** Subject: the account. The same for a CAT app account (issue #364, `v1-spec.md` §4.1a). */
+  'account.password_reset': { readonly sessions_ended: number };
   // A client's linked memory/glossary (backlog #162). The file's name is not
   // in a detail: it often is the client's name, and a detail is hashed.
   'resource.linked': ClientResourceDetail;
