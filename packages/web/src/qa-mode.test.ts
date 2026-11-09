@@ -32,10 +32,18 @@ describe('the mode a page holds', () => {
     expect(afterEdit(once).unsweptEdits).toBe(2);
   });
 
-  it('a sweep clears it only when it says it is current', () => {
+  it('a sweep clears it only when the server says current and nothing was saved since it began', () => {
     const stale = afterEdit(deferred);
-    expect(afterSweep(stale, { segments: 10, current: true })).toEqual(deferred);
-    expect(afterSweep(stale, { segments: 10, current: false })).toEqual(stale);
+    expect(afterSweep(stale, { segments: 10, current: true }, 1)).toEqual(deferred);
+    expect(afterSweep(stale, { segments: 10, current: false }, 1)).toEqual(stale);
+  });
+
+  it('an edit saved while the sweep ran keeps the page stale, even if the server said current', () => {
+    const startedAt = afterEdit(deferred); // one unswept edit when the sweep began
+    const editedMeanwhile = afterEdit(startedAt); // two by the time it ended
+    const out = afterSweep(editedMeanwhile, { segments: 10, current: true }, 1);
+    expect(out).toEqual(editedMeanwhile);
+    expect(out.stale).toBe(true);
   });
 
   it('offers Run QA only to a deferred project', () => {

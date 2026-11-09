@@ -2707,6 +2707,7 @@ Louis took the card although #180's measurement had removed its motive, and chos
 - **A count, not a flag.** A boolean "stale" cleared at the end of a sweep loses an edit that landed during it, and a deferred project would then pass review on a stale finding. `unswept_edits` is read at the start and subtracted at the end (a test edits mid-sweep through the progress callback).
 - **Going live is refused while stale**, for the same reason: live QA trusts the rows.
 - **The isolation matrix caught my route order**: a body check before opening the project turns a missing project's 404 into a 400, which the matrix's control forbids. The project opens first.
+- **Codex found three real problems, all mine.** A vendor on a grant could start a sweep (`edit`) but not own or poll the job (jobs belong to staff), so the sweep is `manage`; a sweep over a *live* project could overwrite an edit's fresh findings with its one-time sibling snapshot and still say `current`, so only a deferred project sweeps; and the page restored the mode it held when the sweep began, hiding an edit saved meanwhile, so `afterSweep` takes the latest mode and the count at the start.
 - **Not built:** per-file sweeps from the page, a progress bar (a percentage in words), an index on the target's text (the cheaper alternative the card named, still open if a real job needs it), and an export gate.
 - Not verified: a real large project in a browser; the 100,000-segment sweep time is the §7.10 repository figure, not measured through this route.
 

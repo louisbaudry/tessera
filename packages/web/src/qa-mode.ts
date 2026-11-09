@@ -41,9 +41,20 @@ export const LIVE_QA: QaModeView = { deferred: false, stale: false, unsweptEdits
 export const afterEdit = (mode: QaModeView): QaModeView =>
   mode.deferred ? { ...mode, stale: true, unsweptEdits: mode.unsweptEdits + 1 } : mode;
 
-/** The mode after a sweep finished: current unless an edit landed while it ran. */
-export const afterSweep = (mode: QaModeView, result: QaSweepResult): QaModeView =>
-  result.current ? { ...mode, stale: false, unsweptEdits: 0 } : mode;
+/**
+ * The page's mode after a sweep finished, from the mode it holds *now* (not the one it held
+ * when the sweep started: an edit saved meanwhile has marked it stale since). It reads as
+ * current only if the server says so and no edit has been saved here since the sweep began
+ * (`startedAtEdits` is the count then); an edit still on its way would otherwise be hidden.
+ */
+export const afterSweep = (
+  latest: QaModeView,
+  result: QaSweepResult,
+  startedAtEdits: number,
+): QaModeView =>
+  result.current && latest.unsweptEdits === startedAtEdits
+    ? { ...latest, stale: false, unsweptEdits: 0 }
+    : latest;
 
 /** Whether the panel offers "Run QA": only a deferred project has anything to catch up on. */
 export const canRunQa = (mode: QaModeView): boolean => mode.deferred;

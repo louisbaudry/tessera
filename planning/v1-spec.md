@@ -2277,7 +2277,7 @@ that size, so the editor's own ceiling is not claimed.
      result says `current: false`.
   Going live again is refused while stale (live QA would trust unswept rows), and a mode change
   is one `project.setting_changed` with key `qa_mode`. The owner switches the mode (`manage`);
-  anyone who can edit may run the sweep. Verified in Chromium: live shows a finding at once;
+  the sweep is the owner's too (a job belongs to a tenant's staff, so a translator on a grant can neither own nor poll one) and only a deferred project sweeps: a live project's edits rerun QA themselves, and a sweep's one-time snapshot of the siblings could overwrite what an edit made between two batches. Verified in Chromium: live shows a finding at once;
   deferred shows none after an edit and says the findings are out of date; going live is refused;
   Run QA finishes and the finding appears; then live is allowed.
 - **Not measured:** a real client's file, the browser, a segment with thousands of repeats (the

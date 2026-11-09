@@ -166,6 +166,7 @@ describe('sweepQa', () => {
 
   it('reports progress by batch, ending at the total', () => {
     const db = project();
+    setQaDeferred(db, true, TEST_ACTOR);
     const seen: [number, number][] = [];
     sweepQa(db, (done, total) => seen.push([done, total]));
     const total = listSegments(db, 1).length;

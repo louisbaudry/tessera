@@ -216,6 +216,17 @@ describe('an edit in a deferred project, then the sweep', () => {
     expect((await fileIssues(token)).map((i) => i.rule)).toEqual(['seg.untranslated']);
   });
 
+  it('a live project has nothing to sweep: a 409, and no job', async () => {
+    const { token } = await seed();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/projects/job/qa/sweep',
+      headers: as(token),
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toMatch(/every edit/);
+  });
+
   it('a sweep of a project nobody can see is a missing project', async () => {
     await seed();
     const bob = await login('bob');

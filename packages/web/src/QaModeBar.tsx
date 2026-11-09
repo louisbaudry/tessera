@@ -31,9 +31,10 @@ export function QaModeBar({
 }: {
   project: string;
   mode: QaModeView;
-  /** Whether this account may switch the mode (the project's owner): the route is `manage`. */
+  /** Whether this account may switch the mode and run QA (the project's owner): both routes are `manage`. */
   canChoose: boolean;
-  onMode: (mode: QaModeView) => void;
+  /** Takes the new mode as a function of the latest one: a sweep must not restore a stale copy. */
+  onMode: (update: (latest: QaModeView) => QaModeView) => void;
   onSwept: () => void;
 }) {
   const { token, signOut } = useSession();
@@ -57,7 +58,8 @@ export function QaModeBar({
     setProblem(null);
     setBusy(true);
     try {
-      onMode(await api.setQaMode(token, project, deferred));
+      const next = await api.setQaMode(token, project, deferred);
+      onMode(() => next);
     } catch (err) {
       fail(err);
     } finally {
@@ -69,6 +71,7 @@ export function QaModeBar({
     setProblem(null);
     setBusy(true);
     try {
+      const startedAtEdits = mode.unsweptEdits;
       let current = (await api.startQaSweep(token, project)).job;
       setJob(current);
       while (live.current && isRunning(current)) {
@@ -78,7 +81,8 @@ export function QaModeBar({
         setJob(current);
       }
       if (current.state === 'done' && current.result) {
-        onMode(afterSweep(mode, current.result));
+        const result = current.result;
+        onMode((latest) => afterSweep(latest, result, startedAtEdits));
         onSwept();
       }
     } catch (err) {
@@ -102,12 +106,15 @@ export function QaModeBar({
           Run QA only when I ask (for very large files)
         </label>
       )}
-      {canRunQa(mode) && (
+      {canRunQa(mode) && canChoose && (
         <button type="button" disabled={busy} onClick={() => void run()}>
           Run QA
         </button>
       )}
       {line && <span className={mode.stale ? 'stale' : 'muted'}>{line}</span>}
+      {canRunQa(mode) && !canChoose && mode.stale && (
+        <span className="muted">Ask the project&apos;s owner to run QA.</span>
+      )}
       {job && (
         <span role="status" className="muted">
           {describeSweep(job)}

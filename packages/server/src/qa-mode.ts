@@ -6,9 +6,10 @@
  * - `PUT /api/projects/:name/qa-mode` `{ deferred }`: the owner's choice (`manage`). Going
  *   live again while findings are stale is a 409, because live QA would trust rows no
  *   sweep has checked.
- * - `POST /api/projects/:name/qa/sweep`: starts the sweep as a job (`edit`: a translator on a
- *   grant must be able to bring QA up to date before their own review). A sweep is 6 s at
- *   100,000 segments, so it is a job, never the request thread; one runs at a time per account.
+ * - `POST /api/projects/:name/qa/sweep`: starts the sweep as a job (`manage`, like every job
+ *   here: a job belongs to a tenant's staff, so a translator on a grant cannot own or poll one;
+ *   the owner runs QA before reviewing). Only a deferred project sweeps (a 409 otherwise). A sweep
+ *   is 6 s at 100,000 segments, so it is a job, never the request thread; one runs at a time per account.
  *
  * The gate that reads findings (review, `countBlockingQa`) refuses stale ones with a 409 of
  * its own (`assignments.ts`), which is why a deferred project cannot ship a blocking issue.
@@ -103,10 +104,18 @@ export function registerQaModeRoutes(app: FastifyInstance, deps: QaModeRouteDeps
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/qa/sweep',
     async (req, reply) => {
-      const opened = deps.openProject(req, reply, req.params.name, 'edit');
+      const opened = deps.openProject(req, reply, req.params.name, 'manage');
       if (!opened) return reply;
       const projectPath = opened.path;
+      // A live project keeps its findings current on every edit, and a sweep over its snapshot
+      // of the siblings could overwrite what an edit made meanwhile: only a deferred one sweeps.
+      const deferred = isQaDeferred(opened.db);
       opened.db.close();
+      if (!deferred) {
+        return reply.code(409).send({
+          error: 'QA runs on every edit in this project: there is nothing to run',
+        });
+      }
       const me = deps.tenantId(req);
       if (deps.jobs.runningFor(me, 'qa') >= 1) {
         return reply

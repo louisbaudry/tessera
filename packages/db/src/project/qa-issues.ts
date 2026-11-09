@@ -472,7 +472,9 @@ export interface QaSweepResult {
  * its own transaction, so an edit made meanwhile is not held for the whole sweep (6 s at
  * 100,000 segments). The edits counted before it started are cleared when it ends; one
  * counted during it stays, and the result says so (`current: false`). Runs in a job, never
- * a request. Works on a live project too, where it is a full recheck.
+ * a request. **Only for a deferred project**: a live project's edits rerun QA themselves and
+ * count nothing, so a sweep's one-time snapshot of the siblings could overwrite what an edit
+ * made between two batches, and nothing would say so.
  *
  * @param onProgress Called after each batch with the segments checked so far and the total.
  */
