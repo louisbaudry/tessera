@@ -43,7 +43,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 
 import { DRAFT_DELAY_MS } from './drafts.js';
 import { loadShortcuts } from './prefs.js';
-import { formatCombo, pmKeyName } from './shortcuts.js';
+import { cmdAliasOf, formatCombo, pmKeyName } from './shortcuts.js';
 import { fullTagLabel, tagLabel, tagTitle, toPieces } from './pieces.js';
 import { describeFormat } from './tag-label.js';
 import {
@@ -238,16 +238,20 @@ export function TargetEditor({
       [pmKeyName(keys.acceptDraft)]: () => acceptNow.current(),
       [pmKeyName(keys.confirm)]: confirmKey,
     };
-    // Cmd on a Mac where confirm is bound to Ctrl, as it always was.
-    if (keys.confirm.ctrl && !keys.confirm.meta && !keys.confirm.alt) {
-      keyHandlers[pmKeyName({ ...keys.confirm, ctrl: false, meta: true })] = confirmKey;
-    }
+    // Cmd on a Mac where confirm is bound to Ctrl, unless an action of its own has that key.
+    const cmdConfirm = cmdAliasOf(keys, 'confirm');
+    if (cmdConfirm) keyHandlers[pmKeyName(cmdConfirm)] = confirmKey;
     const loaded = createTargetState(visible, opened.formatTable, groups, [
       history(),
       keymap({
         // The keys the person may have changed (issue #193), named as ProseMirror names
         // them. The rest below are the editor's own and are not assignable.
         ...keyHandlers,
+        // Fixed, not assignable: Esc leaves the segment, and leaving saves (§7.2).
+        Escape: () => {
+          callbacks.current.onLeave();
+          return true;
+        },
         'Mod-z': undo,
         'Mod-y': redo,
         'Shift-Mod-z': redo,

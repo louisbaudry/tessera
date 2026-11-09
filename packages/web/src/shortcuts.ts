@@ -214,6 +214,25 @@ export function formatCombo(combo: Combo): string {
  */
 const CMD_ALIASED: ReadonlySet<ShortcutAction> = new Set(['palette', 'confirm']);
 
+/**
+ * The Cmd form of an aliased action's key (`Cmd+Enter` for `Ctrl+Enter`), or null
+ * when there is none: the action is not one of the aliased two, its key is not a
+ * plain Ctrl key, or another action has that Cmd key itself. An explicit binding
+ * always wins over the implicit alias, as `resolveKey`'s exact match does.
+ */
+export function cmdAliasOf(
+  bindings: Readonly<Record<ShortcutAction, Combo>>,
+  action: ShortcutAction,
+): Combo | null {
+  const own = bindings[action];
+  if (!CMD_ALIASED.has(action) || !own.ctrl || own.meta || own.alt) return null;
+  const alias: Combo = { ...own, ctrl: false, meta: true };
+  for (const other of SHORTCUT_ACTIONS) {
+    if (sameCombo(bindings[other], alias)) return null;
+  }
+  return alias;
+}
+
 /** The action a key press asks for under `bindings`, or null when none does. */
 export function resolveKey(
   event: KeyFacts,
