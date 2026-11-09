@@ -27,8 +27,10 @@ import {
   applyReplace,
   openProjectDb,
   scanReplace,
+  sweepQa,
   type ApplyReplaceResult,
   type ReplaceChoice,
+  type QaSweepResult,
   type ReplaceScan,
 } from '../project/index.js';
 import { describeTm, openTm, type TmSummary } from '../tm/index.js';
@@ -116,6 +118,15 @@ export interface OpTable {
    * The run the owner kept (`v1-spec.md` §7.8): one transaction, so a terminated apply
    * leaves the project as it was. The same time limit as the scan.
    */
+  /**
+   * QA for every segment of a project (`sweepQa`, issue #361): the batch run of a deferred
+   * project, 6 s at 100,000 segments, so it never runs on a request thread. Writes only
+   * `qa_issue` rows.
+   */
+  'project.qaSweep': {
+    args: { readonly projectPath: string };
+    result: QaSweepResult;
+  };
   'project.replaceApply': {
     args: {
       readonly projectPath: string;
@@ -307,6 +318,23 @@ export const OPS: Ops = {
         chosen: args.chosen,
         actor: args.actor,
       });
+      return { value, cancelled: false };
+    } finally {
+      db.close();
+    }
+  },
+
+  'project.qaSweep': (args, ctx) => {
+    const db = openProjectDb(args.projectPath);
+    try {
+      ctx.progress({ stage: 'checking', fraction: 0, units: 0 });
+      const value = sweepQa(db, (done, total) =>
+        ctx.progress({
+          stage: 'checking',
+          fraction: total > 0 ? done / total : null,
+          units: done,
+        }),
+      );
       return { value, cancelled: false };
     } finally {
       db.close();

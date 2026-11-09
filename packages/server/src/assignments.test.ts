@@ -23,6 +23,9 @@ import {
   createTm,
   createVendorFile,
   dismissQaIssue,
+  noteQaDeferredEdit,
+  setQaDeferred,
+  sweepQa,
   listEvents,
   listRosterTenants,
   grantProjectAuthorization,
@@ -884,6 +887,30 @@ describe('the owner reviews a delivered job', () => {
     );
     dismissQaIssue(project, { segmentId, rule: 'tag.missing' }, { actor: SETUP });
     project.close();
+    expect((await review(a, 1)).statusCode).toBe(200);
+  });
+
+  it('is refused while a deferred project’s QA is out of date, and open once QA has been run (issue #361)', async () => {
+    const a = await aliceWithProject();
+    await post(a, offerBody());
+    await deliveredByBob();
+    const project = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
+    setQaDeferred(project, true, SETUP);
+    noteQaDeferredEdit(project); // an edit QA has not seen
+    project.close();
+
+    const refused = await review(a, 1);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ qaStale: true });
+    expect(refused.json<{ error: string }>().error).toMatch(/run QA/);
+
+    const again = openProjectDb(
+      projectPath(config.storageRoot, tenantOf(config, alice), 'job'),
+    );
+    sweepQa(again);
+    again.close();
     expect((await review(a, 1)).statusCode).toBe(200);
   });
 

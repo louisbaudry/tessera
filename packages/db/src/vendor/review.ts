@@ -10,6 +10,7 @@ import { isBlocking, type AuditActor } from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 
 import { listQaIssues } from '../project/qa-issues.js';
+import { assertQaCurrent } from '../project/qa-mode.js';
 import { getAssignment, moveAssignment, type Assignment } from './assignments.js';
 import { VendorError } from './error.js';
 
@@ -25,8 +26,13 @@ export class ReviewBlockedError extends VendorError {
   }
 }
 
-/** Blocking QA issues in a project: what `qa`'s exit status counts (`isBlocking`). */
+/**
+ * Blocking QA issues in a project: what `qa`'s exit status counts (`isBlocking`). A
+ * deferred project whose findings are out of date is refused (`QaStaleError`, issue #361)
+ * rather than counted, so a blocking issue cannot pass because QA was not run.
+ */
 export function countBlockingQa(project: Database.Database): number {
+  assertQaCurrent(project);
   return listQaIssues(project).filter(isBlocking).length;
 }
 

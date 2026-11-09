@@ -1,5 +1,12 @@
 import { isBlocking, type QaIssue } from '@cat-tool/core';
-import { getFile, listAllSegments, listSegments, runQaRulesFor } from '@cat-tool/db';
+import {
+  clearQaUnswept,
+  getFile,
+  listAllSegments,
+  listSegments,
+  qaUnsweptEdits,
+  runQaRulesFor,
+} from '@cat-tool/db';
 
 import {
   CliError,
@@ -15,7 +22,9 @@ export const QA_USAGE = 'cat-tool qa <project.catdb> [--file <id>]';
 /**
  * Runs every enabled rule over every segment and lists what it found.
  * Exit status 1 when a blocking issue remains (`isBlocking`: severity
- * `error`, not dismissed) — the one definition of "must not ship".
+ * `error`, not dismissed) — the one definition of "must not ship". The exit status
+ * comes from this run's own findings, never stored ones, so a deferred project
+ * (issue #361) cannot pass on findings that are out of date.
  */
 export function qa(args: readonly string[], io: CliIo): number {
   const { values, positionals } = parse(args, { file: { type: 'string' } });
@@ -32,10 +41,15 @@ export function qa(args: readonly string[], io: CliIo): number {
     const segments =
       fileId === undefined ? listAllSegments(db) : listSegments(db, fileId);
     segmentCount = segments.length;
+    // A deferred project (issue #361) counts the edits QA has not seen. This run reads
+    // every segment fresh, so what it reports is current, and a run over the whole
+    // project (not one file) is the sweep that clears them.
+    const unswept = qaUnsweptEdits(db);
     issues = runQaRulesFor(
       db,
       segments.map((s) => s.id),
     );
+    if (fileId === undefined) clearQaUnswept(db, unswept);
   } finally {
     db.close();
   }

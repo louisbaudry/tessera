@@ -64,6 +64,7 @@ import {
   recordLedgerExport,
   recordPayment,
   reopenPayment,
+  QaStaleError,
   ReviewBlockedError,
   reconcileAssignmentGrants,
   reconcileMemberships,
@@ -290,6 +291,10 @@ export function registerAssignmentRoutes(
     }
     if (err instanceof ReviewBlockedError) {
       return reply.code(409).send({ error: err.message, blocking: err.blocking });
+    }
+    // A deferred project whose QA is out of date (issue #361): run QA, then review.
+    if (err instanceof QaStaleError) {
+      return reply.code(409).send({ error: err.message, qaStale: true });
     }
     if (
       err instanceof InvalidAssignmentTransitionError ||

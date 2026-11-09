@@ -152,6 +152,7 @@ import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft
 import { registerEngineRoutes } from './engine.js';
 import { registerConcordanceRoutes } from './concordance.js';
 import { registerReferenceFileRoutes } from './reference-files.js';
+import { registerQaModeRoutes } from './qa-mode.js';
 import { registerReplaceRoutes } from './replace.js';
 import { registerSuggestionRoutes } from './suggestions.js';
 import type { Resolver, WebhookSender } from './webhook-send.js';
@@ -1781,6 +1782,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     sessionActor,
     // null for a vendor, who is never "the owner" of a project they were granted into
     tenantId: (req) => ownTenant(req)?.id ?? null,
+  });
+  registerQaModeRoutes(app, {
+    jobs,
+    openProject,
+    sessionActor,
+    tenantId: (req) => sessionTenant(req).id,
   });
   registerReplaceRoutes(app, {
     jobs,

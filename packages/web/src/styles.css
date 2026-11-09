@@ -1687,3 +1687,15 @@ button.chip-button:hover {
   border-radius: 4px;
   background: var(--surface);
 }
+
+/* The QA panel's strip for live or deferred QA (issue #361): a row that wraps, the stale line in the warning colour. */
+.qa-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.25rem 0.75rem;
+}
+.qa-mode .stale {
+  color: var(--error, #b42318);
+}

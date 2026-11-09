@@ -11,7 +11,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { importDocx, plainText, readDocx, translatableSegments } from '@cat-tool/core';
-import { listSegments, listTmRefs, openProjectDb, setSegmentTarget } from '@cat-tool/db';
+import {
+  isQaStale,
+  listSegments,
+  listTmRefs,
+  noteQaDeferredEdit,
+  openProjectDb,
+  setQaDeferred,
+  setSegmentTarget,
+} from '@cat-tool/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runCli, USAGE } from './cli.js';
@@ -156,6 +164,36 @@ describe('cat-tool: a full job, headless', () => {
 
     const scoped = run('qa', project, '--file', '1');
     expect(scoped.code).toBe(1);
+  });
+
+  it('in a deferred project its exit status comes from a fresh run, and a whole-project run catches the count up (issue #361)', () => {
+    const project = join(dir, 'project.catdb');
+    run('init', project, '--src', 'en', '--tgt', 'de');
+    run('add-file', project, FIXTURE);
+    const actor = { actor: { kind: 'cli' as const, name: 'test' }, label: 'test' };
+    const db = openProjectDb(project);
+    setQaDeferred(db, true, actor);
+    const numbered = listSegments(db, 1).find(
+      (s) => !s.locked && /\d/.test(plainText(s.sourceTokens)),
+    )!;
+    setSegmentTarget(db, numbered.id, {
+      targetTokens: [{ t: 'text', v: 'ohne Zahl' }],
+      status: 'translated',
+      origin: null,
+      actor,
+    });
+    noteQaDeferredEdit(db); // what an edit through the app records
+    expect(isQaStale(db)).toBe(true);
+    db.close();
+
+    // No stored finding exists, yet the run finds the blocking one itself.
+    const scoped = run('qa', project, '--file', '1');
+    expect(scoped.code).toBe(1);
+    expect(run('qa', project).code).toBe(1);
+
+    const after = openProjectDb(project);
+    expect(isQaStale(after)).toBe(false);
+    after.close();
   });
 });
 

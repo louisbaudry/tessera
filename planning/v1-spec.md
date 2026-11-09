@@ -2258,14 +2258,28 @@ that size, so the editor's own ceiling is not claimed.
   translator does not feel. A full QA sweep is 60 µs a segment, run by `cat-tool qa` and not on a
   request thread (no route sweeps a project). If either becomes a problem, the lever is an index on
   the target's text so an edit reads its neighbours instead of the project, not the language.
-- **QA that can be turned off per confirm is not built.** The reason the card gave (memoQ and
-  Phrase let a large document switch live QA off) is a cost the measurement did not find here:
-  0.13 s at 100,000 segments is not what makes a large file slow, and a deferred mode has a real
-  price. Findings would be stale or absent until a batch run, so every gate that reads QA
-  (`isBlocking` on review, the export and the CLI's exit status) would have to run QA first, or
-  a blocking issue would ship; and `isBlocking` stays the one definition of "must not ship". It is
-  filed as its own card with these numbers, to be taken if a real job shows live QA to be the
-  cost (`#37` is where that shows).
+- **QA that can be turned off per confirm is built, and off by default** (issue #361; Louis took
+  the card and chose TypeScript, 2026-11-09). The measurement above says it is not what makes a
+  large file slow, so no project changes: `qa_mode_setting` (project schema v23) is absence-based,
+  no row is live QA. A deferred project reruns no QA on an edit or a restructure and counts the
+  edit instead (`unswept_edits`), so its findings read as **stale**. Three rules keep that from
+  shipping a blocking issue, because `isBlocking` stays the one definition of "must not ship":
+  1. **A gate refuses stale findings, never sweeps.** Review (`countBlockingQa`) throws
+     `QaStaleError` (a 409 with `qaStale: true`) rather than count rows no sweep has checked; the
+     CLI's `qa` takes its exit status from its own fresh run, so it needs no gate. Export has no
+     QA gate today (only review does) and none was added.
+  2. **A sweep is a job** (`project.qaSweep`, `POST /api/projects/:name/qa/sweep`, one per
+     account at a time), never the request thread: 6 s at 100,000 segments. It reads the sibling
+     index once and checks 1,000 segments per transaction, so an edit made meanwhile waits for a
+     batch, not the sweep.
+  3. **The count, not a flag.** A sweep clears the edits it saw when it started (`clearQaUnswept`)
+     and no later one, so an edit that lands during a sweep leaves the project stale and the job's
+     result says `current: false`.
+  Going live again is refused while stale (live QA would trust unswept rows), and a mode change
+  is one `project.setting_changed` with key `qa_mode`. The owner switches the mode (`manage`);
+  the sweep is the owner's too (a job belongs to a tenant's staff, so a translator on a grant can neither own nor poll one) and only a deferred project sweeps: a live project's edits rerun QA themselves, and a sweep's one-time snapshot of the siblings could overwrite what an edit made between two batches. Verified in Chromium: live shows a finding at once;
+  deferred shows none after an edit and says the findings are out of date; going live is refused;
+  Run QA finishes and the finding appears; then live is allowed.
 - **Not measured:** a real client's file, the browser, a segment with thousands of repeats (the
   per-edit rerun also reruns each repeat), and memories and glossaries of production size
   (`pnpm bench:tm` covers memories).

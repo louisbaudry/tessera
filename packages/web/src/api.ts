@@ -40,6 +40,7 @@ import type {
 } from './find-replace.js';
 import type { FuzzyThresholdView } from './fuzzy-threshold.js';
 import type { ImportJob } from './import-job.js';
+import type { QaModeView, QaSweepJob } from './qa-mode.js';
 import type { ScanJob } from './stale-scan.js';
 import type { RateEntry } from './jobs.js';
 import { parseProjectKey } from './project-key.js';
@@ -877,6 +878,19 @@ export const api = {
     call<{ issues: QaIssue[] }>(projectUrl(name, `/files/${fileId}/qa-issues`), token, {
       signal,
     }),
+  /** Live or deferred QA, and whether a deferred project's findings are out of date (issue #361). */
+  qaMode: (token: string, name: string, signal?: AbortSignal) =>
+    call<QaModeView>(projectUrl(name, '/qa-mode'), token, { signal }),
+  setQaMode: (token: string, name: string, deferred: boolean) =>
+    call<QaModeView>(projectUrl(name, '/qa-mode'), token, {
+      method: 'PUT',
+      body: { deferred },
+    }),
+  /** Starts QA for the whole project as a job (issue #361); `qaSweepJob` follows it. */
+  startQaSweep: (token: string, name: string) =>
+    call<{ job: QaSweepJob }>(projectUrl(name, '/qa/sweep'), token, { method: 'POST' }),
+  qaSweepJob: (token: string, id: string, signal?: AbortSignal) =>
+    call<QaSweepJob>(`/api/jobs/${id}`, token, { signal }),
   /**
    * Sets a finding aside, or counts it again (backlog #33) — named by its
    * segment and rule, which a QA rerun keeps; its row id is not.
