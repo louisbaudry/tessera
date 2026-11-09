@@ -5459,6 +5459,35 @@ from a pre-translated one. What it taught:
 
 Slices S5 to S9 are in the spec's §6, one card each when taken.
 
+**#364 · ~~Password recovery: operator command for the portal admin and CAT app accounts~~ · DONE —
+`portal-server/src/{admin-recovery,reset-admin-password}.ts`, `server/src/{account-recovery,reset-account-password}.ts`,
+`db/src/portal/admin.ts` (`setAdminPassword`), `db/src/platform/accounts.ts` (`setAccountPassword`),
+`db/src/shell-password.ts` (`readNewPassword`), `core/auth/credentials.ts` (`passwordProblem`), portal v14 and platform v16
+(audit actions), `deploy/README.md` (Recovery).**
+
+The first deployment lost the admin's password and the way back was editing `portal.sqlite` by hand. What it taught:
+
+- **An operator command, not an emailed link.** SMTP is off by default and a link needs a design for who may ask; the host
+  is already the boundary for `create-admin`. Design in `portal-v0-spec.md` §7a.
+- **The password never travels as an argument.** `readNewPassword` is a hidden prompt asked twice or a pipe; it is in `db`
+  beside `osUserActor` because both servers need it. It stops at the first Enter of a chunk and drops the rest, as a
+  keyboard never sends one; the test types one prompt at a time for that reason (a pasted multi-line chunk would lose
+  its second line).
+- **A reset ends the person's sessions and nobody else's.** Both repository tests keep a second account and a live
+  session of it, and the server tests go through the real login route, so a reset that left a session alive, or took
+  another's, fails.
+- **Two new audit actions, so two migrations.** Portal v14 and platform v16 only widen `audit_event` (`rebuildTable`);
+  the web audit screen's `Record` over the platform actions failed `pnpm build` until the new action was worded, which is
+  that table doing its job, and two platform tests that pin the newest schema version moved from 15 to 16 (a meant change).
+- **A missing file is an error, not an empty database.** `openPortalDb` creates a file; without the check a typo reported
+  success on a fresh portal.
+- Mutation checks: with the session delete removed from `setAdminPassword`
+  or `setAccountPassword`, the repository test fails (the route tests load `@cat-tool/db` from its build, so they would
+  catch it only after a rebuild, which was not done); with the length check made to return nothing, three tests fail; with
+  the missing-file check removed, the account recovery test fails.
+- Not verified: a run inside the production containers (the commands exist only from this card, so the first real run
+  is on the host after the update), and the interactive prompt on a real terminal beyond the simulated one.
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,

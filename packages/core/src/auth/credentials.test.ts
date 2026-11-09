@@ -5,7 +5,9 @@ import {
   hashPassword,
   hashSessionToken,
   hasPassword,
+  MIN_PASSWORD_LENGTH,
   NO_PASSWORD_HASH,
+  passwordProblem,
   verifyPassword,
 } from './credentials.js';
 
@@ -59,5 +61,17 @@ describe('session tokens', () => {
   it('never stores the raw token in its hash', () => {
     const token = generateSessionToken();
     expect(hashSessionToken(token)).not.toBe(token);
+  });
+});
+
+describe('passwordProblem (issue #364)', () => {
+  it('accepts a password of the minimum length and refuses one character fewer', () => {
+    expect(passwordProblem('x'.repeat(MIN_PASSWORD_LENGTH))).toBeNull();
+    expect(passwordProblem('x'.repeat(MIN_PASSWORD_LENGTH - 1))).toMatch(/at least 12/);
+  });
+
+  it('counts characters, not bytes', () => {
+    // Twelve code points, each three bytes in UTF-8.
+    expect(passwordProblem('\u3042'.repeat(MIN_PASSWORD_LENGTH))).toBeNull();
   });
 });

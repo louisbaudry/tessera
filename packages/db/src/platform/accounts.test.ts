@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { generateSessionToken, hashPassword, SESSION_TTL_MS } from '@cat-tool/core';
+import {
+  generateSessionToken,
+  hashPassword,
+  SESSION_TTL_MS,
+  verifyPassword,
+} from '@cat-tool/core';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -13,8 +18,10 @@ import {
   getAccountByEmail,
   getAccountBySessionToken,
   listAccounts,
+  setAccountPassword,
 } from './accounts.js';
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
+import { listEvents, verifyAudit } from '../audit/events.js';
 import { openPlatformDb } from './index.js';
 
 let dir: string;
@@ -106,5 +113,85 @@ describe('sessions', () => {
     }>;
     expect(rows).toHaveLength(1);
     expect(rows[0]!.token_hash).not.toBe(token);
+  });
+});
+
+describe('setAccountPassword (issue #364)', () => {
+  it("sets the new password, ends that account's sessions only and logs it in its tenant", () => {
+    const owner = createAccount(db, {
+      email: 'owner@example.com',
+      passwordHash: hashPassword('old-password'),
+      actor: TEST_ACTOR,
+    });
+    const vendor = createAccount(db, {
+      email: 'vendor@example.com',
+      passwordHash: hashPassword('vendor-password'),
+      actor: TEST_ACTOR,
+      role: 'vendor',
+    });
+    createAccountSession(db, owner.id, 'tok-1', { actor: TEST_ACTOR });
+    createAccountSession(db, owner.id, 'tok-2', { actor: TEST_ACTOR });
+    createAccountSession(db, vendor.id, 'tok-v', { actor: TEST_ACTOR });
+
+    const result = setAccountPassword(
+      db,
+      'owner@example.com',
+      hashPassword('new-password'),
+      {
+        actor: TEST_ACTOR,
+      },
+    );
+
+    expect(result).toEqual({ sessionsEnded: 2 });
+    const stored = getAccountByEmail(db, 'owner@example.com')!.passwordHash;
+    expect(verifyPassword('new-password', stored)).toBe(true);
+    expect(verifyPassword('old-password', stored)).toBe(false);
+    expect(getAccountBySessionToken(db, 'tok-1')).toBeNull();
+    expect(getAccountBySessionToken(db, 'tok-2')).toBeNull();
+    expect(getAccountBySessionToken(db, 'tok-v')?.email).toBe('vendor@example.com');
+
+    const reset = listEvents(db, {
+      subjectType: 'account',
+      subjectId: String(owner.id),
+    }).filter((e) => e.action === 'account.password_reset');
+    expect(reset).toHaveLength(1);
+    expect(JSON.parse(reset[0]!.detail as string)).toEqual({ sessions_ended: 2 });
+    expect(reset[0]!.tenantId).not.toBeNull();
+    expect(reset[0]!.detail as string).not.toMatch(/example\.com|password/);
+    expect(verifyAudit(db).brokenAt).toBeNull();
+  });
+
+  it("works for a vendor, whose events are on no tenant's slice", () => {
+    const vendor = createAccount(db, {
+      email: 'vendor@example.com',
+      passwordHash: hashPassword('old-password'),
+      actor: TEST_ACTOR,
+      role: 'vendor',
+    });
+    expect(
+      setAccountPassword(db, 'vendor@example.com', hashPassword('new-password'), {
+        actor: TEST_ACTOR,
+      }),
+    ).toEqual({ sessionsEnded: 0 });
+    const reset = listEvents(db, {
+      subjectType: 'account',
+      subjectId: String(vendor.id),
+    }).filter((e) => e.action === 'account.password_reset');
+    expect(reset[0]!.tenantId).toBeNull();
+  });
+
+  it('writes nothing for an address no account has', () => {
+    createAccount(db, {
+      email: 'owner@example.com',
+      passwordHash: hashPassword('old-password'),
+      actor: TEST_ACTOR,
+    });
+    const before = verifyAudit(db).events;
+    expect(
+      setAccountPassword(db, 'nobody@example.com', hashPassword('new-password'), {
+        actor: TEST_ACTOR,
+      }),
+    ).toBeNull();
+    expect(verifyAudit(db).events).toBe(before);
   });
 });

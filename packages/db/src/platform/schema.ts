@@ -803,6 +803,25 @@ const v15: Migration = {
   },
 };
 
+/** `audit_event.action` as of platform v16: v15's list and `account.password_reset`. Frozen. */
+const V16_AUDIT_ACTIONS = [
+  ...V15_AUDIT_ACTIONS,
+  'account.password_reset',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * An operator can reset an account's password (issue #364, `planning/v1-spec.md` §4.1a). No new
+ * table: the reset rewrites `account.password_hash`, ends the account's sessions and is logged as
+ * `account.password_reset`, which widens `audit_event`.
+ */
+const v16: Migration = {
+  version: 16,
+  description: 'account.password_reset (issue #364)',
+  up(db) {
+    rebuildTable(db, 'audit_event', auditEventDdl(V16_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -819,4 +838,5 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v13,
   v14,
   v15,
+  v16,
 ];

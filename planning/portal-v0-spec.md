@@ -410,6 +410,36 @@ a `fetch` and hand the browser a blob.
   now, not a env-var secret shared with every deploy config.
   `PORTAL_ADMIN_TOKEN` is gone.
 
+## 7a. A lost admin password (issue #364, 2026-11-07)
+
+The first deployment lost the admin's password and the only way back was editing `portal.sqlite` by hand.
+There was no recovery for this login or for the CAT app's (`v1-spec.md` §4.1a), and none can be an
+emailed link yet: SMTP is off by default and a reset link needs a design for who may ask.
+
+**Decision: an operator command, run on the host.** `reset-admin-password [--tenant <id>] <email>`
+(`portal-server/src/reset-admin-password.ts`) sets a new password for an existing admin, ends every
+session that admin holds, and writes `admin.password_reset` in the same transaction
+(`db/portal/admin.ts` `setAdminPassword`). The CAT app has its twin, `reset-account-password <email>`
+(`setAccountPassword`, `account.password_reset`, in the account's tenant's slice of the log).
+
+- **The host is the proof.** Whoever can run a command in the container can already read the volume; the
+  command asks for no old password. The log names who ran it (`cli:<OS user>`, self-asserted, like
+  `create-account`).
+- **The password is never an argument.** A hidden prompt asked twice on a terminal, or the first line of a
+  pipe (`db/shell-password.ts`, one definition for both servers). An argument stays in shell history and the
+  process list. `create-admin` and `create-account` still take one for a first password.
+- **At least 12 characters** (`passwordProblem` in `core/auth/credentials.ts`), counted in characters. Only the
+  recovery enforces it; an older password keeps working.
+- **Sessions end with the password.** Someone who had the old password must not stay signed in.
+- **Nothing personal in the log.** The detail is the number of sessions ended; no address, hash or password.
+  An unknown address writes nothing and is an error to the operator only.
+- **The file must exist.** Opening a mistyped path would create an empty database and report success on
+  nothing, so the command refuses a missing file. Opening it runs any pending migration, as every start does
+  (portal v14 widens `audit_event`; platform v16 likewise).
+
+Not in scope: a self-service emailed link, a "change password" screen for a signed-in person, and joining the
+two logins (issue #363). TypeScript, not Rust/Wasm (asked 2026-11-07: a database update, no hot kernel).
+
 ## 8. What's manual in v0 / where the CAT tool plugs in later
 
 Manual today: actual translation production (Trados/DeepL by hand),
