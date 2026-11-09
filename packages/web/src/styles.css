@@ -1671,3 +1671,19 @@ button.chip-button:hover {
 .row .unit-context .unit-name {
   font-family: ui-monospace, monospace;
 }
+
+/* The account screen's editor keys (issue #193): a plain table, the key set in its own box. */
+.account .shortcuts td.actions {
+  white-space: nowrap;
+  text-align: right;
+}
+.account .shortcuts td.actions button + button {
+  margin-left: 0.4rem;
+}
+.account .shortcuts kbd {
+  font: inherit;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
