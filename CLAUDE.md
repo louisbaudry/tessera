@@ -517,6 +517,10 @@ format for glossaries, through the same shared migration runner —
   (`custom` for a rendering, `deprecation` for each `avoid`), the one write path, so a second
   way into the `.ctg` is a bug. A `.ctg` has no term status: `review` and `keep` are notes on
   the rendering.
+- **TBX is a labelled subset, never ISO 30042 conformance** (backlog #336, `core/glossary/tbx.ts`).
+  The standard has not been read and no other tool's TBX has been checked (#365). Import maps one
+  `termEntry` to one row through `importGlossaryRows`; export takes `exportGlossaryRows`' rows, so
+  the client rule holds. Nothing says the product is TBX-compliant.
 - **A glossary session is held in server memory, and detection consults
   only the project's write-target `.ctg`** (backlog #43a,
   `smart-glossary-spec.md` §5a.1). A `termId` is a row in one file;
@@ -1037,6 +1041,11 @@ log, never translation data) and the storage volume, with `core` and
   `-wal`/`-shm` files beside every memory. A new bulk operation is an entry in
   `db/src/jobs/ops.ts`; a read-only scan of a memory (`glossary.scanTm`, backlog #122) is
   one too, and `JobRegistry` keeps it apart from an import by `kind`.
+- **A big file's cost is measured, not guessed** (issue #180, `v1-spec.md` §7.10,
+  `pnpm bench:project`, kept out of `pnpm test` and the build like `bench:tm`). Tested to 150,000
+  segments through the API (not in a browser). An XLIFF export joins the original and its edits in
+  one pass: it once rebuilt the document per edit, 16 s for 20,000 units, and a test fails if that
+  returns. A change to what a confirm or an edit reads is worth one run of the script before and after.
 - **A project route opens its project with `openProject(req, reply, name,
 action)`, and names the action** (`read`, `edit` or `manage`,
   `core/auth/authorization.ts`; backlog #45). A project is the session's own

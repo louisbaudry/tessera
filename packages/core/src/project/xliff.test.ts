@@ -368,6 +368,66 @@ describe('exportFileBytes for XLIFF', () => {
  * writes. Invented strings; **not the output of any tool**, so these prove the filter agrees
  * with the shape the spec describes and nothing more.
  */
+describe('a large XLIFF file (issue #180)', () => {
+  /** `units` units of one segment each, in a file of the size an agency job reaches. */
+  function bigFile(units: number): { file: ProjectFile; segments: Segment[] } {
+    const body = Array.from(
+      { length: units },
+      (_, i) =>
+        `<unit id="u${i}"><segment><source>Sentence ${i} about the quarterly report.</source></segment></unit>`,
+    ).join('\n');
+    const xml = `<?xml version="1.0"?>\n<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="en" trgLang="de"><file id="f">${body}</file></xliff>`;
+    const assembled = assembleXliff(new TextEncoder().encode(xml), EN_DE);
+    const file: ProjectFile = {
+      id: 1,
+      kind: 'xliff',
+      relPath: 'big.xlf',
+      originalBlob: assembled.originalBlob,
+      skeleton: assembled.skeleton,
+      partMap: assembled.partMap,
+      importedAt: '2026-11-07T00:00:00.000Z',
+    };
+    const segments = assembled.segments.map((s, i): Segment => ({
+      id: i + 1,
+      fileId: 1,
+      part: s.part,
+      ord: s.ord,
+      paraKey: s.paraKey,
+      paraOrd: s.paraOrd,
+      sourceTokens: s.sourceTokens,
+      formatTable: s.formatTable,
+      // Half of them translated: one new <target> and one state change each, the common job.
+      targetTokens: i % 2 === 0 ? [{ t: 'text', v: `Satz ${i}.` } as Token] : null,
+      sourceHash: s.sourceHash,
+      status: i % 2 === 0 ? 'translated' : 'new',
+      origin: null,
+      locked: s.locked,
+      fallbackCopy: false,
+      updatedAt: '2026-11-07T00:00:00.000Z',
+    }));
+    return { file, segments };
+  }
+
+  it('exports 20,000 units with 10,000 edits in a time that does not grow with edits times size', () => {
+    const { file, segments } = bigFile(20_000);
+    const started = performance.now();
+    const { bytes, summary } = exportFileBytes(file, segments);
+    const elapsed = performance.now() - started;
+    expect(summary.segmentsWithTarget).toBe(10_000);
+    const out = decode(bytes);
+    expect(out.match(/<target>/g)).toHaveLength(10_000);
+    expect(out).toContain(
+      '<source>Sentence 0 about the quarterly report.</source><target>Satz 0.</target>',
+    );
+    expect(out).not.toContain(
+      '<source>Sentence 1 about the quarterly report.</source><target>',
+    );
+    // Measured: about 0.2 s once the document is joined in one pass, and about 19 s
+    // when it was rebuilt once per edit. Five seconds sits far from both.
+    expect(elapsed).toBeLessThan(5000);
+  }, 60_000);
+});
+
 describe('the software-strings fixture (en to uk)', () => {
   const NAME = 'software-strings.en-uk.xlf';
 

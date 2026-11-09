@@ -34,6 +34,7 @@ import {
   isSlug,
   normaliseHost,
   parseGlossaryCsv,
+  parseTbx,
   parseTokens,
   primarySubtag,
   rulesFor,
@@ -1854,6 +1855,57 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (parsed.refusals.length > 0) {
       return reply.code(422).send({
         error: `the file has ${parsed.refusals.length} problem${parsed.refusals.length === 1 ? '' : 's'}; nothing was imported`,
+        refusals: parsed.refusals,
+      });
+    }
+    const glossary = openGlossary(file);
+    try {
+      return importGlossaryRows(glossary, parsed.rows, {
+        srcLang,
+        actor: sessionActor(req),
+      });
+    } catch (err) {
+      if (err instanceof GlossaryImportError) {
+        return reply.code(422).send({
+          error: `${err.message}; nothing was imported`,
+          refusals: [{ line: err.line, message: err.message }],
+        });
+      }
+      throw err;
+    } finally {
+      glossary.close();
+    }
+  });
+
+  // The same import from a TBX file of the subset `core/glossary/tbx.ts` reads (issue #336).
+  // Not conformance to ISO 30042, which has not been read here: the reply says the dialect.
+  app.post<{
+    Params: { name: string };
+    Body: { tbx?: unknown; srcLang?: unknown } | undefined;
+  }>('/api/glossaries/:name/import-tbx', async (req, reply) => {
+    const tenant = ownTenant(req);
+    if (!tenant)
+      return reply.code(404).send({ error: `no glossary named "${req.params.name}"` });
+    const { tbx, srcLang } = req.body ?? {};
+    let file: string;
+    try {
+      file = glossaryPath(config.storageRoot, tenant, req.params.name);
+    } catch (err) {
+      if (err instanceof InvalidNameError)
+        return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+    if (!existsSync(file)) {
+      return reply.code(404).send({ error: `no glossary named "${req.params.name}"` });
+    }
+    if (typeof tbx !== 'string' || typeof srcLang !== 'string') {
+      return reply.code(400).send({ error: 'tbx and srcLang are required, as text' });
+    }
+    const parsed = parseTbx(tbx, srcLang);
+    if (parsed.refusals.length > 0) {
+      return reply.code(422).send({
+        error: `the file has ${parsed.refusals.length} problem${parsed.refusals.length === 1 ? '' : 's'}; nothing was imported`,
+        dialect: 'the TBX subset of core/glossary/tbx.ts, not ISO 30042 conformance',
         refusals: parsed.refusals,
       });
     }

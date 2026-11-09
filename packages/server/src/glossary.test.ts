@@ -286,6 +286,69 @@ describe('importing a glossary CSV', () => {
   });
 });
 
+describe('importing a TBX file (issue #336)', () => {
+  const importTbx = (token: string, name: string, payload: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/glossaries/${name}/import-tbx`,
+      headers: auth(token),
+      payload,
+    });
+  const glossaryFile = () =>
+    join(config.storageRoot, alice.storageRoot, 'glossaries', 'acme.ctg');
+  const TBX = `<martif type="TBX" xml:lang="en"><martifHeader/><text><body>
+<termEntry><langSet xml:lang="en"><tig><term>source</term><termNote type="administrativeStatus">admittedTerm-admn-sts</termNote></tig></langSet>
+<langSet xml:lang="uk"><tig><term>джерело</term><termNote type="administrativeStatus">preferredTerm-admn-sts</termNote></tig>
+<tig><term>джерела</term><termNote type="administrativeStatus">deprecatedTerm-admn-sts</termNote></tig></langSet></termEntry>
+</body></text></martif>`;
+
+  it('writes the entries as the session’s decisions and answers with the counts and the dialect', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    await createGlossaryNamed(token, 'acme');
+    const res = await importTbx(token, 'acme', { tbx: TBX, srcLang: 'en' });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ termsCreated: 1, renderings: 1, forbidden: 1 });
+    const glossary = openGlossary(glossaryFile());
+    expect(countTerms(glossary)).toBe(1);
+    glossary.close();
+  });
+
+  it('refuses a file with a problem, names the entry, and writes nothing', async () => {
+    const token = await login('alice@example.com', 'alice-pw');
+    await createGlossaryNamed(token, 'acme');
+    const bad = TBX.replace('preferredTerm-admn-sts', 'approved-by-committee');
+    const res = await importTbx(token, 'acme', { tbx: bad, srcLang: 'en' });
+    expect(res.statusCode).toBe(422);
+    const body = res.json() as {
+      refusals: { line: number; message: string }[];
+      dialect: string;
+    };
+    expect(body.refusals).toEqual([
+      { line: 1, message: 'status "approved-by-committee" is not one this subset reads' },
+    ]);
+    expect(body.dialect).toMatch(/not ISO 30042 conformance/);
+    const glossary = openGlossary(glossaryFile());
+    expect(countTerms(glossary)).toBe(0);
+    glossary.close();
+  });
+
+  it('answers 400 to a body that is not text, and 404 for a stranger or a missing glossary', async () => {
+    const a = await login('alice@example.com', 'alice-pw');
+    const b = await login('bob@example.com', 'bob-pw');
+    await createGlossaryNamed(a, 'acme');
+    expect((await importTbx(a, 'acme', { tbx: 3, srcLang: 'en' })).statusCode).toBe(400);
+    expect((await importTbx(a, 'nope', { tbx: TBX, srcLang: 'en' })).statusCode).toBe(
+      404,
+    );
+    expect((await importTbx(b, 'acme', { tbx: TBX, srcLang: 'en' })).statusCode).toBe(
+      404,
+    );
+    const glossary = openGlossary(glossaryFile());
+    expect(countTerms(glossary)).toBe(0);
+    glossary.close();
+  });
+});
+
 describe('attaching a glossary to a project', () => {
   it('attaches after the others, moves the write target, shows slugs not paths, and logs each change under the session', async () => {
     const token = await login('alice@example.com', 'alice-pw');

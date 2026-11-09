@@ -2686,6 +2686,17 @@ Design in `v1-spec.md` §7.9. Louis lifted the card's "not before someone asks" 
 - **Seen in a browser:** an upload with a label, the row, a script renamed `.pdf` refused in the server's words, the file opened from a `blob:` URL and removed. The one console line is the 415.
 - **Not built:** inline preview (it opens in a tab), renaming or replacing in place, office documents and text, the style guide (#148) and a limit on the project's total beyond twenty files of 10 MB.
 
+**#180 · ~~Large-document mode: a tested segment ceiling~~ · DONE — `core/src/project/export-xliff.ts` (one-pass splice), `scripts/bench-project.mjs` (`pnpm bench:project`), `v1-spec.md` §7.10**
+(2026-11-07; closes issue #180; the QA half is issue #361)
+
+Louis took the card (it said "not before #37") and chose TypeScript over Rust/Wasm. What it taught:
+
+- **Measure first found one real problem, and it was not the one the card named.** Live QA on every edit costs 0.13 s at 100,000 segments; the XLIFF download cost 4.8 s at 10,000 and would have been minutes at 100,000, because it rebuilt the whole document for each edit (edits times file size). The fix is eight lines of join, with a failing test first (15.9 s for 20,000 units, 0.2 s after).
+- **The ceiling is a number with a method.** 150,000 segments, through the API, from a script anyone can rerun; the table and what it leaves out are in §7.10. The browser was not driven, and the spec says so rather than claim an editor ceiling.
+- **A defensive check came with the fix.** Edits from distinct elements cannot overlap; the splice now throws `ExportError` if two do, instead of writing a corrupt file the way a descending-order splice silently would.
+- **Deferred QA is carded, not built.** The measurement removed its motive here and its cost is a gate (export, review and the CLI's exit status would each have to run QA first). Numbers and constraints are on the new issue.
+- Not verified: a client's real large file, and the grid in a browser at 100,000 segments.
+
 ---
 
 ## Sequencing
@@ -5400,6 +5411,21 @@ three rules of the tool read that as a repeat. What it taught:
 - Not verified: how a real tool's group is shaped (the fixture is hand-written), a group whose units are not plural
   forms at all (a group of related strings with a repeated word is treated the same way, as it must be: the file said
   they belong together), and whether H2's polysemy count needs more.
+
+**#336 · ~~TBX (ISO 30042) import for glossaries~~ · DONE, A LABELLED SUBSET, NOT CONFORMANCE — `core/src/glossary/tbx.ts` (`parseTbx`, `glossaryTbx`), `POST /api/glossaries/:name/import-tbx` (`server/src/app.ts`); export route not built**
+(2026-11-07; the open checks are issue #365)
+
+The card's gate was to read ISO 30042:2019 and check a real TBX from another tool before any code. Neither was available, and the register forbids claiming conformance to an unread standard. Louis chose to build a labelled subset now. What it taught:
+
+- **The subset is the common TBX-Basic shape, from public description, and is marked as that everywhere it appears** (the module, the route's reply, the register row). A file a stricter reader accepts may be refused here, and the first real file may break it, as the `.sdltm` importer's did.
+- **Reuse the XML reader.** `scanTree` in `core/xliff/scan.ts` already reads generic XML; a second reader would be the duplicate the invariant forbids.
+- **Export goes through the client rule.** `glossaryTbx` takes `exportGlossaryRows`' rows, which carry no decision log, notes or people, so the file cannot carry what the CSV does not.
+- **One `langSet` per language, not per rendering.** The first writer put each rendering in its own `langSet`, and the parser (correctly) refused a language twice. TBX groups a language's terms in one `langSet`; a round-trip test found it.
+- **Import maps one entry to one row.** The source term is the row's term; the preferred rendering (else the one admitted) is its rendering; deprecated terms are `avoid`. Anything it cannot settle is refused with the entry number, and the file is refused whole.
+- **The owner's export route is not built.** A glossary export leaves the system, so it needs an audit action first; that is in #365, not guessed here.
+- Mutation checks: a swapped preferred status fails the round-trip test; a parser that returns rows beside refusals fails the refuse-whole test.
+- Not verified: ISO 30042 (not read), a TBX from another tool (none checked), a glossary of production size.
+
 
 **#356 · ~~Software localisation S3: glossary import from CSV into a `.ctg`~~ · DONE —
 `core/src/glossary/import.ts` (`parseGlossaryCsv`), `db/src/glossary/session.ts` (`importGlossaryRows`,

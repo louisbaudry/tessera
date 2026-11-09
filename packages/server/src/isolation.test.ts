@@ -527,6 +527,24 @@ const ROUTES: Record<string, Entry> = {
       },
     ],
   },
+  'POST /api/glossaries/:name/import-tbx': {
+    kind: 'object',
+    pairs: () => [
+      {
+        actual: {
+          method: 'POST',
+          url: '/api/glossaries/b-gl/import-tbx',
+          body: { tbx: '<martif><text><body/></text></martif>', srcLang: 'en' },
+        },
+        missing: {
+          method: 'POST',
+          url: '/api/glossaries/b-gone/import-tbx',
+          body: { tbx: '<martif><text><body/></text></martif>', srcLang: 'en' },
+        },
+        echo: ['b-gl', 'b-gone'],
+      },
+    ],
+  },
   'POST /api/glossaries/:name/import': {
     kind: 'object',
     pairs: () => [

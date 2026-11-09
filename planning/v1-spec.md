@@ -2223,6 +2223,53 @@ chose TypeScript over Rust/Wasm: this is storage and a download, with no kernel.
   replacing a file in place (remove and add), the style guide itself (#148),
   office documents and text files, and a limit on the project's total.
 
+### 7.10 What a large file costs (`@cat-tool/core`, `scripts/bench-project.mjs`; issue #180)
+
+Measured 2026-11-07, on one machine, with `pnpm bench:project --sizes 10000,100000,150000 --http`
+(synthetic short sentences, 5% repeats, half translated; the script says what it is). The
+card asked for a ceiling "measured at 100k+, not just 10k" and for QA that can run in batch.
+Louis chose TypeScript over Rust/Wasm for it; the measurement answered why that was right: the
+one thing that was slow was an algorithm, not the language.
+
+| Segments (XLIFF) | 10,000 | 100,000 | 150,000 |
+|---|---|---|---|
+| Import (read the file and store it) | 0.2 s | 1.3 s | 2.0 s |
+| Segment list the grid loads (API) | 0.06 s, 4.6 MB | 0.8 s, 46 MB | 1.4 s, 69 MB |
+| One edit, with its QA rerun (API) | 0.02 s | 0.17 s | 0.27 s |
+| The file's QA list (API) | 0.01 s | 0.16 s | 0.26 s |
+| Full QA sweep, all segments (repository) | 0.6 s | 6.0 s | 9.3 s |
+| Download, translated file (API) | 0.09 s | 1.0 s | 1.5 s |
+
+A DOCX of 100,000 paragraphs is the same to within a fifth (import 2.2 s, an edit 0.17 s,
+download 1.1 s). **The tested ceiling is 150,000 segments** through the API, the figure the card
+quotes for Phrase's web editor (a public claim, not checked here); nothing in the server broke below it, and the upload cap
+(100 MB) is far above a 150,000-unit XLIFF (20 MB). **The browser is not measured**: the grid is
+virtualised (§7.1), but it holds the whole 69 MB list in memory and the page was not driven at
+that size, so the editor's own ceiling is not claimed.
+
+- **What was slow, and is fixed: the XLIFF download.** It rebuilt the whole document string once per
+  edit, so its cost was edits times file size: 4.8 s at 10,000 segments and 16 s for 20,000 units
+  (about 8 minutes extrapolated to 100,000). It now joins the original and its edits in one pass
+  (`exportXliffFile`), 1.0 s at 100,000, and a test with 20,000 units fails if the cost comes back.
+  The DOCX and PPTX fold was already linear.
+- **What grows with the file, and is not a problem yet.** Every edit and confirm reads the project's
+  translated segments once to find the segments whose `consistency.*` findings it can move
+  (`readTranslated`), so an edit costs about 1.4 ms per 1,000 segments: 0.13 s at 100,000, which a
+  translator does not feel. A full QA sweep is 60 µs a segment, run by `cat-tool qa` and not on a
+  request thread (no route sweeps a project). If either becomes a problem, the lever is an index on
+  the target's text so an edit reads its neighbours instead of the project, not the language.
+- **QA that can be turned off per confirm is not built.** The reason the card gave (memoQ and
+  Phrase let a large document switch live QA off) is a cost the measurement did not find here:
+  0.13 s at 100,000 segments is not what makes a large file slow, and a deferred mode has a real
+  price. Findings would be stale or absent until a batch run, so every gate that reads QA
+  (`isBlocking` on review, the export and the CLI's exit status) would have to run QA first, or
+  a blocking issue would ship; and `isBlocking` stays the one definition of "must not ship". It is
+  filed as its own card with these numbers, to be taken if a real job shows live QA to be the
+  cost (`#37` is where that shows).
+- **Not measured:** a real client's file, the browser, a segment with thousands of repeats (the
+  per-edit rerun also reruns each repeat), and memories and glossaries of production size
+  (`pnpm bench:tm` covers memories).
+
 ## 8. Risks
 
 | Risk | Mitigation |

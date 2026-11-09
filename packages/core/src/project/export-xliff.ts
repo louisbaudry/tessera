@@ -164,10 +164,23 @@ export function exportXliffFile(
   };
   if (edits.length === 0) return { bytes: file.originalBlob, summary };
 
-  edits.sort((a, b) => b.start - a.start);
-  let xml = doc.xml;
+  // One pass over the original, never one splice per edit: rebuilding the whole
+  // document for each edit costs edits times file size, which took 16 s for 10,000
+  // edits in a 20,000-unit file (issue #180). The edits come from distinct elements
+  // of the original, so they never overlap; one that did would mean the scanner and
+  // the splice disagree, and writing it would corrupt the file, so it is refused.
+  edits.sort((a, b) => a.start - b.start);
+  const pieces: string[] = [];
+  let cursor = 0;
   for (const edit of edits) {
-    xml = xml.slice(0, edit.start) + edit.text + xml.slice(edit.end);
+    if (edit.start < cursor) {
+      throw new ExportError(
+        'two edits of the XLIFF file overlap; the export was not written',
+      );
+    }
+    pieces.push(doc.xml.slice(cursor, edit.start), edit.text);
+    cursor = edit.end;
   }
-  return { bytes: encoder.encode(xml), summary };
+  pieces.push(doc.xml.slice(cursor));
+  return { bytes: encoder.encode(pieces.join('')), summary };
 }
