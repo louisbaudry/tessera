@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   doneNote,
   editProblem,
-  isConcordanceKey,
   MAX_QUERY_CHARS,
   pieces,
   refusal,
@@ -97,24 +96,6 @@ describe('summary', () => {
 
   it('says plainly when no memory is attached, which is not the same as no match', () => {
     expect(summary(view(0, false, 0))).toBe('No memory is attached to this project.');
-  });
-});
-
-describe('isConcordanceKey', () => {
-  const key = {
-    ctrlKey: true,
-    metaKey: false,
-    altKey: false,
-    shiftKey: true,
-    code: 'KeyL',
-  };
-  it('is Ctrl+Shift+L and nothing else', () => {
-    expect(isConcordanceKey(key)).toBe(true);
-    expect(isConcordanceKey({ ...key, shiftKey: false })).toBe(false);
-    expect(isConcordanceKey({ ...key, ctrlKey: false })).toBe(false);
-    expect(isConcordanceKey({ ...key, metaKey: true })).toBe(false);
-    expect(isConcordanceKey({ ...key, altKey: true })).toBe(false);
-    expect(isConcordanceKey({ ...key, code: 'KeyD' })).toBe(false);
   });
 });
 

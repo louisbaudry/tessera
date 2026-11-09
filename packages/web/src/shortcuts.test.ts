@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assignKey,
+  cmdAliasOf,
   DEFAULT_BINDINGS,
   formatCombo,
   parseBindings,
+  pmKeyName,
   refusalOf,
   resetBindings,
   resolveKey,
@@ -190,7 +192,8 @@ describe('formatCombo', () => {
     expect(
       formatCombo({ ctrl: false, shift: false, alt: true, meta: false, code: 'Enter' }),
     ).toBe('Alt+Enter');
-    expect(formatCombo(ctrl('Comma'))).toBe('Ctrl+Comma');
+    expect(formatCombo(ctrl('Comma'))).toBe('Ctrl+,');
+    expect(formatCombo(ctrl('Insert'))).toBe('Ctrl+Insert');
   });
 });
 
@@ -199,5 +202,104 @@ describe('resetBindings', () => {
     const reset = resetBindings();
     (reset as Record<ShortcutAction, Combo>).palette = ctrl('KeyJ');
     expect(DEFAULT_BINDINGS.palette).toEqual(ctrl('KeyK'));
+  });
+});
+
+describe('resolveKey and the Cmd keys of a Mac', () => {
+  const press = (over: Partial<Parameters<typeof resolveKey>[0]>) => ({
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: false,
+    code: 'KeyK',
+    ...over,
+  });
+
+  it('answers to Cmd where the palette and confirm are bound to Ctrl, as they always did', () => {
+    expect(resolveKey(press({ metaKey: true }), DEFAULT_BINDINGS)).toBe('palette');
+    expect(resolveKey(press({ metaKey: true, code: 'Enter' }), DEFAULT_BINDINGS)).toBe(
+      'confirm',
+    );
+  });
+
+  it('keeps every other action literal Ctrl: Cmd+M is not merge', () => {
+    expect(
+      resolveKey(press({ metaKey: true, code: 'KeyM' }), DEFAULT_BINDINGS),
+    ).toBeNull();
+    expect(
+      resolveKey(
+        press({ metaKey: true, shiftKey: true, code: 'KeyD' }),
+        DEFAULT_BINDINGS,
+      ),
+    ).toBeNull();
+  });
+
+  it('refuses Cmd and Ctrl held together, and Cmd with Alt, as the palette key always did', () => {
+    expect(
+      resolveKey(press({ metaKey: true, ctrlKey: true }), DEFAULT_BINDINGS),
+    ).toBeNull();
+    expect(
+      resolveKey(press({ metaKey: true, altKey: true }), DEFAULT_BINDINGS),
+    ).toBeNull();
+  });
+});
+
+describe('pmKeyName', () => {
+  it("writes the editor's own default keys as the keymap has always named them", () => {
+    expect(pmKeyName(DEFAULT_BINDINGS.nextTag)).toBe('Ctrl-,');
+    expect(pmKeyName(DEFAULT_BINDINGS.tagList)).toBe('Ctrl-Shift-,');
+    expect(pmKeyName(DEFAULT_BINDINGS.copySource)).toBe('Ctrl-Insert');
+    expect(pmKeyName(DEFAULT_BINDINGS.acceptDraft)).toBe('Ctrl-.');
+    expect(pmKeyName(DEFAULT_BINDINGS.confirm)).toBe('Ctrl-Enter');
+  });
+
+  it('names letters in lower case, digits and function keys as they are, and an Alt key first', () => {
+    expect(pmKeyName(ctrl('KeyJ', true))).toBe('Ctrl-Shift-j');
+    expect(
+      pmKeyName({ ctrl: false, shift: false, alt: true, meta: false, code: 'Digit4' }),
+    ).toBe('Alt-4');
+    expect(
+      pmKeyName({ ctrl: true, shift: false, alt: true, meta: false, code: 'F7' }),
+    ).toBe('Alt-Ctrl-F7');
+  });
+});
+
+describe('cmdAliasOf', () => {
+  const meta = (code: string): Combo => ({
+    ctrl: false,
+    shift: false,
+    alt: false,
+    meta: true,
+    code,
+  });
+
+  it('gives the Cmd form of confirm and the palette, and nothing for the other actions', () => {
+    expect(cmdAliasOf(DEFAULT_BINDINGS, 'confirm')).toEqual(meta('Enter'));
+    expect(cmdAliasOf(DEFAULT_BINDINGS, 'palette')).toEqual(meta('KeyK'));
+    expect(cmdAliasOf(DEFAULT_BINDINGS, 'merge')).toBeNull();
+  });
+
+  it('gives none when the action is not on a plain Ctrl key', () => {
+    const alt = assignKey(DEFAULT_BINDINGS, 'confirm', {
+      ctrl: false,
+      shift: false,
+      alt: true,
+      meta: false,
+      code: 'Enter',
+    });
+    if (!alt.ok) throw new Error('setup');
+    expect(cmdAliasOf(alt.bindings, 'confirm')).toBeNull();
+  });
+
+  it('gives none when another action has the Cmd key itself, which then wins', () => {
+    const taken = assignKey(DEFAULT_BINDINGS, 'copySource', meta('Enter'));
+    if (!taken.ok) throw new Error('setup');
+    expect(cmdAliasOf(taken.bindings, 'confirm')).toBeNull();
+    expect(
+      resolveKey(
+        { ctrlKey: false, shiftKey: false, altKey: false, metaKey: true, code: 'Enter' },
+        taken.bindings,
+      ),
+    ).toBe('copySource');
   });
 });

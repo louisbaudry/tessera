@@ -1104,8 +1104,14 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
+- **The editor's keys are bindings, not literals** (issue #193, `web/src/shortcuts.ts`, `loadShortcuts`
+  in `prefs.ts`). `Grid.tsx` resolves a key press through one listener (`resolveKey`) and
+  `TargetEditor.tsx` builds its keymap from the same set (`pmKeyName`); a new editor key is an entry
+  in `SHORTCUT_ACTIONS` with a default, never a `e.code === …` in a component. A stored set that
+  breaks any rule falls back to the defaults as a whole. Undo, redo and the browser's own keys are
+  reserved (Meta counts as Ctrl). There is no screen to change a key yet (#193 stays open).
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
   read every DOCX blob), found through the browser's resource timing.

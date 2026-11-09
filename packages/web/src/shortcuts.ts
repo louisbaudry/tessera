@@ -180,6 +180,20 @@ export function sameCombo(a: Combo, b: Combo): boolean {
   );
 }
 
+/** How a punctuation key reads in a tooltip, so the hints stay `Ctrl+,` and not `Ctrl+Comma`. */
+const DISPLAY_KEYS: Readonly<Record<string, string>> = {
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Semicolon: ';',
+  Quote: "'",
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Minus: '-',
+  Equal: '=',
+};
+
 /** A combo as a person reads it: `Ctrl+Shift+M`, `Alt+Enter`. */
 export function formatCombo(combo: Combo): string {
   const parts: string[] = [];
@@ -187,8 +201,36 @@ export function formatCombo(combo: Combo): string {
   if (combo.meta) parts.push('Meta');
   if (combo.alt) parts.push('Alt');
   if (combo.shift) parts.push('Shift');
-  parts.push(combo.code.replace(/^Key/, '').replace(/^Digit/, ''));
+  parts.push(
+    DISPLAY_KEYS[combo.code] ?? combo.code.replace(/^Key/, '').replace(/^Digit/, ''),
+  );
   return parts.join('+');
+}
+
+/**
+ * Actions whose Ctrl key also answers to Cmd on a Mac, as they always did: the
+ * palette (`Ctrl+K` or `Cmd+K`) and confirm (`Ctrl+Enter` or `Cmd+Enter`). The
+ * others are literal Ctrl on every platform, as the editor's tooltips say.
+ */
+const CMD_ALIASED: ReadonlySet<ShortcutAction> = new Set(['palette', 'confirm']);
+
+/**
+ * The Cmd form of an aliased action's key (`Cmd+Enter` for `Ctrl+Enter`), or null
+ * when there is none: the action is not one of the aliased two, its key is not a
+ * plain Ctrl key, or another action has that Cmd key itself. An explicit binding
+ * always wins over the implicit alias, as `resolveKey`'s exact match does.
+ */
+export function cmdAliasOf(
+  bindings: Readonly<Record<ShortcutAction, Combo>>,
+  action: ShortcutAction,
+): Combo | null {
+  const own = bindings[action];
+  if (!CMD_ALIASED.has(action) || !own.ctrl || own.meta || own.alt) return null;
+  const alias: Combo = { ...own, ctrl: false, meta: true };
+  for (const other of SHORTCUT_ACTIONS) {
+    if (sameCombo(bindings[other], alias)) return null;
+  }
+  return alias;
 }
 
 /** The action a key press asks for under `bindings`, or null when none does. */
@@ -196,17 +238,63 @@ export function resolveKey(
   event: KeyFacts,
   bindings: Readonly<Record<ShortcutAction, Combo>>,
 ): ShortcutAction | null {
-  const pressed: Combo = {
+  const find = (pressed: Combo): ShortcutAction | null => {
+    for (const action of SHORTCUT_ACTIONS) {
+      if (sameCombo(bindings[action], pressed)) return action;
+    }
+    return null;
+  };
+  const exact = find({
     ctrl: event.ctrlKey,
     shift: event.shiftKey,
     alt: event.altKey,
     meta: event.metaKey,
     code: event.code,
-  };
-  for (const action of SHORTCUT_ACTIONS) {
-    if (sameCombo(bindings[action], pressed)) return action;
+  });
+  if (exact !== null) return exact;
+  // Cmd where the binding says Ctrl, for the two actions that have always taken it.
+  if (event.metaKey && !event.ctrlKey) {
+    const aliased = find({
+      ctrl: true,
+      shift: event.shiftKey,
+      alt: event.altKey,
+      meta: false,
+      code: event.code,
+    });
+    if (aliased !== null && CMD_ALIASED.has(aliased)) return aliased;
   }
   return null;
+}
+
+/**
+ * The key's name in ProseMirror's keymap notation (`Ctrl-,`, `Shift-Ctrl-d`,
+ * `Ctrl-Enter`), for the actions the target editor handles itself. Modifier
+ * order does not matter to ProseMirror, which normalises it.
+ */
+export function pmKeyName(combo: Combo): string {
+  const named: Record<string, string> = {
+    Comma: ',',
+    Period: '.',
+    Slash: '/',
+    Semicolon: ';',
+    Quote: "'",
+    BracketLeft: '[',
+    BracketRight: ']',
+    Backslash: '\\',
+    Minus: '-',
+    Equal: '=',
+    Space: 'Space',
+  };
+  let key = named[combo.code] ?? combo.code;
+  if (/^Key[A-Z]$/.test(combo.code)) key = combo.code.slice(3).toLowerCase();
+  else if (/^Digit[0-9]$/.test(combo.code)) key = combo.code.slice(5);
+  const mods = [
+    combo.alt ? 'Alt' : '',
+    combo.ctrl ? 'Ctrl' : '',
+    combo.meta ? 'Meta' : '',
+    combo.shift ? 'Shift' : '',
+  ].filter(Boolean);
+  return [...mods, key].join('-');
 }
 
 /**

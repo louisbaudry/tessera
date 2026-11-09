@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   clampActive,
   filterCommands,
-  isPaletteKey,
   moveActive,
   nextMarked,
   type CommandInfo,
@@ -74,26 +73,6 @@ describe('moveActive / clampActive', () => {
     expect(clampActive(5, 2)).toBe(1);
     expect(clampActive(-1, 2)).toBe(0);
     expect(clampActive(3, 0)).toBe(0);
-  });
-});
-
-describe('isPaletteKey', () => {
-  const key = (over: Partial<Parameters<typeof isPaletteKey>[0]>) => ({
-    ctrlKey: false,
-    metaKey: false,
-    altKey: false,
-    shiftKey: false,
-    code: 'KeyK',
-    ...over,
-  });
-
-  it('is Ctrl+K or Cmd+K and nothing else', () => {
-    expect(isPaletteKey(key({ ctrlKey: true }))).toBe(true);
-    expect(isPaletteKey(key({ metaKey: true }))).toBe(true);
-    expect(isPaletteKey(key({}))).toBe(false);
-    expect(isPaletteKey(key({ ctrlKey: true, shiftKey: true }))).toBe(false);
-    expect(isPaletteKey(key({ ctrlKey: true, altKey: true }))).toBe(false);
-    expect(isPaletteKey(key({ ctrlKey: true, code: 'KeyJ' }))).toBe(false);
   });
 });
 

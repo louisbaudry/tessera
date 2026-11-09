@@ -6,7 +6,6 @@ import {
   draftFromSelection,
   draftProblem,
   EMPTY_DRAFT,
-  isAddTermKey,
   MAX_TERM_CHARS,
 } from './add-term.js';
 
@@ -64,24 +63,5 @@ describe('cleaning', () => {
       source: 'a b',
       target: 'c d',
     });
-  });
-});
-
-describe('isAddTermKey', () => {
-  const key = (over: Partial<Parameters<typeof isAddTermKey>[0]> = {}) => ({
-    ctrlKey: true,
-    metaKey: false,
-    altKey: false,
-    shiftKey: true,
-    code: 'KeyD',
-    ...over,
-  });
-  it('is Ctrl+Shift+D and nothing else', () => {
-    expect(isAddTermKey(key())).toBe(true);
-    expect(isAddTermKey(key({ shiftKey: false }))).toBe(false);
-    expect(isAddTermKey(key({ ctrlKey: false }))).toBe(false);
-    expect(isAddTermKey(key({ altKey: true }))).toBe(false);
-    expect(isAddTermKey(key({ metaKey: true }))).toBe(false);
-    expect(isAddTermKey(key({ code: 'KeyF' }))).toBe(false);
   });
 });

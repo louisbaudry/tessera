@@ -4,6 +4,12 @@
  * be absent or throw, and then the preference lasts as long as the page.
  */
 
+import {
+  parseBindings,
+  serializeBindings,
+  type Combo,
+  type ShortcutAction,
+} from './shortcuts.js';
 import { parseThemeChoice, type ThemeChoice } from './theme.js';
 
 const FULL_TAGS = 'cat-tool.fullTags';
@@ -103,5 +109,29 @@ export function saveTheme(choice: ThemeChoice): void {
     else localStorage.setItem(THEME, choice);
   } catch {
     // Not persisted; the theme still applies for this page.
+  }
+}
+
+const SHORTCUTS = 'cat-tool.shortcuts';
+
+/**
+ * The editor's key bindings (issue #193): the stored set, or the defaults when
+ * nothing is stored, storage is absent, or the stored set fails any rule
+ * (`parseBindings` falls back as a whole).
+ */
+export function loadShortcuts(): Record<ShortcutAction, Combo> {
+  try {
+    return parseBindings(localStorage.getItem(SHORTCUTS)).bindings;
+  } catch {
+    return parseBindings(null).bindings;
+  }
+}
+
+/** Keeps a changed set for this browser; the defaults are stored as no value at all. */
+export function saveShortcuts(bindings: Readonly<Record<ShortcutAction, Combo>>): void {
+  try {
+    localStorage.setItem(SHORTCUTS, serializeBindings(bindings));
+  } catch {
+    // Not persisted; the keys still change for this page.
   }
 }

@@ -1,7 +1,8 @@
 /**
  * The grid's filter bar (v1-spec.md §7; backlog #34): text, status, origin
  * and QA state. What each choice lets through is `filter.ts`'s; this is
- * rendering. `Ctrl+Shift+F` focuses the text box (the grid binds it).
+ * rendering. Its key (`Ctrl+Shift+F` unless changed, issue #193) focuses the text
+ * box; the grid binds it and passes the key's name for the placeholder.
  */
 import type { Segment, SegmentStatus } from '@cat-tool/core';
 import { useMemo, type Ref } from 'react';
@@ -27,6 +28,7 @@ export function FilterBar({
   filter,
   segments,
   shown,
+  keyHint,
   onChange,
 }: {
   ref: Ref<HTMLInputElement>;
@@ -34,6 +36,8 @@ export function FilterBar({
   segments: readonly Segment[];
   /** How many rows the filter lets through. */
   shown: number;
+  /** The focus key as a person reads it, for the placeholder. */
+  keyHint: string;
   onChange: (filter: SegmentFilter) => void;
 }) {
   const origins = useMemo(() => originCounts(segments), [segments]);
@@ -48,7 +52,7 @@ export function FilterBar({
       <input
         ref={ref}
         type="search"
-        placeholder="Filter source and target (Ctrl+Shift+F)"
+        placeholder={`Filter source and target (${keyHint})`}
         aria-label="Filter text"
         value={filter.text}
         onChange={(e) => onChange({ ...filter, text: e.target.value })}
