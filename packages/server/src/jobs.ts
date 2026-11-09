@@ -31,8 +31,9 @@ export type Settled =
  * #122), a `draft` asks the draft engine for a project's empty segments (backlog
  * #136; it runs in-process, not on a thread, but is polled and cancelled alike), a
  * `replace` previews or applies a find-and-replace over a project (backlog #148b).
+ * `qa` sweeps a deferred project's QA (issue #361).
  */
-export type JobKind = 'import' | 'scan' | 'draft' | 'replace';
+export type JobKind = 'import' | 'scan' | 'draft' | 'replace' | 'qa';
 
 /** A job as the API shows it: a slug, never a path. */
 export interface JobView {

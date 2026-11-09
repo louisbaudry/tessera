@@ -18,6 +18,12 @@ import type Database from 'better-sqlite3';
 import { appendAuditEvent } from '../audit/events.js';
 import { glossaryMismatchFinder } from './glossary-qa.js';
 import { getProject } from './project.js';
+import {
+  clearQaUnswept,
+  isQaDeferred,
+  noteQaDeferredEdit,
+  qaUnsweptEdits,
+} from './qa-mode.js';
 import { listEnabledRules } from './qa-settings.js';
 import { getSegment, SegmentRepoError } from './segments.js';
 import { isUntranslatedAllowed } from './qa-untranslated-allowlist.js';
@@ -365,6 +371,16 @@ function runChecks(
 }
 
 /**
+ * A deferred project's answer to an edit (issue #361): nothing reruns, the edit is counted
+ * so the findings read as stale, and the caller gets no findings to show. Stored findings
+ * are left as the last sweep wrote them, dismissals included.
+ */
+function deferEdit(db: Database.Database): { rerun: number[]; issues: QaIssue[] } {
+  noteQaDeferredEdit(db);
+  return { rerun: [], issues: [] };
+}
+
+/**
  * QA after one segment's target changed from `before` (backlog #29): the
  * segment itself, and every segment whose `consistency.*` findings the
  * change can move — those sharing its source (`target_differs`), and
@@ -378,6 +394,7 @@ export function rerunQaAfterEdit(
   before: readonly Token[] | null,
 ): { rerun: number[]; issues: QaIssue[] } {
   return db.transaction(() => {
+    if (isQaDeferred(db)) return deferEdit(db);
     const segment = getSegment(db, segmentId);
     if (!segment) {
       throw new SegmentRepoError(`no segment with id ${segmentId}`);
@@ -414,6 +431,7 @@ export function rerunQaAfterRestructure(
   },
 ): { rerun: number[]; issues: QaIssue[] } {
   return db.transaction(() => {
+    if (isQaDeferred(db)) return deferEdit(db);
     const index = readTranslated(db);
     const neighbours = new Set<number>();
     const hashes = new Set(before.sourceHashes);
@@ -436,4 +454,42 @@ export function rerunQaAfterRestructure(
     const rerun = [...segmentIds, ...[...neighbours].sort((a, b) => a - b)];
     return { rerun, issues: runChecks(db, rerun, index) };
   })();
+}
+
+/** Segments a sweep checks in one transaction, so an edit waits for a batch and never the sweep. */
+const SWEEP_BATCH = 1000;
+
+/** What a sweep did: how many segments it checked and whether findings are current after it. */
+export interface QaSweepResult {
+  readonly segments: number;
+  /** False when an edit landed while the sweep ran; run it again for current findings. */
+  readonly current: boolean;
+}
+
+/**
+ * QA for every segment of the project, as a deferred project's batch run (issue #361). The
+ * sibling index is read once and the segments are checked in batches of `SWEEP_BATCH`, each
+ * its own transaction, so an edit made meanwhile is not held for the whole sweep (6 s at
+ * 100,000 segments). The edits counted before it started are cleared when it ends; one
+ * counted during it stays, and the result says so (`current: false`). Runs in a job, never
+ * a request. Works on a live project too, where it is a full recheck.
+ *
+ * @param onProgress Called after each batch with the segments checked so far and the total.
+ */
+export function sweepQa(
+  db: Database.Database,
+  onProgress?: (done: number, total: number) => void,
+): QaSweepResult {
+  const seen = qaUnsweptEdits(db);
+  const ids = (
+    db.prepare('SELECT id FROM segment ORDER BY file_id, ord').all() as { id: number }[]
+  ).map((row) => row.id);
+  const index = readTranslated(db);
+  for (let i = 0; i < ids.length; i += SWEEP_BATCH) {
+    const batch = ids.slice(i, i + SWEEP_BATCH);
+    db.transaction(() => runChecks(db, batch, index))();
+    onProgress?.(Math.min(i + SWEEP_BATCH, ids.length), ids.length);
+  }
+  db.transaction(() => clearQaUnswept(db, seen))();
+  return { segments: ids.length, current: qaUnsweptEdits(db) === 0 };
 }

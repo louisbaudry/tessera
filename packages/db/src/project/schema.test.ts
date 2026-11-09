@@ -45,6 +45,7 @@ describe('openProjectDb', () => {
       'portal_client_setting',
       'project',
       'qa_issue',
+      'qa_mode_setting',
       'qa_rule_setting',
       'qa_untranslated_allowlist',
       'reference_file',

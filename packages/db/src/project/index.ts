@@ -23,6 +23,7 @@ export * from './confirm-target.js';
 export * from './restructure.js';
 export * from './glossary-refs.js';
 export * from './qa-settings.js';
+export * from './qa-mode.js';
 export * from './concordance.js';
 export * from './memory-units.js';
 export * from './find-replace.js';

@@ -757,6 +757,30 @@ const v22: Migration = {
 };
 
 /**
+ * `qa_mode_setting` (issue #361, `planning/v1-spec.md` §7.10): whether the project runs
+ * QA on every edit (live, the default) or only when asked (deferred), and how many edits
+ * have landed since QA last swept the whole project. Absence-based, like
+ * `qa_rule_setting`: no row is live QA, so no project that exists changes. `unswept_edits`
+ * counts rather than flags so that a sweep clears only the edits it saw: one that lands
+ * while a sweep runs leaves the project stale (`sweepQa`). The columns are plain
+ * integers; `deferred` has no CHECK, like the other flags here, so no closed list is mistaken for one.
+ */
+const v23: Migration = {
+  version: 23,
+  description:
+    'qa_mode_setting — live or deferred QA, and the edits since the last sweep (issue #361)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE qa_mode_setting (
+        id            INTEGER PRIMARY KEY CHECK (id = 1),
+        deferred      INTEGER NOT NULL,
+        unswept_edits INTEGER NOT NULL DEFAULT 0 CHECK (unswept_edits >= 0)
+      );
+    `);
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -784,4 +808,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v20,
   v21,
   v22,
+  v23,
 ];

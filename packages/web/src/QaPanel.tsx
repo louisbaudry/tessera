@@ -6,7 +6,7 @@
  * opens"). What it lists is `qa-panel.ts`'s; this is rendering.
  */
 import type { QaIssue, QaRule } from '@cat-tool/core';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import {
   NO_FILTER,
@@ -24,6 +24,7 @@ export function QaPanel({
   pending,
   onJump,
   onDismiss,
+  header,
 }: {
   issues: readonly QaIssue[];
   /** Segment id → index in the file. */
@@ -32,6 +33,8 @@ export function QaPanel({
   pending: ReadonlySet<string>;
   onJump: (segmentId: number) => void;
   onDismiss: (issue: QaIssue, dismissed: boolean) => void;
+  /** Above the filters: the strip for live or deferred QA (issue #361). */
+  header?: ReactNode;
 }) {
   const [filter, setFilter] = useState<PanelFilter>(NO_FILTER);
   const shown = useMemo(
@@ -49,6 +52,7 @@ export function QaPanel({
 
   return (
     <section className="qa-panel" aria-label="QA findings">
+      {header}
       <div className="qa-filters">
         {SEVERITY_ORDER.map((severity) => (
           <button

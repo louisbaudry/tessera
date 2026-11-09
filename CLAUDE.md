@@ -951,6 +951,12 @@ through. Those rules also need the project's language pair
   a _different_ finding. `dismissQaIssue`/`reinstateQaIssue` take the
   pair and an actor, and log `qa.dismissed`/`qa.reinstated`; the
   carry-forward above is not a decision and logs nothing.
+- **Deferred QA keeps the gates honest by refusing, never by sweeping** (issue #361, `db/project/qa-mode.ts`,
+  `v1-spec.md` §7.10). `qa_mode_setting` is absence-based (no row is live, so no project changes); a deferred
+  project reruns no QA on an edit and counts it (`unswept_edits`). A gate that reads findings calls
+  `assertQaCurrent` and gets a `QaStaleError` (a 409) instead of stale rows; only review does so today
+  (`countBlockingQa`), and the CLI's `qa` runs its own fresh pass. A sweep is the `project.qaSweep` job, never a
+  request, and clears the edits it saw, not later ones: don't turn the count into a flag.
 - **`qa_rule_setting` is absence-based**, the same reasoning `origin`'s
   missing CHECK constraint gets a bullet for above, applied to a table
   instead of a column: a rule with no row is enabled, so a rule added
@@ -1104,7 +1110,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **The editor's keys are bindings, not literals** (issue #193, `web/src/shortcuts.ts`, `loadShortcuts`
   in `prefs.ts`). `Grid.tsx` resolves a key press through one listener (`resolveKey`) and

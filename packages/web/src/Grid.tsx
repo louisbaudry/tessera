@@ -70,7 +70,9 @@ import {
   saveQaPanel,
 } from './prefs.js';
 import { withIssue } from './qa-panel.js';
+import { QaModeBar } from './QaModeBar.js';
 import { QaPanel } from './QaPanel.js';
+import { afterEdit, LIVE_QA, type QaModeView } from './qa-mode.js';
 import { createPageHide, createSaveQueue } from './save-queue.js';
 import { useSession } from './session-context.js';
 import { splitOffset, type SourceChild } from './split-point.js';
@@ -85,6 +87,8 @@ interface GridData {
   readonly detail: ProjectDetail;
   readonly file: FileSegments;
   readonly issues: readonly QaIssue[];
+  /** Live or deferred QA, and whether the findings are out of date (issue #361). */
+  readonly qaMode: QaModeView;
   /** The drafts the project holds, as tokens only (`api.suggestions`). */
   readonly suggestions: ReadonlyArray<{
     readonly segmentId: number;
@@ -103,19 +107,22 @@ export function Grid({ project, fileId }: { project: string; fileId: number }) {
   const data = useLoad(
     useCallback(
       async (token: string, signal: AbortSignal): Promise<GridData> => {
-        const [account, detail, file, qa, drafts] = await Promise.all([
+        const [account, detail, file, qa, drafts, qaMode] = await Promise.all([
           api.me(token, signal),
           api.project(token, project, signal),
           api.segments(token, project, fileId, signal),
           api.qaIssues(token, project, fileId, signal),
           // Drafts are an extra: the grid never waits on them or fails for them.
           api.suggestions(token, project, signal).catch(() => ({ suggestions: [] })),
+          // The mode is an extra too: a project is live until the server says otherwise.
+          api.qaMode(token, project, signal).catch(() => LIVE_QA),
         ]);
         return {
           account,
           detail,
           file,
           issues: qa.issues,
+          qaMode,
           suggestions: drafts.suggestions,
         };
       },
@@ -148,6 +155,7 @@ function SegmentGrid({
   const { token, signOut } = useSession();
   const [segments, setSegments] = useState(file.segments);
   const [issues, setIssues] = useState(data.issues);
+  const [qaMode, setQaMode] = useState(data.qaMode);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [clickAt, setClickAt] = useState<{ x: number; y: number } | undefined>();
   const [unsaved, setUnsaved] = useState<ReadonlyMap<number, SaveFailure>>(new Map());
@@ -277,6 +285,8 @@ function SegmentGrid({
           ),
         );
         setIssues((all) => replaceIssues(all, result.rerun, result.issues, inFile));
+        // A deferred project reran nothing: its findings are now out of date (issue #361).
+        setQaMode(afterEdit);
         // A draft this write already says is done with. One typed since
         // now goes over the version this write returned — this tab's own.
         const draft = drafts.read(segmentId);
@@ -559,6 +569,7 @@ function SegmentGrid({
         inFile,
       ),
     );
+    setQaMode(afterEdit);
     setUnsaved((all) => {
       if (!result.removed.some((id) => all.has(id))) return all;
       const kept = new Map(all);
@@ -1012,6 +1023,19 @@ function SegmentGrid({
             pending={dismissing}
             onJump={jumpTo}
             onDismiss={(issue, dismissed) => void setDismissed(issue, dismissed)}
+            header={
+              <QaModeBar
+                project={project}
+                mode={qaMode}
+                canChoose={!foreign}
+                onMode={setQaMode}
+                onSwept={() =>
+                  void api
+                    .qaIssues(token, project, file.file.id)
+                    .then((fresh) => setIssues(fresh.issues))
+                }
+              />
+            }
           />
         )}
       </div>
