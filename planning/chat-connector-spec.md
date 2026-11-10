@@ -276,6 +276,17 @@ nothing about a real host's speed or a person's quota. So D8's mechanism is
 supported, its batch size is "80 does no harm on easy text", and the speed and
 quota half of this question is still open.
 
+E-002 (issue #375) repeated it on a harder synthetic file with the context of D8
+in each batch: nested and adjacent tags, numbers, long segments, glossary
+renderings, memory matches, an instruction planted inside five matches. All 320
+segments were valid on the first try at batch sizes 20, 80 and 160, every glossary
+rendering was followed, the product's number and punctuation rules found nothing,
+and no planted instruction was obeyed. Two things to carry into D8: the context
+roughly doubles what a batch sends, and a batch of 160 such segments is about a
+third of a chat host's result limit. Two ceilings in a row mean synthetic text and
+a stand-in have no more to say; quality, a real document and a real host are what
+remain, and each needs a person.
+
 **O6. Rust or WebAssembly.** The standing question (`CLAUDE.md`, working rhythm 6)
 is asked before the first line of S1. The recommendation will be TypeScript: the
 work is protocol handling and calls to existing repository functions, and the

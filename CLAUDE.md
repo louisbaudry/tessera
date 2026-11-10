@@ -781,8 +781,10 @@ assistant, whose own model drafts. **Nothing is built and every decision in it i
 a proposal** until Louis rules on its §6; don't implement a slice from it before
 then. Its evidence is in `research/chat-connector/`, under the semantic-matching
 protocol (hypothesis before the run, numbers only, a journal entry per session).
-E-001 used a model with a shell as a stand-in for a chat host: it supports the
-loop's mechanism and says nothing about a real host's speed, quota or quality.
+E-001 and E-002 used a model with a shell as a stand-in for a chat host, on
+synthetic text, and both ended at the ceiling: they support the loop's mechanism
+and say nothing about a real host's speed, quota or quality. Don't add a third
+experiment of that shape; what is left needs a real host or a person reading drafts.
 
 ## The translation portal (`portal-core`/`portal-server`)
 
