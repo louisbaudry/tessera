@@ -68,3 +68,12 @@ Append-only. Newest entry last.
   person reading drafts), a real document, and a real chat host's speed and quota.
   Both need Louis: a real host needs a hosted server and an account, and a real
   document must stay off this repository.
+
+## 2026-11-10 — O1 decided; nothing measured
+
+- Louis ruled on the spec's O1: a client's text reaches a chat host only with the
+  client's consent to that engine and the connected person's recorded statement
+  that their chat account is on a business plan (spec D15). O2 follows from it.
+- No run. E-001 and E-002 did not bear on this decision: it is contractual, and
+  neither experiment says anything about a host's terms.
+- Still open and needing a person: a real host's speed and quota, and quality.

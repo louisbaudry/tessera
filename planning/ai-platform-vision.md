@@ -367,6 +367,10 @@ re-litigated per project:
    any client content. This one rule removes most of the actual risk —
    enterprise terms mean no training on inputs/outputs and a real data
    processing agreement; consumer tools often make the opposite promise.
+   *(Applied to the chat connector 2026-11-10: the server cannot see a
+   chat account's plan, so the rule is kept there by the connected
+   person's recorded statement that the account is on a business plan,
+   beside the client's consent — `chat-connector-spec.md` §6 O1, D15.)*
 2. **AI processing is opt-in per project or per client**, default on,
    one click off *(reversed for the draft engine 2026-10-12: per-client
    opt-in, off by default, because it sends the client's own translated
