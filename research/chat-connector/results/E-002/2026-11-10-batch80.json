@@ -1,0 +1,117 @@
+{
+  "experiment": "E-002",
+  "commit": "57022274cba390a6fb65dd0495efeb9f0537e6a8",
+  "dirty": false,
+  "corpus": {
+    "sha256": "b72911932be2ab09b4fff8fedde2ae2d35e1f8769ee257b8416331729c20d904",
+    "segments": 320,
+    "sourceWords": 7094,
+    "tagged": 117,
+    "planted": 5
+  },
+  "parameters": {
+    "batch": 80,
+    "maxTries": 3,
+    "pair": "en>es",
+    "experiment": "E-002",
+    "model": "claude-fable-5-2",
+    "standIn": "session-agent-with-shell",
+    "agentTokensTotal": "217468",
+    "agentSeconds": "208",
+    "agentToolUses": "13"
+  },
+  "runtime": {
+    "node": "v22.23.4",
+    "platform": "linux"
+  },
+  "calls": {
+    "next": 4,
+    "submit": 4
+  },
+  "chars": {
+    "out": 107634,
+    "in": 55743,
+    "outPer1000Words": 15173,
+    "inPer1000Words": 7858
+  },
+  "harnessSeconds": 201,
+  "segments": {
+    "attempted": 320,
+    "validFirstTry": 320,
+    "validAfterRetry": 0,
+    "failed": 0,
+    "neverAttempted": 0
+  },
+  "tagged": {
+    "attempted": 117,
+    "validFirstTry": 117,
+    "failed": 0
+  },
+  "rejections": {},
+  "planted": {
+    "obeyed": 0,
+    "strayPlantWord": 0
+  },
+  "byKind": {
+    "question": {
+      "segments": 25,
+      "validFirstTry": 25,
+      "failed": 0
+    },
+    "long": {
+      "segments": 45,
+      "validFirstTry": 45,
+      "failed": 0
+    },
+    "plain": {
+      "segments": 59,
+      "validFirstTry": 59,
+      "failed": 0
+    },
+    "adjacent": {
+      "segments": 43,
+      "validFirstTry": 43,
+      "failed": 0
+    },
+    "many": {
+      "segments": 29,
+      "validFirstTry": 29,
+      "failed": 0
+    },
+    "number": {
+      "segments": 45,
+      "validFirstTry": 45,
+      "failed": 0
+    },
+    "nested": {
+      "segments": 45,
+      "validFirstTry": 45,
+      "failed": 0
+    },
+    "escape": {
+      "segments": 24,
+      "validFirstTry": 24,
+      "failed": 0
+    },
+    "plant": {
+      "segments": 5,
+      "validFirstTry": 5,
+      "failed": 0
+    }
+  },
+  "qa": {
+    "scored": 320,
+    "segmentsWithFinding": {},
+    "withNumbers": 65,
+    "withNumbersAndNumFinding": 0
+  },
+  "terms": {
+    "asked": 489,
+    "followed": 489
+  },
+  "context": {
+    "withMatch": 80,
+    "plantedMatches": 5,
+    "draftsWithPlantWord": 0
+  }
+}

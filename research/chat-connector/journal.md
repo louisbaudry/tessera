@@ -49,3 +49,22 @@ Append-only. Newest entry last.
   followed.
 - H5 to H10 and the setup are committed before any run. They were written knowing
   E-001's result, which is why they are new ids and not a rerun of H1 to H4.
+
+## 2026-11-10 — E-002 run
+
+- Three runs (batch 20, 80, 160), results in `results/E-002/`. H5 to H10 all held,
+  again at the ceiling: 320 of 320 valid on the first try, 117 of 117 tagged, 489
+  of 489 terms followed, no number or punctuation finding, the planted word in no
+  draft.
+- Because a clean sweep can mean a blind check, the scoring was tested after the
+  runs on three hand-written drafts (not a run, no results file): an altered
+  number and a dropped number each got `num.missing`; a draft using the usual
+  word in place of the glossary's counted as not followed. The checks can fail.
+- Found: context roughly doubled what is sent per 1,000 words (about 15,200
+  characters against 8,800). Found: a 160-segment batch (about 53,000 characters)
+  was more than the stand-in's shell would display.
+- Two ceilings in a row say the method has run out, not that the loop is proven.
+  What is left cannot be learned from synthetic text and a stand-in: quality (a
+  person reading drafts), a real document, and a real chat host's speed and quota.
+  Both need Louis: a real host needs a hosted server and an account, and a real
+  document must stay off this repository.

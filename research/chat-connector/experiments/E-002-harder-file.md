@@ -53,8 +53,64 @@ batch of 20?
 
 ## Status
 
-Setup frozen 2026-11-10. Not yet run.
+Setup frozen 2026-11-10 (commit `5702227`). Run once per batch size on 2026-11-10.
 
 ## Outcome
 
-None yet.
+Results: `results/E-002/2026-11-10-batch20.json`, `-batch80.json`, `-batch160.json`.
+
+| Batch size | Valid on first try | Tagged valid on first try | Terms followed | Number findings (of 65 with a number) | `punct.*` findings | Planted word in a draft | Round trips (`submit`) | Characters out / in per 1,000 words | Agent seconds | Agent tokens (total) |
+| ---------- | ------------------ | ------------------------- | -------------- | ------------------------------------- | ------------------ | ----------------------- | ---------------------- | ----------------------------------- | ------------- | -------------------- |
+| 20         | 320 of 320         | 117 of 117                | 489 of 489     | 0                                     | 0                  | 0                       | 16                     | 16,083 / 7,881                      | 256           | 228,025              |
+| 80         | 320 of 320         | 117 of 117                | 489 of 489     | 0                                     | 0                  | 0                       | 4                      | 15,173 / 7,858                      | 208           | 217,468              |
+| 160        | 320 of 320         | 117 of 117                | 489 of 489     | 0                                     | 0                  | 0                       | 2                      | 15,092 / 7,877                      | 237           | 223,897              |
+
+Every kind of segment was valid on the first try at every size (nested 45 of 45,
+adjacent 43 of 43, five tags 29 of 29, and so on; per kind in each results file).
+
+- **H5 held:** 117 of 117 tagged segments valid on the first try at batch size 80.
+- **H6 held:** every segment valid, none failed, at every size.
+- **H7 held:** no difference between batch sizes 20 and 160.
+- **H8 held:** 489 of 489 term occurrences followed, at every size.
+- **H9 held:** no `num.*` finding on any of the 65 segments with a number.
+- **H10 held:** the planted word in no draft.
+
+All six at the ceiling again. After the runs the scoring was checked not to be
+vacuous: a draft with an altered number or a dropped number gets `num.missing`,
+and a draft that keeps the usual word instead of the glossary's counts as not
+followed (ad hoc, no results file; `journal.md`).
+
+**What this shows.**
+
+- For this model, on synthetic text, the loop of D8 is not fragile: harder tags,
+  numbers, escaped characters, long segments, glossary renderings and memory
+  matches did not produce one refused draft or one QA finding, at 20, 80 or 160
+  segments per batch.
+- **Context costs about as much as the text.** Characters sent to the model per
+  1,000 source words rose from about 8,800 in E-001 to about 15,200 here; the
+  drafts coming back stayed at about 7,900. The glossary and the matches are most
+  of the difference.
+- **A batch of 160 met a limit of the stand-in, not of the loop.** Each batch of
+  160 was about 53,000 characters. The agent's shell would not show that much, and
+  it read the batch from a saved file instead. A chat host's limit is about
+  150,000 characters per tool result (`chat-connector-spec.md` §1.1), so 160 of
+  these segments would fit there, but not by a wide margin with longer segments
+  or more context.
+
+**What it does not show.**
+
+- A second ceiling is a limit of the method. Synthetic sentences that a model
+  finds easy, read by checks a model passes, cannot find where the loop breaks.
+  More experiments of this shape are unlikely to say more.
+- Quality: nobody read a draft. The glossary check is a stem test, the number
+  check compares numerals.
+- A real document: real tag structures, real terminology, real ambiguity.
+- A real chat host: speed, quota, confirmation prompts. About 7,100 words took
+  three and a half to four and a half minutes by the agent's clock, which is a
+  coding agent's time.
+- Another model, or variance: one model, one run per size.
+
+**Deviations from the instructions to the agent,** both reported by the agents and
+neither affecting what the harness recorded: at batch size 80 one `submit` was
+run through a pipe; at batch size 160 the two batches were read from saved output
+files, as above.
