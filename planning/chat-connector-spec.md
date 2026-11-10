@@ -3,7 +3,8 @@
 **Status:** design only, nothing built. Issue #152.
 **Extends:** `ai-platform-vision.md`, `translation-engine-spec.md`, `audit-spec.md`,
 `solo-translator-spec.md`, `tenant-spec.md`
-**Decisions:** every D below is a _proposal_ until Louis rules on §6. None is built on.
+**Decisions:** D15 and §6's O1, O2 and O5 are Louis's (2026-11-10). Every other D is
+still a _proposal_ until he rules on the rest of §6. None is built on.
 
 Louis asked on 2026-11-10 to rethink the product for a world where a translator
 works from inside Claude or ChatGPT: they connect Tessera, hand over a document in
@@ -213,6 +214,11 @@ and the file round trip are what is unproven, and the existing editor already
 does the job meanwhile. Whether a tool can be made callable by the screen and not
 by the model must be read in the specification before D9 leans on it.
 
+**D15. A plan statement stands beside the consent.** (Louis, 2026-11-10, §6 O1.)
+The gate of D6 needs two things before a chat host receives a client's text: the
+client's consent to that engine, and the connected person's recorded statement
+that their account on that host is on a business plan. Either missing is off.
+
 ## 4. What stays exactly as built
 
 - The roundtrip gate, the fold rule on export and differential validation.
@@ -234,7 +240,7 @@ does not need §6 decided.
 | S0    | A measurement, not a feature: the loop of D8 over a synthetic fixture on one host, numbers only | Batch size, time and cost per 1,000 words; whether D8 holds |
 | S1    | OAuth on the tenant host; read-only tools (projects, progress, QA findings)                    | D3, D4, the isolation entries                             |
 | S2    | Upload link, project creation, import and pre-translate as jobs                                | D7, D12                                                   |
-| S3    | The chat host as an engine with consent; the batch tools; drafts into the suggestion store     | D6, D8                                                    |
+| S3    | The chat host as an engine with consent and the plan statement (D15); the batch tools; drafts into the suggestion store     | D6, D8                                                    |
 | S4    | Accept, QA sweep, export by download link                                                      | D9, D10                                                   |
 | S5    | The review screen in the conversation                                                          | D14                                                       |
 | S6    | The second host                                                                                | D13                                                       |
@@ -246,18 +252,48 @@ reaches no tool.
 
 ## 6. Open, for Louis
 
-**O1. Client content and consumer chat plans.** `ai-platform-vision.md` §5.1 says
-client content goes only to paid or enterprise API tiers, "never a consumer AI
-product". A chat host on a personal plan is a consumer product, and the server
-cannot see which plan a person is on (an inference from the protocol: the
-connector receives no plan). So this path either stays outside that rule by a
-stated exception, with the per-client consent of D6 as the control and the
-translator answerable for their own contracts, or it is not offered for client
-content at all. This is a legal and contractual call and blocks S3.
+**O1. Client content and consumer chat plans.** **Decided by Louis, 2026-11-10:
+consent plus a plan statement.** A client's text may reach a chat host only when
+both hold:
 
-**O2. Consent per client, or one switch per tenant.** D6 proposes per client, as
-for the built engines. A solo translator may find one switch simpler; it is also
-the weaker promise.
+1. the client has consented to the chat host as an engine (D6, per client), and
+2. the person connected has stated, on record, that the chat account they use is
+   on a business plan of that host.
+
+The question was a real conflict. `ai-platform-vision.md` §5.1 says client content
+goes only to paid or enterprise tiers, "never a consumer AI product", and the
+server cannot see which plan a person's chat account is on (an inference from the
+protocol: a connector is told nothing about the plan). Three positions were laid
+out: never send a client's text; send it on consent alone, with a written
+exception to §5.1; or this one. It was chosen because it keeps what §5.1 is for
+(terms under which the content is not trained on, and a processing agreement) and
+puts the one fact the server cannot check on the record as the person's own
+statement, where a false one is theirs. Its cost is accepted: a translator on a
+personal plan cannot honestly use the connector for client work.
+
+What follows for the design (D15, below):
+
+- **The statement is per person and per chat host**, never per tenant: it is a
+  fact about one account. It is asked when the connection is made, shown in
+  words that name what is being stated, and can be withdrawn at any time.
+- **It is part of the gate and fails closed.** No statement, a withdrawn one, or
+  one for another host: `engineFor` answers off, nothing is returned and no
+  `ai.requested` is written. A withdrawal acts on the next batch, as a withdrawn
+  consent does.
+- **Making and withdrawing it are platform audit events**, with the actor, the
+  tenant and the host, and nothing else.
+- **It is a statement, not a check, and nothing may say otherwise.** No screen,
+  document or event calls the account "verified" or the plan "confirmed".
+- **A project with no client number sends nothing either.** The gate already
+  fails closed there (`resolveEngine`), and this decision does not open it: a
+  translator's own document with no client is a separate question, not asked.
+
+Not decided here: the exact wording of the statement, and which of a host's plans
+count as a business plan. Both are settled when S3 is specified, the second from
+each host's published terms read at that time and cited.
+
+**O2. Consent per client, or one switch per tenant.** **Settled by O1:** per
+client, as for the built engines. The plan statement is the per-person half.
 
 **O3. Accepting in bulk.** Whether a single confirmed tool call may accept every
 valid draft in a project, or acceptance stays in the editor and the review screen.

@@ -778,8 +778,11 @@ run under the same protocol as semantic matching, in
 
 `planning/chat-connector-spec.md` (issue #152): Tessera driven from a chat
 assistant, whose own model drafts. **Nothing is built and every decision in it is
-a proposal** until Louis rules on its §6; don't implement a slice from it before
-then. Its evidence is in `research/chat-connector/`, under the semantic-matching
+a proposal** but D15 and §6's O1, O2 and O5, which Louis decided (2026-11-10);
+don't implement a slice from it before he rules on the rest. **A client's text
+reaches a chat host only with the client's consent to that engine and the
+connected person's recorded statement that their chat account is on a business
+plan** (D15): a statement, never a check, and nothing may call it verified. Its evidence is in `research/chat-connector/`, under the semantic-matching
 protocol (hypothesis before the run, numbers only, a journal entry per session).
 E-001 and E-002 used a model with a shell as a stand-in for a chat host, on
 synthetic text, and both ended at the ceiling: they support the loop's mechanism
