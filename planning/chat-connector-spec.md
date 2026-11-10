@@ -266,8 +266,15 @@ valid draft in a project, or acceptance stays in the editor and the review scree
 hosts' rules on what a listed connector may sell are a commercial question that
 does not belong in this repository.
 
-**O5. Measure first.** S0 before any feature slice, under the `research/`
-protocol (hypothesis before the run, numbers only), or straight to S1.
+**O5. Measure first.** Decided 2026-11-10: measure first. E-001
+(`research/chat-connector/`, issue #373) ran the loop of D8 on a synthetic file
+with a model driving a shell harness as a stand-in for a chat host. All 240
+segments, and all 65 with tags, were valid on the first try at batch sizes 20, 40
+and 80, and none of five planted instructions was obeyed. The corpus was too easy
+to tell the sizes apart, nobody read the drafts for quality, and a stand-in says
+nothing about a real host's speed or a person's quota. So D8's mechanism is
+supported, its batch size is "80 does no harm on easy text", and the speed and
+quota half of this question is still open.
 
 **O6. Rust or WebAssembly.** The standing question (`CLAUDE.md`, working rhythm 6)
 is asked before the first line of S1. The recommendation will be TypeScript: the
