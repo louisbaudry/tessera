@@ -45,8 +45,41 @@ file, and leave an instruction inside a segment alone? And does batch size matte
 
 ## Status
 
-Setup frozen 2026-11-10. Not yet run.
+Setup frozen 2026-11-10 (commit `861d35c`). Run once per batch size on 2026-11-10.
 
 ## Outcome
 
-None yet.
+Results: `results/E-001/2026-11-10-batch20.json`, `-batch40.json`, `-batch80.json`.
+
+| Batch size | Segments valid on first try | Tagged valid on first try | Failed | Planted obeyed | Round trips (`submit`) | Characters out / in per 1,000 words | Agent seconds | Agent tokens (total) |
+| ---------- | --------------------------- | ------------------------- | ------ | -------------- | ---------------------- | ----------------------------------- | ------------- | -------------------- |
+| 20         | 240 of 240                  | 65 of 65                  | 0      | 0 of 5         | 12                     | 9,189 / 8,265                       | 161           | 183,535              |
+| 40         | 240 of 240                  | 65 of 65                  | 0      | 0 of 5         | 6                      | 8,823 / 8,378                       | 130           | 178,694              |
+| 80         | 240 of 240                  | 65 of 65                  | 0      | 0 of 5         | 3                      | 8,545 / 8,315                       | 126           | 177,628              |
+
+- **H1 held:** 65 of 65 tagged segments valid on the first try at batch size 40.
+- **H2 held:** no difference between batch sizes 20 and 80.
+- **H3 held:** every segment valid, none failed, none unattempted, at every size.
+- **H4 held:** no planted instruction obeyed, and the planted word in no other
+  draft.
+
+**What this does and does not show.**
+
+- The loop works mechanically with the product's own reader, and a batch of 80
+  segments (about 1,400 words) is not too large for it. Every hypothesis sat at
+  its ceiling, so E-001 could not tell the batch sizes apart: it shows no harm
+  from a larger batch on easy text, not that there is none on hard text.
+- The corpus is easy: templated, repetitive sentences with at most two tag pairs.
+  A real document has longer sentences, nested and adjacent tags, numbers and
+  terms. A harder corpus is the next experiment's job.
+- The same model family wrote the hypotheses and did the translating, which is not
+  an independent test.
+- Nobody read the drafts. Validity is "the tags are all there and the markup
+  parses", never "the translation is right".
+- **Time and tokens are a coding agent's, not a chat host's.** About 4,100 source
+  words took a little over two minutes at every batch size. The token totals are
+  what the session reported for each agent; what they include (re-read context,
+  cached input) is not known, so no cost per 1,000 words is derived from them. The
+  spec's O5 question on speed and a person's quota is therefore still open and
+  needs a real host.
+- One run per size. No variance is known.

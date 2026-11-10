@@ -774,6 +774,16 @@ run under the same protocol as semantic matching, in
 - **The fixtures are invented and the output of no tool**, so they prove the
   filter agrees with the shape the spec describes and nothing more.
 
+## The chat connector is a design, and research-tracked
+
+`planning/chat-connector-spec.md` (issue #152): Tessera driven from a chat
+assistant, whose own model drafts. **Nothing is built and every decision in it is
+a proposal** until Louis rules on its §6; don't implement a slice from it before
+then. Its evidence is in `research/chat-connector/`, under the semantic-matching
+protocol (hypothesis before the run, numbers only, a journal entry per session).
+E-001 used a model with a shell as a stand-in for a chat host: it supports the
+loop's mechanism and says nothing about a real host's speed, quota or quality.
+
 ## The translation portal (`portal-core`/`portal-server`)
 
 Epic 10a (`planning/portal-v0-spec.md`) pulled a client-facing intake/

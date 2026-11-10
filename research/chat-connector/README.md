@@ -34,6 +34,6 @@ The protocol is the one binding on `research/semantic-matching/`
 
 ## Experiments
 
-| Id                                       | Question                                                                   | Hypotheses     | Status                    |
-| ---------------------------------------- | -------------------------------------------------------------------------- | -------------- | ------------------------- |
-| [E-001](experiments/E-001-draft-loop.md) | Does the pull-and-push draft loop of spec D8 hold, and at what batch size? | H1, H2, H3, H4 | Setup frozen; not yet run |
+| Id                                       | Question                                                                   | Hypotheses     | Status                                        |
+| ---------------------------------------- | -------------------------------------------------------------------------- | -------------- | --------------------------------------------- |
+| [E-001](experiments/E-001-draft-loop.md) | Does the pull-and-push draft loop of spec D8 hold, and at what batch size? | H1, H2, H3, H4 | Run 2026-11-10; all four held, at the ceiling |
