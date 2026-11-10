@@ -30,10 +30,12 @@ The protocol is the one binding on `research/semantic-matching/`
 | `hypotheses.md`          | Hypotheses, dated, in the commit that states them      |
 | `experiments/E-NNN-*.md` | One per experiment; setup fixed before the first run   |
 | `results/E-NNN/*.json`   | One file per run; never edited, a rerun is a new one   |
+| `harness/hard.mjs`       | E-002's corpus, batch context and scoring              |
 | `harness/loop.mjs`       | The draft loop as shell commands; research scaffolding |
 
 ## Experiments
 
-| Id                                       | Question                                                                   | Hypotheses     | Status                                        |
-| ---------------------------------------- | -------------------------------------------------------------------------- | -------------- | --------------------------------------------- |
-| [E-001](experiments/E-001-draft-loop.md) | Does the pull-and-push draft loop of spec D8 hold, and at what batch size? | H1, H2, H3, H4 | Run 2026-11-10; all four held, at the ceiling |
+| Id                                        | Question                                                                              | Hypotheses     | Status                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- | -------------- | --------------------------------------------- |
+| [E-001](experiments/E-001-draft-loop.md)  | Does the pull-and-push draft loop of spec D8 hold, and at what batch size?            | H1, H2, H3, H4 | Run 2026-11-10; all four held, at the ceiling |
+| [E-002](experiments/E-002-harder-file.md) | Where does the loop start to cost, on a harder file with memory and glossary context? | H5 to H10      | Setup frozen; not yet run                     |

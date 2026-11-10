@@ -36,3 +36,16 @@ Append-only. Newest entry last.
   harder synthetic corpus (nested and adjacent tags, numbers, long sentences) with
   context in the batch, and a real-host run, which needs a hosted server and an
   account.
+
+## 2026-11-10 — E-002 set up
+
+- Louis chose a harder test after E-001 (card: issue #375).
+- `harness/hard.mjs` adds the harder corpus, the batch context of D8 (glossary
+  renderings, memory matches) and scoring by the product's QA rules. `loop.mjs`
+  gained `gen --profile hard`; E-001's corpus still regenerates to the same digest.
+- Checked by hand before any run: a nested and adjacent tag sequence passes the
+  filter and the reader; a Spanish exclamation with no opening mark is flagged
+  `punct.inverted`; a draft that keeps "supervisor" counts as one term not
+  followed.
+- H5 to H10 and the setup are committed before any run. They were written knowing
+  E-001's result, which is why they are new ids and not a rerun of H1 to H4.
