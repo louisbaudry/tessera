@@ -63,6 +63,43 @@ any decision that is Louis's to make.
   invoicing. The frozen analysis and locked payable already answer part of
   it; what was missing was presentation (since built, `#112`/`#113`).
 
+## 3a. Second sweep: agent interfaces in detail (2026-11-10)
+
+The first sweep recorded only that agent interfaces existed. This one read what
+each does, for `chat-connector-spec.md` (issue #152). Same method and limits as
+§1 and §2; pages were read through a summarising fetch, so a claim is to be read
+again before a card depends on it. ProZ refused the fetch again.
+
+| Product       | Hosted or local  | Who translates                          | Formatted documents from the chat          | UI in the chat    |
+| ------------- | ---------------- | --------------------------------------- | ------------------------------------------ | ----------------- |
+| DeepL         | hosted           | its own engine                          | yes, by an upload link outside the chat    | upload widget     |
+| Bluente       | hosted and local | its own engine                          | yes, attached or by upload link            | confirmation card |
+| Smartling     | hosted and local | its own engine                          | small plain text only when hosted          | none              |
+| LILT          | hosted           | its own engine, or a human-verified job | extracted text only (self-serve)           | none              |
+| Lara          | hosted and local | its own engine                          | no                                         | none              |
+| Lokalise      | hosted (beta)    | its own engine                          | localisation resource files                | none              |
+| Phrase        | hosted           | not stated                              | not stated                                 | none              |
+| Crowdin       | hosted           | not stated                              | resource files                             | none              |
+| Transifex     | hosted           | no translate tool; creates tasks        | resource files, needs a terminal           | none              |
+| Weglot        | hosted (beta)    | not stated                              | no (website strings)                       | none              |
+| Locize        | hosted           | the chat's model, given context         | no                                         | none              |
+| Supervertaler | local            | the chat's model, given context         | through an open project in a desktop tool  | none              |
+
+Sources, all read 2026-11-10: `developers.deepl.com/docs/mcp.md`,
+`bluente.com/docs/mcp`, `help.smartling.com` (articles 38948520627227 and
+49220955237403), `support.lilt.com/lilt-for-claude-marketplace`,
+`support.laratranslate.com/en/lara-translate-mcp-server`,
+`docs.lokalise.com` (article 13547066), `developers.phrase.com/en/mcp-server`,
+`support.crowdin.com/developer/crowdin-mcp-server/`,
+`help.transifex.com` (article 15970082),
+`help.weglot.com` (connect Weglot to AI assistants),
+`locize.com/blog/mcp-context-tools`, `docs.supervertaler.com/trados/mcp-server/`.
+
+Nothing official was found for Smartcat, memoQ, Unbabel, RWS Trados or Matecat.
+No product was found with a segment review screen in the chat, and no independent
+account of translators doing document work this way. No new idea was filed: the
+findings went into `chat-connector-spec.md`, and #152 stays the card.
+
 ## 4. Where each idea went
 
 | Issue | Idea | Surface |
