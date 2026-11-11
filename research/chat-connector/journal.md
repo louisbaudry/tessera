@@ -77,3 +77,15 @@ Append-only. Newest entry last.
 - No run. E-001 and E-002 did not bear on this decision: it is contractual, and
   neither experiment says anything about a host's terms.
 - Still open and needing a person: a real host's speed and quota, and quality.
+
+## 2026-11-11 — S1a and S1b built; nothing measured
+
+- Two slices built, neither an experiment: a read-only endpoint with a hand-made
+  token (backlog #378), then sign-in from a chat host by OAuth with PKCE (backlog
+  #381). No run, no results file.
+- The official client connected, listed and called tools against both, and ran
+  its own sign-in against the second. That is a check of the protocol, not a
+  measurement of a chat host.
+- Unchanged: no real chat host has connected, so its speed, quota and the quality
+  of its drafts are still unmeasured. The next step that can be measured needs a
+  server on `https` and an account on a host, which are Louis's to provide.

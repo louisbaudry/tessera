@@ -80,6 +80,8 @@ function cleanLabel(label: unknown): string | null {
 }
 
 const LIVE = 'revoked_at IS NULL AND expires_at > @now';
+// A token a person made by hand, as against a connection's hourly access token (backlog #381).
+const BY_HAND = 'connection_id IS NULL';
 
 /**
  * Stores a new connector token for `accountId` and records `connector.token_created`, in one
@@ -108,7 +110,8 @@ export function createConnectorToken(
     if (!membership) throw new ConnectorTokenError('not_staff');
     const held = db
       .prepare(
-        `SELECT COUNT(*) AS n FROM connector_token WHERE account_id = @a AND ${LIVE}`,
+        `SELECT COUNT(*) AS n FROM connector_token
+          WHERE account_id = @a AND ${BY_HAND} AND ${LIVE}`,
       )
       .get({ a: options.accountId, now: now.toISOString() }) as { n: number };
     if (held.n >= MAX_CONNECTOR_TOKENS) throw new ConnectorTokenError('too_many');
@@ -138,7 +141,10 @@ export function createConnectorToken(
   })();
 }
 
-/** The account's live tokens (not revoked, not ended), oldest first. */
+/**
+ * The account's live hand-made tokens (not revoked, not ended), oldest first. A connection's
+ * access tokens are not listed: the person sees the connection (`listConnections`).
+ */
 export function listConnectorTokens(
   db: Database.Database,
   accountId: number,
@@ -147,7 +153,7 @@ export function listConnectorTokens(
   const rows = db
     .prepare(
       `SELECT id, label, created_at, expires_at FROM connector_token
-        WHERE account_id = @a AND ${LIVE} ORDER BY id`,
+        WHERE account_id = @a AND ${BY_HAND} AND ${LIVE} ORDER BY id`,
     )
     .all({ a: accountId, now: now.toISOString() }) as TokenRow[];
   return rows.map(fromRow);
@@ -173,7 +179,7 @@ export function revokeConnectorToken(
     const row = db
       .prepare(
         `SELECT tenant_id FROM connector_token
-          WHERE id = @id AND account_id = @a AND revoked_at IS NULL`,
+          WHERE id = @id AND account_id = @a AND ${BY_HAND} AND revoked_at IS NULL`,
       )
       .get({ id: options.id, a: options.accountId }) as { tenant_id: number } | undefined;
     if (!row) return false;

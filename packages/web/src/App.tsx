@@ -9,6 +9,7 @@ import type { AccountRole, TenantRole } from '@cat-tool/core';
 import { api, ApiError } from './api.js';
 import { Accept } from './Accept.js';
 import { Account } from './Account.js';
+import { Connect } from './Connect.js';
 import { Grid } from './Grid.js';
 import { JobScreen } from './Job.js';
 import { Login, takeLanding } from './Login.js';
@@ -199,6 +200,7 @@ export function App() {
               returning={back?.pending?.purpose === 'link' ? back.landing : undefined}
             />
           )}
+          {route.screen === 'connect' && <Connect request={route.request} />}
           {route.screen === 'payables' && role === 'owner' && <Payables />}
           {route.screen === 'payments' && role === 'vendor' && <Payments />}
           {route.screen === 'project' && <ProjectFiles name={route.project} />}
@@ -234,7 +236,8 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
     route.screen === 'vendors' ||
     route.screen === 'staff' ||
     route.screen === 'audit' ||
-    route.screen === 'account'
+    route.screen === 'account' ||
+    route.screen === 'connect'
   ) {
     const here = {
       tms: 'Memories',
@@ -244,6 +247,7 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       staff: 'Staff',
       audit: 'Activity',
       account: 'Account',
+      connect: 'Connect',
     }[route.screen];
     return (
       <nav className="crumbs">

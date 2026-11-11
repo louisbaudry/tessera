@@ -27,6 +27,7 @@ import {
 import type Database from 'better-sqlite3';
 
 import { appendPlatformEvent } from './audit-write.js';
+import { endConnectionsOfAccount } from './connection-end.js';
 import { addTenantMember, insertTenant, TenantError } from './tenants.js';
 
 export interface Account {
@@ -225,6 +226,9 @@ export function setAccountPassword(
       .run(account.id).changes;
     // A reset is a recovery, so every way in that the old password's holder may have set up ends
     // with the sessions: the connector tokens too (backlog #378).
+    // Connections first (backlog #381): ending one revokes its own access tokens, so what is
+    // left to count is the tokens a person made by hand.
+    const connectionsEnded = endConnectionsOfAccount(db, account.id, options.actor);
     const tokensRevoked = db
       .prepare(
         'UPDATE connector_token SET revoked_at = ? WHERE account_id = ? AND revoked_at IS NULL',
@@ -239,6 +243,7 @@ export function setAccountPassword(
       detail: {
         sessions_ended: sessionsEnded,
         ...(tokensRevoked > 0 ? { connector_tokens_revoked: tokensRevoked } : {}),
+        ...(connectionsEnded > 0 ? { connections_ended: connectionsEnded } : {}),
       },
     });
     return { sessionsEnded };

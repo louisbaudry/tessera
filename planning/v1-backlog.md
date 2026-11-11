@@ -5573,6 +5573,42 @@ taught:
   load. Not built: a rate limit, which the protocol asks for and no route of the server has (issue
   #379); logging a tool call (a read, like the project list).
 
+**#381 · ~~Chat connector S1b: sign-in from a chat host (OAuth), and a screen to manage connections~~ · DONE —
+`server/src/connector-oauth.ts` (metadata, registration, authorization, token, consent and connection
+routes), `core/src/auth/oauth.ts` (redirect and PKCE rules), `db/src/platform/connector-oauth.ts` and
+`connection-end.ts`, platform v18 (`oauth_client`, `oauth_code`, `oauth_connection`, `oauth_refresh`,
+`connector_token.connection_id`, two audit actions), `web/src/Connect.tsx` and `connect.ts`, the
+connections list in `web/src/Account.tsx`, `CAT_PUBLIC_ORIGIN` in `server/src/config.ts`.**
+
+A chat host can now connect a person without a pasted token: OAuth 2.1 with PKCE, Tessera as its own
+authorization server, the client registering itself by request (Louis, 2026-11-11, spec D19). Stack:
+TypeScript, as S1a. What it taught:
+
+- **Consent had to be a page of the application** (spec D20). The session is a bearer token in the
+  browser, not a cookie, so the authorization endpoint cannot know who is asking: it checks the client
+  and its address and hands over to `#/connect`. `#/connect` is the first route with a query, so it is
+  read before the hash is split on the slashes a redirect address is full of.
+- **An access token is a connector token** (spec D21), so the gate was not touched beyond one header.
+  A hand-made token and a connection's hourly one share a table and are told apart by
+  `connection_id`, which is why the person's token list and its cap count only hand-made ones.
+- **A spent credential presented again ends the connection.** A code is spent by any try, right or
+  wrong. Each of these rules, removed, fails a test (fourteen were tried, among them the PKCE check,
+  the exact redirect match, the tenant scope of a client, the hourly cap and `allow !== true`).
+- **The address is configured** (spec D22): `CAT_PUBLIC_ORIGIN`, or the tenant's own under a base
+  domain. A test sends a false `Host` and finds it nowhere in the metadata.
+- **The official client signed in on the first run**: discovery from the 401, registration, PKCE,
+  exchange, a tool call. A real browser was then driven through login, the consent page and a loopback
+  redirect, once, by hand. That run found one fault: the disconnect route answered with an empty 204,
+  which the application's fetch helper cannot read, so the Disconnect button hung. It now answers with
+  a body, and a test reads it.
+- **An import cycle was avoided, not tolerated**: the password reset and the sign-in store both end
+  connections, and the second already imports the first, so the write lives in `connection-end.ts`.
+- **Meant changes to existing tests:** the two that pin the newest platform schema version moved from
+  17 to 18; the isolation matrix gained ten routes and a connection for the other tenant.
+- Not verified: a real chat host connecting, which needs a server on `https` and an account on the
+  host. Not built: keeping the request across a Microsoft or Google sign-in; a rate limit on the token
+  endpoint (issue #379); the plan statement at sign-in (S3, spec D15).
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,

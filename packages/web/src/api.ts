@@ -31,6 +31,7 @@ import type {
   MismatchList,
   SessionView,
 } from './glossary-panel.js';
+import type { ConnectClient, ConnectRequest } from './connect.js';
 import type { ConcordanceView } from './concordance.js';
 import type {
   ReplaceApplyResult,
@@ -418,6 +419,14 @@ function projectUrl(key: string, suffix = ''): string {
 const glossaryUrl = (name: string, fileId: number) =>
   projectUrl(name, `/files/${fileId}/glossary/session`);
 
+/** A chat assistant connected by signing in (backlog #381): the client's own name and dates. */
+export interface ConnectionView {
+  readonly id: number;
+  readonly name: string;
+  readonly createdAt: string;
+  readonly lastUsedAt: string;
+}
+
 /** A sign-in linked to the account: the provider and dates, never the subject. */
 export interface LinkedIdentity {
   readonly id: number;
@@ -519,6 +528,24 @@ export const api = {
     call<{ identities: LinkedIdentity[] }>(`/api/me/identities/${id}`, token, {
       method: 'DELETE',
     }),
+  /** What the consent page shows of the chat host asking to connect (backlog #381). */
+  connectRequest: (token: string, request: ConnectRequest, signal?: AbortSignal) =>
+    call<ConnectClient>(
+      `/api/oauth/request?${new URLSearchParams({
+        client_id: request.clientId,
+        redirect_uri: request.redirectUri,
+      }).toString()}`,
+      token,
+      { signal },
+    ),
+  /** The person's answer; the server returns where the browser goes next. */
+  connectAnswer: (token: string, body: Record<string, unknown>) =>
+    call<{ redirect: string }>('/api/oauth/consent', token, { method: 'POST', body }),
+  /** The account's own connections to chat assistants. */
+  connections: (token: string, signal?: AbortSignal) =>
+    call<{ connections: ConnectionView[] }>('/api/connections', token, { signal }),
+  endConnection: (token: string, id: number) =>
+    call<{ ended: true }>(`/api/connections/${id}`, token, { method: 'DELETE' }),
   /** The tenant's single sign-on policy (an admin's; issue #317). */
   ssoPolicy: (token: string, signal?: AbortSignal) =>
     call<SsoPolicyView>('/api/tenant/sso-policy', token, { signal }),

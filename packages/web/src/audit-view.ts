@@ -48,6 +48,8 @@ export const ACTION_LABEL: Record<PlatformAuditAction, string> = {
   'account.password_reset': 'The operator set a new password',
   'connector.token_created': 'Connected a chat assistant',
   'connector.token_revoked': 'Disconnected a chat assistant',
+  'connector.connected': 'A chat assistant signed in',
+  'connector.disconnected': 'A chat assistant\u2019s connection ended',
 };
 
 const isKnown = (action: string): action is PlatformAuditAction => action in ACTION_LABEL;
