@@ -311,10 +311,11 @@ const LIVE_CONNECTION = 'revoked_at IS NULL AND expires_at > @now';
  * oldest when they would hold more than `MAX_CONNECTIONS`.
  *
  * @param options.clientId - the client the request names; must be the code's.
+ * @param options.hostTenantId - the tenant of the host asked; must be the client's.
  * @param options.redirectUri - must be the exact string the code was issued for.
  * @param options.verifier - the PKCE verifier behind the code's challenge.
  * @param options.accessToken - the tokens to issue (`generateSessionToken`), stored as hashes.
- * @returns null for every refusal: unknown, spent or ended code, another client or address, a
+ * @returns null for every refusal: unknown, spent or ended code, another client, host or address, a
  *   wrong verifier, or a person no longer staff of the code's tenant.
  */
 export function exchangeOauthCode(
@@ -322,6 +323,8 @@ export function exchangeOauthCode(
   options: {
     readonly code: string;
     readonly clientId: string;
+    /** The tenant of the host the request came to (null with no base domain): the client's. */
+    readonly hostTenantId: number | null;
     readonly redirectUri: unknown;
     readonly verifier: unknown;
     readonly accessToken: string;
@@ -341,7 +344,8 @@ export function exchangeOauthCode(
     const code = db
       .prepare(
         `SELECT k.id, k.account_id, k.tenant_id, k.redirect_uri, k.code_challenge, k.expires_at,
-                k.used_at, k.connection_id, c.id AS client, c.client_id, c.name
+                k.used_at, k.connection_id, c.id AS client, c.client_id, c.name,
+                c.tenant_id AS client_tenant
            FROM oauth_code k JOIN oauth_client c ON c.id = k.client
           WHERE k.code_hash = ?`,
       )
@@ -358,6 +362,7 @@ export function exchangeOauthCode(
           client: number;
           client_id: string;
           name: string;
+          client_tenant: number | null;
         }
       | undefined;
     if (!code) return null;
@@ -371,6 +376,8 @@ export function exchangeOauthCode(
     if (
       code.expires_at <= at ||
       code.client_id !== options.clientId ||
+      // A client is one tenant's host's: its code is exchanged there and nowhere else.
+      code.client_tenant !== options.hostTenantId ||
       code.redirect_uri !== options.redirectUri ||
       !pkceMatches(options.verifier, code.code_challenge)
     ) {
@@ -433,7 +440,7 @@ export function exchangeOauthCode(
  * Exchanges a refresh token for a new access token and a new refresh token (rotation), in one
  * transaction. The old refresh token is spent; presenting a spent one ends the connection.
  *
- * @returns null for every refusal: unknown, spent or ended token, another client, a connection
+ * @returns null for every refusal: unknown, spent or ended token, another client or host, a connection
  *   that ended, or a person no longer staff of its tenant.
  */
 export function refreshOauthConnection(
@@ -441,6 +448,8 @@ export function refreshOauthConnection(
   options: {
     readonly refreshToken: string;
     readonly clientId: string;
+    /** The tenant of the host the request came to (null with no base domain): the client's. */
+    readonly hostTenantId: number | null;
     readonly accessToken: string;
     readonly newRefreshToken: string;
     readonly now?: Date;
@@ -452,7 +461,7 @@ export function refreshOauthConnection(
     const row = db
       .prepare(
         `SELECT r.id, r.expires_at, r.used_at, g.id AS connection, g.account_id, g.tenant_id,
-                g.revoked_at, c.client_id, c.name
+                g.revoked_at, c.client_id, c.name, c.tenant_id AS client_tenant
            FROM oauth_refresh r
            JOIN oauth_connection g ON g.id = r.connection_id
            JOIN oauth_client c ON c.id = g.client
@@ -469,6 +478,7 @@ export function refreshOauthConnection(
           revoked_at: string | null;
           client_id: string;
           name: string;
+          client_tenant: number | null;
         }
       | undefined;
     if (!row) return null;
@@ -479,7 +489,8 @@ export function refreshOauthConnection(
     if (
       row.revoked_at !== null ||
       row.expires_at <= at ||
-      row.client_id !== options.clientId
+      row.client_id !== options.clientId ||
+      row.client_tenant !== options.hostTenantId
     ) {
       return null;
     }

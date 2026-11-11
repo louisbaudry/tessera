@@ -375,6 +375,7 @@ export function registerConnectorOauthRoutes(
         issued = exchangeOauthCode(platform, {
           code,
           clientId,
+          hostTenantId: hostTenantId(req),
           redirectUri: body.redirect_uri,
           verifier: body.code_verifier,
           accessToken,
@@ -386,6 +387,7 @@ export function registerConnectorOauthRoutes(
         issued = refreshOauthConnection(platform, {
           refreshToken: presented,
           clientId,
+          hostTenantId: hostTenantId(req),
           accessToken,
           newRefreshToken: refreshToken,
         });

@@ -442,7 +442,11 @@ refresh token.
   sign in again.
 - Every refusal at the token endpoint is the same `invalid_grant`, whatever was wrong.
 - A connection follows the membership as a hand-made token does: exchanging and refreshing answer
-  only while the person is still staff of its tenant. A password reset ends every connection.
+  only while the person is still staff of its tenant. A password reset ends every connection and
+  spends any code still waiting to be exchanged, so a consent given before the recovery cannot
+  make a connection after it.
+- Under a base domain a code or refresh token is exchanged at the address of the tenant its
+  client registered at, and is refused at any other (a refresh token without being spent).
 - A new sign-in from the same client replaces the person's earlier connection from it; past ten
   connections the oldest ends.
 - The person lists and ends their connections under Account. `connector.connected` and

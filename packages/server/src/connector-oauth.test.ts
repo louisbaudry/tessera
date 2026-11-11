@@ -678,6 +678,58 @@ describe('under a base domain', () => {
       expect((await at('alpha.cat.example')).statusCode).toBe(302);
       expect((await at('beta.cat.example')).statusCode).toBe(400);
 
+      // A code made at alpha is refused at beta's token endpoint, and works at alpha's.
+      const aliceSession = await login('alice', hosted, 'alpha.cat.example');
+      const codeFor = async () => {
+        const answer = await hosted.inject({
+          method: 'POST',
+          url: '/api/oauth/consent',
+          headers: { ...as(aliceSession), host: 'alpha.cat.example' },
+          payload: {
+            client_id: clientId,
+            redirect_uri: REDIRECT,
+            code_challenge: CHALLENGE,
+            allow: true,
+          },
+        });
+        return new URL((answer.json() as { redirect: string }).redirect).searchParams.get(
+          'code',
+        )!;
+      };
+      const exchangeAt = async (host: string) =>
+        hosted.inject({
+          method: 'POST',
+          url: '/api/oauth/token',
+          headers: { host },
+          payload: {
+            grant_type: 'authorization_code',
+            code: await codeFor(),
+            client_id: clientId,
+            redirect_uri: REDIRECT,
+            code_verifier: VERIFIER,
+          },
+        });
+      expect((await exchangeAt('beta.cat.example')).json()).toEqual({
+        error: 'invalid_grant',
+      });
+      const good = await exchangeAt('alpha.cat.example');
+      expect(good.statusCode, good.body).toBe(200);
+      const refreshAt = (host: string) =>
+        hosted.inject({
+          method: 'POST',
+          url: '/api/oauth/token',
+          headers: { host },
+          payload: {
+            grant_type: 'refresh_token',
+            refresh_token: (good.json() as Tokens).refresh_token,
+            client_id: clientId,
+          },
+        });
+      expect((await refreshAt('beta.cat.example')).json()).toEqual({
+        error: 'invalid_grant',
+      });
+      expect((await refreshAt('alpha.cat.example')).statusCode).toBe(200);
+
       // Carol, signed in at her own tenant's host, cannot consent to alpha's client.
       const session = await login('carol', hosted, 'beta.cat.example');
       const res = await hosted.inject({

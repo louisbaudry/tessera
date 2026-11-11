@@ -5622,6 +5622,11 @@ TypeScript, as S1a. What it taught:
 - Not verified: a real chat host connecting, which needs a server on `https` and an account on the
   host. Not built: keeping the request across a Microsoft or Google sign-in; a rate limit on the token
   and registration routes per sender (issue #384); the plan statement at sign-in (S3, spec D15).
+- **Two findings from the automated review, both real, each with a test that failed first.** A code
+  waiting to be exchanged survived a password reset and would have made a connection after the
+  recovery; the reset now spends it. The token route did not check which tenant's address it was
+  called at; the credential it issued only ever worked at its own tenant, but the exchange is now
+  refused elsewhere.
 - **Merged with #379 before it landed**: the rate limit and the 401's sign-in header meet in the same
   branch of the gate, and both are kept. The limit counts by token, so each hourly access token of a
   connection has its own window.

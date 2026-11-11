@@ -110,13 +110,20 @@ function consent(client: OauthClient, account: Account = admin, now: Date = T0):
 function exchange(
   client: OauthClient,
   code: string,
-  over: { verifier?: unknown; redirectUri?: unknown; clientId?: string; now?: Date } = {},
+  over: {
+    verifier?: unknown;
+    redirectUri?: unknown;
+    clientId?: string;
+    hostTenantId?: number | null;
+    now?: Date;
+  } = {},
 ): { access: string; refresh: string } | null {
   const access = generateSessionToken();
   const refresh = generateSessionToken();
   const issued = exchangeOauthCode(db, {
     code,
     clientId: over.clientId ?? client.clientId,
+    hostTenantId: 'hostTenantId' in over ? (over.hostTenantId ?? null) : client.tenantId,
     redirectUri: 'redirectUri' in over ? over.redirectUri : REDIRECT,
     verifier: 'verifier' in over ? over.verifier : VERIFIER,
     accessToken: access,
@@ -136,6 +143,7 @@ function refresh(
   const issued = refreshOauthConnection(db, {
     refreshToken: token,
     clientId: over.clientId ?? client.clientId,
+    hostTenantId: client.tenantId,
     accessToken: access,
     newRefreshToken: next,
     now: over.now ?? T0,
@@ -377,7 +385,55 @@ describe('refreshOauthConnection', () => {
   });
 });
 
+describe('a code or refresh token at another tenant\u2019s address', () => {
+  it('is refused, and the right address still works', () => {
+    const other = createAccount(db, {
+      email: 'b@example.com',
+      passwordHash: 'h',
+      actor: TEST_ACTOR,
+    });
+    const otherTenant = getTenantForAccount(db, other.id)!.tenant.id;
+    const client = register({ tenantId });
+    const at = (hostTenantId: number | null, code: string) =>
+      exchangeOauthCode(db, {
+        code,
+        clientId: client.clientId,
+        hostTenantId,
+        redirectUri: REDIRECT,
+        verifier: VERIFIER,
+        accessToken: generateSessionToken(),
+        refreshToken: generateSessionToken(),
+        now: T0,
+      });
+    expect(at(otherTenant, consent(client))).toBeNull();
+    expect(at(null, consent(client))).toBeNull();
+    expect(at(tenantId, consent(client))).not.toBeNull();
+
+    const tokens = exchange(client, consent(client), { hostTenantId: tenantId })!;
+    const refreshAt = (hostTenantId: number | null) =>
+      refreshOauthConnection(db, {
+        refreshToken: tokens.refresh,
+        clientId: client.clientId,
+        hostTenantId,
+        accessToken: generateSessionToken(),
+        newRefreshToken: generateSessionToken(),
+        now: T0,
+      });
+    expect(refreshAt(otherTenant)).toBeNull();
+    // Refused without being spent: the client's own address still rotates it.
+    expect(refreshAt(tenantId)).not.toBeNull();
+  });
+});
+
 describe('ending a connection', () => {
+  it('a password reset spends a code that was waiting to be exchanged', () => {
+    const client = register();
+    const code = consent(client);
+    setAccountPassword(db, admin.email, 'new-hash', { actor: TEST_ACTOR });
+    expect(exchange(client, code)).toBeNull();
+    expect(listConnections(db, admin.id, T0)).toEqual([]);
+  });
+
   it('a person ends their own, once, and nobody else’s', () => {
     const colleague = createAccount(db, {
       email: 'colleague@example.com',

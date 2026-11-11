@@ -48,8 +48,8 @@ export function endConnection(
 }
 
 /**
- * Ends every connection of an account: what a password reset does, with the sessions and the
- * hand-made tokens. Runs inside the caller's transaction.
+ * Ends every connection of an account and spends its pending authorization codes: what a
+ * password reset does, with the sessions and the hand-made tokens. Runs inside the caller's transaction.
  *
  * @returns how many connections it ended.
  */
@@ -65,5 +65,10 @@ export function endConnectionsOfAccount(
     )
     .all(accountId) as { id: number }[];
   for (const row of rows) endConnection(db, row.id, 'password_reset', actor, now);
+  // A code that was waiting to be exchanged would make a new connection after the recovery, so
+  // it is spent here: whoever consented may no longer be who holds the account.
+  db.prepare(
+    'UPDATE oauth_code SET used_at = ? WHERE account_id = ? AND used_at IS NULL',
+  ).run(now.toISOString(), accountId);
   return rows.length;
 }
