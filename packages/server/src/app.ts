@@ -12,6 +12,7 @@
  * discipline the CLI set (§2.4): logic the server would need that
  * `core`/`db` lack goes there, not here.
  */
+import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, extname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -153,7 +154,8 @@ import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft
 import { registerEngineRoutes } from './engine.js';
 import { registerConcordanceRoutes } from './concordance.js';
 import { registerReferenceFileRoutes } from './reference-files.js';
-import { MCP_PATH, registerConnectorRoutes } from './connector.js';
+import { CONNECTOR_RATE_LIMIT, MCP_PATH, registerConnectorRoutes } from './connector.js';
+import { FixedWindowLimiter } from './rate-limit.js';
 import { registerQaModeRoutes } from './qa-mode.js';
 import { registerReplaceRoutes } from './replace.js';
 import { registerSuggestionRoutes } from './suggestions.js';
@@ -460,6 +462,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   // --- the login gate ------------------------------------------------
 
+  // One limiter per app, counted per connector token (backlog #379): see `rate-limit.ts`.
+  const connectorLimiter = new FixedWindowLimiter(
+    CONNECTOR_RATE_LIMIT.requests,
+    CONNECTOR_RATE_LIMIT.windowMs,
+  );
+
   app.addHook('onRequest', async (req, reply) => {
     const path = req.url.split('?')[0] ?? req.url;
     if (!path.startsWith('/api/') || PUBLIC_PATHS.has(path)) return;
@@ -473,6 +481,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       // On a tenant's host the token must be that tenant's (D14), as a session must.
       if (!who || (req.hostTenant && who.membership.tenant.id !== req.hostTenant.id)) {
         return reply.code(401).send({ error: 'invalid, missing, or expired token' });
+      }
+      // Counted only once the token is known, and by its hash, so no token is held in memory.
+      const decision = connectorLimiter.take(
+        createHash('sha256').update(token!).digest('hex'),
+      );
+      if (!decision.allowed) {
+        return reply
+          .code(429)
+          .header('retry-after', String(decision.retryAfterSeconds))
+          .send({ error: 'too many requests for this connection; try again shortly' });
       }
       req.account = who.account;
       req.membership = who.membership;

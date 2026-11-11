@@ -28,11 +28,11 @@ import {
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
-import { MCP_PATH, MCP_PROTOCOL_VERSION } from './connector.js';
+import { CONNECTOR_RATE_LIMIT, MCP_PATH, MCP_PROTOCOL_VERSION } from './connector.js';
 import { projectPath } from './storage.js';
 import { tenantOf } from './tenant.fixture.js';
 
@@ -608,5 +608,51 @@ describe('the official MCP client', () => {
     const client = new Client({ name: 'connector-test', version: '0.0.0' });
     await expect(client.connect(transport)).rejects.toThrow();
     await client.close().catch(() => undefined);
+  });
+});
+
+describe('the rate limit (backlog #379)', () => {
+  it('refuses a connector token’s request past the limit with a 429 and a retry time', async () => {
+    const { token } = await connect('alice');
+    for (let i = 0; i < CONNECTOR_RATE_LIMIT.requests; i++) {
+      expect((await rpc(token, 'ping')).statusCode).toBe(200);
+    }
+    const refused = await rpc(token, 'ping');
+    expect(refused.statusCode).toBe(429);
+    expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+    expect(refused.json()).toEqual({
+      error: 'too many requests for this connection; try again shortly',
+    });
+  });
+
+  it('counts one connection without slowing another, even for the same person', async () => {
+    const first = await connect('alice');
+    const second = await connect('alice');
+    for (let i = 0; i < CONNECTOR_RATE_LIMIT.requests; i++)
+      await rpc(first.token, 'ping');
+    expect((await rpc(first.token, 'ping')).statusCode).toBe(429);
+    expect((await rpc(second.token, 'ping')).statusCode).toBe(200);
+  });
+
+  it('does not count a request the gate refused for its credential', async () => {
+    const { token } = await connect('alice');
+    for (let i = 0; i < CONNECTOR_RATE_LIMIT.requests + 5; i++) {
+      expect((await rpc('not-a-real-token', 'ping')).statusCode).toBe(401);
+    }
+    expect((await rpc(token, 'ping')).statusCode).toBe(200);
+  });
+
+  it('starts again once the minute has passed', async () => {
+    const { token } = await connect('alice');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-11T12:00:00Z'));
+      for (let i = 0; i < CONNECTOR_RATE_LIMIT.requests; i++) await rpc(token, 'ping');
+      expect((await rpc(token, 'ping')).statusCode).toBe(429);
+      vi.setSystemTime(new Date('2026-11-11T12:01:00Z'));
+      expect((await rpc(token, 'ping')).statusCode).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

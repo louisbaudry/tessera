@@ -60,6 +60,13 @@ import { InvalidNameError, listProjectNames, projectPath } from './storage.js';
 /** The MCP endpoint. The gate authenticates this one path with a connector token. */
 export const MCP_PATH = '/api/mcp';
 
+/**
+ * The most requests one connector token may make to `MCP_PATH` in a minute (backlog #379). A chat
+ * host calls a few tools a turn, so this is far above honest use; the protocol asks for a limit,
+ * and a figure set here is the one place to change it.
+ */
+export const CONNECTOR_RATE_LIMIT = { requests: 60, windowMs: 60_000 } as const;
+
 const TOKENS_PATH = '/api/connector-tokens';
 
 /** The one protocol revision this endpoint speaks; a client asking for another is answered with it. */
