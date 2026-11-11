@@ -374,8 +374,17 @@ server's own, as the transport requires.
 
 **Not built in S1a, on purpose:** sign-in from a chat host (S1b); any screen (a token is made by
 a request today, so only someone who can call the API can try it); reading a tool call into the
-audit log (a read, like the project list, is not logged); a rate limit (issue #379: the protocol
-asks for one, and the server has none on any route).
+audit log (a read, like the project list, is not logged).
+
+**The rate limit (issue #379, built).** The protocol asks a server to rate limit tool invocations.
+The endpoint gets a fixed window of 60 requests a minute per connector token (`CONNECTOR_RATE_LIMIT`),
+checked by the gate after the token resolves, so an invalid token is never counted and holds no
+memory; a refusal is a 429 with `retry-after`. Counts are in process: one server, and a restart
+resetting a window is harmless. Why only this endpoint: the one route the protocol asks for, and a
+whole-API limit (login attempts, unauthenticated floods) needs its own decision and a store that
+works across processes, which the server does not have. A refused request is not counted, so a
+client that waits is not penalised. The figure is a guess at honest use, to be revised from real
+use, not measured.
 
 ## 7. Sources
 
