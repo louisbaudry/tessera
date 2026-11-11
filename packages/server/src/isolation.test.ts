@@ -68,6 +68,7 @@ interface World {
   readonly staffInvitationId: number;
   readonly assignmentId: number;
   readonly clientId: number;
+  readonly connectorTokenId: number;
   readonly markers: readonly string[];
 }
 let world: World;
@@ -272,6 +273,12 @@ async function buildWorld(): Promise<World> {
     },
     201,
   );
+  // B's connection to a chat assistant (backlog #378): its label is a marker.
+  const connection = await sendOk<{ connection: { id: number } }>(
+    c,
+    { method: 'POST', url: '/api/connector-tokens', body: { label: 'b-connector' } },
+    201,
+  );
   return {
     project: 'b-job',
     fileId,
@@ -283,7 +290,9 @@ async function buildWorld(): Promise<World> {
     staffInvitationId: staffInvite.invitation.id,
     assignmentId: offered.assignment.id,
     clientId,
+    connectorTokenId: connection.connection.id,
     markers: [
+      'b-connector',
       'b-job',
       'b-tm',
       'b-gl',
@@ -562,6 +571,30 @@ const ROUTES: Record<string, Entry> = {
         echo: ['b-gl', 'b-gone'],
       },
     ],
+  },
+  // The chat connector (backlog #378). The token routes are the session's own account's; the
+  // endpoint itself takes a connector token and never a session, so a session's probe of it is
+  // a 401 whatever it names, and `connector.test.ts` holds what a token can see.
+  'POST /api/connector-tokens': {
+    kind: 'own',
+    why: 'makes a token for the caller’s own account',
+    req: { method: 'POST', url: '/api/connector-tokens', body: { label: 'a-own' } },
+  },
+  'GET /api/connector-tokens': { kind: 'list' },
+  'DELETE /api/connector-tokens/:id': {
+    kind: 'object',
+    pairs: (w) => [
+      {
+        actual: { method: 'DELETE', url: `/api/connector-tokens/${w.connectorTokenId}` },
+        missing: { method: 'DELETE', url: '/api/connector-tokens/9999' },
+      },
+    ],
+  },
+  'POST /api/mcp': { kind: 'own', why: 'a connector token, never a session: a 401 here' },
+  'GET /api/mcp': { kind: 'own', why: 'a connector token, never a session: a 401 here' },
+  'DELETE /api/mcp': {
+    kind: 'own',
+    why: 'a connector token, never a session: a 401 here',
   },
   'DELETE /api/webhooks/:id': {
     kind: 'object',

@@ -822,6 +822,42 @@ const v16: Migration = {
   },
 };
 
+/** `audit_event.action` as of platform v17: v16's list and the two connector-token actions. Frozen. */
+const V17_AUDIT_ACTIONS = [
+  ...V16_AUDIT_ACTIONS,
+  'connector.token_created',
+  'connector.token_revoked',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * Connector tokens (backlog #378, `planning/chat-connector-spec.md` D4): the credential a chat
+ * assistant presents to the connector's endpoint, and nowhere else. One row per token, stored as
+ * its hash like a session's, tied to the person and to the tenant they were staff of when it was
+ * made; `revoked_at` ends one without deleting the row, so the log's `token_id` still names
+ * something. The `label` is what the person typed to tell their tokens apart: it is never put in
+ * an audit detail. Creating and revoking are logged, which widens `audit_event`.
+ */
+const v17: Migration = {
+  version: 17,
+  description: 'connector_token (backlog #378)',
+  up(db) {
+    db.exec(`
+      CREATE TABLE connector_token (
+        id          INTEGER PRIMARY KEY,
+        account_id  INTEGER NOT NULL REFERENCES account(id),
+        tenant_id   INTEGER NOT NULL REFERENCES tenant(id),
+        token_hash  TEXT NOT NULL UNIQUE,
+        label       TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 80),
+        created_at  TEXT NOT NULL,
+        expires_at  TEXT NOT NULL,
+        revoked_at  TEXT
+      );
+      CREATE INDEX connector_token_account ON connector_token(account_id);
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V17_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -839,4 +875,5 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v14,
   v15,
   v16,
+  v17,
 ];

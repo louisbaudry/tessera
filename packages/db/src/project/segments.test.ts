@@ -4,12 +4,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assembleFile, rulesFor } from '@cat-tool/core';
+import { assembleFile, rulesFor, SEGMENT_STATUSES } from '@cat-tool/core';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { insertFile } from './files.js';
 import { openProjectDb } from './index.js';
 import {
+  countSegmentsByStatus,
   getSegment,
   listAllSegments,
   listSegments,
@@ -86,6 +87,35 @@ describe('getSegment / listSegments / listAllSegments', () => {
       listSegments(db, a.id).length + listSegments(db, b.id).length,
     );
     expect(all.every((s) => s.fileId === a.id || s.fileId === b.id)).toBe(true);
+    db.close();
+  });
+});
+
+describe('countSegmentsByStatus', () => {
+  it('counts one file\u2019s segments by status, with every status present', () => {
+    const db = openProjectDb(dbPath());
+    const add = (name: string) =>
+      insertFile(db, name, assembleFile(loadDocx('prose-short.docx'), rulesFor('en')), {
+        actor: TEST_ACTOR,
+      });
+    const file = add('a.docx');
+    const other = add('b.docx');
+    const segments = listSegments(db, file.id);
+    const open = segments.filter((s) => !s.locked);
+    setSegmentTarget(db, open[0]!.id, {
+      actor: TEST_ACTOR,
+      targetTokens: [{ t: 'text', v: 'Una traducci\u00f3n' }],
+      status: 'translated',
+      origin: 'tm_exact',
+    });
+
+    const counts = countSegmentsByStatus(db, file.id);
+    expect(Object.keys(counts).sort()).toEqual([...SEGMENT_STATUSES].sort());
+    expect(counts.translated).toBe(1);
+    expect(counts.new).toBe(open.length - 1);
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(segments.length);
+    // The other file's segments are not counted, and its own count is untouched.
+    expect(countSegmentsByStatus(db, other.id).translated).toBe(0);
     db.close();
   });
 });

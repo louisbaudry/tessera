@@ -197,7 +197,8 @@ export function listAccounts(db: Database.Database): Account[] {
 }
 
 /**
- * Sets a new password for the account with this address, ends every session it holds and records
+ * Sets a new password for the account with this address, ends every session it holds, revokes its
+ * connector tokens and records
  * `account.password_reset` in the account's tenant's slice of the log, in one transaction
  * (issue #364, `v1-spec.md` §4.1a). The operator's recovery, run from the host: the actor says who
  * ran it. An account that signed in only with a provider has no password (`NO_PASSWORD_HASH`) and
@@ -222,13 +223,23 @@ export function setAccountPassword(
     const sessionsEnded = db
       .prepare('DELETE FROM account_session WHERE account_id = ?')
       .run(account.id).changes;
+    // A reset is a recovery, so every way in that the old password's holder may have set up ends
+    // with the sessions: the connector tokens too (backlog #378).
+    const tokensRevoked = db
+      .prepare(
+        'UPDATE connector_token SET revoked_at = ? WHERE account_id = ? AND revoked_at IS NULL',
+      )
+      .run(new Date().toISOString(), account.id).changes;
     appendPlatformEvent(db, {
       actor: options.actor,
       action: 'account.password_reset',
       tenantId: tenantOfAccount(db, account.id),
       subjectType: 'account',
       subjectId: String(account.id),
-      detail: { sessions_ended: sessionsEnded },
+      detail: {
+        sessions_ended: sessionsEnded,
+        ...(tokensRevoked > 0 ? { connector_tokens_revoked: tokensRevoked } : {}),
+      },
     });
     return { sessionsEnded };
   })();

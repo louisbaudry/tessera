@@ -23,8 +23,7 @@ specific spec section for whatever you're about to touch
 (`v1-spec.md`, `tm-format-spec.md`, `segmentation-spec.md`,
 `ai-platform-vision.md`, `smart-glossary-spec.md`,
 `software-localisation-spec.md` for the keyed-strings scenario,
-`chat-connector-spec.md` for Tessera used from a chat assistant: a design,
-nothing built). Don't start
+`chat-connector-spec.md` for Tessera used from a chat assistant). Don't start
 implementing a backlog item without reading its spec section — several
 early mistakes here came from coding against an assumption the spec had
 already settled differently.
@@ -774,20 +773,36 @@ run under the same protocol as semantic matching, in
 - **The fixtures are invented and the output of no tool**, so they prove the
   filter agrees with the shape the spec describes and nothing more.
 
-## The chat connector is a design, and research-tracked
+## The chat connector (slice S1a built), and research-tracked
 
-`planning/chat-connector-spec.md` (issue #152): Tessera driven from a chat
-assistant, whose own model drafts. **Nothing is built and every decision in it is
-a proposal** but D15 and §6's O1, O2 and O5, which Louis decided (2026-11-10);
-don't implement a slice from it before he rules on the rest. **A client's text
-reaches a chat host only with the client's consent to that engine and the
-connected person's recorded statement that their chat account is on a business
-plan** (D15): a statement, never a check, and nothing may call it verified. Its evidence is in `research/chat-connector/`, under the semantic-matching
-protocol (hypothesis before the run, numbers only, a journal entry per session).
-E-001 and E-002 used a model with a shell as a stand-in for a chat host, on
-synthetic text, and both ended at the ceiling: they support the loop's mechanism
-and say nothing about a real host's speed, quota or quality. Don't add a third
-experiment of that shape; what is left needs a real host or a person reading drafts.
+`planning/chat-connector-spec.md` (issue #152): Tessera driven from a chat assistant, whose own
+model drafts. Slice S1a is built (backlog #378): connector tokens and a read-only MCP endpoint,
+`server/src/connector.ts`. **Every other decision in the spec is a proposal** but D15 and §6's O1,
+O2, O5 and O6, which Louis decided; don't implement a later slice before he rules on the rest.
+Keep true:
+
+- **Two credentials, and each opens one thing** (D16). The gate authenticates `/api/mcp` with a
+  connector token (`connector_token`, platform v17, `db/platform/connector-tokens.ts`) and nothing
+  else, and every other route with a session and nothing else. Don't make either accept the other.
+  A token follows its person's membership (`resolveConnectorToken`): removed staff hold a token
+  that opens nothing. A vendor gets none.
+- **A tool result is where data leaves** (D6, D17). The three tools are read-only and return no
+  document text, **no file name** (a file is its position and kind) and **no QA message** (counts
+  by rule). A new tool that returns text, a memory match or a glossary rendering goes through
+  `engineFor` and D15, never around them. Only the token's own tenant's projects; a grant opens
+  nothing.
+- **A client's text reaches a chat host only with the client's consent to that engine and the
+  connected person's recorded statement that their chat account is on a business plan** (D15): a
+  statement, never a check, and nothing may call it verified. Not built yet.
+- **The protocol is hand-written (MCP 2025-06-18, JSON responses, tools only) and checked by the
+  official client** in `connector.test.ts`, a development dependency only (D18). A change to the
+  protocol code is checked by that test, not by a hand-built request alone.
+- **No tool confirms a segment, approves a price or changes access** (D9, D11), in any slice.
+- Its evidence is in `research/chat-connector/`, under the semantic-matching protocol. E-001 and
+  E-002 used a model with a shell as a stand-in for a chat host, on synthetic text, and both ended
+  at the ceiling: they support the loop's mechanism and say nothing about a real host's speed,
+  quota or quality. Don't add a third experiment of that shape; what is left needs a real host or
+  a person reading drafts.
 
 ## The translation portal (`portal-core`/`portal-server`)
 

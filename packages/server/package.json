@@ -26,6 +26,7 @@
     "fastify": "^5.1.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^22.20.1",
     "jose": "^6.2.13"
   }
