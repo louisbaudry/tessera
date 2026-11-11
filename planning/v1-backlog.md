@@ -5573,6 +5573,20 @@ taught:
   load. Not built: a rate limit, which the protocol asks for and no route of the server has (issue
   #379); logging a tool call (a read, like the project list).
 
+**#379 · ~~Rate limit the chat connector's endpoint~~ · DONE — `server/src/rate-limit.ts` (a fixed
+window, in process), `server/src/app.ts` (the gate counts `/api/mcp` per token after it resolves),
+`server/src/connector.ts` (`CONNECTOR_RATE_LIMIT`: 60 a minute).** What it taught:
+
+- **The limit sits after authentication, on purpose.** Counting an invalid token would let anyone grow
+  the table with made-up tokens; counting by the token's hash keeps no raw token in memory.
+- **A refused request is not counted.** A client that waits out `retry-after` is not punished for the
+  attempts it made while being refused.
+- **A tool-call limit tested by mutation.** With the gate ignoring the decision, three limit tests fail;
+  with it restored, all pass. A huge limit instead ran a million requests into the heap, which proved
+  nothing, so the test forces the refusal rather than relying on the number.
+- Decided here, not by Louis: the figure (60 a minute) is a guess at honest use and the whole-API
+  question is left open in the spec §6 record. Not verified: behaviour under many connections at once.
+
 **#381 · ~~Chat connector S1b: sign-in from a chat host (OAuth), and a screen to manage connections~~ · DONE —
 `server/src/connector-oauth.ts` (metadata, registration, authorization, token, consent and connection
 routes), `core/src/auth/oauth.ts` (redirect and PKCE rules), `db/src/platform/connector-oauth.ts` and
@@ -5607,7 +5621,10 @@ TypeScript, as S1a. What it taught:
   17 to 18; the isolation matrix gained ten routes and a connection for the other tenant.
 - Not verified: a real chat host connecting, which needs a server on `https` and an account on the
   host. Not built: keeping the request across a Microsoft or Google sign-in; a rate limit on the token
-  endpoint (issue #379); the plan statement at sign-in (S3, spec D15).
+  and registration routes per sender (issue #384); the plan statement at sign-in (S3, spec D15).
+- **Merged with #379 before it landed**: the rate limit and the 401's sign-in header meet in the same
+  branch of the gate, and both are kept. The limit counts by token, so each hourly access token of a
+  connection has its own window.
 
 ## Not in this backlog (Epics 0–7)
 

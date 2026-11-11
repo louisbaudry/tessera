@@ -810,6 +810,10 @@ Keep true:
   domain, else `CAT_PUBLIC_ORIGIN`; with neither, sign-in is off. **The flow makes no outbound
   call**; a change that fetches something a client names needs the webhook sender's checks and a
   decision first.
+- **The endpoint is rate limited per connector token, 60 requests a minute** (backlog #379,
+  `CONNECTOR_RATE_LIMIT`, `server/src/rate-limit.ts`). It is counted after the token resolves, so an
+  invalid token is never counted or held in memory. Only `/api/mcp` is limited; a whole-API limit
+  is still open (issue #379 asked for that decision).
 - **No tool confirms a segment, approves a price or changes access** (D9, D11), in any slice.
 - Its evidence is in `research/chat-connector/`, under the semantic-matching protocol. E-001 and
   E-002 used a model with a shell as a stand-in for a chat host, on synthetic text, and both ended

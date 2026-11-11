@@ -375,8 +375,17 @@ server's own, as the transport requires.
 
 **Not built in S1a, on purpose:** sign-in from a chat host (S1b); any screen (a token is made by
 a request today, so only someone who can call the API can try it); reading a tool call into the
-audit log (a read, like the project list, is not logged); a rate limit (issue #379: the protocol
-asks for one, and the server has none on any route).
+audit log (a read, like the project list, is not logged).
+
+**The rate limit (issue #379, built).** The protocol asks a server to rate limit tool invocations.
+The endpoint gets a fixed window of 60 requests a minute per connector token (`CONNECTOR_RATE_LIMIT`),
+checked by the gate after the token resolves, so an invalid token is never counted and holds no
+memory; a refusal is a 429 with `retry-after`. Counts are in process: one server, and a restart
+resetting a window is harmless. Why only this endpoint: the one route the protocol asks for, and a
+whole-API limit (login attempts, unauthenticated floods) needs its own decision and a store that
+works across processes, which the server does not have. A refused request is not counted, so a
+client that waits is not penalised. The figure is a guess at honest use, to be revised from real
+use, not measured.
 
 ## 6b. Decided while building S1b (backlog #381, 2026-11-11)
 
@@ -401,8 +410,7 @@ An open registration endpoint is a write anyone can make, so the same slice boun
   and neither is ever written to the audit log.
 
 The cap is one bucket for everyone, so someone can use it up for an hour and stop new clients
-registering. Connections that exist are untouched, and a rate limit per address belongs to issue
-#379.
+registering. Connections that exist are untouched, and a limit per sender is issue #384.
 
 **D20. Tessera is its own authorization server, and consent is a page of the application.** The
 session lives in the browser as a bearer token, not a cookie, so the authorization endpoint
@@ -464,7 +472,8 @@ found; that run is not a test in the repository.
 - A person who signs in with Microsoft or Google from the consent page's login screen loses the
   request (the browser leaves for the provider) and must start again from the chat host. A
   password sign-in keeps it.
-- No rate limit on the token endpoint or the connector (issue #379).
+- No rate limit on the token endpoint (issue #384). The connector's own endpoint is limited per
+  token (backlog #379), which holds for a connection's hourly tokens as for a hand-made one.
 - The plan statement (D15) is not asked for at sign-in: no tool returns text yet, so nothing
   needs it. S3 adds it, and must decide whether to ask at connection or at first use.
 - A token made by hand (S1a) still has no screen.
