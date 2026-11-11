@@ -9,6 +9,7 @@
 
 import {
   carryHiddenTags,
+  SEGMENT_STATUSES,
   type AiProvenance,
   type AuditActor,
   type DocPart,
@@ -94,6 +95,27 @@ export function countSegments(db: Database.Database, fileId: number): number {
     .prepare('SELECT COUNT(*) AS n FROM segment WHERE file_id = ?')
     .get(fileId) as { n: number };
   return row.n;
+}
+
+/**
+ * How many of a file's segments are in each status: a file's progress without loading a row
+ * (backlog #378). Every status is present, at 0 when the file has none in it.
+ */
+export function countSegmentsByStatus(
+  db: Database.Database,
+  fileId: number,
+): Record<SegmentStatus, number> {
+  const rows = db
+    .prepare(
+      'SELECT status, COUNT(*) AS n FROM segment WHERE file_id = ? GROUP BY status',
+    )
+    .all(fileId) as Array<{ status: SegmentStatus; n: number }>;
+  const counts = Object.fromEntries(SEGMENT_STATUSES.map((s) => [s, 0])) as Record<
+    SegmentStatus,
+    number
+  >;
+  for (const row of rows) counts[row.status] = row.n;
+  return counts;
 }
 
 export function listAllSegments(db: Database.Database): Segment[] {

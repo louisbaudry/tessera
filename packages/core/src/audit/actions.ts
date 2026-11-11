@@ -65,6 +65,8 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'account.sso_unlinked',
   'tenant.sso_policy_set',
   'account.password_reset',
+  'connector.token_created',
+  'connector.token_revoked',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -412,7 +414,19 @@ export interface AuditDetail {
    */
   'admin.password_reset': { readonly sessions_ended: number };
   /** Subject: the account. The same for a CAT app account (issue #364, `v1-spec.md` §4.1a). */
-  'account.password_reset': { readonly sessions_ended: number };
+  'account.password_reset': {
+    readonly sessions_ended: number;
+    /** Connector tokens the reset revoked with the sessions; absent when there were none. */
+    readonly connector_tokens_revoked?: number;
+  };
+  /**
+   * Subject: the account. A person made a connector token for the chat connector
+   * (`planning/chat-connector-spec.md` D4, backlog #378). The token's id and when it ends; never
+   * the token, its hash or the label the person typed.
+   */
+  'connector.token_created': { readonly token_id: number; readonly expires_at: string };
+  /** Subject: the account. The person revoked one of their connector tokens. */
+  'connector.token_revoked': { readonly token_id: number };
   // A client's linked memory/glossary (backlog #162). The file's name is not
   // in a detail: it often is the client's name, and a detail is hashed.
   'resource.linked': ClientResourceDetail;

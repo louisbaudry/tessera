@@ -73,6 +73,7 @@ import {
   exportFile,
   getAccountByEmail,
   getAccountBySessionToken,
+  resolveConnectorToken,
   getFileSummary,
   getProject,
   FUZZY_THRESHOLD_MESSAGE,
@@ -152,6 +153,7 @@ import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft
 import { registerEngineRoutes } from './engine.js';
 import { registerConcordanceRoutes } from './concordance.js';
 import { registerReferenceFileRoutes } from './reference-files.js';
+import { MCP_PATH, registerConnectorRoutes } from './connector.js';
 import { registerQaModeRoutes } from './qa-mode.js';
 import { registerReplaceRoutes } from './replace.js';
 import { registerSuggestionRoutes } from './suggestions.js';
@@ -462,6 +464,20 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const path = req.url.split('?')[0] ?? req.url;
     if (!path.startsWith('/api/') || PUBLIC_PATHS.has(path)) return;
     const token = bearerToken(req);
+    // The connector's endpoint takes a connector token and nothing else, and no other path takes
+    // one (backlog #378, `planning/chat-connector-spec.md` D4): the two credentials are looked up
+    // in two tables, so a token lifted from a chat assistant's settings cannot edit a project,
+    // and a browser session cannot be replayed at the connector.
+    if (path === MCP_PATH) {
+      const who = token === null ? null : resolveConnectorToken(platform, token);
+      // On a tenant's host the token must be that tenant's (D14), as a session must.
+      if (!who || (req.hostTenant && who.membership.tenant.id !== req.hostTenant.id)) {
+        return reply.code(401).send({ error: 'invalid, missing, or expired token' });
+      }
+      req.account = who.account;
+      req.membership = who.membership;
+      return;
+    }
     const account = token === null ? null : getAccountBySessionToken(platform, token);
     if (!account) {
       return reply.code(401).send({ error: 'invalid, missing, or expired session' });
@@ -1782,6 +1798,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     sessionActor,
     // null for a vendor, who is never "the owner" of a project they were granted into
     tenantId: (req) => ownTenant(req)?.id ?? null,
+  });
+  registerConnectorRoutes(app, {
+    platform,
+    config,
+    account: sessionAccount,
+    tenant: ownTenant,
+    sessionActor,
   });
   registerQaModeRoutes(app, {
     jobs,

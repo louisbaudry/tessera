@@ -5532,6 +5532,47 @@ The first deployment lost the admin's password and the way back was editing `por
 - Not verified: a run inside the production containers (the commands exist only from this card, so the first real run
   is on the host after the update), and the interactive prompt on a real terminal beyond the simulated one.
 
+### Cross-cutting — Chat connector (spec'd 2026-11-10, S1a built 2026-11-11)
+
+`planning/chat-connector-spec.md` (issue #152): Tessera driven from inside a chat assistant, over
+the Model Context Protocol. Later slices are in the spec's §5, one card each when taken; the
+evidence behind the design is in `research/chat-connector/`.
+
+**#378 · ~~Chat connector S1a: connector tokens and a read-only MCP endpoint~~ · DONE —
+`server/src/connector.ts` (the token routes, `POST /api/mcp`, three tools), `server/src/app.ts` (the gate),
+`db/src/platform/connector-tokens.ts`, platform v17 (`connector_token`, two audit actions),
+`db/src/project/segments.ts` (`countSegmentsByStatus`).**
+
+The first built slice: a person makes a connector token, and a chat assistant holding it can list the
+tenant's projects, a project's progress and its QA findings as counts. Read-only, and no document text
+leaves. Stack: TypeScript (Louis, 2026-11-11; the Rust/WebAssembly question was asked, spec O6). What it
+taught:
+
+- **S1 had to be split.** A chat host cannot sign in without OAuth, which is a slice of its own, so
+  S1a builds the credential OAuth will mint and the endpoint it will open (spec §6a). Until S1b a token
+  is made by a request, so only someone who can call the API can try it.
+- **Two credentials in two tables** (spec D16). The gate looks a connector token up for `/api/mcp` and a
+  session for everything else, so neither can stand in for the other; with the gate changed to accept a
+  session at the endpoint, two tests fail.
+- **A token follows the membership, with no second write.** `resolveConnectorToken` answers only while
+  the person is still staff of the token's tenant, so `removeTenantStaff` needed no change. A password
+  reset is a recovery, so it revokes them with the sessions and says how many in its own event.
+- **Names leave too, not only text** (spec D17). A tool result is read by the chat host's model, so a
+  file is its position and kind and a QA finding is a count: a file name often carries a client's, and a
+  finding's message can quote the segment. With the name and the messages put back, two tests fail.
+- **The protocol is hand-written and checked by someone else's client** (spec D18). Tools over JSON is
+  small, and the SDK would have brought a second web framework into the build; the official TypeScript
+  client drives the endpoint over a real socket in the test, as a development dependency only
+  (`prior-art.md`). It connected, listed and called on the first run, and its error for an unknown tool
+  matched.
+- **The isolation matrix found the six new routes**, as it is built to. The endpoint's own entries say
+  only that a session is refused there; what a token can see is `connector.test.ts`'s.
+- **Two meant changes to existing tests:** the two that pin the newest platform schema version moved
+  from 16 to 17.
+- Not verified: a real chat host connecting (it needs S1b and a deployed server); the endpoint under
+  load. Not built: a rate limit, which the protocol asks for and no route of the server has (issue
+  #379); logging a tool call (a read, like the project list).
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,

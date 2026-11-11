@@ -46,6 +46,8 @@ export const ACTION_LABEL: Record<PlatformAuditAction, string> = {
   'tenant.sso_policy_set': 'The single sign-on policy changed',
   'tenant.slug_set': 'The organisation’s web address was set',
   'account.password_reset': 'The operator set a new password',
+  'connector.token_created': 'Connected a chat assistant',
+  'connector.token_revoked': 'Disconnected a chat assistant',
 };
 
 const isKnown = (action: string): action is PlatformAuditAction => action in ACTION_LABEL;

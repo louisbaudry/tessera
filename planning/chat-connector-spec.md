@@ -1,10 +1,11 @@
 # Chat connector — spec
 
-**Status:** design only, nothing built. Issue #152.
+**Status:** slice S1a built (backlog #378, 2026-11-11); the rest is design. Issue #152.
 **Extends:** `ai-platform-vision.md`, `translation-engine-spec.md`, `audit-spec.md`,
 `solo-translator-spec.md`, `tenant-spec.md`
-**Decisions:** D15 and §6's O1, O2 and O5 are Louis's (2026-11-10). Every other D is
-still a _proposal_ until he rules on the rest of §6. None is built on.
+**Decisions:** D15 and §6's O1, O2 and O5 are Louis's (2026-11-10), O6 his (2026-11-11). Every
+other D is still a _proposal_ until he rules on the rest of §6. S1a builds on D2 to D5 and D11
+only: it is read-only and sends no document text, so it needs none of the open points.
 
 Louis asked on 2026-11-10 to rethink the product for a world where a translator
 works from inside Claude or ChatGPT: they connect Tessera, hand over a document in
@@ -238,7 +239,8 @@ does not need §6 decided.
 | Slice | What                                                                                           | Proves                                                    |
 | ----- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | S0    | A measurement, not a feature: the loop of D8 over a synthetic fixture on one host, numbers only | Batch size, time and cost per 1,000 words; whether D8 holds |
-| S1    | OAuth on the tenant host; read-only tools (projects, progress, QA findings)                    | D3, D4, the isolation entries                             |
+| S1a   | **Built.** A connector token and a read-only endpoint: projects, progress, QA findings as counts | D3, D4, D5, D11, the isolation entries                    |
+| S1b   | Sign-in from a chat host (OAuth with PKCE), which mints the same token; a screen to manage connections | D4                                                        |
 | S2    | Upload link, project creation, import and pre-translate as jobs                                | D7, D12                                                   |
 | S3    | The chat host as an engine with consent and the plan statement (D15); the batch tools; drafts into the suggestion store     | D6, D8                                                    |
 | S4    | Accept, QA sweep, export by download link                                                      | D9, D10                                                   |
@@ -323,10 +325,57 @@ third of a chat host's result limit. Two ceilings in a row mean synthetic text a
 a stand-in have no more to say; quality, a real document and a real host are what
 remain, and each needs a person.
 
-**O6. Rust or WebAssembly.** The standing question (`CLAUDE.md`, working rhythm 6)
-is asked before the first line of S1. The recommendation will be TypeScript: the
-work is protocol handling and calls to existing repository functions, and the
-network dominates.
+**O6. Rust or WebAssembly.** **Decided by Louis, 2026-11-11: stay in TypeScript.** The
+question was asked before the first line of S1a, with the three usual options. The work is
+protocol handling and calls to existing repository functions; no profile shows the language as a
+bottleneck, and a separate component could not reuse the server's session, tenant and audit code,
+so those rules would have needed a second implementation. The question is asked again before a
+later slice only if that slice has a kernel worth measuring.
+
+## 6a. Decided while building S1a (backlog #378, 2026-11-11)
+
+S1 was split in two because a chat host cannot sign in without OAuth, and OAuth is a slice of its
+own. S1a builds what OAuth will mint and what it will open; S1b adds the sign-in.
+
+**D16. Two credentials, and each opens one thing.** A **connector token** is not a session. It
+is kept in its own table (`connector_token`, platform v17), the gate authenticates `/api/mcp`
+with it and with nothing else, and every other route with a session and nothing else. So a token
+copied out of a chat assistant's settings cannot edit a project, and a browser session cannot be
+replayed at the endpoint. A token is made for the tenant its person is staff of, lives 90 days,
+is stored as its hash and is shown once. It answers only while the person is still staff of that
+tenant, so removing someone ends their tokens with no second write; an operator's password reset
+revokes them with the sessions. A vendor gets none (D2).
+
+**D17. What a read-only tool may say.** A tool result is what the chat host's model reads, so it
+is where data leaves (D6). Text needs a consent and a plan statement that S3 builds, so S1a's
+three tools return none, and they are careful with names too:
+
+- a **project** by its name and languages: it has to be named to be asked about, and it is the
+  connected person's own list;
+- a **file** by its position and kind, **never its name**: an owner's file names often carry a
+  client's (the same reason a grantee is not shown a memory's name);
+- **QA findings as counts** by rule, with how many block delivery, **never a finding's message**:
+  a message can quote the segment;
+- only the token's **own tenant's** projects: a grant opens nothing here, and another tenant's
+  project is answered exactly as one that does not exist.
+
+Whether a project's name should also be withheld (it can carry a client's name too) was weighed
+and left as it is: without it the tools cannot be used at all, and connecting is the person's own
+act. It is cheap to revisit.
+
+**D18. The protocol is written by hand, and checked by the official client.** The endpoint
+speaks MCP revision 2025-06-18 over Streamable HTTP, answering each request with one JSON object:
+no stream (a `GET` is a 405), no protocol session, tools only. That is small enough to write
+directly, and the official SDK would have brought a second web framework into the build. The risk
+of a hand-written protocol is being wrong in the same direction as its own tests, so
+`server/src/connector.test.ts` drives it with the official TypeScript client over a real socket
+(a development dependency only, `prior-art.md`). A request that names an origin must name the
+server's own, as the transport requires.
+
+**Not built in S1a, on purpose:** sign-in from a chat host (S1b); any screen (a token is made by
+a request today, so only someone who can call the API can try it); reading a tool call into the
+audit log (a read, like the project list, is not logged); a rate limit (issue #379: the protocol
+asks for one, and the server has none on any route).
 
 ## 7. Sources
 
