@@ -23,3 +23,7 @@ packages/server/data/
 # The OOXML validator tool (scripts/ooxml-validate): .NET build output
 scripts/ooxml-validate/bin/
 scripts/ooxml-validate/obj/
+
+# Functional tests (e2e/): Playwright output and failure traces
+test-results/
+playwright-report/

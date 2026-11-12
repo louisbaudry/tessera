@@ -2713,6 +2713,22 @@ Louis took the card although #180's measurement had removed its motive, and chos
 
 ---
 
+**#382 · ~~Functional browser tests~~ · DONE — `e2e/serve.mjs`, `e2e/playwright.config.ts`, `e2e/sign-in.spec.ts`, `pnpm test:e2e`, the `functional` job in `.github/workflows/ci.yml`**
+(2026-11-12; closes issue #386)
+
+Louis chose Playwright in TypeScript over Watir (Ruby), so the tests share the repo's language, package manager and runner. What it taught:
+
+- **The server is started the way a deploy starts it.** `serve.mjs` runs the server's own `create-account` on a fresh database, then starts `main.js` with the built SPA. No test-only server path exists, so a regression in account creation or static serving shows here.
+- **A label is not unique.** `getByLabel('Name')` matched the memory field too, because that field's hint says "a new name creates it". The test targets the project's name field by its own hint, "its address". A selector that resolves to two fields fails loudly, which is the point.
+- **A passing run was not enough.** A deliberately wrong expectation failed the run, then the spec was restored, so the tests are shown able to fail.
+- **Pinned, not ranged.** `@playwright/test` is 1.64.1; 1.65.0 was seven days old when this landed and is held back until it is two weeks old.
+- **One worker, no retries.** The tests share one database in order; a retry would hide a flake.
+- Verified locally: `pnpm build`, `pnpm typecheck` (now includes `e2e/tsconfig.json`), `pnpm lint`, `pnpm format:check`, `pnpm test:e2e` (2 tests) on the pre-installed Chromium via `E2E_CHROMIUM_PATH`.
+- Not verified: the CI `functional` job itself (`playwright install --with-deps chromium` on `ubuntu-latest`) until the PR runs; a browser other than Chromium (not configured).
+- Not built: screens beyond sign-in and project creation; a mobile viewport; a visual baseline.
+
+---
+
 ## Sequencing
 
 ```
