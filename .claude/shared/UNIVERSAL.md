@@ -88,6 +88,33 @@ still follows it.
 Then continue with the request. A user message that is itself a
 question or a one-line task still gets the report first.
 
+## Model and speed check
+
+A session cannot switch its own model or speed; Louis does that with
+`/model` and `/fast` (or the model picker in the app). The session can
+only pause and recommend, so the choice is made before the work, not
+after.
+
+- **When:** right after the session start report, once the first request
+  is known. Not before: the task decides the answer.
+- **How:** one `AskUserQuestion` (Communication rules apply): 2-4 options
+  of model and speed, the recommended one first, labelled "(Recommended)".
+  Each option says what it suits and what it costs (slower, pricier,
+  shallower). Then wait. No work until Louis answers.
+- **Choosing:** favour a faster, cheaper setup for routine edits, lookups
+  and mechanical changes; the most capable model for design decisions,
+  hard debugging, security-sensitive work and large refactors. Say which
+  of these the task is.
+- **Already right?** If the current model and speed already match the
+  recommendation, say so in one line and continue; no question.
+- **Skip:** a one-line answer, or a session started by a scheduled task
+  or hook with no one to answer.
+- **A rule alone may not hold, so a hook backs it.** Each repo merges
+  `model-speed-gate.json` from `settings/` in `claude-shared` into its
+  `.claude/settings.json` (with `session-start-model-speed.sh` copied to
+  `.claude/hooks/`). It injects the reminder at session start. It cannot
+  ask or switch anything itself.
+
 ## Naming the session
 
 - When Louis asks for a card, issue or backlog item ("grab the next card"),
