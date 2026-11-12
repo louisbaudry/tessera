@@ -1052,6 +1052,19 @@ regression. `fixtures/golden/README.md` says what each unit of the memory is
 there to exercise, so a new case goes into that file and that README
 together.
 
+**The functional tests (backlog #382) drive the built SPA in a real
+browser.** `pnpm test:e2e` builds, then Playwright runs `e2e/*.spec.ts`
+against the real server, started by `e2e/serve.mjs` on a fresh database
+holding one account made by the server's own `create-account`. Keep true:
+they are excluded from `pnpm test` (vitest collects only `packages/*/src`
+and `scripts`) and run in their own CI job (`functional`); they share one
+server and one database, one worker, in file order, so a test may rely on
+what an earlier one created and never on a parallel one. `@playwright/test`
+is pinned exactly, not a range: a newer release is checked against the
+specs before its pin moves. Locally, `E2E_CHROMIUM_PATH` points at a
+pre-installed Chromium. No retries: a flaky test is fixed, never retried
+green.
+
 ## The API server (`@cat-tool/server`)
 
 Backlog #27 (`v1-spec.md` §2.5) is the shell everything after #8 runs

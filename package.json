@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck": "pnpm -r run typecheck && tsc -p e2e/tsconfig.json",
     "test": "vitest run --exclude '**/*.gate.test.ts' --exclude '**/golden.test.ts' --exclude '**/ooxml.check.test.ts'",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -20,6 +20,7 @@
     "test:golden": "vitest run golden.test",
     "test:ooxml": "vitest run ooxml.check.test",
     "test:all": "vitest run",
+    "test:e2e": "pnpm build && playwright test --config e2e/playwright.config.ts",
     "licenses:check": "node scripts/check-licenses.mjs",
     "bench:tm": "pnpm --filter @cat-tool/db... run build && node --experimental-strip-types --disable-warning=ExperimentalWarning packages/db/src/tm/bench/run.ts",
     "bench:project": "pnpm --filter @cat-tool/server... run build && node scripts/bench-project.mjs",
@@ -27,6 +28,7 @@
     "cat-tool": "node packages/cli/dist/main.js"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@types/node": "^22.15.0",
     "eslint": "^9.28.0",
     "eslint-plugin-react-hooks": "^7.1.1",
