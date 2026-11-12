@@ -190,6 +190,12 @@ volume under `./data` by default; a deployment overrides `CAT_PORT`,
 file, and unset means that engine is unavailable) and `CAT_DRAFT_MODEL`
 (default `claude-sonnet-5-5`, a placeholder until the benchmark picks the tier):
 
+A chat assistant can connect to the server by signing in (backlog #381,
+`planning/chat-connector-spec.md` §6b). The server must know its own address for that: under
+`CAT_BASE_DOMAIN` it is each tenant's own, otherwise set `CAT_PUBLIC_ORIGIN` (a bare origin such
+as `https://cat.example.org`; `http` only for this machine). With neither, sign-in from a chat
+assistant is off and nothing else changes.
+
 Signing in with Microsoft 365 or Google (backlog #214, `planning/sso-spec.md`) is off until the
 operator registers an app with each provider and sets `GOOGLE_OAUTH_CLIENT_ID` and
 `GOOGLE_OAUTH_CLIENT_SECRET`, and `MICROSOFT_OAUTH_CLIENT_ID` and `MICROSOFT_OAUTH_CLIENT_SECRET`

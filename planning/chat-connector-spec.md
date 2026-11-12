@@ -1,11 +1,12 @@
 # Chat connector — spec
 
-**Status:** slice S1a built (backlog #378, 2026-11-11); the rest is design. Issue #152.
+**Status:** slices S1a and S1b built (backlog #378 and #381, 2026-11-11); the rest is design. Issue #152.
 **Extends:** `ai-platform-vision.md`, `translation-engine-spec.md`, `audit-spec.md`,
 `solo-translator-spec.md`, `tenant-spec.md`
 **Decisions:** D15 and §6's O1, O2 and O5 are Louis's (2026-11-10), O6 his (2026-11-11). Every
-other D is still a _proposal_ until he rules on the rest of §6. S1a builds on D2 to D5 and D11
-only: it is read-only and sends no document text, so it needs none of the open points.
+other D is still a _proposal_ until he rules on the rest of §6. S1a and S1b build on D2 to D5 and
+D11 only: they are read-only and send no document text, so they need none of the open points. How a
+chat host identifies itself at sign-in (D19) is Louis's too (2026-11-11).
 
 Louis asked on 2026-11-10 to rethink the product for a world where a translator
 works from inside Claude or ChatGPT: they connect Tessera, hand over a document in
@@ -240,7 +241,7 @@ does not need §6 decided.
 | ----- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | S0    | A measurement, not a feature: the loop of D8 over a synthetic fixture on one host, numbers only | Batch size, time and cost per 1,000 words; whether D8 holds |
 | S1a   | **Built.** A connector token and a read-only endpoint: projects, progress, QA findings as counts | D3, D4, D5, D11, the isolation entries                    |
-| S1b   | Sign-in from a chat host (OAuth with PKCE), which mints the same token; a screen to manage connections | D4                                                        |
+| S1b   | **Built.** Sign-in from a chat host (OAuth with PKCE), which mints the same token; a consent page and a list of connections | D4, §6b                                                   |
 | S2    | Upload link, project creation, import and pre-translate as jobs                                | D7, D12                                                   |
 | S3    | The chat host as an engine with consent and the plan statement (D15); the batch tools; drafts into the suggestion store     | D6, D8                                                    |
 | S4    | Accept, QA sweep, export by download link                                                      | D9, D10                                                   |
@@ -385,6 +386,101 @@ whole-API limit (login attempts, unauthenticated floods) needs its own decision 
 works across processes, which the server does not have. A refused request is not counted, so a
 client that waits is not penalised. The figure is a guess at honest use, to be revised from real
 use, not measured.
+
+## 6b. Decided while building S1b (backlog #381, 2026-11-11)
+
+S1b lets a chat host connect a person without a pasted token: the person adds the connector by its
+address, is sent to Tessera to sign in and say yes, and the chat host holds a credential from then
+on. The flow is OAuth 2.1 with PKCE, as the chat host's connector documentation requires (§7,
+source 9), and nothing in it is specific to one host.
+
+**D19. A client registers itself by request (Louis, 2026-11-11).** The question was how a chat
+host identifies itself to Tessera, with three options: registration by request (RFC 7591), a
+client-ID metadata document that Tessera would fetch from an address the client names, or clients
+entered by hand. Louis chose registration by request: it is what the documentation describes, and
+it adds **no outbound call**, where a metadata document would have made a second place the server
+fetches a URL a stranger typed (the webhook sender is the first, and it took a card of its own).
+An open registration endpoint is a write anyone can make, so the same slice bounds it:
+
+- at most 30 registrations in an hour over the whole server, then a 429;
+- a client nobody ever connected is deleted thirty days after it registered, with its codes;
+- public clients only: no secret is issued, so none can leak, and PKCE binds a code to whoever
+  asked for it;
+- a client's name and addresses are a stranger's claim: the consent page shows the name as one,
+  and neither is ever written to the audit log.
+
+The cap is one bucket for everyone, so someone can use it up for an hour and stop new clients
+registering. Connections that exist are untouched, and a limit per sender is issue #384.
+
+**D20. Tessera is its own authorization server, and consent is a page of the application.** The
+session lives in the browser as a bearer token, not a cookie, so the authorization endpoint
+cannot know who is asking. It checks the client and its redirect address and hands the browser to
+`#/connect`, where the application (signed in, or after the login screen) shows who is asking,
+where the answer goes and what the connection can do, and posts the person's answer with the
+session. What holds:
+
+- **A code never goes to an address the client did not register.** A request naming an unknown
+  client or another address is answered with an error and no redirect. A loopback address
+  (`http` to this machine) matches on any port, as a command-line client needs (RFC 8252); every
+  other address matches as an exact string.
+- Only `allow: true` is consent; anything else goes back as `access_denied`.
+- **Staff only**, of the tenant whose host the client registered at (D2, D14). A vendor can read
+  the page and cannot connect. Under a base domain a client registered at one tenant's address is
+  unknown at another's.
+- The request rides in the page's fragment, which reaches no server log.
+
+**D21. An access token is a connector token; a connection is what the person sees.** Exchanging
+a code makes a **connection** (`oauth_connection`, platform v18) and its first tokens: an access
+token that is a row of `connector_token` (D16), so the endpoint's gate keeps its one lookup, and a
+refresh token.
+
+- An access token lives one hour. A refresh token lives 90 days and is **rotated on every use**,
+  so a connection in use goes on and an unused one lapses.
+- A code and a refresh token are single-use and stored as hashes. A failed exchange spends the
+  code. **A spent code or refresh token presented again ends the connection**: one of the two
+  holders is not the client. The cost is that a client which loses the reply to a refresh must
+  sign in again.
+- Every refusal at the token endpoint is the same `invalid_grant`, whatever was wrong.
+- A connection follows the membership as a hand-made token does: exchanging and refreshing answer
+  only while the person is still staff of its tenant. A password reset ends every connection and
+  spends any code still waiting to be exchanged, so a consent given before the recovery cannot
+  make a connection after it.
+- Under a base domain a code or refresh token is exchanged at the address of the tenant its
+  client registered at, and is refused at any other (a refresh token without being spent).
+- A new sign-in from the same client replaces the person's earlier connection from it; past ten
+  connections the oldest ends.
+- The person lists and ends their connections under Account. `connector.connected` and
+  `connector.disconnected` (with why) are logged in the tenant's slice; the hourly access tokens
+  are not logged one by one.
+- No scopes: the connection opens the connector's read-only tools and nothing else exists to
+  grant. A later slice that adds a tool which changes something must decide whether a connection
+  made before it gets that tool.
+
+**D22. The address is configured, never read from a request.** The metadata a chat host reads
+names the server's own address. Under a base domain that is the tenant's (`https://<slug>.<base
+domain>`); otherwise it is `CAT_PUBLIC_ORIGIN`. The `Host` header is whatever the sender chose, so
+it is never used. With neither set, sign-in is off, every route of the flow is a 404, and the
+connector works with a token made by hand, as in S1a.
+
+**Checked by the official client.** `server/src/connector-oauth.test.ts` runs the official
+TypeScript client's own sign-in against a real socket: it reads the 401, finds the metadata,
+registers, asks, exchanges with its own verifier and calls a tool. The same flow was driven once
+in a real browser (login, consent page, redirect to a loopback listener, exchange, a tool call),
+which is how the page was seen to work and how an empty reply from the disconnect route was
+found; that run is not a test in the repository.
+
+**Not built in S1b, and not verified:**
+
+- **No real chat host has connected.** That needs a server reachable over `https` and an account
+  on the host. It is the one thing left that only a deployment can show.
+- A person who signs in with Microsoft or Google from the consent page's login screen loses the
+  request (the browser leaves for the provider) and must start again from the chat host. A
+  password sign-in keeps it.
+- No rate limit on the token endpoint (issue #384). The connector's own endpoint is limited per
+  token (backlog #379), which holds for a connection's hourly tokens as for a hand-made one.
+- The plan statement (D15) is not asked for at sign-in: no tool returns text yet, so nothing
+  needs it. S3 adds it, and must decide whether to ask at connection or at first use.
+- A token made by hand (S1a) still has no screen.
 
 ## 7. Sources
 

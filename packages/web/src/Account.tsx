@@ -1,8 +1,9 @@
 /**
  * The signed-in account's own settings (issue #317, `planning/sso-spec.md` D3, D7, §2a):
  * the Microsoft and Google sign-ins linked to it, a button to link another and one to unlink each
- * (refused for the last way in), for a tenant's admin the single sign-on policy, and the editor's
- * keys (issue #193), kept in this browser only.
+ * (refused for the last way in), for a tenant's admin the single sign-on policy, for staff the
+ * chat assistants connected by signing in (backlog #381), and the editor's keys (issue #193),
+ * kept in this browser only.
  *
  * Linking leaves for the provider and comes back here with a code (`returning`), which the
  * server redeems for this session's own account only.
@@ -17,7 +18,7 @@ import {
   policyProblem,
   type PolicyDraft,
 } from './account-settings.js';
-import { api, ApiError, type LinkedIdentity } from './api.js';
+import { api, ApiError, type ConnectionView, type LinkedIdentity } from './api.js';
 import { formatDeadline } from './jobs.js';
 import { useSession } from './session-context.js';
 import {
@@ -46,6 +47,7 @@ export function Account({
       <h2>Account</h2>
       <LinkedSignIns returning={returning} />
       {staffRole === 'admin' && <Policy />}
+      {staffRole !== null && <Connections />}
       <ShortcutSettings />
     </div>
   );
@@ -180,6 +182,80 @@ function IdentityList({
           ))}
         </div>
       )}
+      {action.error && (
+        <p className="error" role="alert">
+          {action.error}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** The chat assistants this account let in by signing in, each with a way to end it. */
+function Connections() {
+  const [version, setVersion] = useState(0);
+  return (
+    <section>
+      <h3>Chat assistants</h3>
+      <ConnectionList key={version} onChanged={() => setVersion((v) => v + 1)} />
+    </section>
+  );
+}
+
+function ConnectionList({ onChanged }: { onChanged: () => void }) {
+  const load = useCallback(
+    (t: string, signal: AbortSignal) => api.connections(t, signal),
+    [],
+  );
+  const loaded = useLoad(load);
+  const action = useAction();
+
+  const end = async (connection: ConnectionView) => {
+    if (await action.run((t) => api.endConnection(t, connection.id))) onChanged();
+  };
+
+  if (loaded.state === 'loading') return <p className="muted">Loading{'\u2026'}</p>;
+  if (loaded.state === 'error') return <p className="error">{loaded.message}</p>;
+  const { connections } = loaded.data;
+  if (connections.length === 0) {
+    return (
+      <p className="muted">
+        No chat assistant is connected. One connects from its own settings, by this
+        application&apos;s address; you are asked here before it gets in.
+      </p>
+    );
+  }
+  return (
+    <>
+      <table>
+        <thead>
+          <tr>
+            <th>Calls itself</th>
+            <th>Connected</th>
+            <th>Last used</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {connections.map((connection) => (
+            <tr key={connection.id}>
+              <td>{connection.name}</td>
+              <td>{formatDeadline(connection.createdAt)}</td>
+              <td>{formatDeadline(connection.lastUsedAt)}</td>
+              <td>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={action.busy}
+                  onClick={() => void end(connection)}
+                >
+                  Disconnect
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {action.error && (
         <p className="error" role="alert">
           {action.error}

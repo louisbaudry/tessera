@@ -858,6 +858,88 @@ const v17: Migration = {
   },
 };
 
+/** `audit_event.action` as of platform v18: v17's list and the two connection actions. Frozen. */
+const V18_AUDIT_ACTIONS = [
+  ...V17_AUDIT_ACTIONS,
+  'connector.connected',
+  'connector.disconnected',
+] as const satisfies readonly PlatformAuditAction[];
+
+/**
+ * Sign-in from a chat host (backlog #381, `planning/chat-connector-spec.md` §6b): OAuth 2.1 with
+ * PKCE, the client registering itself by request. Four tables and one column:
+ *
+ * - `oauth_client`: a client that registered. Its name and redirect addresses are what a
+ *   stranger sent, so they are shown on the consent page as a claim and never logged. A tenant's
+ *   host registers clients for that tenant alone (`tenant_id`; null without a base domain).
+ * - `oauth_code`: a one-time authorization code, stored as its hash, bound to the client, the
+ *   exact redirect address, the PKCE challenge, the person and their tenant. `used_at` makes it
+ *   single-use; `connection_id` is what a second presentation ends.
+ * - `oauth_connection`: one person's consent to one client, the thing the Account screen lists
+ *   and ends. `expires_at` is its newest refresh token's.
+ * - `oauth_refresh`: refresh tokens, rotated on every use; a used one presented again ends the
+ *   connection.
+ * - `connector_token.connection_id`: an access token **is a connector token**, so the endpoint's
+ *   gate has one lookup; null for a token a person made by hand.
+ */
+const v18: Migration = {
+  version: 18,
+  description: 'oauth sign-in for the chat connector (backlog #381)',
+  up(db) {
+    db.exec(`
+      CREATE TABLE oauth_client (
+        id            INTEGER PRIMARY KEY,
+        client_id     TEXT NOT NULL UNIQUE,
+        tenant_id     INTEGER REFERENCES tenant(id),
+        name          TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+        redirect_uris TEXT NOT NULL,
+        created_at    TEXT NOT NULL
+      );
+      CREATE INDEX oauth_client_created ON oauth_client(created_at);
+
+      CREATE TABLE oauth_connection (
+        id           INTEGER PRIMARY KEY,
+        account_id   INTEGER NOT NULL REFERENCES account(id),
+        tenant_id    INTEGER NOT NULL REFERENCES tenant(id),
+        client       INTEGER NOT NULL REFERENCES oauth_client(id),
+        created_at   TEXT NOT NULL,
+        last_used_at TEXT NOT NULL,
+        expires_at   TEXT NOT NULL,
+        revoked_at   TEXT
+      );
+      CREATE INDEX oauth_connection_account ON oauth_connection(account_id);
+      CREATE INDEX oauth_connection_client ON oauth_connection(client);
+
+      CREATE TABLE oauth_code (
+        id             INTEGER PRIMARY KEY,
+        code_hash      TEXT NOT NULL UNIQUE,
+        client         INTEGER NOT NULL REFERENCES oauth_client(id),
+        account_id     INTEGER NOT NULL REFERENCES account(id),
+        tenant_id      INTEGER NOT NULL REFERENCES tenant(id),
+        redirect_uri   TEXT NOT NULL,
+        code_challenge TEXT NOT NULL,
+        expires_at     TEXT NOT NULL,
+        used_at        TEXT,
+        connection_id  INTEGER REFERENCES oauth_connection(id)
+      );
+      CREATE INDEX oauth_code_client ON oauth_code(client);
+
+      CREATE TABLE oauth_refresh (
+        id            INTEGER PRIMARY KEY,
+        token_hash    TEXT NOT NULL UNIQUE,
+        connection_id INTEGER NOT NULL REFERENCES oauth_connection(id),
+        expires_at    TEXT NOT NULL,
+        used_at       TEXT
+      );
+      CREATE INDEX oauth_refresh_connection ON oauth_refresh(connection_id);
+
+      ALTER TABLE connector_token ADD COLUMN connection_id INTEGER REFERENCES oauth_connection(id);
+      CREATE INDEX connector_token_connection ON connector_token(connection_id);
+    `);
+    rebuildTable(db, 'audit_event', auditEventDdl(V18_AUDIT_ACTIONS, { tenantId: true }));
+  },
+};
+
 export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -876,4 +958,5 @@ export const PLATFORM_MIGRATIONS: readonly Migration[] = [
   v15,
   v16,
   v17,
+  v18,
 ];

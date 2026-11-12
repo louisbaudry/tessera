@@ -154,6 +154,11 @@ import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft
 import { registerEngineRoutes } from './engine.js';
 import { registerConcordanceRoutes } from './concordance.js';
 import { registerReferenceFileRoutes } from './reference-files.js';
+import {
+  connectorChallenge,
+  PUBLIC_OAUTH_PATHS,
+  registerConnectorOauthRoutes,
+} from './connector-oauth.js';
 import { CONNECTOR_RATE_LIMIT, MCP_PATH, registerConnectorRoutes } from './connector.js';
 import { FixedWindowLimiter } from './rate-limit.js';
 import { registerQaModeRoutes } from './qa-mode.js';
@@ -344,6 +349,9 @@ const PUBLIC_PATHS = new Set([
   STAFF_SSO_START_PATH,
   STAFF_SSO_ACCEPT_PATH,
   ...PUBLIC_SSO_PATHS,
+  // What a chat host does before anyone is signed in to it (backlog #381): register, send the
+  // browser to the consent page, and exchange a code or a refresh token.
+  ...PUBLIC_OAUTH_PATHS,
 ]);
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -480,6 +488,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       const who = token === null ? null : resolveConnectorToken(platform, token);
       // On a tenant's host the token must be that tenant's (D14), as a session must.
       if (!who || (req.hostTenant && who.membership.tenant.id !== req.hostTenant.id)) {
+        // Where a client with no token learns how to sign in (RFC 9728), when that is set up.
+        const challenge = connectorChallenge(config, req);
+        if (challenge !== null) void reply.header('WWW-Authenticate', challenge);
         return reply.code(401).send({ error: 'invalid, missing, or expired token' });
       }
       // Counted only once the token is known, and by its hash, so no token is held in memory.
@@ -1820,6 +1831,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerConnectorRoutes(app, {
     platform,
     config,
+    account: sessionAccount,
+    tenant: ownTenant,
+    sessionActor,
+  });
+  registerConnectorOauthRoutes(app, {
+    platform,
+    config,
+    mcpPath: MCP_PATH,
     account: sessionAccount,
     tenant: ownTenant,
     sessionActor,

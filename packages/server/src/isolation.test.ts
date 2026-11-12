@@ -20,6 +20,7 @@
  * The accounts are made so no tenant id equals its founder's account id.
  */
 
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -69,6 +70,7 @@ interface World {
   readonly assignmentId: number;
   readonly clientId: number;
   readonly connectorTokenId: number;
+  readonly connectionId: number;
   readonly markers: readonly string[];
 }
 let world: World;
@@ -79,6 +81,8 @@ beforeEach(async () => {
     port: 0,
     dbPath: join(dir, 'platform.sqlite'),
     storageRoot: join(dir, 'storage'),
+    // So a chat host can sign in (backlog #381) and B can hold a connection to probe.
+    publicOrigin: 'https://cat.example.org',
   };
   const platform = openPlatformDb(config.dbPath);
   const make = (name: string, role?: 'vendor') =>
@@ -279,6 +283,48 @@ async function buildWorld(): Promise<World> {
     { method: 'POST', url: '/api/connector-tokens', body: { label: 'b-connector' } },
     201,
   );
+  // B's sign-in from a chat host (backlog #381): the client's name is a marker.
+  const redirect = 'https://chat.example/callback';
+  const verifier = 'v'.repeat(43);
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const client = (
+    await app.inject({
+      method: 'POST',
+      url: '/api/oauth/register',
+      payload: { client_name: 'b-chat-host', redirect_uris: [redirect] },
+    })
+  ).json() as { client_id: string };
+  const answer = await sendOk<{ redirect: string }>(
+    c,
+    {
+      method: 'POST',
+      url: '/api/oauth/consent',
+      body: {
+        client_id: client.client_id,
+        redirect_uri: redirect,
+        code_challenge: challenge,
+        allow: true,
+      },
+    },
+    200,
+  );
+  const exchanged = await app.inject({
+    method: 'POST',
+    url: '/api/oauth/token',
+    payload: {
+      grant_type: 'authorization_code',
+      code: new URL(answer.redirect).searchParams.get('code'),
+      client_id: client.client_id,
+      redirect_uri: redirect,
+      code_verifier: verifier,
+    },
+  });
+  expect(exchanged.statusCode, exchanged.body).toBe(200);
+  const { connections } = await sendOk<{ connections: { id: number }[] }>(
+    c,
+    { method: 'GET', url: '/api/connections' },
+    200,
+  );
   return {
     project: 'b-job',
     fileId,
@@ -291,8 +337,10 @@ async function buildWorld(): Promise<World> {
     assignmentId: offered.assignment.id,
     clientId,
     connectorTokenId: connection.connection.id,
+    connectionId: connections[0]!.id,
     markers: [
       'b-connector',
+      'b-chat-host',
       'b-job',
       'b-tm',
       'b-gl',
@@ -595,6 +643,49 @@ const ROUTES: Record<string, Entry> = {
   'DELETE /api/mcp': {
     kind: 'own',
     why: 'a connector token, never a session: a 401 here',
+  },
+  // Sign-in from a chat host (backlog #381). The metadata and the three steps a chat host takes
+  // before anyone is signed in to it are public; the consent page's two routes name a
+  // registered client, which is a stranger's claim and no tenant's object; a connection is
+  // the caller's own.
+  'GET /.well-known/oauth-protected-resource': {
+    kind: 'public',
+    why: 'metadata: where the connector signs people in',
+  },
+  'GET /.well-known/oauth-protected-resource/api/mcp': {
+    kind: 'public',
+    why: 'metadata: where the connector signs people in',
+  },
+  'GET /.well-known/oauth-authorization-server': {
+    kind: 'public',
+    why: 'metadata: the sign-in endpoints',
+  },
+  'POST /api/oauth/register': { kind: 'public', why: 'a chat host, before any sign-in' },
+  'GET /api/oauth/authorize': {
+    kind: 'public',
+    why: 'a browser on its way to the consent page; decides nothing',
+  },
+  'POST /api/oauth/token': {
+    kind: 'public',
+    why: 'a one-time code or a refresh token, not a session',
+  },
+  'GET /api/oauth/request': {
+    kind: 'own',
+    why: 'names a registered client, which belongs to no tenant',
+  },
+  'POST /api/oauth/consent': {
+    kind: 'own',
+    why: 'the caller consents for their own account, to a client that belongs to no tenant',
+  },
+  'GET /api/connections': { kind: 'list' },
+  'DELETE /api/connections/:id': {
+    kind: 'object',
+    pairs: (w) => [
+      {
+        actual: { method: 'DELETE', url: `/api/connections/${w.connectionId}` },
+        missing: { method: 'DELETE', url: '/api/connections/9999' },
+      },
+    ],
   },
   'DELETE /api/webhooks/:id': {
     kind: 'object',

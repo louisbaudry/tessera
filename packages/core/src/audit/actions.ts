@@ -67,6 +67,8 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'account.password_reset',
   'connector.token_created',
   'connector.token_revoked',
+  'connector.connected',
+  'connector.disconnected',
 ] as const;
 
 export const PORTAL_AUDIT_ACTIONS = [
@@ -418,6 +420,8 @@ export interface AuditDetail {
     readonly sessions_ended: number;
     /** Connector tokens the reset revoked with the sessions; absent when there were none. */
     readonly connector_tokens_revoked?: number;
+    /** Chat-host connections the reset ended (backlog #381); absent when there were none. */
+    readonly connections_ended?: number;
   };
   /**
    * Subject: the account. A person made a connector token for the chat connector
@@ -427,6 +431,22 @@ export interface AuditDetail {
   'connector.token_created': { readonly token_id: number; readonly expires_at: string };
   /** Subject: the account. The person revoked one of their connector tokens. */
   'connector.token_revoked': { readonly token_id: number };
+  /**
+   * Subject: the account. A person let a chat host connect by signing in
+   * (`planning/chat-connector-spec.md` §6b, backlog #381). The connection's id and the registered
+   * client's row id; never the client's name or addresses, which whoever registered it typed.
+   * The hourly access tokens of a connection are not logged one by one.
+   */
+  'connector.connected': { readonly connection_id: number; readonly client: number };
+  /**
+   * Subject: the account. A connection ended: the `person` disconnected it, a new sign-in from
+   * the same client `replaced` it, a spent code or refresh token was presented again (`reuse`),
+   * or an operator's `password_reset` ended every way in.
+   */
+  'connector.disconnected': {
+    readonly connection_id: number;
+    readonly reason: 'person' | 'replaced' | 'reuse' | 'password_reset';
+  };
   // A client's linked memory/glossary (backlog #162). The file's name is not
   // in a detail: it often is the client's name, and a detail is hashed.
   'resource.linked': ClientResourceDetail;

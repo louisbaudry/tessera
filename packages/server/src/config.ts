@@ -46,6 +46,15 @@ export interface ServerConfig {
   /** Sign-in with Microsoft 365 and Google; absent when no provider is configured. */
   readonly sso?: SsoConfig;
   /**
+   * The origin people reach this server at when it has **no base domain** (`CAT_PUBLIC_ORIGIN`,
+   * e.g. `https://cat.example.org`): what the chat connector's sign-in names in its metadata
+   * (backlog #381, `planning/chat-connector-spec.md` §6b). It is configured, never read from a
+   * request's `Host`, which whoever sends the request chooses. With a base domain a tenant's
+   * origin is `https://<slug>.<baseDomain>` and this is refused; with neither, a chat host
+   * cannot sign in and a token made by hand still works.
+   */
+  readonly publicOrigin?: string;
+  /**
    * The Anthropic API key the Tessera draft engine calls with (backlog #136,
    * `translation-engine-spec.md` §5). Read from the environment only, never a
    * file in the repo, and never logged or returned: unset, the engine is
@@ -102,6 +111,41 @@ function ssoOf(
   return { callbackOrigin: origin, providers };
 }
 
+/**
+ * `CAT_PUBLIC_ORIGIN` as a bare origin, or undefined when unset.
+ *
+ * @throws if it is not exactly an origin (a scheme and a host, no path), is plain `http` to
+ *   anything but this machine, or is set together with a base domain, which already says where
+ *   each tenant is.
+ */
+function publicOriginOf(
+  raw: string | undefined,
+  baseDomain: string | undefined,
+): string | undefined {
+  if (!raw) return undefined;
+  if (baseDomain) {
+    throw new Error('CAT_PUBLIC_ORIGIN is not used with CAT_BASE_DOMAIN: remove one');
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(
+      'CAT_PUBLIC_ORIGIN must be an origin such as https://cat.example.org',
+    );
+  }
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (
+    url.origin !== raw ||
+    !(url.protocol === 'https:' || (url.protocol === 'http:' && loopback))
+  ) {
+    throw new Error(
+      'CAT_PUBLIC_ORIGIN must be a bare https origin (http only for this machine), with no path',
+    );
+  }
+  return raw;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   // As CAT_WEB_DIR: an empty value is unset. A value that is not a plain host name is refused
   // at startup rather than turned into a server that answers nothing.
@@ -112,6 +156,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     );
   }
   const sso = ssoOf(env, baseDomain ?? undefined);
+  const publicOrigin = publicOriginOf(env.CAT_PUBLIC_ORIGIN, baseDomain ?? undefined);
   return {
     port: Number(env.CAT_PORT ?? 3400),
     dbPath: resolve(env.CAT_DB_PATH ?? './data/platform.sqlite'),
@@ -120,6 +165,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     ...(env.CAT_WEB_DIR ? { webDir: resolve(env.CAT_WEB_DIR) } : {}),
     ...(baseDomain ? { baseDomain } : {}),
     ...(sso ? { sso } : {}),
+    ...(publicOrigin ? { publicOrigin } : {}),
     // As CAT_WEB_DIR: an empty value is unset. There is deliberately no
     // base-URL setting: the one outbound host is fixed in code, so no
     // environment value can point a client's text somewhere else.

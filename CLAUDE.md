@@ -773,12 +773,14 @@ run under the same protocol as semantic matching, in
 - **The fixtures are invented and the output of no tool**, so they prove the
   filter agrees with the shape the spec describes and nothing more.
 
-## The chat connector (slice S1a built), and research-tracked
+## The chat connector (slices S1a and S1b built), and research-tracked
 
 `planning/chat-connector-spec.md` (issue #152): Tessera driven from a chat assistant, whose own
 model drafts. Slice S1a is built (backlog #378): connector tokens and a read-only MCP endpoint,
-`server/src/connector.ts`. **Every other decision in the spec is a proposal** but D15 and §6's O1,
-O2, O5 and O6, which Louis decided; don't implement a later slice before he rules on the rest.
+`server/src/connector.ts`. Slice S1b is built (backlog #381): sign-in from a chat host,
+`server/src/connector-oauth.ts`. **Every other decision in the spec is a proposal** but D15, D19
+and §6's O1, O2, O5 and O6, which Louis decided; don't implement a later slice before he rules on
+the rest.
 Keep true:
 
 - **Two credentials, and each opens one thing** (D16). The gate authenticates `/api/mcp` with a
@@ -797,6 +799,17 @@ Keep true:
 - **The protocol is hand-written (MCP 2025-06-18, JSON responses, tools only) and checked by the
   official client** in `connector.test.ts`, a development dependency only (D18). A change to the
   protocol code is checked by that test, not by a hand-built request alone.
+- **A chat host signs in by OAuth 2.1 with PKCE, and the client registers itself by request**
+  (D19 to D22, spec §6b). An access token **is a connector token** (an hour, `connection_id` set),
+  so the gate keeps one lookup; a refresh token rotates on every use, and a spent code or refresh
+  token presented again ends the connection. A code only ever goes to an address the client
+  registered (`redirectMatches`, `core/auth/oauth.ts`; loopback on any port), and only
+  `allow: true` from a signed-in member of staff causes one. Every refusal at the token endpoint
+  is `invalid_grant`. A client's name and addresses are a stranger's claim: never in a log.
+- **The server's address is configured, never read from `Host`**: the tenant's own under a base
+  domain, else `CAT_PUBLIC_ORIGIN`; with neither, sign-in is off. **The flow makes no outbound
+  call**; a change that fetches something a client names needs the webhook sender's checks and a
+  decision first.
 - **The endpoint is rate limited per connector token, 60 requests a minute** (backlog #379,
   `CONNECTOR_RATE_LIMIT`, `server/src/rate-limit.ts`). It is counted after the token resolves, so an
   invalid token is never counted or held in memory. Only `/api/mcp` is limited; a whole-API limit

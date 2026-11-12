@@ -13,8 +13,12 @@
  * list and `#/join/<token>` the page a staff link opens (backlog #210). The two link
  * pages are the only screens reached without a session. `#/account` is the signed-in
  * account's own settings: its linked sign-ins and, for an admin, the tenant's single sign-on
- * policy (issue #317).
+ * policy (issue #317). `#/connect?<request>` is the page a chat host sends a browser to, to ask
+ * the signed-in person whether it may connect (backlog #381); it needs a session, so the login
+ * screen comes first and the request waits in the address.
  */
+
+import { parseConnectRequest, type ConnectRequest } from './connect.js';
 
 export type Route =
   | { readonly screen: 'projects' }
@@ -25,6 +29,7 @@ export type Route =
   | { readonly screen: 'staff' }
   | { readonly screen: 'audit' }
   | { readonly screen: 'account' }
+  | { readonly screen: 'connect'; readonly request: ConnectRequest }
   | { readonly screen: 'join'; readonly token: string }
   | { readonly screen: 'invite'; readonly token: string }
   | { readonly screen: 'job'; readonly tenantId: number; readonly id: number }
@@ -39,7 +44,16 @@ const INVITE_TOKEN = /^[A-Za-z0-9_-]{20,200}$/;
 /** Whether a text has the shape of an invitation link's token. */
 export const isInviteToken = (text: string): boolean => INVITE_TOKEN.test(text);
 
+const CONNECT = /^#\/?connect\?(.*)$/s;
+
 export function parseRoute(hash: string): Route {
+  // The one screen with a query: read before the hash is split on its slashes, which a
+  // redirect address is full of.
+  const connect = CONNECT.exec(hash);
+  if (connect) {
+    const request = parseConnectRequest(connect[1]!);
+    return request === null ? HOME : { screen: 'connect', request };
+  }
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts.length === 1 && parts[0] === 'tms') return { screen: 'tms' };
   if (parts.length === 1 && parts[0] === 'payables') return { screen: 'payables' };
@@ -95,6 +109,13 @@ export function formatRoute(route: Route): string {
       return '#/audit';
     case 'account':
       return '#/account';
+    case 'connect':
+      return `#/connect?${new URLSearchParams({
+        client_id: route.request.clientId,
+        redirect_uri: route.request.redirectUri,
+        code_challenge: route.request.codeChallenge,
+        ...(route.request.state === null ? {} : { state: route.request.state }),
+      }).toString()}`;
     case 'join':
       return `#/join/${route.token}`;
     case 'invite':
