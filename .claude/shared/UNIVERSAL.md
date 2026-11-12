@@ -109,11 +109,12 @@ after.
   recommendation, say so in one line and continue; no question.
 - **Skip:** a one-line answer, or a session started by a scheduled task
   or hook with no one to answer.
-- **A rule alone may not hold, so a hook backs it.** Each repo merges
-  `model-speed-gate.json` from `settings/` in `claude-shared` into its
-  `.claude/settings.json` (with `session-start-model-speed.sh` copied to
-  `.claude/hooks/`). It injects the reminder at session start. It cannot
-  ask or switch anything itself.
+- **A rule alone may not hold, so a hook backs it.** The sync installs
+  `model-speed-gate.json` from `settings/` in `claude-shared` into each
+  repo's `.claude/settings.json`, with `session-start-model-speed.sh` in
+  `.claude/hooks/` (owned by the sync; do not edit it in the repo). It
+  injects the reminder at session start. It cannot ask or switch anything
+  itself.
 
 ## Naming the session
 
