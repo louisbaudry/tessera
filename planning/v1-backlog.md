@@ -5647,6 +5647,33 @@ TypeScript, as S1a. What it taught:
   branch of the gate, and both are kept. The limit counts by token, so each hourly access token of a
   connection has its own window.
 
+**#384 · ~~Rate limit the chat connector's public sign-in routes~~ · DONE — `server/src/rate-limit.ts`
+(`clientAddress`, `senderKey`), `server/src/connector-oauth.ts` (`OAUTH_SENDER_LIMITS`: 60 token requests
+a minute, 10 registrations an hour, per sender), `server/src/config.ts` (`CAT_TRUSTED_PROXIES`),
+`deploy/docker-compose.yml` (set to 1).**
+
+Louis chose the limit in the server, with trust in a reverse proxy as a setting that is off by default
+(2026-11-18, spec D23), over leaving it to the proxy. Stack: TypeScript. What it taught:
+
+- **The address is the whole question.** The limiter was already there; what a limit per sender needs
+  is to know the sender. Believing `X-Forwarded-For` on a server reached directly lets each sender
+  choose its own bucket, so the header is read only as many entries from the right as the operator
+  says there are proxies, and never further left.
+- **Fastify's `trustProxy` was left off on purpose.** It would also change the host the server believes,
+  and the host is what pins a request to a tenant. The address is worked out by one pure function
+  instead, with no effect on anything else.
+- **An IPv6 sender is a /64, not an address**, or one subscriber has as many windows as it wants.
+- **The 429 comes before the request is looked at**, so it spends no code and says nothing about a
+  grant: a test exchanges a good code from another address after the first sender was refused.
+- **The shipped deployment is why the proxy-only option lost**: stock Caddy has no rate limiter.
+- **Each rule, removed, fails a test** (four were tried: the limit ignored, the header believed with no
+  proxy trusted, the leftmost entry read, the /64 not applied).
+- **One meant change to an existing test:** "is capped by the hour" now registers from a different
+  address each time, because one address is refused at 10, before the whole-server cap of 30.
+- Decided here, not by Louis: the figures, the /64, the cap of eight on the setting, and keeping D19's
+  whole-server cap. Not verified: behind a real proxy, and against a real chat host's traffic. Not
+  built: a limit on login or any other route (spec §6, still open).
+
 ## Not in this backlog (Epics 0–7)
 
 Fuzzy matching, concordance, termbase, XLIFF/XLSX/PPTX, CJK,

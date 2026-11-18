@@ -148,4 +148,17 @@ describe('loadConfig', () => {
       ).toBe('https://auth.example.com');
     });
   });
+
+  it('reads how many reverse proxies to trust, none by default, and refuses a typo', () => {
+    expect(loadConfig({}).trustedProxies).toBeUndefined();
+    expect(loadConfig({ CAT_TRUSTED_PROXIES: '' }).trustedProxies).toBeUndefined();
+    expect(loadConfig({ CAT_TRUSTED_PROXIES: '0' }).trustedProxies).toBeUndefined();
+    expect(loadConfig({ CAT_TRUSTED_PROXIES: '1' }).trustedProxies).toBe(1);
+    expect(loadConfig({ CAT_TRUSTED_PROXIES: '8' }).trustedProxies).toBe(8);
+    for (const bad of ['true', '-1', '1.5', '9', '99', ' 1', '1e0']) {
+      expect(() => loadConfig({ CAT_TRUSTED_PROXIES: bad }), bad).toThrow(
+        /CAT_TRUSTED_PROXIES/,
+      );
+    }
+  });
 });

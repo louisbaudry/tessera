@@ -13,7 +13,12 @@
  * - `GET /api/oauth/authorize`: checks the client and its redirect address and hands the browser
  *   to the application's consent page. It decides nothing: the session lives in the page.
  * - `POST /api/oauth/token`: a code for tokens, or a refresh token for new ones. Form-encoded,
- *   as the standard says; every refusal is `invalid_grant`.
+ *   as the standard says; every refusal of a grant is `invalid_grant`.
+ *
+ * Registration and the token endpoint are also bounded **per sender** (issue #384, spec D23,
+ * `OAUTH_SENDER_LIMITS`): a 429 with `Retry-After`, given before the request is looked at, so it
+ * says nothing about a grant. The sender is the network address from `clientAddress`
+ * (`rate-limit.ts`), which reads a forwarded address only as far as `CAT_TRUSTED_PROXIES` says.
  *
  * With a session (the application):
  *
@@ -58,6 +63,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import type { ServerConfig } from './config.js';
+import { clientAddress, FixedWindowLimiter, senderKey } from './rate-limit.js';
 
 export const OAUTH_REGISTER_PATH = '/api/oauth/register';
 export const OAUTH_AUTHORIZE_PATH = '/api/oauth/authorize';
@@ -74,6 +80,18 @@ export const PUBLIC_OAUTH_PATHS = [
   OAUTH_AUTHORIZE_PATH,
   OAUTH_TOKEN_PATH,
 ] as const;
+
+/**
+ * The per-sender bounds of the two public routes that do work (issue #384, spec D23). A sender is
+ * a network address, and a chat host's own servers call both routes for all of its users, so the
+ * figures are generous: a connection needs one registration ever and one token call an hour.
+ * They are guesses at honest use, not measurements. Registration keeps its whole-server cap as
+ * well (`MAX_CLIENT_REGISTRATIONS_PER_HOUR`, D19); this is what stops one sender spending it all.
+ */
+export const OAUTH_SENDER_LIMITS = {
+  token: { requests: 60, windowMs: 60_000 },
+  register: { requests: 10, windowMs: 3_600_000 },
+} as const;
 
 /** The name a client gets when it registered without one. */
 const UNNAMED_CLIENT = 'Unnamed client';
@@ -153,6 +171,45 @@ export function registerConnectorOauthRoutes(
   const notConfigured = (reply: FastifyReply): FastifyReply =>
     reply.code(404).send({ error: 'not found' });
 
+  // One table per route and per app, in memory like the connector's own (`rate-limit.ts`).
+  const limiters = {
+    token: new FixedWindowLimiter(
+      OAUTH_SENDER_LIMITS.token.requests,
+      OAUTH_SENDER_LIMITS.token.windowMs,
+    ),
+    register: new FixedWindowLimiter(
+      OAUTH_SENDER_LIMITS.register.requests,
+      OAUTH_SENDER_LIMITS.register.windowMs,
+    ),
+  };
+
+  /**
+   * Counts this request against its sender for `route`. Returns the 429 to answer with when
+   * the sender is over its limit, or null to go on. Every request counts, refused grants and
+   * malformed bodies included: the bound is on asking, not on succeeding.
+   */
+  const overLimit = (
+    route: keyof typeof limiters,
+    req: FastifyRequest,
+    reply: FastifyReply,
+  ): FastifyReply | null => {
+    const address = clientAddress(
+      req.ip,
+      req.headers['x-forwarded-for'],
+      config.trustedProxies ?? 0,
+    );
+    const decision = limiters[route].take(senderKey(address));
+    if (decision.allowed) return null;
+    return reply
+      .code(429)
+      .header('Retry-After', String(decision.retryAfterSeconds))
+      .header('Cache-Control', 'no-store')
+      .send({
+        error: 'temporarily_unavailable',
+        error_description: 'too many requests from this address; try again later',
+      });
+  };
+
   /** The tenant of the host the request came to: a client is registered for it alone. */
   const hostTenantId = (req: FastifyRequest): number | null => req.hostTenant?.id ?? null;
 
@@ -211,6 +268,8 @@ export function registerConnectorOauthRoutes(
     OAUTH_REGISTER_PATH,
     async (req, reply) => {
       if (connectorOrigin(config, req) === null) return notConfigured(reply);
+      const refused = overLimit('register', req, reply);
+      if (refused) return refused;
       const body = req.body && typeof req.body === 'object' ? req.body : {};
       const method = body.token_endpoint_auth_method;
       if (method !== undefined && method !== 'none') {
@@ -359,6 +418,8 @@ export function registerConnectorOauthRoutes(
     async (req, reply) => {
       const origin = connectorOrigin(config, req);
       if (origin === null) return notConfigured(reply);
+      const refused = overLimit('token', req, reply);
+      if (refused) return refused;
       void reply.header('Cache-Control', 'no-store');
       const body = req.body && typeof req.body === 'object' ? req.body : {};
       const fail = (error: string): FastifyReply => reply.code(400).send({ error });

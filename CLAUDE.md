@@ -814,6 +814,13 @@ Keep true:
   `CONNECTOR_RATE_LIMIT`, `server/src/rate-limit.ts`). It is counted after the token resolves, so an
   invalid token is never counted or held in memory. Only `/api/mcp` is limited; a whole-API limit
   is still open (issue #379 asked for that decision).
+- **The token and registration routes are limited per sender, and the sender is never taken from a
+  header the operator did not vouch for** (backlog #384, spec D23, `OAUTH_SENDER_LIMITS`). The address
+  is `clientAddress` (`rate-limit.ts`): the connection's peer, or with `CAT_TRUSTED_PROXIES` set, that
+  many entries from the right of `X-Forwarded-For` and nothing further left. Don't turn on Fastify's
+  `trustProxy` for this: it also changes the host, which pins the tenant. A new route counted by
+  sender uses `clientAddress` and `senderKey` (an IPv6 sender is its /64), never `req.ip` or the
+  header directly.
 - **No tool confirms a segment, approves a price or changes access** (D9, D11), in any slice.
 - Its evidence is in `research/chat-connector/`, under the semantic-matching protocol. E-001 and
   E-002 used a model with a shell as a stand-in for a chat host, on synthetic text, and both ended

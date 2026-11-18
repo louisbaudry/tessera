@@ -12,6 +12,11 @@ services:
     # No published port: only Caddy reaches the app, over this project's network.
     expose:
       - '3400'
+    environment:
+      # One reverse proxy (the Caddy below) is in front of the app, so the address a request is
+      # rate limited under is the one Caddy saw, not Caddy's own (issue #384). Change it only if
+      # another proxy or a load balancer is put in front of Caddy: it must be the true count.
+      CAT_TRUSTED_PROXIES: '1'
     volumes:
       # The one volume: platform.sqlite and every account's projects and memories.
       - tessera_data:/data

@@ -8,6 +8,8 @@ import { resolve } from 'node:path';
 import { normaliseHost } from '@cat-tool/core';
 import { callbackOrigin, ssoProvidersOf, type SsoProviders } from '@cat-tool/sso-http';
 
+import { MAX_TRUSTED_PROXIES } from './rate-limit.js';
+
 /**
  * Single sign-on (`planning/sso-spec.md` D4): the one address provider callbacks come back to and
  * the providers the operator has registered an app with. A provider with no client id and secret
@@ -54,6 +56,17 @@ export interface ServerConfig {
    * cannot sign in and a token made by hand still works.
    */
   readonly publicOrigin?: string;
+  /**
+   * How many reverse proxies stand between the internet and this server (`CAT_TRUSTED_PROXIES`,
+   * issue #384, `planning/chat-connector-spec.md` D23). Absent means none: the address a request
+   * is counted under is the connection's own, and `X-Forwarded-For` is ignored. Set (1 for the
+   * one Caddy of `deploy/`), the client's address is read that many entries from the right of
+   * that header. It must be the true count: too high, and a sender chooses its own address; too
+   * low or absent behind a proxy, and every sender shares the proxy's one window. Only the
+   * per-sender limits of the chat connector's sign-in routes read it; it is not Fastify's
+   * `trustProxy` and changes no host, protocol or log.
+   */
+  readonly trustedProxies?: number;
   /**
    * The Anthropic API key the Tessera draft engine calls with (backlog #136,
    * `translation-engine-spec.md` §5). Read from the environment only, never a
@@ -146,6 +159,23 @@ function publicOriginOf(
   return raw;
 }
 
+/**
+ * `CAT_TRUSTED_PROXIES` as a count, or undefined when unset, empty or 0.
+ *
+ * @throws if it is not a whole number from 0 to `MAX_TRUSTED_PROXIES`: a typo here would either
+ *   merge every sender into one or let each choose its address, so it fails at startup.
+ */
+function trustedProxiesOf(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const count = /^\d{1,2}$/.test(raw) ? Number(raw) : NaN;
+  if (!(count <= MAX_TRUSTED_PROXIES)) {
+    throw new Error(
+      `CAT_TRUSTED_PROXIES must be a whole number from 0 to ${MAX_TRUSTED_PROXIES}: how many reverse proxies are in front of the server`,
+    );
+  }
+  return count === 0 ? undefined : count;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   // As CAT_WEB_DIR: an empty value is unset. A value that is not a plain host name is refused
   // at startup rather than turned into a server that answers nothing.
@@ -157,6 +187,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   }
   const sso = ssoOf(env, baseDomain ?? undefined);
   const publicOrigin = publicOriginOf(env.CAT_PUBLIC_ORIGIN, baseDomain ?? undefined);
+  const trustedProxies = trustedProxiesOf(env.CAT_TRUSTED_PROXIES);
   return {
     port: Number(env.CAT_PORT ?? 3400),
     dbPath: resolve(env.CAT_DB_PATH ?? './data/platform.sqlite'),
@@ -166,6 +197,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     ...(baseDomain ? { baseDomain } : {}),
     ...(sso ? { sso } : {}),
     ...(publicOrigin ? { publicOrigin } : {}),
+    ...(trustedProxies ? { trustedProxies } : {}),
     // As CAT_WEB_DIR: an empty value is unset. There is deliberately no
     // base-URL setting: the one outbound host is fixed in code, so no
     // environment value can point a client's text somewhere else.

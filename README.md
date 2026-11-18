@@ -195,7 +195,11 @@ A chat assistant can connect to the server by signing in (backlog #381,
 `planning/chat-connector-spec.md` §6b). The server must know its own address for that: under
 `CAT_BASE_DOMAIN` it is each tenant's own, otherwise set `CAT_PUBLIC_ORIGIN` (a bare origin such
 as `https://cat.example.org`; `http` only for this machine). With neither, sign-in from a chat
-assistant is off and nothing else changes.
+assistant is off and nothing else changes. Its two public routes are rate limited per network
+address (issue #384): behind a reverse proxy, set `CAT_TRUSTED_PROXIES` to the number of proxies in
+front of the server (1 for the Caddy of `deploy/`, which sets it), so the address counted is the
+client's and not the proxy's. Leave it unset on a server reached directly: the forwarded address
+is then ignored, as it must be.
 
 Signing in with Microsoft 365 or Google (backlog #214, `planning/sso-spec.md`) is off until the
 operator registers an app with each provider and sets `GOOGLE_OAUTH_CLIENT_ID` and
