@@ -8,6 +8,8 @@
  *   the tenant can cause one;
  * - a code is exchanged once, with its verifier; refresh tokens rotate; a spent one ends the
  *   connection; every refusal at the token endpoint is the same `invalid_grant`;
+ * - registration and the token endpoint are bounded per sender (issue #384), by the connection's
+ *   address unless the operator said how many reverse proxies to trust;
  * - the access token opens the connector and nothing else.
  */
 
@@ -43,6 +45,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
 import type { ServerConfig } from './config.js';
 import { loadConfig } from './config.js';
+import { OAUTH_SENDER_LIMITS } from './connector-oauth.js';
 import { MCP_PATH } from './connector.js';
 
 const SETUP: AuditActor = { actor: { kind: 'system', name: 'test-setup' }, label: null };
@@ -114,6 +117,15 @@ async function register(
   });
   return { res, clientId: (res.json() as { client_id?: string }).client_id ?? '' };
 }
+
+/** A registration from one network address: the sender a limit counts by. */
+const registerFrom = (remoteAddress: string) =>
+  app.inject({
+    method: 'POST',
+    url: '/api/oauth/register',
+    remoteAddress,
+    payload: { client_name: 'Chat host', redirect_uris: [REDIRECT] },
+  });
 
 const authorizeUrl = (
   clientId: string,
@@ -322,13 +334,147 @@ describe('registration', () => {
     expect((res.json() as { client_name: string }).client_name).toBe('Unnamed client');
   });
 
-  it('is capped by the hour', async () => {
+  it('is capped by the hour over the whole server, whoever asks', async () => {
+    // Each from its own address, so no one sender's limit is what refuses the last.
     for (let i = 0; i < MAX_CLIENT_REGISTRATIONS_PER_HOUR; i += 1) {
-      expect((await register()).res.statusCode).toBe(201);
+      expect((await registerFrom(`198.51.100.${i + 1}`)).statusCode).toBe(201);
     }
-    const { res } = await register();
+    const res = await registerFrom('198.51.100.200');
     expect(res.statusCode).toBe(429);
     expect(res.headers['retry-after']).toBe('3600');
+  });
+});
+
+describe('the limit per sender (issue #384)', () => {
+  const badGrant = (
+    remoteAddress: string,
+    headers: Record<string, string> = {},
+    on: FastifyInstance = app,
+  ) =>
+    on.inject({
+      method: 'POST',
+      url: '/api/oauth/token',
+      remoteAddress,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers },
+      payload: 'grant_type=refresh_token&client_id=x&refresh_token=y',
+    });
+
+  it('bounds one sender’s registrations and leaves another’s alone', async () => {
+    const { requests } = OAUTH_SENDER_LIMITS.register;
+    expect(requests).toBeLessThan(MAX_CLIENT_REGISTRATIONS_PER_HOUR);
+    for (let i = 0; i < requests; i += 1) {
+      expect((await registerFrom('203.0.113.9')).statusCode).toBe(201);
+    }
+    const res = await registerFrom('203.0.113.9');
+    expect(res.statusCode).toBe(429);
+    expect(res.json()).toMatchObject({ error: 'temporarily_unavailable' });
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+    expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(3600);
+    // The refused sender did not spend the whole server's hour: someone else still registers.
+    expect((await registerFrom('203.0.113.10')).statusCode).toBe(201);
+  });
+
+  it('counts a malformed registration too', async () => {
+    const bad = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/oauth/register',
+        remoteAddress: '203.0.113.9',
+        payload: { redirect_uris: 'nope' },
+      });
+    for (let i = 0; i < OAUTH_SENDER_LIMITS.register.requests; i += 1) {
+      expect((await bad()).statusCode).toBe(400);
+    }
+    expect((await bad()).statusCode).toBe(429);
+  });
+
+  it('bounds one sender’s token requests, refused grants included, and says nothing of the grant', async () => {
+    for (let i = 0; i < OAUTH_SENDER_LIMITS.token.requests; i += 1) {
+      const res = await badGrant('203.0.113.9');
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: 'invalid_grant' });
+    }
+    const res = await badGrant('203.0.113.9');
+    expect(res.statusCode).toBe(429);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+    expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(60);
+    expect((await badGrant('203.0.113.10')).statusCode).toBe(400);
+    // The two routes are counted apart.
+    expect((await registerFrom('203.0.113.9')).statusCode).toBe(201);
+  });
+
+  it('a sender over the limit cannot exchange a good code either, and keeps the code', async () => {
+    const { clientId } = await register();
+    const session = await login('alice');
+    const { redirect } = await consent(session, clientId);
+    const exchange = (remoteAddress: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/oauth/token',
+        remoteAddress,
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        payload: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: redirect!.searchParams.get('code')!,
+          client_id: clientId,
+          redirect_uri: REDIRECT,
+          code_verifier: VERIFIER,
+        }).toString(),
+      });
+    for (let i = 0; i < OAUTH_SENDER_LIMITS.token.requests; i += 1) {
+      await badGrant('203.0.113.9');
+    }
+    expect((await exchange('203.0.113.9')).statusCode).toBe(429);
+    // Refused before the code was looked at, so it is not spent.
+    expect((await exchange('203.0.113.10')).statusCode).toBe(200);
+  });
+
+  it('counts every address of one IPv6 /64 as one sender', async () => {
+    for (let i = 0; i < OAUTH_SENDER_LIMITS.token.requests; i += 1) {
+      await badGrant(`2001:db8:1:2::${(i + 1).toString(16)}`);
+    }
+    expect((await badGrant('2001:db8:1:2:ffff::1')).statusCode).toBe(429);
+    expect((await badGrant('2001:db8:1:3::1')).statusCode).toBe(400);
+  });
+
+  it('ignores X-Forwarded-For when no proxy is trusted', async () => {
+    // A sender that writes a new address into the header on every request is still one sender.
+    for (let i = 0; i < OAUTH_SENDER_LIMITS.token.requests; i += 1) {
+      await badGrant('203.0.113.9', { 'x-forwarded-for': `198.51.100.${i + 1}` });
+    }
+    const res = await badGrant('203.0.113.9', { 'x-forwarded-for': '198.51.100.250' });
+    expect(res.statusCode).toBe(429);
+  });
+
+  it('behind a trusted proxy, counts the address the proxy wrote, not the proxy or a claim', async () => {
+    const proxied = await buildApp({
+      config: { ...config, trustedProxies: 1 },
+      logger: false,
+    });
+    try {
+      const PROXY = '10.0.0.2';
+      // The sender puts a fresh claim first each time; the proxy appends the real address.
+      for (let i = 0; i < OAUTH_SENDER_LIMITS.token.requests; i += 1) {
+        const res = await badGrant(
+          PROXY,
+          { 'x-forwarded-for': `198.51.100.${i + 1}, 203.0.113.9` },
+          proxied,
+        );
+        expect(res.statusCode).toBe(400);
+      }
+      const over = await badGrant(
+        PROXY,
+        { 'x-forwarded-for': '198.51.100.250, 203.0.113.9' },
+        proxied,
+      );
+      expect(over.statusCode).toBe(429);
+      // Another client through the same proxy has its own window.
+      const other = await badGrant(PROXY, { 'x-forwarded-for': '203.0.113.10' }, proxied);
+      expect(other.statusCode).toBe(400);
+    } finally {
+      await proxied.close();
+    }
   });
 });
 

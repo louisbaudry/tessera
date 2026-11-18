@@ -164,6 +164,11 @@ reloads the file.
   contacts sign in through the portal's own callback host (§2b): `PORTAL_SSO_CALLBACK_ORIGIN` and the same
   four provider variables on the portal service, a second redirect URL in each registration, and that
   host routed to the portal.
+- **No chat connector sign-in.** `CAT_PUBLIC_ORIGIN` is not passed to the container, so a chat
+  assistant cannot sign in (`planning/chat-connector-spec.md` §6b). `CAT_TRUSTED_PROXIES` is
+  already set to 1 for the one Caddy, so that when sign-in is turned on its public routes are
+  rate limited by the client's address and not Caddy's (issue #384). Put another proxy or a load
+  balancer in front of Caddy and that number must change with it. Not checked on a host.
 - **No registry, no automatic deploy.** The image is built on the host from a checkout.
   A published image and a deploy workflow are a later card, once there is more than one
   host or more than one person deploying.

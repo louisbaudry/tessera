@@ -409,8 +409,9 @@ An open registration endpoint is a write anyone can make, so the same slice boun
 - a client's name and addresses are a stranger's claim: the consent page shows the name as one,
   and neither is ever written to the audit log.
 
-The cap is one bucket for everyone, so someone can use it up for an hour and stop new clients
-registering. Connections that exist are untouched, and a limit per sender is issue #384.
+The cap is one bucket for everyone, so someone could use it up for an hour and stop new clients
+registering. Connections that exist are untouched, and the limit per sender (D23) is what keeps
+one sender from spending it all.
 
 **D20. Tessera is its own authorization server, and consent is a page of the application.** The
 session lives in the browser as a bearer token, not a cookie, so the authorization endpoint
@@ -462,6 +463,48 @@ domain>`); otherwise it is `CAT_PUBLIC_ORIGIN`. The `Host` header is whatever th
 it is never used. With neither set, sign-in is off, every route of the flow is a 404, and the
 connector works with a token made by hand, as in S1a.
 
+**D23. Registration and the token endpoint are bounded per sender, in the server, and a
+forwarded address is trusted only as far as the operator says (Louis, 2026-11-18, issue #384).**
+The two public routes that do work had no bound per sender: the token endpoint none at all, and
+registration only D19's one bucket. The options were a limit in the server, leaving it to the
+reverse proxy and writing that down, or both. Louis chose the limit in the server, with the trust
+in a proxy as a setting that is off by default. The reverse-proxy option would have left the
+deployment this repository ships (`deploy/`) unbounded: its Caddy has no rate limiter without a
+custom build. Stack: TypeScript, like the limiter it reuses; a counter in a map has nothing for
+Rust or WebAssembly to speed up.
+
+- **The limits** (`OAUTH_SENDER_LIMITS`, `server/src/connector-oauth.ts`): 60 token requests a
+  minute and 10 registrations an hour, per sender, each a fixed window of the limiter the
+  connector's endpoint already uses (`server/src/rate-limit.ts`). A chat host's own servers call
+  both routes on behalf of all its users, so a sender may be a whole product; the figures are
+  guesses at honest use (a connection registers once and refreshes once an hour), not
+  measurements. Every request counts, refused ones included. Over the limit the answer is a 429
+  with `Retry-After`, given before the request is looked at: it spends no code and says nothing
+  about a grant, so "every refusal of a grant is `invalid_grant`" still holds.
+- **D19's whole-server cap of 30 an hour stays**, as the bound on what all senders together can
+  write. Three senders can still use it up between them.
+- **A sender is a network address**: an IPv4 address whole, an IPv6 address by its first 64 bits
+  (one subscriber usually holds a whole /64, and counting each address apart would hand it as
+  many windows as it likes).
+- **Which address** (`clientAddress`). By default it is the connection's own peer, and
+  `X-Forwarded-For` is ignored: the sender writes that header, so a server reached directly that
+  believed it would let each sender choose what it is counted under. `CAT_TRUSTED_PROXIES` is the
+  number of reverse proxies in front of the server; with `n`, the address is the `n`th entry from
+  the right of the header, the one the outermost trusted proxy appended, and nothing further left
+  is read. `deploy/docker-compose.yml` sets it to 1 for its one Caddy. A wrong value fails in a
+  known direction: too low behind a proxy, and every sender shares the proxy's window (the limit
+  becomes one bucket again, nobody escapes it); too high, and a sender can pick its address and
+  escape. A request whose header is shorter than the count is counted under the peer.
+- **It is not Fastify's `trustProxy`**, which would also change the host and protocol the server
+  believes. The tenant of a request is still read from `Host` alone (tenant-spec D14).
+- **In memory, per process**, like the connector's limit: a restart empties the windows. The
+  table holds the senders seen in the last window, so a flood from very many networks at once
+  grows it; that is a network-level attack and stays the reverse proxy's or the host's to stop.
+- **Not limited:** the authorization request and the metadata, which write nothing and read one
+  row at most; login and every other route (the whole-API question in §6 is still open).
+- Not verified: the limit behind a real proxy (the tests send the header a proxy would write),
+  and the figures against a real chat host's traffic.
+
 **Checked by the official client.** `server/src/connector-oauth.test.ts` runs the official
 TypeScript client's own sign-in against a real socket: it reads the 401, finds the metadata,
 registers, asks, exchanges with its own verifier and calls a tool. The same flow was driven once
@@ -476,8 +519,7 @@ found; that run is not a test in the repository.
 - A person who signs in with Microsoft or Google from the consent page's login screen loses the
   request (the browser leaves for the provider) and must start again from the chat host. A
   password sign-in keeps it.
-- No rate limit on the token endpoint (issue #384). The connector's own endpoint is limited per
-  token (backlog #379), which holds for a connection's hourly tokens as for a hand-made one.
+- The token and registration routes had no limit per sender in S1b; D23 added it.
 - The plan statement (D15) is not asked for at sign-in: no tool returns text yet, so nothing
   needs it. S3 adds it, and must decide whether to ask at connection or at first use.
 - A token made by hand (S1a) still has no screen.
