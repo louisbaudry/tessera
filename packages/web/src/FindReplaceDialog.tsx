@@ -31,6 +31,7 @@ import {
 } from './find-replace.js';
 import { POLL_MS } from './import-job.js';
 import { useSession } from './session-context.js';
+import { keepFocusInside } from './focus-trap.js';
 
 type Step =
   | { readonly kind: 'idle' }
@@ -180,7 +181,9 @@ export function FindReplaceDialog({
 
   const running = step.kind !== 'idle' && !isFinished(step.job);
   const edited = previewed !== null && JSON.stringify(previewed) !== JSON.stringify(form);
-  const onKeyDown = (e: KeyboardEvent) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    // A modal dialog keeps Tab inside it (issue #193, `focus-trap.ts`).
+    keepFocusInside(e, e.currentTarget);
     if (e.key === 'Escape' && !running) {
       e.preventDefault();
       onClose(changed);

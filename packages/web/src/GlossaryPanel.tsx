@@ -183,7 +183,11 @@ function GlossarySetup({
   };
 
   return (
-    <form className="gp-setup" onSubmit={(e) => void submit(e)}>
+    <form
+      className="gp-setup"
+      aria-label="Choose a glossary"
+      onSubmit={(e) => void submit(e)}
+    >
       <p className="muted">
         This project has no glossary to write into. Choose one, or name a new one.
       </p>

@@ -29,6 +29,7 @@ import {
 } from './concordance.js';
 import { useSession } from './session-context.js';
 import { useLoad } from './use-load.js';
+import { keepFocusInside } from './focus-trap.js';
 
 /** A question put to the server; a new object each time, so asking again reloads. */
 interface Asked {
@@ -271,7 +272,9 @@ export function ConcordanceDialog({
     setSide(next);
     ask(text, next);
   };
-  const onKeyDown = (e: KeyboardEvent) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    // A modal dialog keeps Tab inside it (issue #193, `focus-trap.ts`).
+    keepFocusInside(e, e.currentTarget);
     if (e.key === 'Escape') {
       e.preventDefault();
       onClose();

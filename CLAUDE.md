@@ -1179,14 +1179,22 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts`, `focus-trap.ts`, `grid-entry.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **The editor's keys are bindings, not literals** (issue #193, `web/src/shortcuts.ts`, `loadShortcuts`
   in `prefs.ts`). `Grid.tsx` resolves a key press through one listener (`resolveKey`) and
   `TargetEditor.tsx` builds its keymap from the same set (`pmKeyName`); a new editor key is an entry
   in `SHORTCUT_ACTIONS` with a default, never a `e.code === …` in a component. A stored set that
   breaks any rule falls back to the defaults as a whole. Undo, redo and the browser's own keys are
-  reserved (Meta counts as Ctrl). The Account screen lists and changes them (`ShortcutSettings.tsx`, rules and key capture in `shortcut-settings.ts`), kept in this browser only and read when a file opens; #193 stays open for the accessibility audit.
+  reserved (Meta counts as Ctrl). The Account screen lists and changes them (`ShortcutSettings.tsx`, rules and key capture in `shortcut-settings.ts`), kept in this browser only and read when a file opens.
+- **The editor was audited for accessibility once, by script, and that is all** (issue #193,
+  `planning/accessibility-audit.md`): no screen reader, no zoom, one browser, one screen, so nothing may
+  say the product is accessible or conformant. What it left to keep true: a new dialog calls
+  `keepFocusInside` (`focus-trap.ts`) from its `onKeyDown`; the grid's rows stay inside the one
+  `role="table"` and `aria-rowindex` counts the header; a badge whose meaning is a glyph or a colour is
+  `role="img"` with a name, never a `title` alone; a new colour token that carries text goes into
+  `PAIRS` in `theme-contrast.test.ts`. Enter on the grid opens a segment (`grid-entry.ts`) and Escape
+  returns focus to it; `e2e/editor-keyboard.spec.ts` holds both.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
   read every DOCX blob), found through the browser's resource timing.

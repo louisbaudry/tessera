@@ -1,0 +1,76 @@
+# Accessibility audit of the editor
+
+**Date:** 2026-11-19 · **Issue:** #193 · **Scope:** the editor screen only (the grid, the
+target editor, the filter bar, the QA, glossary and resources panels, the command palette and
+the three dialogs). Follow-ups: issue #391 (changes to behaviour) and issue #392 (what a
+session cannot check).
+
+This is the record of one pass, made so the findings are not found twice. **It is not a
+conformance evaluation and supports no accessibility statement**: one screen, one browser,
+checked by script, with no assistive technology and no person who relies on one. The contrast
+figure used (4.5:1 for text) is the commonly cited WCAG 2.x AA threshold; the standard's text
+was not read for this pass, so nothing here cites a clause.
+
+## 1. Method
+
+Everything ran in headless Chromium against the built application and the real server, on a
+project holding two fixtures from `fixtures/docx/` (358 and 18 segments), with targets typed
+in to produce QA findings. Four checks, each a script:
+
+1. **Keyboard only.** Tab pressed from the top of the page and from inside the editor, the
+   focused element and whether it shows a focus ring recorded at each press; then each key a
+   person would try on the grid (Enter, Space, arrows, F2), Escape from the editor, and Tab
+   and Escape inside each dialog.
+2. **Names.** The browser's own accessibility tree (the DevTools protocol's
+   `Accessibility.getFullAXTree`), listing every control, landmark and table with an empty
+   name; and the tree read as text for the grid, a row, the panels and each dialog.
+3. **Contrast, both themes.** For every visible text node, the computed colour against the
+   computed background (alpha and opacity composed), flagged under 4.5:1, or 3:1 for large
+   text. Run with every panel open, with a segment open, and with each dialog open.
+4. **Focus order.** Read from the Tab walk of check 1.
+
+No accessibility-testing library was added: the checks are a few dozen lines against the
+browser's own tree, and a new dependency needs its licence recorded first
+(`planning/prior-art.md`).
+
+## 2. Findings
+
+`K` keyboard, `N` names and structure, `C` contrast. "Fixed" means in the pull request that
+closed #193, with the test named.
+
+| Id  | Finding                                                                                                                                                                                                                             | Outcome                                                                                                                                                                                                 |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| K1  | A segment could be opened only by a mouse click on its target cell. On the focused grid, Enter, Space, the arrows and F2 did nothing. The one keyboard route was the command palette's two "go to" commands.                        | Fixed. Enter on the grid opens the first editable segment in view, or the one last left (`grid-entry.ts`). The grid is an explicit tab stop. `e2e/editor-keyboard.spec.ts`, `grid-entry.test.ts`.        |
+| K2  | Escape closed the editor and left focus on the page body, so the next Tab began at the top of the page, twenty-five stops before the grid.                                                                                          | Fixed. Escape puts focus on the grid, and Enter returns to the same segment. `e2e/editor-keyboard.spec.ts`.                                                                                             |
+| K3  | The four dialogs say `aria-modal="true"` and a mouse cannot click behind them, but Tab left each one after two to five presses, into the page behind. From there Escape no longer closed the dialog.                                | Fixed. Tab wraps inside the dialog (`focus-trap.ts`), in the palette, concordance, find-and-replace and add-term dialogs. `e2e/editor-keyboard.spec.ts`, `focus-trap.test.ts`.                          |
+| K4  | With no segment open there is no key that moves from row to row.                                                                                                                                                                    | Left: issue #391.                                                                                                                                                                                       |
+| K5  | Twenty-five Tab stops come before the grid; no skip link, and the top links are in no navigation landmark.                                                                                                                          | Left: issue #391.                                                                                                                                                                                       |
+| N1  | The grid's table had no name, and its header row sat outside the element with `role="table"`, so the column headers belonged to no table. `aria-rowcount` and `aria-rowindex` did not count the header.                             | Fixed. One `role="table"` named "Segments" holds the header and the rows (a `rowgroup`); the header is row 1. `e2e/editor-keyboard.spec.ts`.                                                            |
+| N2  | A segment's status was a glyph or a letter (a check mark, `D`, `T`, a padlock) whose meaning was only in a `title`. The QA count had an `aria-label` on an element with no role, which is not reliably read.                        | Fixed. Both are `role="img"` with the status or the count as the name; an unsaved segment says so. Seen in the accessibility tree ("1 Confirmed 2 QA error").                                           |
+| N3  | Nothing is announced when a segment is confirmed, saved or changes status.                                                                                                                                                          | Left: issue #391.                                                                                                                                                                                       |
+| N4  | The origin badge's meaning is only in a `title`.                                                                                                                                                                                    | Left: issue #391.                                                                                                                                                                                       |
+| N5  | Tags in a source cell are read as their visible text. Not judged.                                                                                                                                                                   | Left: issue #391.                                                                                                                                                                                       |
+| N6  | The breadcrumb `nav` and the glossary panel's setup form had no name.                                                                                                                                                               | Fixed: "Breadcrumb" and "Choose a glossary". Seen in the accessibility tree.                                                                                                                            |
+| C1  | Light theme: the confirmed mark (`#2f855a`) measured 4.23:1 on a striped row; white on the QA warning badge (`#b7791f`) 3.64:1, and that amber as text 3.39 to 3.64:1. The dark theme had no failure.                               | Fixed. `--status-confirmed` is `#2b7a53` and `--status-draft`/`--qa-warning` are `#93600f`, each at least 4.5:1 on every background it is drawn on. `theme-contrast.test.ts` holds both themes to it.   |
+| C2  | A disabled primary button measures 3.11:1 (light) and 3.19:1 (dark).                                                                                                                                                                | Not changed: a disabled control is outside the contrast rule. Whether it is readable enough is a judgement of look: issue #392.                                                                         |
+
+What was found sound and left alone: every focusable element showed a focus ring; every
+control in the panels, the filter bar and the dialogs had a name; each dialog takes focus when
+it opens and returns it to the editor when it closes; the source and target cells carry
+`lang`; the command palette is a combobox over a listbox with the active option announced;
+the target editor is a named textbox.
+
+## 3. Not checked
+
+Listed in issue #392: a real screen reader; zoom and reflow; Firefox and Safari; every screen
+but the editor; the client portal. The colours changed for C1 have been seen in a screenshot
+only.
+
+## 4. Rules this leaves
+
+- A new dialog calls `keepFocusInside` from its `onKeyDown` (`web/src/focus-trap.ts`).
+- A new colour token that carries text is added to `PAIRS` in `theme-contrast.test.ts` with
+  the backgrounds it is drawn on.
+- A badge whose meaning is a glyph, a letter or a colour gets `role="img"` and a name; a
+  `title` alone is not a name.
+- The grid's rows stay inside the one `role="table"`; `aria-rowindex` counts the header.
