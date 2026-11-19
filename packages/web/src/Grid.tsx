@@ -48,7 +48,7 @@ import { FindReplaceDialog } from './FindReplaceDialog.js';
 import { draftFromSelection, type TermDraft, type TermSide } from './add-term.js';
 import { nextUnconfirmed } from './advance.js';
 import { nextMarked } from './commands.js';
-import { segmentToOpen } from './grid-entry.js';
+import { isCursorKey, moveCursor, segmentToOpen } from './grid-entry.js';
 import { formatCombo, resolveKey } from './shortcuts.js';
 import { FilterBar } from './FilterBar.js';
 import { CommandPalette, type PaletteCommand } from './CommandPalette.js';
@@ -374,10 +374,13 @@ function SegmentGrid({
   // Esc leaves the segment and puts focus on the grid, which Enter reopens at the same
   // segment (issue #193, audit K1 and K2). Without the focus move it fell to the page's top,
   // twenty-five Tab presses from the grid.
-  const lastLeft = useRef<number | null>(null);
+  // The row cursor (issue #391, audit K4): the segment the arrow keys are on while no segment
+  // is open. Leaving a segment puts the cursor on it, so Esc then Enter returns to it and the
+  // arrows carry on from there.
+  const [cursorId, setCursorId] = useState<number | null>(null);
   const leave = useCallback(() => {
     setActiveId((id) => {
-      lastLeft.current = id;
+      if (id !== null) setCursorId(id);
       return null;
     });
     scrollRef.current?.focus({ preventScroll: true });
@@ -385,18 +388,39 @@ function SegmentGrid({
   // Enter on the grid itself opens a segment (issue #193, audit K1): the one last left, or
   // the first editable one in view. Only a key pressed on the scroller, never one that
   // bubbled up from the editor inside it.
+  // The arrow keys, Page Up/Down, Home and End move the row cursor; Enter opens the row it
+  // is on (a locked row does not open), or with no cursor the first editable one in view.
   const openFromGrid = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
+    if (e.target !== e.currentTarget) return;
     if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
     const offset = virtualizer.scrollOffset ?? 0;
     const inView = virtualizer.getVirtualItems().find((item) => item.end > offset);
+    const cursor = cursorId === null ? -1 : shown.findIndex((s) => s.id === cursorId);
+    if (isCursorKey(e.key)) {
+      const to = moveCursor(
+        shown.length,
+        cursor === -1 ? null : cursor,
+        inView?.index ?? 0,
+        e.key,
+      );
+      // The key is the grid's either way: it must not also scroll the rows under the cursor.
+      e.preventDefault();
+      if (to === null) return;
+      setCursorId(shown[to]!.id);
+      virtualizer.scrollToIndex(to, { align: 'auto' });
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    // A cursor on a locked row is for reading: Enter there opens nothing, and does not jump
+    // to some other row either.
+    if (cursor !== -1 && statusOf(shown[cursor]!) === 'locked') return;
     const to = segmentToOpen(
       shown.map((s) => ({ id: s.id, editable: statusOf(s) !== 'locked' })),
-      lastLeft.current,
+      cursorId,
       inView?.index ?? 0,
     );
     if (to === null) return;
-    e.preventDefault();
     activate(shown[to]!.id);
     virtualizer.scrollToIndex(to, { align: 'auto' });
   };
@@ -1024,7 +1048,13 @@ function SegmentGrid({
             // A tab stop of its own (a scrolling element is one in some browsers only), from
             // which Enter opens a segment (audit K1).
             tabIndex={0}
-            aria-label="Segment rows. Press Enter to open a segment."
+            aria-label="Segment rows. Arrow keys move between segments; Enter opens one."
+            // The row the cursor is on, for a screen reader: focus stays on the rows as a whole.
+            aria-activedescendant={
+              activeId === null && cursorId !== null
+                ? `segment-row-${cursorId}`
+                : undefined
+            }
             onKeyDown={openFromGrid}
           >
             <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
@@ -1044,6 +1074,7 @@ function SegmentGrid({
                       position={positions.get(segment.id)! + 1}
                       mark={marks.get(segment.id)}
                       active={segment.id === activeId}
+                      cursor={activeId === null && segment.id === cursorId}
                       clickAt={segment.id === activeId ? clickAt : undefined}
                       unsaved={unsaved.get(segment.id)}
                       srcLang={detail.project.srcLang}
@@ -1142,6 +1173,7 @@ const SegmentRow = memo(function SegmentRow({
   position,
   mark,
   active,
+  cursor,
   clickAt,
   unsaved,
   srcLang,
@@ -1161,6 +1193,8 @@ const SegmentRow = memo(function SegmentRow({
   position: number;
   mark: QaMark | undefined;
   active: boolean;
+  /** The row cursor is on this row (no segment is open). */
+  cursor: boolean;
   clickAt: { x: number; y: number } | undefined;
   /** Why the last write of this target failed, if it did. */
   unsaved: SaveFailure | undefined;
@@ -1187,9 +1221,15 @@ const SegmentRow = memo(function SegmentRow({
   const editable = status !== 'locked';
   const classes = ['row', `status-${status}`];
   if (active) classes.push('active');
+  if (cursor) classes.push('cursor');
   if (unsaved !== undefined) classes.push('unsaved');
   return (
-    <div className={classes.join(' ')} role="row" aria-rowindex={position + 1}>
+    <div
+      className={classes.join(' ')}
+      role="row"
+      id={`segment-row-${segment.id}`}
+      aria-rowindex={position + 1}
+    >
       <div className="gutter" role="cell">
         <span className="ord">{position}</span>
         <span

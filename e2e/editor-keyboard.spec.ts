@@ -127,3 +127,43 @@ test('the banner links are a named landmark, and a screen of another role says s
   await page.getByRole('link', { name: 'Go to the first page' }).click();
   await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
 });
+
+test('the arrow keys move a row cursor, and Enter opens the row it is on', async ({
+  page,
+}) => {
+  await openEditor(page, 'e2e-keyboard-cursor');
+  const rows = page.getByRole('rowgroup');
+  const editor = page.getByRole('textbox', { name: 'Target' });
+  const cursorRow = page.locator('.row.cursor');
+
+  await rows.focus();
+  await expect(cursorRow).toHaveCount(0);
+  // The first press shows the cursor on the first row in view; the next two move it.
+  await page.keyboard.press('ArrowDown');
+  await expect(cursorRow).toHaveAttribute('aria-rowindex', '2');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(cursorRow).toHaveAttribute('aria-rowindex', '4');
+  // A screen reader is told which row that is.
+  const id = await cursorRow.getAttribute('id');
+  expect(id).toMatch(/^segment-row-\d+$/);
+  await expect(rows).toHaveAttribute('aria-activedescendant', id!);
+
+  await page.keyboard.press('Enter');
+  await expect(editor).toBeFocused();
+  await expect(page.locator('.row.active')).toHaveAttribute('aria-rowindex', '4');
+  await expect(cursorRow).toHaveCount(0);
+
+  // Leaving puts the cursor on the segment left, and the arrows carry on from it.
+  await page.keyboard.press('Escape');
+  await expect(rows).toBeFocused();
+  await expect(cursorRow).toHaveAttribute('aria-rowindex', '4');
+  await page.keyboard.press('ArrowUp');
+  await expect(cursorRow).toHaveAttribute('aria-rowindex', '3');
+  await page.keyboard.press('End');
+  await expect(cursorRow).toHaveAttribute('aria-rowindex', '19');
+  await page.keyboard.press('Home');
+  await expect(cursorRow).toHaveAttribute('aria-rowindex', '2');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.row.active')).toHaveAttribute('aria-rowindex', '2');
+});

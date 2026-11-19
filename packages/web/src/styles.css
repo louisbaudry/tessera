@@ -629,6 +629,12 @@ button.link {
   cursor: text;
 }
 
+/* The row cursor (issue #391): where the arrow keys are, shown only while the rows have focus
+   and no segment is open. An inset ring, so it never moves the row's layout. */
+.grid-scroll:focus .row.cursor {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .row.active .cell.target {
   background: var(--surface);
   box-shadow: inset 0 0 0 2px var(--accent);

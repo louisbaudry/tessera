@@ -1618,7 +1618,10 @@ grid is one `role="table"` named "Segments" that holds the header row and the sc
 stop: Enter there opens the first editable segment in view, or the one last left with Escape
 (`web/src/grid-entry.ts`), and Escape puts focus back on them, so leaving and returning are
 two keys. A status badge is an image with the status as its name, since its glyph says nothing
-by itself. There is no row cursor yet (issue #391).
+by itself. With the rows focused and no segment open, the arrow keys, Page Up, Page Down, Home
+and End move a row cursor (`moveCursor`), and Enter opens the row it is on; a locked row holds
+the cursor and does not open. The list follows the cursor, so there the arrows no longer scroll
+it by themselves.
 
 ### 7.2 The target editor (`@cat-tool/web`, backlog #29)
 

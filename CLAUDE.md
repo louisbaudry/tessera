@@ -1200,7 +1200,8 @@ or state library until a screen needs one. Three things to keep true:
   `role="table"` and `aria-rowindex` counts the header; a badge whose meaning is a glyph or a colour is
   `role="img"` with a name, never a `title` alone; a new colour token that carries text goes into
   `PAIRS` in `theme-contrast.test.ts`. Enter on the grid opens a segment (`grid-entry.ts`) and Escape
-  returns focus to it; `e2e/editor-keyboard.spec.ts` holds both. The first tab stop is a skip link (a
+  returns focus to it; the arrow keys move a row cursor there (`moveCursor`), which a locked row can
+  hold but Enter does not open; `e2e/editor-keyboard.spec.ts` holds all three. The first tab stop is a skip link (a
   button: a `#` target would change the route), and a screen only some accounts have goes into
   `screenAllowed` (`screen-access.ts`) so the others get a message, never an empty page; that function
   explains and is not the access check.
