@@ -64,8 +64,8 @@ the target editor is a named textbox.
 ## 3. Not checked
 
 Listed in issue #392: a real screen reader; zoom and reflow; Firefox and Safari. Screens not
-audited by either pass: a vendor's job and payment screens, the two invitation pages, the chat
-assistant's consent page, and the client portal's pages (a different application). The colours
+audited by any pass: a vendor's job and payment screens, the two invitation pages and the chat
+assistant's consent page. The client portal was audited later (§7). The colours
 changed for C1 have been seen in a screenshot only.
 
 ## 4. Rules this leaves
@@ -126,4 +126,28 @@ Three of the findings left for #391 were repairs, not choices, and were made:
 Still open on #391, because each is a choice: a row cursor or a "go to segment" command (K4),
 what to announce (N3), how tags should be read (N5), and a level-1 heading on each screen
 (O3: twelve screens whose heading styles are written per screen).
+
+## 7. The client portal (third pass, issue #392, 2026-11-19)
+
+The portal is a different application (`packages/portal-server/src/public/`: two pages, plain
+scripts, one stylesheet, no dark theme). Same scripts, on a throwaway portal with one seeded
+client: the client's page with and without its link, an order placed through the form, the
+admin's sign-in, order list, an order's page, deadlines, clients and rates.
+
+**Sound:** no contrast failure but a disabled button (C2); each page has a language, a title,
+one level-1 heading and a `main`; every tab stop showed a focus ring; the admin's forms wrap
+their fields in their labels.
+
+| Id  | Finding                                                                                                                                                                                       | Outcome                                                                                                                         |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | **The client's order form**: its five labels (source language, target languages, update of, files, notes) sat beside their fields and were tied to none, so each field was announced unnamed. | Fixed: each label names its field. `public-labels.test.ts`.                                                                     |
+| P2  | **The admin's order lists** (all orders, deadlines): a row opened on a mouse click alone, so an order could not be opened from the keyboard at all.                                           | Fixed: the order number is a button ("Open order N"); the row stays clickable. Opened by keyboard in a browser, and the test.   |
+| P3  | No error message on either page was announced: sixteen `p.error` elements, none a live region.                                                                                                | Fixed: each is `role="alert"`. The refused admin sign-in was seen as an alert in a browser.                                     |
+| P4  | Admin, an order's page: the word-count label named no field, "Status" was a label over a row of buttons, the per-file counts and the delivery's file field had no name.                       | Fixed: the label names the field, the buttons are a group named "Status", the counts are "Words in <file>", the file field named. |
+| P5  | The portal's tables have header cells and no name, and its forms no name. A heading stands before each.                                                                                       | Not changed: see the note on unnamed forms in §5; the same holds for a table under its heading.                                 |
+| P6  | Neither page sets a viewport, so a phone shows the desktop layout small.                                                                                                                      | Left: issue #392 (zoom and reflow). Not measured.                                                                               |
+
+`public-labels.test.ts` reads the two scripts' text and fails on a label that names no field,
+an error that is not an alert, or an order row with no control. It holds the shape only: what
+a browser makes of it was seen once, by the script, and by no screen reader.
 
