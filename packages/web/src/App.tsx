@@ -2,7 +2,7 @@
  * The SPA's shell (v1-spec.md §7.1): the login screen until there is a
  * token, then whichever screen the hash names.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { AccountRole, TenantRole } from '@cat-tool/core';
 
@@ -21,6 +21,7 @@ import { Staff } from './Staff.js';
 import { Audit } from './Audit.js';
 import { parseProjectKey } from './project-key.js';
 import { loadTheme, saveTheme } from './prefs.js';
+import { screenAllowed } from './screen-access.js';
 import { formatRoute, parseRoute, type Route } from './route.js';
 import { SessionContext, type SessionValue } from './session-context.js';
 import { clearToken, loadToken, saveToken } from './session.js';
@@ -60,6 +61,9 @@ export function App() {
   const [back, setBack] = useState(takeReturn);
   const [token, setToken] = useState(loadToken);
   const route = useRoute();
+  // Where the skip link lands: the segment rows on a file's screen (Enter opens one there),
+  // otherwise the screen itself, which takes focus without being a tab stop.
+  const mainRef = useRef<HTMLElement>(null);
 
   const signOut = useCallback(() => {
     clearToken();
@@ -145,6 +149,11 @@ export function App() {
     );
   }
 
+  const skipToContent = () => {
+    const rows = mainRef.current?.querySelector<HTMLElement>('.grid-scroll');
+    (rows ?? mainRef.current)?.focus();
+  };
+
   const logOut = async () => {
     // An editor still open saves as it loses focus (§7.2), and that save
     // must reach the server before the session it uses is revoked.
@@ -159,29 +168,48 @@ export function App() {
   return (
     <SessionContext.Provider value={session}>
       <div className="app">
+        {/* The first tab stop (issue #391, audit K5): past the banner's links to the screen,
+            or on a file's screen to its segments. A button, not a link: the address is the
+            route, so a `#` target would navigate. Shown only while it has focus. */}
+        <button type="button" className="skip-link" onClick={skipToContent}>
+          {route.screen === 'grid' ? 'Skip to segments' : 'Skip to content'}
+        </button>
         <header className="topbar">
           <a className="brand" href={formatRoute({ screen: 'projects' })}>
             Tessera
           </a>
           <Breadcrumbs route={route} role={role} />
-          {role === 'owner' && <a href={formatRoute({ screen: 'tms' })}>Memories</a>}
-          {role === 'owner' && <a href={formatRoute({ screen: 'vendors' })}>Vendors</a>}
-          {role === 'owner' && <a href={formatRoute({ screen: 'payables' })}>Pay run</a>}
-          {staffRole === 'admin' && <a href={formatRoute({ screen: 'staff' })}>Staff</a>}
-          {staffRole === 'admin' && (
-            <a href={formatRoute({ screen: 'audit' })}>Activity</a>
-          )}
-          {role === 'vendor' && (
-            <a href={formatRoute({ screen: 'payments' })}>Payments</a>
-          )}
-          <a href={formatRoute({ screen: 'account' })}>Account</a>
+          <nav className="mainnav" aria-label="Main">
+            {role === 'owner' && <a href={formatRoute({ screen: 'tms' })}>Memories</a>}
+            {role === 'owner' && <a href={formatRoute({ screen: 'vendors' })}>Vendors</a>}
+            {role === 'owner' && (
+              <a href={formatRoute({ screen: 'payables' })}>Pay run</a>
+            )}
+            {staffRole === 'admin' && (
+              <a href={formatRoute({ screen: 'staff' })}>Staff</a>
+            )}
+            {staffRole === 'admin' && (
+              <a href={formatRoute({ screen: 'audit' })}>Activity</a>
+            )}
+            {role === 'vendor' && (
+              <a href={formatRoute({ screen: 'payments' })}>Payments</a>
+            )}
+            <a href={formatRoute({ screen: 'account' })}>Account</a>
+          </nav>
           <ThemeToggle />
           <button type="button" className="link" onClick={() => void logOut()}>
             Sign out
           </button>
         </header>
-        <main className="screen">
+        <main className="screen" ref={mainRef} tabIndex={-1}>
           {role === null && <p className="muted">Loading{'\u2026'}</p>}
+          {role !== null && !screenAllowed(route.screen, { role, staffRole }) && (
+            // Never an empty page (issue #391, audit O4): say so, and offer the way home.
+            <p className="muted" role="status">
+              This page is not part of your account.{' '}
+              <a href={formatRoute({ screen: 'projects' })}>Go to the first page</a>
+            </p>
+          )}
           {role !== null &&
             route.screen === 'projects' &&
             (role === 'vendor' ? <VendorFeed /> : <Projects />)}

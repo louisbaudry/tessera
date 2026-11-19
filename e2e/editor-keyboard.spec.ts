@@ -96,3 +96,34 @@ test('a dialog keeps Tab inside it and Escape closes it', async ({ page }) => {
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Target' })).toBeFocused();
 });
+
+test('the first Tab offers a way past the banner, to the segments', async ({ page }) => {
+  await openEditor(page, 'e2e-keyboard-skip');
+  // From the top of the page, as someone arriving with the keyboard: after a click the
+  // browser starts its Tab order from where the click was, so the page is loaded afresh.
+  await page.reload();
+  await expect(page.getByRole('rowgroup')).toBeVisible();
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('button', { name: 'Skip to segments' });
+  await expect(skip).toBeFocused();
+  await expect(skip).toBeInViewport();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('rowgroup')).toBeFocused();
+  // And from there one key opens a segment.
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Target' })).toBeFocused();
+});
+
+test('the banner links are a named landmark, and a screen of another role says so', async ({
+  page,
+}) => {
+  await openEditor(page, 'e2e-keyboard-nav');
+  await expect(
+    page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Account' }),
+  ).toBeVisible();
+  // The vendor's payments screen, opened by a member of staff: a message, not an empty page.
+  await page.goto('/#/payments');
+  await expect(page.getByRole('status')).toContainText('not part of your account');
+  await page.getByRole('link', { name: 'Go to the first page' }).click();
+  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+});

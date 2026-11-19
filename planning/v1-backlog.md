@@ -4320,6 +4320,13 @@ rest of that range:
     had no name (fixed). Two reports from the scripts were not faults and are recorded as such, so
     nobody chases them: an unnamed `<form>`, and a missing focus ring that was the script reading
     too early. Not audited: the vendor's screens, the invitation pages, the portal.
+  - **Three follow-ups needed no decision and were made** (issue #391): a skip link as the first tab
+    stop (to the segments on a file's screen), the banner's links as a named landmark, the origin
+    badge named, and a message in place of the empty page an address of another role gave
+    (`web/src/screen-access.ts`). A browser test of the skip link first failed for a reason of its
+    own: after a click the browser starts Tab from the click, not the page's top, so the test
+    reloads first. Still open there: a row cursor, announcements, how tags are read, a level-1
+    heading per screen.
 
 - **#122 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
   From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,
