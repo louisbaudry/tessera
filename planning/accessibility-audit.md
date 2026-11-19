@@ -44,7 +44,7 @@ closed #193, with the test named.
 | K1  | A segment could be opened only by a mouse click on its target cell. On the focused grid, Enter, Space, the arrows and F2 did nothing. The one keyboard route was the command palette's two "go to" commands.                        | Fixed. Enter on the grid opens the first editable segment in view, or the one last left (`grid-entry.ts`). The grid is an explicit tab stop. `e2e/editor-keyboard.spec.ts`, `grid-entry.test.ts`.        |
 | K2  | Escape closed the editor and left focus on the page body, so the next Tab began at the top of the page, twenty-five stops before the grid.                                                                                          | Fixed. Escape puts focus on the grid, and Enter returns to the same segment. `e2e/editor-keyboard.spec.ts`.                                                                                             |
 | K3  | The four dialogs say `aria-modal="true"` and a mouse cannot click behind them, but Tab left each one after two to five presses, into the page behind. From there Escape no longer closed the dialog.                                | Fixed. Tab wraps inside the dialog (`focus-trap.ts`), in the palette, concordance, find-and-replace and add-term dialogs. `e2e/editor-keyboard.spec.ts`, `focus-trap.test.ts`.                          |
-| K4  | With no segment open there is no key that moves from row to row.                                                                                                                                                                    | Left: issue #391.                                                                                                                                                                                       |
+| K4  | With no segment open there is no key that moves from row to row.                                                                                                                                                                    | Fixed later (2026-11-19, §9): the arrow keys move a row cursor and Enter opens its row. `e2e/editor-keyboard.spec.ts`, `grid-entry.test.ts`. |
 | K5  | Twenty-five Tab stops come before the grid; no skip link, and the top links are in no navigation landmark.                                                                                                                          | Fixed later (2026-11-19, §6): a skip link is the first tab stop and the top links are a navigation landmark named "Main". `e2e/editor-keyboard.spec.ts`. |
 | N1  | The grid's table had no name, and its header row sat outside the element with `role="table"`, so the column headers belonged to no table. `aria-rowcount` and `aria-rowindex` did not count the header.                             | Fixed. One `role="table"` named "Segments" holds the header and the rows (a `rowgroup`); the header is row 1. `e2e/editor-keyboard.spec.ts`.                                                            |
 | N2  | A segment's status was a glyph or a letter (a check mark, `D`, `T`, a padlock) whose meaning was only in a `title`. The QA count had an `aria-label` on an element with no role, which is not reliably read.                        | Fixed. Both are `role="img"` with the status or the count as the name; an unsaved segment says so. Seen in the accessibility tree ("1 Confirmed 2 QA error").                                           |
@@ -124,9 +124,9 @@ Three of the findings left for #391 were repairs, not choices, and were made:
   states who has which screen; it explains, and is never the access check, which is the
   server's.
 
-Still open on #391, because each is a choice: a row cursor or a "go to segment" command (K4),
-what to announce (N3), how tags should be read (N5), and a level-1 heading on each screen
-(O3: twelve screens whose heading styles are written per screen).
+Still open on #391, because each is a choice: what to announce (N3), how tags should be read
+(N5), and a level-1 heading on each screen (O3: twelve screens whose heading styles are
+written per screen). K4 was built afterwards (§9).
 
 ## 7. The client portal (third pass, issue #392, 2026-11-19)
 
@@ -167,3 +167,32 @@ only a unit test had shown for a vendor.
 
 The lists were empty, so a job's row and an offered job's screen were not seen.
 
+## 9. The row cursor (issue #391, finding K4, 2026-11-19)
+
+Louis was offered a row cursor or a "go to segment number" command and passed over the
+question, so the recommendation was built; a command can still be added, and the cursor is
+one function and a few lines of wiring to take out.
+
+With the segment rows focused and no segment open, Down and Up move a cursor one row, Page
+Down and Page Up ten, Home and End to the ends (`moveCursor`, `web/src/grid-entry.ts`). The
+first press shows the cursor on the first row in view, so it appears where the person is
+looking. Enter opens the row it is on; a locked row can hold the cursor (it is for reading
+too) and does not open. Leaving a segment with Escape puts the cursor on it. The cursor's row
+takes real keyboard focus (each row is focusable and none is a tab stop), which is how a screen
+reader learns where the cursor is; the cursor is an inset ring on that row, and the list
+scrolls to keep it in view (seen on a file of 358 segments: End reaches the last row, in view).
+While a segment is open the cursor keys are left alone: the cursor is hidden then, and moving
+it would scroll the open editor away.
+
+What it costs: with the rows focused, the arrow keys no longer scroll the list by themselves;
+they move the cursor, and the list follows. The mouse wheel and the scrollbar are unchanged.
+Stack: TypeScript, like the grid it is part of.
+
+Two things the automated review of the change caught, both real. The first version named the
+cursor's row with `aria-activedescendant` on the rows' `rowgroup`, a role that does not support
+it, so it would have told a screen reader nothing while a test happily read the attribute's
+value: the test checked what was written, not what it does. And with a segment open and focus
+back on the rows, the arrow keys moved a cursor nobody could see.
+
+Not verified: how a screen reader reads a row that takes focus this way. No assistive
+technology was run.

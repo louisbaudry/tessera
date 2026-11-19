@@ -4327,6 +4327,13 @@ rest of that range:
     own: after a click the browser starts Tab from the click, not the page's top, so the test
     reloads first. Still open there: a row cursor, announcements, how tags are read, a level-1
     heading per screen.
+  - **The grid has a row cursor** (issue #391, K4): arrows, Page Up/Down, Home and End move it,
+    Enter opens its row, Escape puts it on the segment left (`moveCursor`, `grid-entry.ts`). Louis
+    passed over the question of cursor or "go to segment" command, so the recommendation was built
+    and the record says how to take it out. Stack: TypeScript. The automated review caught two
+    faults before the merge: `aria-activedescendant` on a role that does not support it (the test
+    had read the attribute, not what it does), and a hidden cursor that moved while a segment was
+    open. The cursor's row now takes real focus. Not verified: any screen reader.
   - **The client portal had the worst of it** (issue #392, third pass): the client's order form had
     five labels tied to no field, the admin could not open an order from the keyboard (rows that
     opened on a click alone), and no error was announced. All fixed in
