@@ -4327,6 +4327,11 @@ rest of that range:
     own: after a click the browser starts Tab from the click, not the page's top, so the test
     reloads first. Still open there: a row cursor, announcements, how tags are read, a level-1
     heading per screen.
+  - **The client portal had the worst of it** (issue #392, third pass): the client's order form had
+    five labels tied to no field, the admin could not open an order from the keyboard (rows that
+    opened on a click alone), and no error was announced. All fixed in
+    `portal-server/src/public/`, with `public-labels.test.ts` reading the scripts' text to hold the
+    shape. The application the client sees had been audited last; next time it goes first.
 
 - **#122 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
   From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,

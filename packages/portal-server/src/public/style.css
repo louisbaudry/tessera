@@ -64,6 +64,13 @@ button {
 td button {
   margin-top: 0;
 }
+/* A control that reads as the cell's own text: the order number that opens its row. */
+button.rowlink {
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}
 button.secondary {
   background: white;
   color: var(--ink);

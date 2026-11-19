@@ -82,7 +82,7 @@ async function renderSignIn(message, link) {
     // no buttons: the private link is still the way in
   }
   app.innerHTML = `
-    ${message ? `<p class="error">${escapeHtml(message)}</p>` : ''}
+    ${message ? `<p class="error" role="alert">${escapeHtml(message)}</p>` : ''}
     <p>${
       link
         ? 'Sign in with your Microsoft or Google account to finish setting up your access.'
@@ -220,7 +220,7 @@ async function renderOrderDetail(id) {
   try {
     detail = await api(`/api/client/orders/${id}`);
   } catch (err) {
-    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
   }
   const { order, sourceFiles, deliveredFiles, events } = detail;
@@ -305,7 +305,7 @@ async function renderHome() {
       token = null;
       return renderSignIn('');
     }
-    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
   }
 
@@ -314,32 +314,32 @@ async function renderHome() {
 
     <h2>New translation request</h2>
     <form id="new-order">
-      <label>Source language</label>
-      <select name="srcLang" required></select>
+      <label for="order-src">Source language</label>
+      <select id="order-src" name="srcLang" required></select>
 
-      <label>Target language(s) — hold Ctrl/Cmd to select more than one</label>
-      <select name="tgtLangs" multiple required style="height: 5rem"></select>
+      <label for="order-tgt">Target language(s) — hold Ctrl/Cmd to select more than one</label>
+      <select id="order-tgt" name="tgtLangs" multiple required style="height: 5rem"></select>
 
       <div id="update-of-field" hidden>
-        <label>Is this a new version of a request we already delivered? (optional)</label>
-        <select name="updateOf">
+        <label for="order-update-of">Is this a new version of a request we already delivered? (optional)</label>
+        <select id="order-update-of" name="updateOf">
           <option value="">No, a new request</option>
         </select>
         <p class="muted">We quote only the text that is new or changed, and confirm the figure before you approve.</p>
       </div>
 
-      <label>Files</label>
-      <input type="file" name="files" multiple required
+      <label for="order-files">Files</label>
+      <input id="order-files" type="file" name="files" multiple required
         accept=".docx,.pptx,.xlsx,.pdf,.txt" />
 
-      <label>Notes (optional)</label>
-      <textarea name="notes" rows="3"></textarea>
+      <label for="order-notes">Notes (optional)</label>
+      <textarea id="order-notes" name="notes" rows="3"></textarea>
 
       <button type="submit">Submit request</button>
       <p class="muted" style="margin-top:0.5rem">
         You'll see an estimated price once we confirm the word count.
       </p>
-      <p class="error" id="new-order-error"></p>
+      <p class="error" role="alert" id="new-order-error"></p>
     </form>
 
     <h2>Your requests</h2>

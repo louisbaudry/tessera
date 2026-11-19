@@ -871,6 +871,11 @@ engine, but follows the same discipline:
   pair; `ratesForClient` puts it in place of the default, never field by field, and `listRatesForClient`
   is what the client's rates, its estimate and the admin's confirmation all read. Don't price a client
   from `listRates` alone.
+- **The portal's pages were audited for accessibility once, by script** (issue #392,
+  `planning/accessibility-audit.md` §7): a label names its field (`for` and `id`, or it wraps the
+  field), an error is `role="alert"`, and a row that opens something holds a real button
+  (`openOrderButton`), never a click handler alone. `public-labels.test.ts` reads the two scripts and
+  fails on any of the three. No screen reader, no phone: nothing may call the portal accessible.
 - **An uploaded filename never becomes a path.** The API server's rule
   ("no function takes a path from a request") holds here too, and v0
   broke it once: `portal-server/src/storage.ts` stored uploads under
@@ -1189,8 +1194,8 @@ or state library until a screen needs one. Three things to keep true:
   reserved (Meta counts as Ctrl). The Account screen lists and changes them (`ShortcutSettings.tsx`, rules and key capture in `shortcut-settings.ts`), kept in this browser only and read when a file opens.
 - **The editor was audited for accessibility once, by script, and that is all** (issue #193,
   `planning/accessibility-audit.md`; the other staff screens the same day, issue #392): no screen reader,
-  no zoom, one browser, and not the vendor's screens or the portal, so nothing may say the product is
-  accessible or conformant. What it left to keep true: a new dialog calls
+  no zoom, one browser, and not the vendor's screens, so nothing may say the product is accessible or
+  conformant. What it left to keep true: a new dialog calls
   `keepFocusInside` (`focus-trap.ts`) from its `onKeyDown`; the grid's rows stay inside the one
   `role="table"` and `aria-rowindex` counts the header; a badge whose meaning is a glyph or a colour is
   `role="img"` with a name, never a `title` alone; a new colour token that carries text goes into

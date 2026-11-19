@@ -26,7 +26,7 @@ function renderLogin(message = '') {
       <label>Email<input type="email" name="email" required /></label>
       <label>Password<input type="password" name="password" required /></label>
       <button type="submit">Log in</button>
-      <p class="error" id="login-error">${escapeHtml(message)}</p>
+      <p class="error" role="alert" id="login-error">${escapeHtml(message)}</p>
     </form>
   `;
   app.querySelector('#login-form').addEventListener('submit', async (e) => {
@@ -142,7 +142,7 @@ function perFileForm(order, sourceFiles, suggested) {
       const value = f.confirmedWordCount ?? suggested[f.id] ?? '';
       return `<tr>
         <td>${escapeHtml(f.filename)}</td>
-        <td><input type="number" min="0" step="1" data-file-id="${f.id}" value="${value}" style="width:8rem" /></td>
+        <td><input type="number" min="0" step="1" data-file-id="${f.id}" value="${value}" aria-label="Words in ${escapeHtml(f.filename)}" style="width:8rem" /></td>
       </tr>`;
     })
     .join('');
@@ -208,12 +208,12 @@ async function renderOrderDetail(id) {
     <p class="muted">${escapeHtml(order.notes || '')}</p>
 
     <div class="card">
-      <label>Word count</label>
+      <label${needsFileWordCounts ? '' : ' for="word-count"'}>Word count</label>
       ${
         needsFileWordCounts
           ? perFileForm(order, sourceFiles, suggestedFileWordCounts)
           : `<form id="wc-form" style="display:flex; gap:0.5rem; align-items:end">
-        <input type="number" name="wordCount" min="0" value="${order.wordCount ?? suggestedWordCount ?? ''}" style="width:8rem" />
+        <input id="word-count" type="number" name="wordCount" min="0" value="${order.wordCount ?? suggestedWordCount ?? ''}" style="width:8rem" />
         <button type="submit" style="margin-top:0">Set &amp; price</button>
       </form>
       <p class="muted">${
@@ -228,7 +228,7 @@ async function renderOrderDetail(id) {
       }
       <p>Price: <strong>${money(order.price)}</strong>
         ${order.price == null ? '' : '<button class="secondary" id="quote" type="button">Quote</button>'}</p>
-      <p class="error" id="wc-error"></p>
+      <p class="error" role="alert" id="wc-error"></p>
     </div>
 
     <div class="card">
@@ -238,12 +238,12 @@ async function renderOrderDetail(id) {
         <button type="submit" style="margin-top:0">Save</button>
         ${order.dueAt == null ? '' : '<button type="button" class="secondary" id="due-clear" style="margin-top:0">Clear</button>'}
       </form>
-      <p class="error" id="due-error"></p>
+      <p class="error" role="alert" id="due-error"></p>
     </div>
 
     <div class="card">
       <label>Status</label>
-      <div id="status-buttons"></div>
+      <div id="status-buttons" role="group" aria-label="Status"></div>
     </div>
 
     <h2>Source files</h2>
@@ -254,10 +254,10 @@ async function renderOrderDetail(id) {
 
     <h2>Deliver final files</h2>
     <form id="deliver-form">
-      <input type="file" name="files" multiple />
+      <input type="file" aria-label="Final files to deliver" name="files" multiple />
       <label><input type="checkbox" name="markDelivered" style="width:auto" /> Mark order delivered (notifies client)</label>
       <button type="submit">Upload</button>
-      <p class="error" id="deliver-error"></p>
+      <p class="error" role="alert" id="deliver-error"></p>
     </form>
     <table>
       <tr><th>Filename</th><th>Type</th><th>Size</th><th></th></tr>
@@ -392,7 +392,7 @@ async function renderOrderList() {
   try {
     orders = await api('/api/admin/orders');
   } catch (err) {
-    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
   }
 
@@ -406,7 +406,7 @@ async function renderOrderList() {
           .map(
             (o) => `
         <tr data-open="${o.id}" style="cursor:pointer">
-          <td>${o.id}</td>
+          <td>${openOrderButton(o.id)}</td>
           <td>client #${o.clientId}</td>
           <td>${escapeHtml(o.srcLang)} → ${escapeHtml(o.tgtLangs.join(', '))}</td>
           <td>${statusBadge(o.status)}</td>
@@ -425,6 +425,15 @@ async function renderOrderList() {
 }
 
 /**
+ * The order's number as a button (issue #392, the accessibility audit): a row that opens on a
+ * click alone cannot be opened from the keyboard, so the number is a real control. Its click
+ * bubbles to the row, which keeps the one handler and stays clickable anywhere.
+ */
+function openOrderButton(id) {
+  return `<button type="button" class="rowlink" aria-label="Open order ${id}">${id}</button>`;
+}
+
+/**
  * Open orders by the translator's own due date (issue #179, solo-translator-spec.md D5): overdue,
  * today, later, then those with no date, so none is forgotten for lacking one.
  */
@@ -433,7 +442,7 @@ async function renderDeadlines() {
   try {
     agenda = await api(`/api/admin/deadlines?today=${encodeURIComponent(localToday())}`);
   } catch (err) {
-    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
   }
   const group = (title, orders, cls = '') =>
@@ -447,7 +456,7 @@ async function renderDeadlines() {
           (o) => `
         <tr data-open="${o.id}" style="cursor:pointer">
           <td>${escapeHtml(o.dueAt ?? '—')}</td>
-          <td>${o.id}</td>
+          <td>${openOrderButton(o.id)}</td>
           <td>${escapeHtml(o.clientName ?? `client #${o.clientId}`)}</td>
           <td>${escapeHtml(o.srcLang)} → ${escapeHtml(o.tgtLangs.join(', '))}</td>
           <td>${statusBadge(o.status)}</td>
@@ -528,7 +537,7 @@ async function renderClients(justMade) {
   try {
     clients = await api('/api/admin/clients');
   } catch (err) {
-    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
   }
   app.innerHTML = `
@@ -567,7 +576,7 @@ async function renderClients(justMade) {
       <label>Name<input name="name" required maxlength="200" /></label>
       <label>Email<input type="email" name="email" required maxlength="254" /></label>
       <button type="submit">Add client</button>
-      <p class="error" id="client-error"></p>
+      <p class="error" role="alert" id="client-error"></p>
     </form>
   `;
   wireNav();
@@ -644,7 +653,7 @@ async function renderRates(client) {
     rates = client ? answer.effective : answer;
     if (client) own = answer.own;
   } catch (err) {
-    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
   }
   const isOwn = (r) =>
@@ -690,7 +699,7 @@ async function renderRates(client) {
       <label>Minimum price for a job (${escapeHtml(CURRENCY ?? '')})<input type="number" name="minimumPrice" min="0" step="any" required /></label>
       <label>Minimum words counted per file (optional, 0 is off)<input type="number" name="minWordsPerFile" min="0" step="1" /></label>
       <button type="submit">Save rate</button>
-      <p class="error" id="rate-error"></p>
+      <p class="error" role="alert" id="rate-error"></p>
     </form>
   `;
   wireNav();
@@ -740,7 +749,7 @@ async function renderContacts(client) {
   try {
     contacts = await api(base);
   } catch (err) {
-    app.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
   }
   app.innerHTML = `
@@ -770,7 +779,7 @@ async function renderContacts(client) {
     <form id="new-contact" class="card" style="max-width:28rem">
       <label>Email<input type="email" name="email" required maxlength="254" /></label>
       <button type="submit">Add contact</button>
-      <p class="error" id="contact-error"></p>
+      <p class="error" role="alert" id="contact-error"></p>
     </form>
   `;
   wireNav();
