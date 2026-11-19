@@ -1203,7 +1203,13 @@ const SegmentRow = memo(function SegmentRow({
         >
           {unsaved === undefined ? badge.text : '!'}
         </span>
-        <span className="origin" title={origin?.title}>
+        <span
+          className="origin"
+          // A short text ("TM", "87%") whose meaning is its name, as for the status (audit N4).
+          role={origin ? 'img' : undefined}
+          aria-label={origin?.title}
+          title={origin?.title}
+        >
           {origin?.text}
         </span>
         <span

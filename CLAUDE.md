@@ -1179,7 +1179,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts`, `focus-trap.ts`, `grid-entry.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts`, `focus-trap.ts`, `grid-entry.ts`, `screen-access.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **The editor's keys are bindings, not literals** (issue #193, `web/src/shortcuts.ts`, `loadShortcuts`
   in `prefs.ts`). `Grid.tsx` resolves a key press through one listener (`resolveKey`) and
@@ -1195,7 +1195,10 @@ or state library until a screen needs one. Three things to keep true:
   `role="table"` and `aria-rowindex` counts the header; a badge whose meaning is a glyph or a colour is
   `role="img"` with a name, never a `title` alone; a new colour token that carries text goes into
   `PAIRS` in `theme-contrast.test.ts`. Enter on the grid opens a segment (`grid-entry.ts`) and Escape
-  returns focus to it; `e2e/editor-keyboard.spec.ts` holds both.
+  returns focus to it; `e2e/editor-keyboard.spec.ts` holds both. The first tab stop is a skip link (a
+  button: a `#` target would change the route), and a screen only some accounts have goes into
+  `screenAllowed` (`screen-access.ts`) so the others get a message, never an empty page; that function
+  explains and is not the access check.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
   read every DOCX blob), found through the browser's resource timing.

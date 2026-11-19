@@ -45,11 +45,11 @@ closed #193, with the test named.
 | K2  | Escape closed the editor and left focus on the page body, so the next Tab began at the top of the page, twenty-five stops before the grid.                                                                                          | Fixed. Escape puts focus on the grid, and Enter returns to the same segment. `e2e/editor-keyboard.spec.ts`.                                                                                             |
 | K3  | The four dialogs say `aria-modal="true"` and a mouse cannot click behind them, but Tab left each one after two to five presses, into the page behind. From there Escape no longer closed the dialog.                                | Fixed. Tab wraps inside the dialog (`focus-trap.ts`), in the palette, concordance, find-and-replace and add-term dialogs. `e2e/editor-keyboard.spec.ts`, `focus-trap.test.ts`.                          |
 | K4  | With no segment open there is no key that moves from row to row.                                                                                                                                                                    | Left: issue #391.                                                                                                                                                                                       |
-| K5  | Twenty-five Tab stops come before the grid; no skip link, and the top links are in no navigation landmark.                                                                                                                          | Left: issue #391.                                                                                                                                                                                       |
+| K5  | Twenty-five Tab stops come before the grid; no skip link, and the top links are in no navigation landmark.                                                                                                                          | Fixed later (2026-11-19, §6): a skip link is the first tab stop and the top links are a navigation landmark named "Main". `e2e/editor-keyboard.spec.ts`. |
 | N1  | The grid's table had no name, and its header row sat outside the element with `role="table"`, so the column headers belonged to no table. `aria-rowcount` and `aria-rowindex` did not count the header.                             | Fixed. One `role="table"` named "Segments" holds the header and the rows (a `rowgroup`); the header is row 1. `e2e/editor-keyboard.spec.ts`.                                                            |
 | N2  | A segment's status was a glyph or a letter (a check mark, `D`, `T`, a padlock) whose meaning was only in a `title`. The QA count had an `aria-label` on an element with no role, which is not reliably read.                        | Fixed. Both are `role="img"` with the status or the count as the name; an unsaved segment says so. Seen in the accessibility tree ("1 Confirmed 2 QA error").                                           |
 | N3  | Nothing is announced when a segment is confirmed, saved or changes status.                                                                                                                                                          | Left: issue #391.                                                                                                                                                                                       |
-| N4  | The origin badge's meaning is only in a `title`.                                                                                                                                                                                    | Left: issue #391.                                                                                                                                                                                       |
+| N4  | The origin badge's meaning is only in a `title`.                                                                                                                                                                                    | Fixed later (§6): the badge is an image named by its meaning, as the status is. |
 | N5  | Tags in a source cell are read as their visible text. Not judged.                                                                                                                                                                   | Left: issue #391.                                                                                                                                                                                       |
 | N6  | The breadcrumb `nav` and the glossary panel's setup form had no name.                                                                                                                                                               | Fixed: "Breadcrumb" and "Choose a glossary". Seen in the accessibility tree.                                                                                                                            |
 | C1  | Light theme: the confirmed mark (`#2f855a`) measured 4.23:1 on a striped row; white on the QA warning badge (`#b7791f`) 3.64:1, and that amber as text 3.39 to 3.64:1. The dark theme had no failure.                               | Fixed. `--status-confirmed` is `#2b7a53` and `--status-draft`/`--qa-warning` are `#93600f`, each at least 4.5:1 on every background it is drawn on. `theme-contrast.test.ts` holds both themes to it.   |
@@ -76,6 +76,8 @@ changed for C1 have been seen in a screenshot only.
 - A badge whose meaning is a glyph, a letter or a colour gets `role="img"` and a name; a
   `title` alone is not a name.
 - The grid's rows stay inside the one `role="table"`; `aria-rowindex` counts the header.
+- A new screen that only some accounts have is added to `screenAllowed`
+  (`web/src/screen-access.ts`), so the others are told and not shown an empty page.
 
 ## 5. The other screens (second pass, issue #392 item 4)
 
@@ -94,7 +96,7 @@ screens are named; the sign-in refusal is a `role="alert"`.
 | O1  | Sign-in: pressing the button disables it while the request runs, so after a refusal focus was on the page body and the next Tab began at the top.                           | Fixed. Focus goes to the password field. `e2e/sign-in.spec.ts`.                                                      |
 | O2  | Account: the table of editor keys had no name.                                                                                                                               | Fixed: "Editor keys".                                                                                                |
 | O3  | No signed-in screen has a level-1 heading: each starts at level 2, and the product name in the banner is a link.                                                             | Left: issue #391. A change to every screen's heading and its styling.                                                |
-| O4  | `#/payments` is the vendor's screen; a member of staff who opens that address gets an empty page with a breadcrumb. No link leads staff there.                              | Left: issue #391. Not an accessibility fault as such; an empty page says nothing to anyone.                          |
+| O4  | `#/payments` is the vendor's screen; a member of staff who opens that address gets an empty page with a breadcrumb. No link leads staff there.                              | Fixed later (§6): a screen that is not the account's says so and links home (`screen-access.ts`). `e2e/editor-keyboard.spec.ts`, `screen-access.test.ts`. |
 
 Two things the scripts reported that were not faults, kept here so they are not chased again:
 
@@ -104,4 +106,24 @@ Two things the scripts reported that were not faults, kept here so they are not 
 - **The Tab walk reported no focus ring on the pay run's two date fields.** Checked directly,
   each shows the browser's own ring. The walk read the style a moment too early; a "no ring"
   from it is checked by hand before it is believed.
+
+## 6. Follow-ups that needed no decision (issue #391, 2026-11-19)
+
+Three of the findings left for #391 were repairs, not choices, and were made:
+
+- **K5.** The first tab stop of every signed-in screen is a skip link: "Skip to content", or
+  on a file's screen "Skip to segments", which lands on the segment rows, where Enter opens
+  one. It is a button, not a link with a `#` target, because the address is the route. The
+  banner's links are one `nav` named "Main"; the breadcrumb stays its own.
+- **N4.** A segment's origin badge is an image named by its meaning ("Fuzzy TM match, 87%
+  (a draft to review)"), no longer a short text with a tooltip.
+- **O4.** An address that belongs to another role (`#/payments` for staff, `#/tms` for a
+  vendor, `#/staff` for a project manager) now says "This page is not part of your account"
+  with a link home, where it rendered nothing. `screenAllowed` (`web/src/screen-access.ts`)
+  states who has which screen; it explains, and is never the access check, which is the
+  server's.
+
+Still open on #391, because each is a choice: a row cursor or a "go to segment" command (K4),
+what to announce (N3), how tags should be read (N5), and a level-1 heading on each screen
+(O3: twelve screens whose heading styles are written per screen).
 

@@ -177,6 +177,37 @@ button.link {
   background: var(--surface);
 }
 
+/* The banner's links are one landmark; it lays out as the links did, in the bar's own row. */
+.mainnav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+/* Out of sight until the keyboard reaches it, then over the top-left corner (issue #391). */
+.skip-link {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  z-index: 100;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* The screen takes focus from the skip link; it is not a control, so it shows no ring. */
+.screen:focus {
+  outline: none;
+}
+
 .brand {
   font-weight: 600;
   color: var(--text);
