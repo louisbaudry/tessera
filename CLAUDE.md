@@ -1188,8 +1188,9 @@ or state library until a screen needs one. Three things to keep true:
   breaks any rule falls back to the defaults as a whole. Undo, redo and the browser's own keys are
   reserved (Meta counts as Ctrl). The Account screen lists and changes them (`ShortcutSettings.tsx`, rules and key capture in `shortcut-settings.ts`), kept in this browser only and read when a file opens.
 - **The editor was audited for accessibility once, by script, and that is all** (issue #193,
-  `planning/accessibility-audit.md`): no screen reader, no zoom, one browser, one screen, so nothing may
-  say the product is accessible or conformant. What it left to keep true: a new dialog calls
+  `planning/accessibility-audit.md`; the other staff screens the same day, issue #392): no screen reader,
+  no zoom, one browser, and not the vendor's screens or the portal, so nothing may say the product is
+  accessible or conformant. What it left to keep true: a new dialog calls
   `keepFocusInside` (`focus-trap.ts`) from its `onKeyDown`; the grid's rows stay inside the one
   `role="table"` and `aria-rowindex` counts the header; a badge whose meaning is a glyph or a colour is
   `role="img"` with a name, never a `title` alone; a new colour token that carries text goes into

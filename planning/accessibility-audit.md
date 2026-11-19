@@ -1,12 +1,13 @@
 # Accessibility audit of the editor
 
-**Date:** 2026-11-19 · **Issue:** #193 · **Scope:** the editor screen only (the grid, the
-target editor, the filter bar, the QA, glossary and resources panels, the command palette and
-the three dialogs). Follow-ups: issue #391 (changes to behaviour) and issue #392 (what a
-session cannot check).
+**Dates:** 2026-11-19 (two passes) · **Issues:** #193 (the editor), #392 item 4 (the other
+screens) · **Scope:** the editor screen (the grid, the target editor, the filter bar, the QA,
+glossary and resources panels, the command palette and the three dialogs), then the screens a
+member of staff signs in to (§5). Follow-ups: issue #391 (changes to behaviour) and issue #392
+(what a session cannot check).
 
 This is the record of one pass, made so the findings are not found twice. **It is not a
-conformance evaluation and supports no accessibility statement**: one screen, one browser,
+conformance evaluation and supports no accessibility statement**: one browser,
 checked by script, with no assistive technology and no person who relies on one. The contrast
 figure used (4.5:1 for text) is the commonly cited WCAG 2.x AA threshold; the standard's text
 was not read for this pass, so nothing here cites a clause.
@@ -62,9 +63,10 @@ the target editor is a named textbox.
 
 ## 3. Not checked
 
-Listed in issue #392: a real screen reader; zoom and reflow; Firefox and Safari; every screen
-but the editor; the client portal. The colours changed for C1 have been seen in a screenshot
-only.
+Listed in issue #392: a real screen reader; zoom and reflow; Firefox and Safari. Screens not
+audited by either pass: a vendor's job and payment screens, the two invitation pages, the chat
+assistant's consent page, and the client portal's pages (a different application). The colours
+changed for C1 have been seen in a screenshot only.
 
 ## 4. Rules this leaves
 
@@ -74,3 +76,32 @@ only.
 - A badge whose meaning is a glyph, a letter or a colour gets `role="img"` and a name; a
   `title` alone is not a name.
 - The grid's rows stay inside the one `role="table"`; `aria-rowindex` counts the header.
+
+## 5. The other screens (second pass, issue #392 item 4)
+
+The same scripts, on the screens a member of staff reaches: sign-in, projects, a project's
+page, memories, vendors, the pay run, staff, activity and account, each in both themes, on a
+server holding one account, one project and two files. Lists that were empty on that data
+(vendors, payables, connections) were audited empty: a row's own controls were not seen.
+
+**Sound:** no contrast failure in either theme but disabled controls (C2, which also covers
+the disabled link-style buttons at 2.6:1 light and 3.2:1 dark); every control had a name;
+every tab stop was visible and showed a focus ring; the tables on the staff and activity
+screens are named; the sign-in refusal is a `role="alert"`.
+
+| Id  | Finding                                                                                                                                                                      | Outcome                                                                                                              |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| O1  | Sign-in: pressing the button disables it while the request runs, so after a refusal focus was on the page body and the next Tab began at the top.                           | Fixed. Focus goes to the password field. `e2e/sign-in.spec.ts`.                                                      |
+| O2  | Account: the table of editor keys had no name.                                                                                                                               | Fixed: "Editor keys".                                                                                                |
+| O3  | No signed-in screen has a level-1 heading: each starts at level 2, and the product name in the banner is a link.                                                             | Left: issue #391. A change to every screen's heading and its styling.                                                |
+| O4  | `#/payments` is the vendor's screen; a member of staff who opens that address gets an empty page with a breadcrumb. No link leads staff there.                              | Left: issue #391. Not an accessibility fault as such; an empty page says nothing to anyone.                          |
+
+Two things the scripts reported that were not faults, kept here so they are not chased again:
+
+- **A `<form>` with no name is not a finding.** The browser's tree lists every form, but a form
+  is a landmark only when it has a name, and most forms here are one of several on a screen
+  with a heading of their own. The first pass named one (N6); that was harmless, not needed.
+- **The Tab walk reported no focus ring on the pay run's two date fields.** Checked directly,
+  each shows the browser's own ring. The walk read the style a moment too early; a "no ring"
+  from it is checked by hand before it is believed.
+
