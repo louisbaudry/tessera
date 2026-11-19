@@ -64,8 +64,9 @@ the target editor is a named textbox.
 ## 3. Not checked
 
 Listed in issue #392: a real screen reader; zoom and reflow; Firefox and Safari. Screens not
-audited by any pass: a vendor's job and payment screens, the two invitation pages and the chat
-assistant's consent page. The client portal was audited later (§7). The colours
+audited by any pass: a vendor's job screen (it needs an offered job), the staff invitation
+page, the page for a vendor who already has an account, and the chat assistant's consent page.
+The client portal (§7) and the vendor's other screens (§8) were audited later. The colours
 changed for C1 have been seen in a screenshot only.
 
 ## 4. Rules this leaves
@@ -150,4 +151,19 @@ their fields in their labels.
 `public-labels.test.ts` reads the two scripts' text and fails on a label that names no field,
 an error that is not an alert, or an order row with no control. It holds the shape only: what
 a browser makes of it was seen once, by the script, and by no screen reader.
+
+## 8. The vendor's screens and the invitation page (fourth pass, issue #392, 2026-11-19)
+
+The same scripts, on a vendor invited through the Vendors screen: the invitation page a new
+vendor sets a password on, then as that vendor the jobs list (empty, with the availability
+control), the payments record (empty), the account screen, and a staff address (`#/tms`).
+Both themes.
+
+**Nothing to fix.** No contrast failure but disabled buttons (C2); every control named; every
+tab stop visible with a focus ring; the invitation page has a level-1 heading and labelled
+fields; the availability buttons say which is pressed. The staff address shows the vendor the
+message of §6 ("This page is not part of your account") with its link home, which until now
+only a unit test had shown for a vendor.
+
+The lists were empty, so a job's row and an offered job's screen were not seen.
 
