@@ -1612,6 +1612,14 @@ they are not re-derived:
   missing target shows empty, never the source.
 
 
+**Keyboard and screen-reader structure (issue #193, `planning/accessibility-audit.md`).** The
+grid is one `role="table"` named "Segments" that holds the header row and the scrolling rows
+(a `rowgroup`), and `aria-rowindex` counts the header as row 1. The scrolling rows are a tab
+stop: Enter there opens the first editable segment in view, or the one last left with Escape
+(`web/src/grid-entry.ts`), and Escape puts focus back on them, so leaving and returning are
+two keys. A status badge is an image with the status as its name, since its glyph says nothing
+by itself. There is no row cursor yet (issue #391).
+
 ### 7.2 The target editor (`@cat-tool/web`, backlog #29)
 
 Clicking a target opens it for editing: text and atomic tag chips, one

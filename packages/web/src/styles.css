@@ -14,12 +14,12 @@
   --on-accent: #ffffff;
   --chip-bg: #e8eefc;
   --chip-text: #2f4f9e;
-  --status-draft: #b7791f;
+  --status-draft: #93600f;
   --status-translated: #2f5fd0;
-  --status-confirmed: #2f855a;
+  --status-confirmed: #2b7a53;
   --status-locked: #6b7280;
   --qa-error: #c53030;
-  --qa-warning: #b7791f;
+  --qa-warning: #93600f;
   --qa-info: #6b7280;
   --gutter-width: 9.5rem;
   color-scheme: light;
@@ -257,6 +257,15 @@ button.link {
 .grid-meta .restructure {
   display: flex;
   gap: 0.75rem;
+}
+
+/* The header row and the scrolling rows are one table for a screen reader (issue #193); it
+   takes the place the scroller had in the column. */
+.grid-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .grid-scroll {

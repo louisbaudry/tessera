@@ -15,7 +15,15 @@ import {
   useVirtualizer,
   type Range,
 } from '@tanstack/react-virtual';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { flushSync } from 'react-dom';
 
 import {
@@ -40,6 +48,7 @@ import { FindReplaceDialog } from './FindReplaceDialog.js';
 import { draftFromSelection, type TermDraft, type TermSide } from './add-term.js';
 import { nextUnconfirmed } from './advance.js';
 import { nextMarked } from './commands.js';
+import { segmentToOpen } from './grid-entry.js';
 import { formatCombo, resolveKey } from './shortcuts.js';
 import { FilterBar } from './FilterBar.js';
 import { CommandPalette, type PaletteCommand } from './CommandPalette.js';
@@ -362,7 +371,35 @@ function SegmentGrid({
     setClickAt(at);
     setActiveId(id);
   }, []);
-  const leave = useCallback(() => setActiveId(null), []);
+  // Esc leaves the segment and puts focus on the grid, which Enter reopens at the same
+  // segment (issue #193, audit K1 and K2). Without the focus move it fell to the page's top,
+  // twenty-five Tab presses from the grid.
+  const lastLeft = useRef<number | null>(null);
+  const leave = useCallback(() => {
+    setActiveId((id) => {
+      lastLeft.current = id;
+      return null;
+    });
+    scrollRef.current?.focus({ preventScroll: true });
+  }, []);
+  // Enter on the grid itself opens a segment (issue #193, audit K1): the one last left, or
+  // the first editable one in view. Only a key pressed on the scroller, never one that
+  // bubbled up from the editor inside it.
+  const openFromGrid = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const offset = virtualizer.scrollOffset ?? 0;
+    const inView = virtualizer.getVirtualItems().find((item) => item.end > offset);
+    const to = segmentToOpen(
+      shown.map((s) => ({ id: s.id, editable: statusOf(s) !== 'locked' })),
+      lastLeft.current,
+      inView?.index ?? 0,
+    );
+    if (to === null) return;
+    e.preventDefault();
+    activate(shown[to]!.id);
+    virtualizer.scrollToIndex(to, { align: 'auto' });
+  };
   // Ctrl+Enter: the editor has sent any change; the queue confirms after
   // it. The next segment opens at once — the answer, or a refusal shown on
   // the row, follows — and scrolls into view if it is not.
@@ -961,59 +998,72 @@ function SegmentGrid({
           keyHint={formatCombo(bindings.filter)}
           onChange={setFilter}
         />
-        <div className="row head" role="row">
-          <div className="gutter" role="columnheader">
-            #
-          </div>
-          <div className="cell" role="columnheader">
-            Source <span className="muted">{detail.project.srcLang}</span>
-          </div>
-          <div className="cell" role="columnheader">
-            Target <span className="muted">{detail.project.tgtLang}</span>
-          </div>
-        </div>
+        {/* One table for a screen reader: the header row and the scrolling rows (audit N1). */}
         <div
-          className="grid-scroll"
-          ref={scrollRef}
+          className="grid-table"
           role="table"
-          aria-rowcount={segments.length}
+          aria-label="Segments"
+          // The header is row 1, so a segment's row is its position plus one.
+          aria-rowcount={segments.length + 1}
         >
-          <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
-            {virtualizer.getVirtualItems().map((item) => {
-              const segment = shown[item.index]!;
-              return (
-                <div
-                  key={item.key}
-                  className={item.index % 2 === 1 ? 'row-slot odd' : 'row-slot'}
-                  data-index={item.index}
-                  ref={virtualizer.measureElement}
-                  style={{ transform: `translateY(${item.start}px)` }}
-                >
-                  <SegmentRow
-                    segment={segment}
-                    project={project}
-                    position={positions.get(segment.id)! + 1}
-                    mark={marks.get(segment.id)}
-                    active={segment.id === activeId}
-                    clickAt={segment.id === activeId ? clickAt : undefined}
-                    unsaved={unsaved.get(segment.id)}
-                    srcLang={detail.project.srcLang}
-                    tgtLang={detail.project.tgtLang}
-                    onActivate={activate}
-                    onCommit={commit}
-                    onDraft={keepDraft}
-                    onLeave={leave}
-                    suggestion={
-                      segment.id === activeId ? suggestions.get(segment.id) : undefined
-                    }
-                    accepted={accepted?.id === segment.id ? accepted : undefined}
-                    onAccept={acceptSuggestion}
-                    onConfirm={confirmAndAdvance}
-                    registerPageHide={pageHide.register}
-                  />
-                </div>
-              );
-            })}
+          <div className="row head" role="row" aria-rowindex={1}>
+            <div className="gutter" role="columnheader">
+              #
+            </div>
+            <div className="cell" role="columnheader">
+              Source <span className="muted">{detail.project.srcLang}</span>
+            </div>
+            <div className="cell" role="columnheader">
+              Target <span className="muted">{detail.project.tgtLang}</span>
+            </div>
+          </div>
+          <div
+            className="grid-scroll"
+            ref={scrollRef}
+            role="rowgroup"
+            // A tab stop of its own (a scrolling element is one in some browsers only), from
+            // which Enter opens a segment (audit K1).
+            tabIndex={0}
+            aria-label="Segment rows. Press Enter to open a segment."
+            onKeyDown={openFromGrid}
+          >
+            <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
+              {virtualizer.getVirtualItems().map((item) => {
+                const segment = shown[item.index]!;
+                return (
+                  <div
+                    key={item.key}
+                    className={item.index % 2 === 1 ? 'row-slot odd' : 'row-slot'}
+                    data-index={item.index}
+                    ref={virtualizer.measureElement}
+                    style={{ transform: `translateY(${item.start}px)` }}
+                  >
+                    <SegmentRow
+                      segment={segment}
+                      project={project}
+                      position={positions.get(segment.id)! + 1}
+                      mark={marks.get(segment.id)}
+                      active={segment.id === activeId}
+                      clickAt={segment.id === activeId ? clickAt : undefined}
+                      unsaved={unsaved.get(segment.id)}
+                      srcLang={detail.project.srcLang}
+                      tgtLang={detail.project.tgtLang}
+                      onActivate={activate}
+                      onCommit={commit}
+                      onDraft={keepDraft}
+                      onLeave={leave}
+                      suggestion={
+                        segment.id === activeId ? suggestions.get(segment.id) : undefined
+                      }
+                      accepted={accepted?.id === segment.id ? accepted : undefined}
+                      onAccept={acceptSuggestion}
+                      onConfirm={confirmAndAdvance}
+                      registerPageHide={pageHide.register}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
         {qaOpen && (
@@ -1139,11 +1189,16 @@ const SegmentRow = memo(function SegmentRow({
   if (active) classes.push('active');
   if (unsaved !== undefined) classes.push('unsaved');
   return (
-    <div className={classes.join(' ')} role="row" aria-rowindex={position}>
+    <div className={classes.join(' ')} role="row" aria-rowindex={position + 1}>
       <div className="gutter" role="cell">
         <span className="ord">{position}</span>
         <span
           className="status"
+          // The badge is a glyph or a letter: its meaning is its name (audit N2).
+          role="img"
+          aria-label={
+            unsaved === undefined ? badge.title : `Not saved: ${unsaved.message}`
+          }
           title={unsaved === undefined ? badge.title : unsaved.message}
         >
           {unsaved === undefined ? badge.text : '!'}
@@ -1154,6 +1209,7 @@ const SegmentRow = memo(function SegmentRow({
         <span
           className={mark ? `qa qa-${mark.severity}` : 'qa'}
           title={mark?.messages.join('\n')}
+          role={mark ? 'img' : undefined}
           aria-label={mark ? `${mark.count} QA ${mark.severity}` : undefined}
         >
           {mark ? mark.count : ''}

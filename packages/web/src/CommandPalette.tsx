@@ -9,6 +9,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { clampActive, filterCommands, moveActive, type CommandInfo } from './commands.js';
+import { keepFocusInside } from './focus-trap.js';
 
 export interface PaletteCommand extends CommandInfo {
   readonly run: () => void;
@@ -74,6 +75,8 @@ export function CommandPalette({
         aria-modal="true"
         aria-label="Command palette"
         onMouseDown={(e) => e.stopPropagation()}
+        // The input is the dialog's one tab stop: Tab stays on it (issue #193, `focus-trap.ts`).
+        onKeyDown={(e) => keepFocusInside(e, e.currentTarget)}
       >
         <input
           ref={inputRef}

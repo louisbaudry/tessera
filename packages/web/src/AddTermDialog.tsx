@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { cleanDraft, draftProblem, type TermDraft } from './add-term.js';
 import { api } from './api.js';
 import { useAction } from './use-action.js';
+import { keepFocusInside } from './focus-trap.js';
 
 export function AddTermDialog({
   project,
@@ -50,7 +51,9 @@ export function AddTermDialog({
     if (result) setAdded({ source: clean.source, created: result.created });
   };
 
-  const onKeyDown = (e: KeyboardEvent) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    // A modal dialog keeps Tab inside it (issue #193, `focus-trap.ts`).
+    keepFocusInside(e, e.currentTarget);
     if (e.key === 'Escape') {
       e.preventDefault();
       onClose(added !== null);

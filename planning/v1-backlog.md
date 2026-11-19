@@ -4265,7 +4265,7 @@ rest of that range:
   From the 2026-10-08 competitor sweep (issue #175, `competitive-research.md`):
   `Ctrl+K` (Cmd+K on a Mac) opens a box that finds any editor command by name, so
   a translator neither hunts the toolbar nor has to remember a key. Built as the
-  palette only; assignable shortcuts and an accessibility audit are issue #193.
+  palette only; assignable shortcuts and an accessibility audit were left for #193 (below).
   - **Commands are the editor's own handlers, not a second implementation**: next
     unconfirmed segment (`nextUnconfirmed`, the one confirm-and-advance uses) and next
     segment with a QA finding (`nextMarked`, forward only, no wrap, like it), merge and
@@ -4289,6 +4289,31 @@ rest of that range:
     finds and runs commands (next unconfirmed opens an editor, "only new"/"only locked"/"clear" move the
     filter), no-match message, Escape and backdrop close, arrow-up wraps, Cmd+K opens. Not verified: a
     screen reader; a Mac keyboard.
+
+- **#193 · ~~Assignable editor shortcuts and an accessibility audit of the grid~~ · DONE — shortcuts: `web/src/{shortcuts.ts,shortcut-settings.ts,ShortcutSettings.tsx}`; audit: `planning/accessibility-audit.md`, `web/src/{focus-trap.ts,grid-entry.ts,theme-contrast.test.ts}`, `e2e/editor-keyboard.spec.ts`.**
+  The shortcuts half was built first (the CLAUDE.md note under _The SPA_ is its record). The
+  audit (2026-11-19, Louis's pick) was one scripted pass over the editor screen in headless
+  Chromium: a Tab walk, the browser's accessibility tree, and contrast computed in both themes.
+  - **The editor could not be entered with the keyboard.** Opening a segment took a mouse click;
+    Escape then dropped focus to the top of the page. Enter on the grid now opens the first
+    editable segment in view or the one last left, and Escape returns focus to the grid.
+  - **`aria-modal` promised what nothing kept.** Tab left all four dialogs into the page behind,
+    where Escape no longer closed them. One helper (`keepFocusInside`) wraps Tab in each.
+  - **The table's header was outside the table**, and the table had no name. The status badges
+    were glyphs with a tooltip. Both fixed; the audit file lists each finding with its test.
+  - **Two light-theme colours were under 4.5:1** (the confirmed green on a striped row, the
+    amber as text and behind white). Darkened, and a unit test now computes every text token
+    against its backgrounds in both themes. The dark theme had no failure.
+  - **A test that passes for the wrong reason proves nothing.** The first browser tests all
+    failed on the old code at the same line (the table's name), not on the behaviour each was
+    for; the helper now waits on something neutral, and each fix was then broken in turn to see
+    its own test fail. One of those runs was itself invalid: the broken source did not compile,
+    so the previous bundle was tested. Read the build's result before the test's.
+  - No testing library was added: the checks are scripts against the browser's own tree.
+  - Decided here, not by Louis: the two shades, and which findings were small enough to fix.
+    Not verified: a real screen reader, zoom, Firefox, Safari, any other screen (issue #392).
+    Left as changes of behaviour: a row cursor, a skip link, announcements (issue #391).
+    **Nothing here supports an accessibility statement.**
 
 - **#122 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
   From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,

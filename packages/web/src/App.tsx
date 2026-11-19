@@ -219,10 +219,11 @@ export function App() {
 
 function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }) {
   const home = role === 'vendor' ? 'Jobs' : 'Projects';
-  if (route.screen === 'projects') return <nav className="crumbs" />;
+  if (route.screen === 'projects')
+    return <nav className="crumbs" aria-label="Breadcrumb" />;
   if (route.screen === 'job') {
     return (
-      <nav className="crumbs">
+      <nav className="crumbs" aria-label="Breadcrumb">
         <a href={formatRoute({ screen: 'projects' })}>{home}</a>
         <span aria-hidden="true">/</span>
         <span>Job</span>
@@ -250,7 +251,7 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       connect: 'Connect',
     }[route.screen];
     return (
-      <nav className="crumbs">
+      <nav className="crumbs" aria-label="Breadcrumb">
         <a href={formatRoute({ screen: 'projects' })}>{home}</a>
         <span aria-hidden="true">/</span>
         <span>{here}</span>
@@ -259,11 +260,11 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
   }
   // The invitation pages are shown without the shell, so they have no crumbs.
   if (route.screen === 'invite' || route.screen === 'join')
-    return <nav className="crumbs" />;
+    return <nav className="crumbs" aria-label="Breadcrumb" />;
   // Another account's project (a vendor's job) is a key; the crumb shows its name.
   const shown = parseProjectKey(route.project).name;
   return (
-    <nav className="crumbs">
+    <nav className="crumbs" aria-label="Breadcrumb">
       <a href={formatRoute({ screen: 'projects' })}>{home}</a>
       <span aria-hidden="true">/</span>
       {route.screen === 'grid' ? (
