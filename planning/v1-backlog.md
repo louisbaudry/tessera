@@ -4332,6 +4332,8 @@ rest of that range:
     opened on a click alone), and no error was announced. All fixed in
     `portal-server/src/public/`, with `public-labels.test.ts` reading the scripts' text to hold the
     shape. The application the client sees had been audited last; next time it goes first.
+  - **The vendor's screens and the invitation page had nothing to fix** (fourth pass). Still unseen: a
+    job's own screen, the staff invitation page, the chat assistant's consent page.
 
 - **#122 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
   From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,
