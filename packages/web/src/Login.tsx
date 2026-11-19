@@ -9,7 +9,7 @@
  * (`#sso=<code>`). It is read once, taken out of the address before anything else happens,
  * and redeemed together with the secret this browser kept while it was away.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { SsoProvider } from '@cat-tool/core';
 
 import { api } from './api.js';
@@ -65,6 +65,7 @@ export function Login({ onToken }: { onToken: (token: string) => void }) {
   const landed = takeLanding();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(
     landed?.kind === 'refused' ? SSO_FAILED : null,
   );
@@ -102,6 +103,10 @@ export function Login({ onToken }: { onToken: (token: string) => void }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
+      // The button was disabled while the request ran, so a person who pressed it lost focus
+      // to the page (issue #392, the audit of the other screens). The password is what they
+      // retype, so focus goes there; the refusal itself is announced by the alert.
+      passwordRef.current?.focus();
     }
   };
 
@@ -143,6 +148,7 @@ export function Login({ onToken }: { onToken: (token: string) => void }) {
         <label>
           Password
           <input
+            ref={passwordRef}
             type="password"
             autoComplete="current-password"
             value={password}

@@ -4314,6 +4314,12 @@ rest of that range:
     Not verified: a real screen reader, zoom, Firefox, Safari, any other screen (issue #392).
     Left as changes of behaviour: a row cursor, a skip link, announcements (issue #391).
     **Nothing here supports an accessibility statement.**
+  - **The other staff screens were audited the same day** (issue #392 item 4, Louis's pick): sign-in,
+    projects, a project, memories, vendors, pay run, staff, activity, account, both themes. Little
+    was wrong: focus was dropped after a refused sign-in (fixed, `e2e/sign-in.spec.ts`) and one table
+    had no name (fixed). Two reports from the scripts were not faults and are recorded as such, so
+    nobody chases them: an unnamed `<form>`, and a missing focus ring that was the script reading
+    too early. Not audited: the vendor's screens, the invitation pages, the portal.
 
 - **#122 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
   From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,

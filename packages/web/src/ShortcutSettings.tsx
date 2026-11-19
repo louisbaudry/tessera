@@ -78,7 +78,7 @@ export function ShortcutSettings() {
         Kept in this browser only. A key needs Ctrl, Alt or Meta, and the browser&apos;s
         and editor&apos;s own keys (copy, paste, undo, Esc) cannot be taken.
       </p>
-      <table>
+      <table aria-label="Editor keys">
         <thead>
           <tr>
             <th>Action</th>

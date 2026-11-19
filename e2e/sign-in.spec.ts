@@ -32,6 +32,9 @@ test('a wrong password is refused, and the right one opens the projects', async 
   await page.getByLabel('Password').fill(`${password}-wrong`);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
+  // The button was pressed and then disabled: focus must not be dropped on the page
+  // (issue #392), it goes to the field the person retypes.
+  await expect(page.getByLabel('Password')).toBeFocused();
   await expect(page.getByRole('heading', { name: 'Tessera' })).toBeVisible();
 
   await page.getByLabel('Password').fill(password);
