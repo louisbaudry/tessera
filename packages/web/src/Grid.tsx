@@ -378,12 +378,26 @@ function SegmentGrid({
   // is open. Leaving a segment puts the cursor on it, so Esc then Enter returns to it and the
   // arrows carry on from there.
   const [cursorId, setCursorId] = useState<number | null>(null);
+  // The cursor's row takes real keyboard focus, which is what tells a screen reader where
+  // the cursor is: the rows' own role cannot point at a row (`aria-activedescendant` is not
+  // supported on a `rowgroup`). The row may not be in the page yet when the cursor moves to
+  // it (the list is virtualised), so the focus is owed until a render finds the row.
+  const rowFocusOwed = useRef(false);
+  useEffect(() => {
+    if (!rowFocusOwed.current || activeId !== null || cursorId === null) return;
+    const row = document.getElementById(`segment-row-${cursorId}`);
+    if (!row) return;
+    rowFocusOwed.current = false;
+    row.focus({ preventScroll: true });
+  });
   const leave = useCallback(() => {
     setActiveId((id) => {
       if (id !== null) setCursorId(id);
       return null;
     });
+    // The rows first, so focus is never lost; then the row left, once it is drawn as a row.
     scrollRef.current?.focus({ preventScroll: true });
+    rowFocusOwed.current = true;
   }, []);
   // Enter on the grid itself opens a segment (issue #193, audit K1): the one last left, or
   // the first editable one in view. Only a key pressed on the scroller, never one that
@@ -391,8 +405,14 @@ function SegmentGrid({
   // The arrow keys, Page Up/Down, Home and End move the row cursor; Enter opens the row it
   // is on (a locked row does not open), or with no cursor the first editable one in view.
   const openFromGrid = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return;
+    // A key pressed on the rows as a whole or on a row itself, never one from inside a row
+    // (the editor, a tag button).
+    const onRow = (e.target as HTMLElement).getAttribute('role') === 'row';
+    if (e.target !== e.currentTarget && !onRow) return;
     if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    // While a segment is open these keys are not the cursor's: it is hidden then, and moving
+    // it would scroll the open editor away. Esc closes the segment first.
+    if (activeId !== null) return;
     const offset = virtualizer.scrollOffset ?? 0;
     const inView = virtualizer.getVirtualItems().find((item) => item.end > offset);
     const cursor = cursorId === null ? -1 : shown.findIndex((s) => s.id === cursorId);
@@ -407,6 +427,7 @@ function SegmentGrid({
       e.preventDefault();
       if (to === null) return;
       setCursorId(shown[to]!.id);
+      rowFocusOwed.current = true;
       virtualizer.scrollToIndex(to, { align: 'auto' });
       return;
     }
@@ -1049,12 +1070,6 @@ function SegmentGrid({
             // which Enter opens a segment (audit K1).
             tabIndex={0}
             aria-label="Segment rows. Arrow keys move between segments; Enter opens one."
-            // The row the cursor is on, for a screen reader: focus stays on the rows as a whole.
-            aria-activedescendant={
-              activeId === null && cursorId !== null
-                ? `segment-row-${cursorId}`
-                : undefined
-            }
             onKeyDown={openFromGrid}
           >
             <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
@@ -1228,6 +1243,8 @@ const SegmentRow = memo(function SegmentRow({
       className={classes.join(' ')}
       role="row"
       id={`segment-row-${segment.id}`}
+      // Focusable by the row cursor, never a tab stop: the rows as a whole are the tab stop.
+      tabIndex={-1}
       aria-rowindex={position + 1}
     >
       <div className="gutter" role="cell">

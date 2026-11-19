@@ -1620,7 +1620,8 @@ stop: Enter there opens the first editable segment in view, or the one last left
 two keys. A status badge is an image with the status as its name, since its glyph says nothing
 by itself. With the rows focused and no segment open, the arrow keys, Page Up, Page Down, Home
 and End move a row cursor (`moveCursor`), and Enter opens the row it is on; a locked row holds
-the cursor and does not open. The list follows the cursor, so there the arrows no longer scroll
+the cursor and does not open. The cursor's row takes real focus (a row is focusable, never a tab
+stop), and the keys are left alone while a segment is open. The list follows the cursor, so there the arrows no longer scroll
 it by themselves.
 
 ### 7.2 The target editor (`@cat-tool/web`, backlog #29)

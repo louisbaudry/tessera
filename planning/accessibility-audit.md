@@ -177,15 +177,22 @@ With the segment rows focused and no segment open, Down and Up move a cursor one
 Down and Page Up ten, Home and End to the ends (`moveCursor`, `web/src/grid-entry.ts`). The
 first press shows the cursor on the first row in view, so it appears where the person is
 looking. Enter opens the row it is on; a locked row can hold the cursor (it is for reading
-too) and does not open. Leaving a segment with Escape puts the cursor on it. The cursor is an
-inset ring shown only while the rows have focus, the row is named to a screen reader by
-`aria-activedescendant`, and the list scrolls to keep it in view (seen on a file of 358
-segments: End reaches the last row, in view).
+too) and does not open. Leaving a segment with Escape puts the cursor on it. The cursor's row
+takes real keyboard focus (each row is focusable and none is a tab stop), which is how a screen
+reader learns where the cursor is; the cursor is an inset ring on that row, and the list
+scrolls to keep it in view (seen on a file of 358 segments: End reaches the last row, in view).
+While a segment is open the cursor keys are left alone: the cursor is hidden then, and moving
+it would scroll the open editor away.
 
 What it costs: with the rows focused, the arrow keys no longer scroll the list by themselves;
 they move the cursor, and the list follows. The mouse wheel and the scrollbar are unchanged.
 Stack: TypeScript, like the grid it is part of.
 
-Not verified: how a screen reader reads a row reached this way. `aria-activedescendant` on a
-`rowgroup` is a reasoned choice, not one any assistive technology was heard to honour.
+Two things the automated review of the change caught, both real. The first version named the
+cursor's row with `aria-activedescendant` on the rows' `rowgroup`, a role that does not support
+it, so it would have told a screen reader nothing while a test happily read the attribute's
+value: the test checked what was written, not what it does. And with a segment open and focus
+back on the rows, the arrow keys moved a cursor nobody could see.
 
+Not verified: how a screen reader reads a row that takes focus this way. No assistive
+technology was run.
