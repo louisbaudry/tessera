@@ -242,6 +242,34 @@ branches and a local `supabase db reset` that replay the migrations.
   blocks `grant`, and a migration is what a new project, a branch and
   `db reset` replay.
 
+## Prompt caching (Claude API)
+
+For code that calls the Claude API repeatedly with a long shared prefix
+(tools, system prompt, fixed documents). Check the current docs and the
+`claude-api` skill for model-specific minimums and prices before relying on
+a number.
+
+- **Order the request so the stable part comes first.** The cached prefix
+  is `tools`, then `system`, then `messages`. Anything that changes per call
+  (a timestamp, a user id, a request id) goes after the breakpoint, never
+  before it.
+- **Set `cache_control` deliberately.** Python SDK, automatic: pass
+  `cache_control={"type": "ephemeral"}` to `messages.create`. Explicit: put
+  it on a content block, with `"ttl": "1h"` for the longer lifetime (omitted
+  means 5 minutes). At most 4 breakpoints. A breakpoint on the last system
+  block caches tools and system together.
+- **Know what breaks it.** Any change to a tool definition or tool order
+  invalidates everything after it; a system change invalidates system and
+  messages; a `tool_choice` change invalidates the message cache.
+- **Verify, don't assume.** After a call, read
+  `usage.cache_creation_input_tokens` and `usage.cache_read_input_tokens`.
+  Both 0 means nothing was cached (often a prefix under the model's
+  minimum). A test that asserts caching must show a read on the second
+  identical call; it needs a real key, so it is not an offline test.
+- **Cost trade-off:** a cache write costs more than a plain input token and
+  a read costs far less, so caching only pays when the prefix is reused
+  before it expires.
+
 ## AI output in code
 
 - Generated code is a proposal: read it, run it, and be able to explain it
