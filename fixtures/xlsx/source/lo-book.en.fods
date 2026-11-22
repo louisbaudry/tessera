@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2" office:version="1.2" office:mimetype="application/vnd.oasis.opendocument.spreadsheet">
+ <office:automatic-styles>
+  <style:style style:name="T1" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>
+  <style:style style:name="T2" style:family="text"><style:text-properties fo:font-style="italic"/></style:style>
+ </office:automatic-styles>
+ <office:body>
+  <office:spreadsheet>
+   <table:table table:name="Schedule">
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Session</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Room</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Seats</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Remarks</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Soil sampling</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Greenhouse</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="12"><text:p>12</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Bring <text:span text:style-name="T1">sturdy boots</text:span> and a hat. The ground is wet in the morning.</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Water testing</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Laboratory</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="8"><text:p>8</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Meet at the pump.</text:p><text:p>Gloves are provided.</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Closing talk</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Greenhouse</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="40"><text:p>40</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Starts at <text:span text:style-name="T2">four o'clock</text:span> sharp.</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>All seats</text:p></table:table-cell>
+     <table:table-cell/>
+     <table:table-cell table:formula="of:=SUM([.C2:.C4])" office:value-type="float" office:value="60"><text:p>60</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>2026</text:p></table:table-cell>
+    </table:table-row>
+   </table:table>
+   <table:table table:name="Packing list">
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Item</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Room</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Sample jars &amp; labels</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Laboratory</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Field notebook</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Greenhouse</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell table:formula="of:=CONCATENATE([.A2];&quot; (checked)&quot;)" office:value-type="string" office:string-value="Sample jars &amp; labels (checked)"><text:p>Sample jars &amp; labels (checked)</text:p></table:table-cell>
+     <table:table-cell/>
+    </table:table-row>
+   </table:table>
+  </office:spreadsheet>
+ </office:body>
+</office:document>

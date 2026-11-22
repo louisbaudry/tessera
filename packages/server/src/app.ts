@@ -18,8 +18,7 @@ import { dirname, extname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
 import {
-  assembleFile,
-  assemblePptx,
+  assembleNamed,
   assembleXliff,
   attachmentDisposition,
   DocxError,
@@ -50,6 +49,7 @@ import {
   XliffError,
   type AssembledFile,
   type AuditActor,
+  type FileKind,
   type Project,
   type ProjectAction,
   type SegmenterRules,
@@ -394,11 +394,16 @@ const sessionActor = (req: FastifyRequest): AuditActor => auditActor(sessionAcco
  */
 const LOGIN_GATE: AuditActor = { actor: { kind: 'system', name: 'login' }, label: null };
 
-const DOCX_TYPE =
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const XLIFF_TYPE = 'application/xliff+xml';
-const PPTX_TYPE =
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+/**
+ * The media type an exported file is sent with, by its kind. A `Record` over
+ * the kinds, so a new one fails this file's typecheck until it has a type.
+ */
+const EXPORT_TYPE: Readonly<Record<FileKind, string>> = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xliff: 'application/xliff+xml',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
 
 /** What a client sees of an account: never the password hash or the storage root. */
 function publicAccount(account: Account) {
@@ -828,11 +833,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     }
   });
 
-  // One DOCX, PPTX or XLIFF 2.x per request, multipart; its filename is the
-  // `rel_path` unless a `relPath` field says otherwise, and the name's
-  // extension picks the filter (`fileKindOfName`; anything but `.xlf`,
-  // `.xliff` and `.pptx` is read as a DOCX, as before). `assembleFile` or `assembleXliff`
-  // + `insertFile`, exactly the CLI's `add-file`.
+  // One DOCX, PPTX, XLSX or XLIFF 2.x per request, multipart; its filename is
+  // the `rel_path` unless a `relPath` field says otherwise, and the name's
+  // extension picks the filter (`fileKindOfName`; a name that suggests none is
+  // read as a DOCX, as before). `assembleNamed` or `assembleXliff` +
+  // `insertFile`, exactly the CLI's `add-file`.
   app.post<{ Params: { name: string } }>(
     '/api/projects/:name/files',
     async (req, reply) => {
@@ -878,10 +883,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
             });
           }
           try {
-            assembled =
-              fileKindOfName(relPath) === 'pptx'
-                ? assemblePptx(bytes, rules)
-                : assembleFile(bytes, rules);
+            assembled = assembleNamed(relPath, bytes, rules);
           } catch (err) {
             // A package that is not a readable ZIP or lacks its main part.
             if (err instanceof DocxError) {
@@ -995,14 +997,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       sha256: exported.sha256,
     });
     return reply
-      .header(
-        'content-type',
-        exported.file.kind === 'xliff'
-          ? XLIFF_TYPE
-          : exported.file.kind === 'pptx'
-            ? PPTX_TYPE
-            : DOCX_TYPE,
-      )
+      .header('content-type', EXPORT_TYPE[exported.file.kind])
       .header('content-disposition', attachmentDisposition(name))
       .send(Buffer.from(exported.bytes));
   });

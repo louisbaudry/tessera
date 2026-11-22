@@ -12,3 +12,4 @@
 # file order, last match takes precedence.
 *.docx binary
 *.pptx binary
+*.xlsx binary

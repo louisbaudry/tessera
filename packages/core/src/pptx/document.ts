@@ -19,6 +19,7 @@ import {
   writePptx,
   type DocxPackage,
 } from '../docx/package.js';
+import { related, relationships, startTags } from '../docx/relationships.js';
 import {
   DRAWINGML_DIALECT,
   extractSkeleton,
@@ -38,60 +39,16 @@ export function isPptxTranslatablePart(name: string): boolean {
   return SLIDE_RE.test(name) || NOTES_RE.test(name);
 }
 
-/** Attributes of every `<tag ...>` start tag in `xml`, by name. */
-function startTags(xml: string, tag: string): Array<Map<string, string>> {
-  const out: Array<Map<string, string>> = [];
-  for (const m of xml.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))) {
-    const attrs = new Map<string, string>();
-    for (const a of m[0].matchAll(/\s([\w:.-]+)="([^"]*)"/g)) attrs.set(a[1]!, a[2]!);
-    out.push(attrs);
-  }
-  return out;
-}
-
-/** `target` relative to the part `from`, as a package path. */
-function resolveTarget(from: string, target: string): string {
-  if (target.startsWith('/')) return target.slice(1);
-  const parts = from.split('/').slice(0, -1);
-  for (const seg of target.split('/')) {
-    if (seg === '..') parts.pop();
-    else if (seg !== '.' && seg !== '') parts.push(seg);
-  }
-  return parts.join('/');
-}
-
-const relsOf = (part: string): string => {
-  const i = part.lastIndexOf('/');
-  return `${part.slice(0, i)}/_rels/${part.slice(i + 1)}.rels`;
-};
-
-/** A part's relationships by type suffix (`slide`, `notesSlide`), as package paths, in file order. */
-function related(pkg: DocxPackage, part: string, typeSuffix: string): string[] {
-  const rels = getPart(pkg, relsOf(part));
-  if (!rels) return [];
-  return startTags(decoder.decode(rels), 'Relationship')
-    .filter(
-      (r) =>
-        r.get('Type')?.endsWith(`/${typeSuffix}`) && r.get('TargetMode') !== 'External',
-    )
-    .map((r) => resolveTarget(part, r.get('Target') ?? ''));
-}
-
 /**
  * The slide parts in the order the deck plays them, from `p:sldIdLst` and the
  * presentation's relationships; null when that cannot be read.
  */
 export function slideOrder(pkg: DocxPackage): string[] | null {
   const presentation = getPart(pkg, 'ppt/presentation.xml');
-  const rels = getPart(pkg, relsOf('ppt/presentation.xml'));
-  if (!presentation || !rels) return null;
+  const rels = relationships(pkg, 'ppt/presentation.xml', 'slide');
+  if (!presentation || rels.length === 0) return null;
   const targetOf = new Map<string, string>();
-  for (const r of startTags(decoder.decode(rels), 'Relationship')) {
-    const id = r.get('Id');
-    if (id !== undefined && r.get('Type')?.endsWith('/slide')) {
-      targetOf.set(id, resolveTarget('ppt/presentation.xml', r.get('Target') ?? ''));
-    }
-  }
+  for (const r of rels) if (r.id !== undefined) targetOf.set(r.id, r.target);
   const order: string[] = [];
   for (const sld of startTags(decoder.decode(presentation), 'p:sldId')) {
     const rid = [...sld].find(([k]) => k.endsWith(':id'))?.[1];

@@ -311,6 +311,23 @@ client contacts in (§2b). Keep true:
   gate (`pptx/roundtrip.gate.test.ts`) is as load-bearing as the DOCX one.
   `fixtures/pptx/` has one LibreOffice-written deck and one built by
   `scripts/make-pptx-fixture.py`: **no file PowerPoint wrote has been read.**
+- **An XLSX's paragraphs are its strings, and only the parts that hold strings are rewritten**
+  (issue #169, `v1-spec.md` §3.10). The regions are the shared strings (`si`) and inline strings
+  (`is`); a sheet with no inline string is read for its order and never touched, and a string's index
+  never moves. Segments follow the reader (tab order from the workbook, row by row, a string where a
+  cell first shows it: `xlsxSegments`), never the shared strings' own order. **A table's header and
+  totals cells are locked** (`tableLockedRanges`): the table part repeats their text, and translating
+  them needs the table and every structured reference rewritten, which is not built; don't unlock them
+  without that. A cell's line break is a character and becomes a visible `br` tag (`LINE_BREAK_OPEN`,
+  `core/model/token.ts`); a string renders as one `t` or as runs, never both (`xlsx/render.ts`); a
+  phonetic guide is dropped from a translated string. A workbook written with a namespace prefix is
+  refused by name. The gate (`xlsx/roundtrip.gate.test.ts`) is as load-bearing as the other two.
+  `fixtures/xlsx/` has one LibreOffice-written workbook and one built by
+  `scripts/make-xlsx-fixture.py`: **no file Excel wrote has been read, and no export opened in Excel.**
+- **A file's name picks its filter in one place** (`assembleNamed`, `core/project/assemble.ts`, for the
+  sentence-segmented formats; `assembleXliff` for XLIFF), and its kind picks its export in one
+  (`exportFileBytes`). A new format is an `OoxmlFormat` and a case in each, never a ternary in the CLI
+  or the server.
 - **An XLIFF 2.x file is edited as a string and found again by position**
   (issue #169, `v1-spec.md` §3.8). Its segments are the file's own
   `<segment>`s, never re-segmented; `para_key` is the unit's ordinal and

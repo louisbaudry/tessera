@@ -16,7 +16,13 @@ import type { FormatEntry, Token } from '../model/token.js';
 import { segmentTokens, type SegmenterRules } from '../segment/segmenter.js';
 import { normalizeTokens } from '../tm/normalize.js';
 import { fallbackRegionKeys } from './fallback.js';
-import { DOCX_FORMAT, PPTX_FORMAT, type OoxmlFormat } from './ooxml-format.js';
+import { fileKindOfName } from '../model/file.js';
+import {
+  DOCX_FORMAT,
+  PPTX_FORMAT,
+  XLSX_FORMAT,
+  type OoxmlFormat,
+} from './ooxml-format.js';
 
 /** A segment as assembled, before it has an id, a file, or a target. */
 export interface AssembledSegment {
@@ -33,7 +39,7 @@ export interface AssembledSegment {
   readonly locked: boolean;
   /** Inside an `mc:Fallback` (`fallbackRegionKeys`): counted as its twin. */
   readonly fallbackCopy: boolean;
-  /** The unit's name (an XLIFF key), when the file gave one; absent for a DOCX or PPTX. */
+  /** The unit's name (an XLIFF key), when the file gave one; absent for a DOCX, PPTX or XLSX. */
   readonly unitName?: string | null;
   /** The `id` of the XLIFF `<group>` the unit sits in, when it sits in one. */
   readonly unitGroup?: string | null;
@@ -119,8 +125,39 @@ export function assemblePptx(bytes: Uint8Array, rules: SegmenterRules): Assemble
 }
 
 /**
- * {@link assembleFile} for any format with paragraph text (DOCX, PPTX): the
- * format says how its package is read and tokenized, the rest is shared.
+ * {@link assembleFile} for an XLSX (`planning/v1-spec.md` §3.10): the strings
+ * its cells show, in the order a reader meets them, cut into sentences by
+ * `rules`.
+ */
+export function assembleXlsx(bytes: Uint8Array, rules: SegmenterRules): AssembledFile {
+  return assembleOoxml(bytes, rules, XLSX_FORMAT);
+}
+
+/**
+ * Assembles a file whose text is sentence-segmented (DOCX, PPTX, XLSX), by the
+ * filter its **name** picks (`fileKindOfName`): the one place a caller's
+ * upload or path chooses among them. A name that suggests nothing is read as
+ * a DOCX, as it always was. An XLIFF is not one of these (it arrives
+ * segmented): `assembleXliff`.
+ */
+export function assembleNamed(
+  name: string,
+  bytes: Uint8Array,
+  rules: SegmenterRules,
+): AssembledFile {
+  switch (fileKindOfName(name)) {
+    case 'pptx':
+      return assemblePptx(bytes, rules);
+    case 'xlsx':
+      return assembleXlsx(bytes, rules);
+    default:
+      return assembleFile(bytes, rules);
+  }
+}
+
+/**
+ * {@link assembleFile} for any format with paragraph text (DOCX, PPTX, XLSX):
+ * the format says how its package is read and tokenized, the rest is shared.
  */
 export function assembleOoxml(
   bytes: Uint8Array,

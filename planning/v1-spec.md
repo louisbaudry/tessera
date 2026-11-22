@@ -35,7 +35,7 @@ pool) rides on top later and is out of scope here.
 | Fuzzy matching | Explicit v1 cut. Schema is built fuzzy-ready (§4.3) so it lands later without migration. Designed in §6.1a (backlog #61); not built. |
 | Concordance search | Falls out almost free once the TM index exists — first follow-on to v1. |
 | Termbase / MT / QA against glossary | No user need yet. |
-| XLSX, TXT | DOCX is the whole job. XLIFF 2.x (§3.8) and PPTX (§3.9) are built (issue #169); XLIFF 1.2 is not. |
+| TXT | DOCX is the whole job. XLIFF 2.x (§3.8), PPTX (§3.9) and XLSX (§3.10) are built (issue #169); XLIFF 1.2 is not. |
 | CJK, Cyrillic, Nordic, Eastern European | Different tokenizer (CJK) or more abbreviation lists; neither is needed. |
 | Auto-localisation of numbers/dates | Real Trados feature, but it interacts with matching in ways worth designing once fuzzy exists. |
 | Cloud tier, licensing, collaboration | Separate product surface; a prototype already exists (§2.1). |
@@ -835,6 +835,139 @@ repair prompt. A real sample is the next check, and needs Louis.
 (`countDocxWords` stays DOCX-only, so the upload's word count is `null`),
 `.ppt`, `.potx` and `.ppsx`, and slide-level context (the editor shows a
 paragraph, not the slide it sits on).
+
+### 3.10 The XLSX filter (issue #169, third phase)
+
+Decided 2026-11-22. Louis picked the card's last phase and chose TypeScript over
+Rust/Wasm, as for XLIFF and PPTX (asked first): it is ZIP, XML scanning by
+offsets and tag mapping, with no kernel and no profile pointing at the language.
+
+**A workbook's text is not where its cells are.** A cell holds an index into
+`xl/sharedStrings.xml`, and one string may serve many cells; a few writers put
+the text in the cell instead (an inline string, `<is>`). So the "paragraphs" of
+this format are the **shared strings** (`si`) and the **inline strings** (`is`),
+and the two rules of §3.1 carry over unchanged: a part's skeleton is its
+original XML sliced around them (`extractSkeleton` with the element name, and no
+properties element: a string has none), so a zero-edit export is each part byte
+for byte (`pnpm test:gate` covers `fixtures/xlsx/`), and a string nobody
+translated is never re-rendered.
+
+**Only the parts that hold strings are ever rewritten.** That is the shared
+strings part and, when a sheet holds inline strings, that sheet. A sheet with
+none is read for its order and never touched, so cells, formulas, styles, the
+workbook and its tables come back as they were. A string's **index never
+moves**: a translated string is written in the place of its source, strings no
+cell uses stay where they are, and no cell is renumbered.
+
+**Reading order is the reader's, not the file's.** The shared strings sit in the
+order they were first typed, which is no order a translator can follow. Segments
+are listed sheet by sheet as the tabs stand (`xl/workbook.xml` and its
+relationships, not the file numbers: `sheetOrder`), each sheet row by row, a
+string where a cell **first** shows it. A string shown by forty cells is one
+segment, translated once. A segment's `part` is `strings`, or `sheet<n>` for an
+inline string.
+
+**What is extracted, and what is not.**
+
+| | |
+|---|---|
+| Extracted | text cells: shared strings and inline strings, plain or rich |
+| Locked | a string with no letter (§3.5); a string shown in a **table's header row or totals row** |
+| Not listed | a shared string no cell shows; an empty string |
+| Not extracted | sheet names, a formula's text and its cached result, comments and notes, text boxes and shapes, charts, headers and footers, data-validation lists and messages, defined names, pivot tables, the document's properties |
+
+**A table's header and totals cells are locked, on purpose.** A table part
+(`xl/tables/table<n>.xml`) repeats its header cells' text as `tableColumn/@name`
+and its totals label as `totalsRowLabel`. Translating the cell and not the table
+part leaves the two disagreeing. What a spreadsheet application does then has not
+been seen here; the one source read says it matters: openpyxl 3.1.5's own code
+states that a table's column headings "must match cells in the worksheet" and
+warns that the file "may not be readable" when they are not what it expects
+(`worksheet/table.py`, `worksheet/_writer.py`, read as installed). Keeping the two
+in step would mean rewriting the table part and every structured reference to the
+column in every formula, so this phase does not: the string is shown, locked, and
+stays as it is, **wherever else it is also shown** (it is one string). The totals
+row is locked by the same reasoning with no source that says it must be; that
+half is caution, not knowledge. A cell's reference and a row's number are optional
+in the format, so the lock works out every cell's position itself (`cellStrings`:
+a cell with none is the one after the cell before it, a row with none follows the
+row before it) and never depends on a writer having spelled it out.
+
+**Strings and tags.** A string is one `t`, or rich-text runs (`r`: an optional
+`rPr`, then one `t`), then the phonetic guide East Asian text may carry.
+
+| SpreadsheetML | Token | Visible | Kind |
+|---|---|---|---|
+| `t` directly in the string | text | | |
+| `r` with an `rPr` | `open` … `close` around its text | when its properties are formatting | `b`, `i`, `u`, `strike`, `sup`, `sub`, else `other` |
+| `r` with no `rPr` | text | | |
+| a line break in the text | `ph` | yes | `br` |
+| `rPh`, `phoneticPr` | none | | |
+| a run with no text, anything else | `ph`, kept whole | no | `other` |
+
+- **Formatting is bold, italic, underline, strikethrough, super- and subscript.**
+  Font, size and colour are not: Excel and LibreOffice write them on every run of
+  a rich string, and a tag for each would bury the text. Such a run still has a
+  tag, hidden, so it is rebuilt. A property element switched off (`<b val="0"/>`)
+  is off; LibreOffice's `<b val="true"/>` is on.
+- **A line break in a cell is a character** (Alt+Enter stores a line feed in the
+  text; LibreOffice writes it as `&#10;`). It becomes a visible `br` placeholder,
+  so a translator places it like any tag and `tag.missing` reports one that went;
+  the renderer writes the character back (`LINE_BREAK_OPEN`, `core/model/token.ts`).
+  It is not a sentence boundary by itself, as a break in a DOCX is not.
+- **A phonetic guide is dropped from a translated string.** It is a reading of
+  the source text, and would annotate words that are no longer there. An
+  untranslated string keeps it, being spliced.
+- **A string renders as one `t` or as runs, never both** (`xlsx/render.ts`): text
+  outside any run tag is a bare `<t>` only when the whole string is text, and a
+  run of its own as soon as the string holds anything else. `xml:space="preserve"`
+  is written wherever whitespace would otherwise be at risk.
+
+**Segmentation, fold and the rest are DOCX's.** A string is cut into sentences
+by the language's rules (§5) and folded back with the same separator rule
+(§3.4); `file.kind` is `xlsx` (no migration, §3.8), export is dispatched by the
+kind (`exportFileBytes`), and a file's name picks its filter in one place
+(`assembleNamed`).
+
+**What is refused, by name.** A workbook written with a namespace prefix
+(`<x:sst>`, as some generators write it): every element here is read without
+one, so it would import as no text at all. Shared strings kept anywhere but
+`xl/sharedStrings.xml`, and inline strings in a sheet not named
+`xl/worksheets/sheet<n>.xml`: a segment's part could not name them. `.xls`,
+`.xlsm`, `.xltx` and `.xlsb` are not accepted.
+
+**What translating a workbook can break, and this filter does not prevent.** A
+formula that compares or looks up text (`=IF(A1="Yes",…)`, `VLOOKUP("Apples",…)`)
+still looks for the source word; a data-validation list still offers the source
+values; a pivot table's field names still say what its source headers said until
+it is refreshed, and may not find them then. A formula's cached result is the
+source's until the application recalculates. `_xHHHH_` escapes (Excel's way of
+writing a carriage return, `_x000D_`) are shown as they are written and go back
+as they are.
+
+**What proves it, and what does not.** The roundtrip gate over two workbooks:
+one **written by LibreOffice 24.2** from a flat ODS authored for this repository
+(real producer output: styles, a theme, rich strings, a line break written as a
+character reference, formulas), and one **built by
+`scripts/make-xlsx-fixture.py`** for the constructs a producer rarely emits
+together (sheets out of file order, a table with a header and a totals row, a
+string on two sheets, one no cell uses, an empty one, inline strings, a phonetic
+guide, a property switched off, a raw `_x000D_`). Translated exports of both
+were opened by **openpyxl** (which found the table intact) and by **LibreOffice**
+(rendered to a PDF and read back): a manual check, not in CI. The Open XML SDK
+validator runs differentially over the workbooks as over DOCX and PPTX (§3.7),
+**in CI only**. **No file written by Excel has been read, and no export has been
+opened in Excel.** The table rule above rests on another project's code
+comment about what a reader expects, not on having seen Excel refuse a workbook;
+the Open XML SDK is not Excel, and a workbook that validates can still be repaired
+on opening. A real sample, and one
+translated export opened in Excel, are the next checks, and need Louis.
+
+**Not built:** everything in the "not extracted" row, translating a table's
+headers (it needs the table part and the structured references rewritten), an
+XLSX in the portal's order intake (`countDocxWords` stays DOCX-only, so the
+upload's word count is `null`), a prefixed workbook, `.xlsm`, and cell context
+in the editor (it shows a string, not the sheet and cell it sits in).
 
 ## 4. Data model
 

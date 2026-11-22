@@ -40,7 +40,7 @@ export interface ExportFileOptions {
   readonly actor: AuditActor;
   /**
    * Write `final` for confirmed segments of an XLIFF file (issue #358). Off by
-   * default; ignored for a DOCX or PPTX, which have no such state, and recorded
+   * default; ignored for a DOCX, PPTX or XLSX, which have no such state, and recorded
    * in `project.exported`'s detail only where it was applied.
    */
   readonly reviewedState?: boolean;
