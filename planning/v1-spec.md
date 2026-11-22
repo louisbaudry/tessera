@@ -1624,6 +1624,16 @@ the cursor and does not open. The cursor's row takes real focus (a row is focusa
 stop), and the keys are left alone while a segment is open. The list follows the cursor, so there the arrows no longer scroll
 it by themselves.
 
+**What is said aloud, and the screen's heading (issue #391, audit §10).** The file's name is
+the screen's level-1 heading, as each signed-in screen's title is, and its panels and dialogs
+are level 2 under it. The grid holds two regions that are read and not drawn, one polite and
+one assertive, in the page from the moment the file opens. A confirmation is what they say
+(`web/src/announce.ts`): "Segment 12 confirmed." when the server answers a confirm, with the
+count of QA findings it left; "Segment 12 is no longer confirmed." when an edit took a
+confirmation away; and, as an alert, any write that failed, with the row's own message. A
+save that changes none of that is silent, because one goes each time a segment is left. How
+a screen reader renders any of this has not been heard (issue #392).
+
 ### 7.2 The target editor (`@cat-tool/web`, backlog #29)
 
 Clicking a target opens it for editing: text and atomic tag chips, one

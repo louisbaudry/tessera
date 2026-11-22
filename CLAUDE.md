@@ -1184,7 +1184,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts`, `focus-trap.ts`, `grid-entry.ts`, `screen-access.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts`, `focus-trap.ts`, `grid-entry.ts`, `screen-access.ts`, `announce.ts` and `suggestions.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **The editor's keys are bindings, not literals** (issue #193, `web/src/shortcuts.ts`, `loadShortcuts`
   in `prefs.ts`). `Grid.tsx` resolves a key press through one listener (`resolveKey`) and
@@ -1206,6 +1206,14 @@ or state library until a screen needs one. Three things to keep true:
   button: a `#` target would change the route), and a screen only some accounts have goes into
   `screenAllowed` (`screen-access.ts`) so the others get a message, never an empty page; that function
   explains and is not the access check.
+- **A screen's title is its one `<h1>`, and the editor says a confirmation aloud** (issue #391, audit
+  §10). Sections under a title are `<h2>`, no level skipped, and a new screen goes into
+  `e2e/screen-headings.spec.ts`; a title's size is written in `styles.css` (`.screen h1` or the screen's
+  own rule), never the browser's. What is said about a write is `announce.ts`'s: a confirmation gained,
+  lost or refused, and any failed write, through the grid's two live regions, which are in the page
+  before anything is said; a plain save is silent, and making it speak is a decision, not a fix. The
+  save queue tells `onSaved` which request was answered (`kind`, `pending`). None of it was heard in a
+  screen reader.
 - **A screen that is slow is usually the server.** Both fixes #28's
   10k-segment bar needed were in `db` (a missing index, a listing that
   read every DOCX blob), found through the browser's resource timing.

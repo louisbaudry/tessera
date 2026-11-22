@@ -131,7 +131,7 @@ function Group({
 }) {
   return (
     <section className="rp-group" aria-label={title}>
-      <h3>{title}</h3>
+      <h2>{title}</h2>
       {rows.length === 0 ? (
         <p className="muted">{empty}</p>
       ) : (
@@ -229,7 +229,7 @@ function ReferenceFiles({ project, manage }: { project: string; manage: boolean 
 
   return (
     <section className="rp-group" aria-label="Reference files">
-      <h3>Reference files</h3>
+      <h2>Reference files</h2>
       {loaded.state === 'loading' && <p className="muted">Loading{'…'}</p>}
       {loaded.state === 'error' && <p className="error">{loaded.message}</p>}
       {loaded.state === 'done' &&

@@ -71,7 +71,7 @@ export function AddTermDialog({
         onKeyDown={onKeyDown}
         onSubmit={(e) => void submit(e)}
       >
-        <h3>Add term</h3>
+        <h2>Add term</h2>
         {added ? (
           <>
             <p role="status">

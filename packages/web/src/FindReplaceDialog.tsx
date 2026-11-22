@@ -205,7 +205,7 @@ export function FindReplaceDialog({
         onKeyDown={onKeyDown}
         onSubmit={(e) => void preview(e)}
       >
-        <h3>Find and replace</h3>
+        <h2>Find and replace</h2>
         <label>
           Find
           <input

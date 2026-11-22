@@ -22,7 +22,7 @@ export function Payments() {
   const { payments, totals } = load.data;
   return (
     <div className="page payments">
-      <h2>Your payments</h2>
+      <h1>Your payments</h1>
       {payments.length === 0 ? (
         <p className="muted">
           Nothing yet. The amount of a job is recorded here when you deliver it.

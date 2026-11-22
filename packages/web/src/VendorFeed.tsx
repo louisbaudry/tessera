@@ -33,7 +33,7 @@ function FeedBody() {
     return (
       <div className="page jobs">
         <section className="list">
-          <h2>Your jobs</h2>
+          <h1>Your jobs</h1>
           <p className="muted">
             Nothing for you yet. A job offered to you, or posted for you to claim, appears
             here.
@@ -44,6 +44,9 @@ function FeedBody() {
   }
   return (
     <div className="page jobs">
+      {/* The groups are the screen's sections; its title is read and not drawn, so the
+          feed looks as it did (issue #391, audit O3). */}
+      <h1 className="visually-hidden">Your jobs</h1>
       {FEED_GROUPS.map(({ key, title }) => {
         const jobs = feed.data[key];
         if (jobs.length === 0) return null;

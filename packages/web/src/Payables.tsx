@@ -36,7 +36,7 @@ export function Payables() {
 
   return (
     <div className="page payables">
-      <h2>Pay run</h2>
+      <h1>Pay run</h1>
       <Filters filter={filter} onChange={setFilter} problem={problem} />
       {problem === null && (
         <Results

@@ -1,10 +1,10 @@
 # Accessibility audit of the editor
 
-**Dates:** 2026-11-19 (two passes) · **Issues:** #193 (the editor), #392 item 4 (the other
-screens) · **Scope:** the editor screen (the grid, the target editor, the filter bar, the QA,
-glossary and resources panels, the command palette and the three dialogs), then the screens a
-member of staff signs in to (§5). Follow-ups: issue #391 (changes to behaviour) and issue #392
-(what a session cannot check).
+**Dates:** 2026-11-19 (the passes), 2026-11-22 (the three choices of §10) · **Issues:** #193
+(the editor), #392 item 4 (the other screens) · **Scope:** the editor screen (the grid, the
+target editor, the filter bar, the QA, glossary and resources panels, the command palette and
+the three dialogs), then the screens a member of staff signs in to (§5). Follow-ups: issue #391
+(changes to behaviour, all settled: §6, §9, §10) and issue #392 (what a session cannot check).
 
 This is the record of one pass, made so the findings are not found twice. **It is not a
 conformance evaluation and supports no accessibility statement**: one browser,
@@ -48,9 +48,9 @@ closed #193, with the test named.
 | K5  | Twenty-five Tab stops come before the grid; no skip link, and the top links are in no navigation landmark.                                                                                                                          | Fixed later (2026-11-19, §6): a skip link is the first tab stop and the top links are a navigation landmark named "Main". `e2e/editor-keyboard.spec.ts`. |
 | N1  | The grid's table had no name, and its header row sat outside the element with `role="table"`, so the column headers belonged to no table. `aria-rowcount` and `aria-rowindex` did not count the header.                             | Fixed. One `role="table"` named "Segments" holds the header and the rows (a `rowgroup`); the header is row 1. `e2e/editor-keyboard.spec.ts`.                                                            |
 | N2  | A segment's status was a glyph or a letter (a check mark, `D`, `T`, a padlock) whose meaning was only in a `title`. The QA count had an `aria-label` on an element with no role, which is not reliably read.                        | Fixed. Both are `role="img"` with the status or the count as the name; an unsaved segment says so. Seen in the accessibility tree ("1 Confirmed 2 QA error").                                           |
-| N3  | Nothing is announced when a segment is confirmed, saved or changes status.                                                                                                                                                          | Left: issue #391.                                                                                                                                                                                       |
+| N3  | Nothing is announced when a segment is confirmed, saved or changes status.                                                                                                                                                          | Built later (2026-11-22, §10): a confirmation gained, lost or refused is said in a live region, a plain save is not. `announce.test.ts`, `e2e/editor-announcements.spec.ts`.                             |
 | N4  | The origin badge's meaning is only in a `title`.                                                                                                                                                                                    | Fixed later (§6): the badge is an image named by its meaning, as the status is. |
-| N5  | Tags in a source cell are read as their visible text. Not judged.                                                                                                                                                                   | Left: issue #391.                                                                                                                                                                                       |
+| N5  | Tags in a source cell are read as their visible text. Not judged.                                                                                                                                                                   | Not changed (2026-11-22, §10): which reading is right is for someone who translates with a screen reader to say. Carried on issue #392, item 1.                                                         |
 | N6  | The breadcrumb `nav` and the glossary panel's setup form had no name.                                                                                                                                                               | Fixed: "Breadcrumb" and "Choose a glossary". Seen in the accessibility tree.                                                                                                                            |
 | C1  | Light theme: the confirmed mark (`#2f855a`) measured 4.23:1 on a striped row; white on the QA warning badge (`#b7791f`) 3.64:1, and that amber as text 3.39 to 3.64:1. The dark theme had no failure.                               | Fixed. `--status-confirmed` is `#2b7a53` and `--status-draft`/`--qa-warning` are `#93600f`, each at least 4.5:1 on every background it is drawn on. `theme-contrast.test.ts` holds both themes to it.   |
 | C2  | A disabled primary button measures 3.11:1 (light) and 3.19:1 (dark).                                                                                                                                                                | Not changed: a disabled control is outside the contrast rule. Whether it is readable enough is a judgement of look: issue #392.                                                                         |
@@ -79,6 +79,12 @@ changed for C1 have been seen in a screenshot only.
 - The grid's rows stay inside the one `role="table"`; `aria-rowindex` counts the header.
 - A new screen that only some accounts have is added to `screenAllowed`
   (`web/src/screen-access.ts`), so the others are told and not shown an empty page.
+- A screen's title is its one `<h1>` and its sections are `<h2>`: no level is skipped. A new
+  screen is added to `e2e/screen-headings.spec.ts`. A title's size is written in the
+  stylesheet (`.screen h1`, or the screen's own rule), never left to the browser.
+- What the editor says aloud about a write is decided in `web/src/announce.ts` and goes
+  through the grid's two regions, which are in the page before anything is said. A new live
+  region is never added with its text already in it.
 
 ## 5. The other screens (second pass, issue #392 item 4)
 
@@ -96,7 +102,7 @@ screens are named; the sign-in refusal is a `role="alert"`.
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | O1  | Sign-in: pressing the button disables it while the request runs, so after a refusal focus was on the page body and the next Tab began at the top.                           | Fixed. Focus goes to the password field. `e2e/sign-in.spec.ts`.                                                      |
 | O2  | Account: the table of editor keys had no name.                                                                                                                               | Fixed: "Editor keys".                                                                                                |
-| O3  | No signed-in screen has a level-1 heading: each starts at level 2, and the product name in the banner is a link.                                                             | Left: issue #391. A change to every screen's heading and its styling.                                                |
+| O3  | No signed-in screen has a level-1 heading: each starts at level 2, and the product name in the banner is a link.                                                             | Built later (2026-11-22, §10): each screen's title is its level-1 heading. `e2e/screen-headings.spec.ts`.            |
 | O4  | `#/payments` is the vendor's screen; a member of staff who opens that address gets an empty page with a breadcrumb. No link leads staff there.                              | Fixed later (§6): a screen that is not the account's says so and links home (`screen-access.ts`). `e2e/editor-keyboard.spec.ts`, `screen-access.test.ts`. |
 
 Two things the scripts reported that were not faults, kept here so they are not chased again:
@@ -124,9 +130,10 @@ Three of the findings left for #391 were repairs, not choices, and were made:
   states who has which screen; it explains, and is never the access check, which is the
   server's.
 
-Still open on #391, because each is a choice: what to announce (N3), how tags should be read
-(N5), and a level-1 heading on each screen (O3: twelve screens whose heading styles are
-written per screen). K4 was built afterwards (§9).
+Still open on #391 at that date, because each is a choice: what to announce (N3), how tags
+should be read (N5), and a level-1 heading on each screen (O3: twelve screens whose heading
+styles are written per screen). K4 was built afterwards (§9), and the three choices were made
+on 2026-11-22 (§10).
 
 ## 7. The client portal (third pass, issue #392, 2026-11-19)
 
@@ -196,3 +203,100 @@ back on the rows, the arrow keys moved a cursor nobody could see.
 
 Not verified: how a screen reader reads a row that takes focus this way. No assistive
 technology was run.
+
+## 10. The three choices left on issue #391 (2026-11-22)
+
+Each was a choice, not a repair. They were made in the session, not by Louis: each is cheap
+to reverse (one module, or one rule of the stylesheet), and the reasoning is here so that any
+of them can be overturned.
+
+### N3: what is announced
+
+**A confirmation is what gets said: gained, lost or refused, and any write that failed.**
+The wording and the rule are one pure module, `web/src/announce.ts`.
+
+| What happened                                                   | What is said                                             | Where                |
+| --------------------------------------------------------------- | -------------------------------------------------------- | -------------------- |
+| The server answered a confirm                                   | "Segment 12 confirmed." or "…, with 2 QA findings."       | polite (`status`)    |
+| A save took a confirmed segment out of `confirmed` (an edit)    | "Segment 12 is no longer confirmed."                     | polite (`status`)    |
+| A save, a confirm or the taking of a draft failed               | "Segment 12: Not confirmed: …" (the row's own message)   | assertive (`alert`)  |
+| Any other save; a draft taken                                   | nothing                                                  |                      |
+
+- **A plain save is silent.** One goes every time a segment is left; the row's status is
+  already its name (N2), and the absence of an alert is the news. An announcement per save
+  would bury the three that matter.
+- **A confirm is said when the server answers, not when the key is pressed.** Until then it
+  is a request, and a refusal may follow. By then the next segment is open, so the sentence
+  names the segment it is about.
+- **The QA findings a confirm leaves are part of the sentence**, as a count: that count is
+  what appears in the gutter next, and it is the one thing a confirm changes that the
+  translator may have to act on. Nothing is said about QA when it did not rerun (a project in
+  deferred QA).
+- **Losing a confirmation is said**, because it is a consequence the person did not ask for:
+  they edited a segment, and the edit also took its confirmation away. Not when a confirm
+  follows the save (Ctrl+Enter on an edited, confirmed segment), where the confirm's answer
+  is the last word: the save queue now says which request an answer is for and whether a
+  confirm still waits (`pending`).
+- **Two regions, both in the page from the moment the file opens**, at the end of the grid's
+  section, read and not drawn. Only their text changes: a region inserted with its text
+  already in it is not reliably read. The same words twice in a row are a new node, and an
+  announcement is removed after seven seconds, so that someone reading the page later does
+  not meet a stale sentence.
+- **Not changed:** the note beside the file's name (a refused merge or split, "No QA finding
+  below") is still a `role="status"` element added with its text. Whether it is read was not
+  checked, so it was not moved either.
+
+Tests: `announce.test.ts` (the rule), `save-queue.test.ts` (which request an answer is for),
+`e2e/editor-announcements.spec.ts` (the regions, in a real page, get the text when the server
+answers; a plain save leaves them empty). Each was seen to fail against the code before the
+change, and the silent-save rule was broken on purpose to see its own tests fail.
+
+**Not verified, and it matters here more than anywhere:** no screen reader was run. Whether
+the polite sentence is heard after the next segment's field is read or lost behind it, and
+whether one sentence per confirm is welcome to someone who confirms hundreds of segments in
+a sitting, are for a person who uses one to say (issue #392, item 1).
+
+### N5: how tags are read (closed without a change)
+
+A tag in a source cell is read as its visible text: `‹1 … 1›`, or `‹1 bold … bold 1›` with
+full tags on. The alternatives are to name each chip in words ("tag 1, bold, start"), or to
+hide the chips from a screen reader and say only that the segment has tags. Each trades
+something: the first makes every tagged segment long to listen to, the second hides what a
+translator must place. Which is right depends on how someone who translates with a screen
+reader works, and nobody who does has been asked. A change made now would be a guess as
+unjudged as what is there, and what is there has one property worth keeping: it is what a
+sighted colleague sees, so the two can talk about "tag 1". The question is carried on issue
+#392, item 1, with the target editor's tags, which are the same chips.
+
+### O3: each screen's title is its level-1 heading
+
+**The screen's title, not the banner's name.** A level-1 heading that says "Tessera" on
+every screen says nothing about where one is; the title is the thing that differs, and it is
+what the skip link lands before.
+
+- The twelve screens: projects (and a vendor's jobs), a project, a file, a job, memories,
+  vendors, the pay run, payments, staff, activity, account and the chat assistant's consent
+  page. Each title moved from level 2 to level 1.
+- **No level is skipped under it.** Where a screen's sections were level 3 (staff, vendors
+  and their webhooks, account and its editor keys, a job), they are level 2 now. On a file's
+  screen the panels' groups and the three dialogs' titles are level 2 too.
+- **A file's screen is titled by its file**: the bold name beside the progress line became
+  the heading.
+- **A vendor's feed with jobs in it shows no title**, only its groups. Its level-1 heading,
+  "Your jobs", is read and not drawn there, so the screen looks as it did. The empty feed
+  already showed that title.
+- **Nothing looks different.** A script recorded every heading's computed size, weight,
+  margins and position on twenty-six screen states (staff and vendor, the panels and each
+  dialog open, a fresh invitation link, an offered job) before and after: identical but for
+  the level. Each title's size is now written in the stylesheet (`.screen h1`, or the
+  screen's own rule): a browser's own style for a level-1 heading is larger, and inside a
+  `section` some browsers shrink it.
+
+Test: `e2e/screen-headings.spec.ts` opens each of those screens in a browser, as staff and as
+a vendor invited through the Vendors screen, and requires one level-1 heading with the
+screen's title, first, and no skipped level. Seen to fail on the code before the change.
+
+**Not covered:** the one-sentence message of a screen that is not the account's (§6) and the
+"Loading…" line of a screen still waiting for its data have no heading. The sign-in and
+invitation pages already had one ("Tessera": they have no other title). One viewport, one
+browser, no screen reader.

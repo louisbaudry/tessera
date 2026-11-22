@@ -28,7 +28,7 @@ export function Vendors({ canManageWebhooks }: { canManageWebhooks: boolean }) {
   const [fresh, setFresh] = useState<{ email: string; link: string } | null>(null);
   return (
     <div className="page vendors">
-      <h2>Vendors</h2>
+      <h1>Vendors</h1>
       <Invite
         onInvited={(email, link) => {
           setFresh({ email, link });
@@ -67,7 +67,7 @@ function Invite({ onInvited }: { onInvited: (email: string, link: string) => voi
 
   return (
     <form className="panel form" onSubmit={(e) => void submit(e)}>
-      <h3>Invite a vendor</h3>
+      <h2>Invite a vendor</h2>
       <p className="muted">
         Enter the address of someone you work with. You get a link to pass on, valid for{' '}
         {INVITATION_TTL_DAYS} days and good for one use: whoever opens it sets a password
@@ -117,7 +117,7 @@ function FreshLink({ email, link }: { email: string; link: string }) {
   };
   return (
     <section className="panel fresh-link" aria-label="New invitation link">
-      <h3>Link for {email}</h3>
+      <h2>Link for {email}</h2>
       <p className="muted">
         Copy it now and send it yourself. It is not shown again; if it is lost, invite the
         address again.
@@ -148,7 +148,7 @@ function Invitations({ onChanged }: { onChanged: () => void }) {
   if (invitations.length === 0) return null;
   return (
     <section className="list" aria-label="Invitations">
-      <h3>Invitations</h3>
+      <h2>Invitations</h2>
       <table className="ledger" aria-label="Invitations">
         <thead>
           <tr>
@@ -219,9 +219,9 @@ function Roster() {
   const { vendors } = roster.data;
   return (
     <section className="list" aria-label="Your vendors">
-      <h3>
+      <h2>
         Your vendors <span className="muted">{vendors.length}</span>
-      </h3>
+      </h2>
       {vendors.length === 0 ? (
         <p className="muted">No one on your roster yet. Invite someone above.</p>
       ) : (

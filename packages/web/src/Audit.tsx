@@ -38,7 +38,7 @@ export function Audit() {
 
   return (
     <div className="page audit">
-      <h2>Activity</h2>
+      <h1>Activity</h1>
       <p className="muted">
         What your staff did in your organisation, newest first. It records ids and states,
         never the text of a document. Events before this log began carrying your

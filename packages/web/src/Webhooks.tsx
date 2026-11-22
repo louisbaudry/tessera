@@ -35,7 +35,7 @@ export function Webhooks() {
   const endpoints = list.state === 'done' ? list.data.webhooks : [];
   return (
     <section className="list webhooks" aria-label="Webhooks">
-      <h3>Webhooks</h3>
+      <h2>Webhooks</h2>
       <p className="muted">
         Tessera posts a signed message to your address when an assignment changes or a
         payable locks. The message carries ids and states only, never a name, a note or an
@@ -116,7 +116,7 @@ function FreshSecret({ host, secret }: { host: string; secret: string }) {
   };
   return (
     <section className="panel fresh-link" aria-label="New signing secret">
-      <h3>Signing secret for {host}</h3>
+      <h2>Signing secret for {host}</h2>
       <p className="muted">
         Copy it now and keep it where the receiver can read it. It is not shown again; if
         it is lost, remove the address and add it again.

@@ -331,7 +331,7 @@ export function ConcordanceDialog({
         onKeyDown={onKeyDown}
         onSubmit={submit}
       >
-        <h3>Concordance</h3>
+        <h2>Concordance</h2>
         <div className="concordance-ask">
           <input
             ref={inputRef}
