@@ -888,7 +888,10 @@ in step would mean rewriting the table part and every structured reference to th
 column in every formula, so this phase does not: the string is shown, locked, and
 stays as it is, **wherever else it is also shown** (it is one string). The totals
 row is locked by the same reasoning with no source that says it must be; that
-half is caution, not knowledge.
+half is caution, not knowledge. A cell's reference and a row's number are optional
+in the format, so the lock works out every cell's position itself (`cellStrings`:
+a cell with none is the one after the cell before it, a row with none follows the
+row before it) and never depends on a writer having spelled it out.
 
 **Strings and tags.** A string is one `t`, or rich-text runs (`r`: an optional
 `rPr`, then one `t`), then the phonetic guide East Asian text may carry.

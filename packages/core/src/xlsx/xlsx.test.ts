@@ -237,7 +237,7 @@ describe('renderXlsxTokens', () => {
 });
 
 describe('cellStrings', () => {
-  it('lists the strings a sheet shows, in document order', () => {
+  it('lists the strings a sheet shows, in document order, each with its place', () => {
     const xml =
       '<worksheet><sheetData><row r="1">' +
       '<c r="A1" t="s"><v>5</v></c>' +
@@ -250,24 +250,46 @@ describe('cellStrings', () => {
       // A self-closed string cell opens nothing: the 9 after it is a number.
       '<c r="A2" t="s"/><c r="B2"><v>9</v></c>' +
       '<c r="C2" t="inlineStr"><is><r><t>Rich</t></r></is></c>' +
+      // No reference: the cell after C2 is D2.
       '<c t="s"><v>1</v></c>' +
       '</row></sheetData></worksheet>';
     expect(cellStrings(xml)).toEqual([
-      { ref: 'A1', shared: 5 },
-      { ref: 'B1', shared: 2 },
-      { ref: 'E1', inline: 0 },
-      { ref: 'C2', inline: 1 },
-      { ref: null, shared: 1 },
+      { col: 1, row: 1, shared: 5 },
+      { col: 2, row: 1, shared: 2 },
+      { col: 5, row: 1, inline: 0 },
+      { col: 3, row: 2, inline: 1 },
+      { col: 4, row: 2, shared: 1 },
     ]);
   });
 
-  it('is not misled by elements whose names begin like a cell', () => {
+  it('places a cell with no reference by its order, and a row with no number after the last', () => {
+    const xml =
+      '<worksheet><sheetData>' +
+      '<row><c t="s"><v>0</v></c><c/><c t="s"><v>1</v></c></row>' +
+      // A row that says it is the fifth, then one that says nothing: the sixth.
+      '<row r="5"><c r="C5" t="s"><v>2</v></c><c t="s"><v>3</v></c></row>' +
+      '<row><c t="inlineStr"><is><t>x</t></is></c></row>' +
+      // An empty self-closed row still counts as a row.
+      '<row/><row><c t="s"><v>4</v></c></row>' +
+      '</sheetData></worksheet>';
+    expect(cellStrings(xml)).toEqual([
+      { col: 1, row: 1, shared: 0 },
+      { col: 3, row: 1, shared: 1 },
+      { col: 3, row: 5, shared: 2 },
+      { col: 4, row: 5, shared: 3 },
+      { col: 1, row: 6, inline: 0 },
+      { col: 1, row: 8, shared: 4 },
+    ]);
+  });
+
+  it('is not misled by elements whose names begin like a cell or a row', () => {
     const xml =
       '<worksheet><cols><col min="1" max="1" width="9"/></cols><sheetData><row r="1">' +
       '<c r="A1" t="s"><v>0</v></c></row></sheetData>' +
       '<conditionalFormatting sqref="A1"><cfRule type="cellIs" priority="1"/></conditionalFormatting>' +
+      '<rowBreaks count="1"><brk id="1"/></rowBreaks>' +
       '</worksheet>';
-    expect(cellStrings(xml)).toEqual([{ ref: 'A1', shared: 0 }]);
+    expect(cellStrings(xml)).toEqual([{ col: 1, row: 1, shared: 0 }]);
   });
 });
 
@@ -371,6 +393,24 @@ describe('xlsxSegments', () => {
 
   it('does not read a phonetic guide as text', () => {
     expect(segments.some((s) => s.text.includes('toukyou'))).toBe(false);
+  });
+
+  it('locks a header whose cells do not say where they are', () => {
+    // A cell's reference and a row's number are optional: the position is then the
+    // cell's place in its row, and the row's among the rows.
+    const implicit = xlsxSegments(
+      importXlsx(
+        altered('edge-cases.en.xlsx', {
+          'xl/worksheets/sheet2.xml': (xml) => xml.replace(/<(row|c) r="[^"]*"/g, '<$1'),
+        }),
+      ),
+    );
+    expect(implicit.filter((s) => s.untranslatable).map((s) => s.text)).toEqual([
+      'Dish',
+      'Price',
+      'Total',
+      '2026',
+    ]);
   });
 
   it('translates a header again once the table says it has no header row', () => {

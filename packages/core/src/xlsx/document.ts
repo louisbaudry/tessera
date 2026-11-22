@@ -114,47 +114,68 @@ function sharedStringsPart(pkg: DocxPackage): string | null {
 
 /** One string a cell shows: where the cell is, and which string. */
 export interface CellString {
-  /** The cell's reference (`B7`), or null when the file does not give one. */
-  readonly ref: string | null;
+  /** The cell's column and row, 1-based (`B7` is column 2, row 7). */
+  readonly col: number;
+  readonly row: number;
   /** Index into the shared strings, for a `t="s"` cell. */
   readonly shared?: number;
   /** Ordinal of the cell's `is` among the sheet's, for a `t="inlineStr"` cell. */
   readonly inline?: number;
 }
 
-const CELL_EVENTS = /<c(?=[\s>/])([^>]*)>|<v>([^<]*)<\/v>|<is(?=[\s>/])|<\/c>/g;
+const CELL_EVENTS =
+  /<row(?=[\s>/])([^>]*)>|<c(?=[\s>/])([^>]*)>|<v>([^<]*)<\/v>|<is(?=[\s>/])|<\/c>/g;
+
+/** `B7` → column 2, row 7; null for anything that is not a cell reference. */
+function parseCell(ref: string): { col: number; row: number } | null {
+  const m = /^\$?([A-Za-z]{1,3})\$?(\d+)$/.exec(ref);
+  if (!m) return null;
+  let col = 0;
+  for (const ch of m[1]!.toUpperCase()) col = col * 26 + (ch.charCodeAt(0) - 64);
+  return { col, row: Number(m[2]) };
+}
 
 /**
  * The strings a sheet's cells show, in document order (row by row, as a
- * reader meets them). A formula's cached text (`t="str"`) is not one: it is
- * computed, and recomputed when the workbook is.
+ * reader meets them), each with the cell's position. A formula's cached text
+ * (`t="str"`) is not one: it is computed, and recomputed when the workbook is.
+ *
+ * **A cell's reference and a row's number are optional** in the format: a
+ * cell that gives none is the one after the cell before it (the first of its
+ * row is column 1), and a row that gives none follows the row before it. The
+ * position is worked out here for every cell, so nothing downstream (the
+ * table lock) depends on a writer having spelled it out.
  *
  * The inline ordinal counts every `<is>` in the part, which is how
  * `extractSkeleton` keys them (`s<n>`, n-th in document order).
  */
 export function cellStrings(sheetXml: string): CellString[] {
   const out: CellString[] = [];
-  let cell: { ref: string | null; type: string | undefined } | null = null;
+  let row = 0;
+  let col = 0;
+  let cell: { type: string | undefined } | null = null;
   let inline = 0;
   for (const m of sheetXml.matchAll(CELL_EVENTS)) {
     if (m[1] !== undefined) {
-      // A self-closed cell (`<c r="A1" s="3"/>`) holds nothing and opens nothing.
-      cell = m[1].endsWith('/')
-        ? null
-        : {
-            ref: /\sr="([^"]*)"/.exec(m[1])?.[1] ?? null,
-            type: /\st="([^"]*)"/.exec(m[1])?.[1],
-          };
+      const given = Number(/\sr="(\d+)"/.exec(m[1])?.[1] ?? NaN);
+      row = Number.isInteger(given) && given > 0 ? given : row + 1;
+      col = 0;
+    } else if (m[2] !== undefined) {
+      const at = parseCell(/\sr="([^"]*)"/.exec(m[2])?.[1] ?? '');
+      if (at) ({ col, row } = at);
+      else col += 1;
+      // A self-closed cell (`<c r="A1" s="3"/>`) takes its place and holds nothing.
+      cell = m[2].endsWith('/') ? null : { type: /\st="([^"]*)"/.exec(m[2])?.[1] };
     } else if (m[0] === '</c>') {
       cell = null;
-    } else if (m[2] !== undefined) {
-      if (cell?.type === 's' && /^\d+$/.test(m[2].trim())) {
-        out.push({ ref: cell.ref, shared: Number(m[2].trim()) });
+    } else if (m[3] !== undefined) {
+      if (cell?.type === 's' && /^\d+$/.test(m[3].trim())) {
+        out.push({ col, row, shared: Number(m[3].trim()) });
       }
     } else {
       // `<is`: counted wherever it stands, so the ordinal stays the skeleton's.
       const ordinal = inline++;
-      if (cell) out.push({ ref: cell.ref, inline: ordinal });
+      if (cell) out.push({ col, row, inline: ordinal });
     }
   }
   return out;
@@ -166,15 +187,6 @@ interface CellRange {
   readonly row1: number;
   readonly col2: number;
   readonly row2: number;
-}
-
-/** `B7` → column 2, row 7; null for anything that is not a cell reference. */
-function parseCell(ref: string): { col: number; row: number } | null {
-  const m = /^\$?([A-Za-z]{1,3})\$?(\d+)$/.exec(ref);
-  if (!m) return null;
-  let col = 0;
-  for (const ch of m[1]!.toUpperCase()) col = col * 26 + (ch.charCodeAt(0) - 64);
-  return { col, row: Number(m[2]) };
 }
 
 function parseRange(ref: string): CellRange | null {
@@ -306,8 +318,7 @@ export function xlsxSegments(doc: DocxDocument): DocumentSegment[] {
         seen.add(id);
         order.push({ part, key });
       }
-      const at = use.ref === null ? null : parseCell(use.ref);
-      if (at && ranges.some((range) => within(range, at))) locked.add(id);
+      if (ranges.some((range) => within(range, use))) locked.add(id);
     }
   }
 
