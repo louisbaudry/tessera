@@ -164,6 +164,15 @@ export function xmlLegalText(s: string): string {
 }
 
 /**
+ * The `open` of a placeholder that stands for a line break **stored as a
+ * character** (a spreadsheet cell's Alt+Enter, `planning/v1-spec.md` §3.10):
+ * the character itself, since no element holds it. One definition: the XLSX
+ * tokenizer writes it, its renderer turns it back into text, and the editor
+ * names the tag by it.
+ */
+export const LINE_BREAK_OPEN = '\n';
+
+/**
  * Whether a tag token's role fits its format: a pair (`open`/`close`) is
  * a `run` or `inline` tag, a placeholder an `in-run` or `block` one. The
  * other way round is XML with no close, or a close with nothing open —

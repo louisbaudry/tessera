@@ -69,7 +69,10 @@ export type DocPart =
   | 'xliff'
   /** A PPTX slide or notes page, by the number in its file name (§3.9). */
   | `slide${number}`
-  | `notes${number}`;
+  | `notes${number}`
+  /** An XLSX's shared strings, and a sheet that holds inline strings (§3.10). */
+  | 'strings'
+  | `sheet${number}`;
 
 export interface Segment {
   readonly id: number;

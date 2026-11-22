@@ -26,8 +26,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  assembleFile,
-  assemblePptx,
+  assembleNamed,
   readDocx,
   rulesFor,
   withoutHiddenTags,
@@ -46,12 +45,16 @@ import { TEST_ACTOR } from '../audit/actor.fixture.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, '../../../../fixtures/docx');
 const PPTX_FIXTURES = join(HERE, '../../../../fixtures/pptx');
+const XLSX_FIXTURES = join(HERE, '../../../../fixtures/xlsx');
 const TOOL = join(HERE, '../../../../scripts/ooxml-validate');
 const fixtureNames = readdirSync(FIXTURES)
   .filter((f) => f.endsWith('.docx'))
   .sort();
 const pptxNames = readdirSync(PPTX_FIXTURES)
   .filter((f) => f.endsWith('.pptx'))
+  .sort();
+const xlsxNames = readdirSync(XLSX_FIXTURES)
+  .filter((f) => f.endsWith('.xlsx'))
   .sort();
 
 /** One validator finding, as `scripts/ooxml-validate/Program.cs` prints it. */
@@ -130,8 +133,7 @@ function added(before: readonly Finding[], after: readonly Finding[]): Finding[]
 function translateAndExport(name: string, bytes: Uint8Array) {
   const db = openProjectDb(join(work, `${name}.catdb`));
   createProject(db, { name: 'p', srcLang: 'en', tgtLang: 'fr' });
-  const assemble = name.endsWith('.pptx') ? assemblePptx : assembleFile;
-  const file = insertFile(db, name, assemble(bytes, rulesFor('en')), {
+  const file = insertFile(db, name, assembleNamed(name, bytes, rulesFor('en')), {
     actor: TEST_ACTOR,
   });
   let translated = 0;
@@ -208,6 +210,13 @@ describe('differential OOXML validation of translated exports', () => {
   it('adds no validator finding the original did not already have, on every PPTX', () => {
     expect(pptxNames.length).toBeGreaterThanOrEqual(2);
     const report = addedFindings(PPTX_FIXTURES, pptxNames);
+    expect(report, shownOf(report)).toEqual([]);
+  }, 280_000);
+
+  // XLSX (issue #169, `v1-spec.md` §3.10): the same question over the workbooks.
+  it('adds no validator finding the original did not already have, on every XLSX', () => {
+    expect(xlsxNames.length).toBeGreaterThanOrEqual(2);
+    const report = addedFindings(XLSX_FIXTURES, xlsxNames);
     expect(report, shownOf(report)).toEqual([]);
   }, 280_000);
 

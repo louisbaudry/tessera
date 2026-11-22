@@ -231,7 +231,7 @@ function AddFiles({ project, onAdded }: { project: string; onAdded: () => void }
       <label className="file-button">
         <input
           type="file"
-          accept=".docx,.pptx,.xlf,.xliff"
+          accept=".docx,.pptx,.xlsx,.xlf,.xliff"
           multiple
           disabled={progress !== null}
           onChange={(e) => {

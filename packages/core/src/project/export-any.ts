@@ -8,13 +8,13 @@
 import type { ProjectFile } from '../docx/document.js';
 import type { Segment } from '../model/segment.js';
 import { exportProjectFile, type ExportedFile } from './export.js';
-import { PPTX_FORMAT } from './ooxml-format.js';
+import { PPTX_FORMAT, XLSX_FORMAT } from './ooxml-format.js';
 import { exportXliffFile, type XliffExportOptions } from './export-xliff.js';
 
 /**
  * Renders `file` back to its own format with the segments' targets in.
- * `options` are the XLIFF export's; a DOCX or PPTX has no state to write, so
- * the other two kinds ignore them (the caller says so when it records them).
+ * `options` are the XLIFF export's; a DOCX, PPTX or XLSX has no state to write,
+ * so the other kinds ignore them (the caller says so when it records them).
  */
 export function exportFileBytes(
   file: ProjectFile,
@@ -26,6 +26,8 @@ export function exportFileBytes(
       return exportXliffFile(file, segments, options);
     case 'pptx':
       return exportProjectFile(file, segments, PPTX_FORMAT);
+    case 'xlsx':
+      return exportProjectFile(file, segments, XLSX_FORMAT);
     case 'docx':
       return exportProjectFile(file, segments);
   }

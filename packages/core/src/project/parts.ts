@@ -45,6 +45,27 @@ export function toPptxPartName(part: DocPart): string {
   throw new Error(`unrecognised presentation part: "${part as string}"`);
 }
 
+const SHEET_PART_RE = /^xl\/worksheets\/sheet(\d+)\.xml$/;
+
+/**
+ * Maps an XLSX package part path to the `DocPart` the project schema stores
+ * (`planning/v1-spec.md` §3.10): the shared strings, or a sheet that holds
+ * inline strings.
+ */
+export function toXlsxDocPart(part: string): DocPart {
+  if (part === 'xl/sharedStrings.xml') return 'strings';
+  const sheet = SHEET_PART_RE.exec(part);
+  if (sheet) return `sheet${Number(sheet[1])}`;
+  throw new Error(`unrecognised translatable part: "${part}"`);
+}
+
+/** The inverse of {@link toXlsxDocPart}. */
+export function toXlsxPartName(part: DocPart): string {
+  if (part === 'strings') return 'xl/sharedStrings.xml';
+  if (part.startsWith('sheet')) return `xl/worksheets/${part}.xml`;
+  throw new Error(`unrecognised workbook part: "${part as string}"`);
+}
+
 /** The inverse: the package part path a stored `DocPart` came from. */
 export function toPartName(part: DocPart): string {
   if (part === 'document') return 'word/document.xml';

@@ -49,6 +49,33 @@ describe('describeFormat', () => {
     expect(describeFormat(placeholder('<sc id="3"/>'))).toBe('sc');
   });
 
+  it('names an XLSX run by its formatting, and a line break in a cell', () => {
+    const run = (rPr: string): FormatEntry => ({
+      id: 1,
+      kind: 'other',
+      visible: true,
+      placement: 'run',
+      open: `<r>${rPr}`,
+      close: '</r>',
+    });
+    expect(describeFormat(run('<rPr><b/><i val="true"/><sz val="11"/></rPr>'))).toBe(
+      'bold italic',
+    );
+    expect(describeFormat(run('<rPr><u/><strike/></rPr>'))).toBe(
+      'underline strikethrough',
+    );
+    expect(describeFormat(run('<rPr><vertAlign val="superscript"/></rPr>'))).toBe(
+      'superscript',
+    );
+    // Switched off, or only a font: nothing worth naming, so the tag's own kind.
+    expect(describeFormat(run('<rPr><b val="0"/><u val="none"/></rPr>'))).toBe('other');
+    expect(describeFormat(run('<rPr><sz val="11"/><rFont val="Calibri"/></rPr>'))).toBe(
+      'other',
+    );
+    // A cell's line break is a character: its tag holds the character itself.
+    expect(describeFormat({ ...placeholder('\n'), kind: 'br' })).toBe('line break');
+  });
+
   it('names a PPTX run by its formatting, and a break or field by what it shows', () => {
     const run = (rPr: string): FormatEntry => ({
       id: 1,

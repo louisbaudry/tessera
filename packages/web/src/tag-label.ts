@@ -11,6 +11,7 @@
  * hyperlinks, and the placeholders `tokenizeRegion` makes visible.
  */
 import type { FormatEntry } from '@cat-tool/core';
+import { LINE_BREAK_OPEN } from '@cat-tool/core/model';
 
 /** Run properties by element, in the order they are named. */
 const RUN_FEATURES: ReadonlyArray<readonly [string, string]> = [
@@ -162,6 +163,29 @@ function describeDrawingPlaceholder(xml: string): string {
   }
 }
 
+/** Words for a spreadsheet run (`<r><rPr>…`, XLSX, `v1-spec.md` §3.10): its property elements. */
+function describeSheetRun(open: string): string {
+  // On unless the element says off: `<b/>` and `<b val="true"/>` are bold, `<b val="0"/>` is not.
+  const val = (name: string): string | undefined => {
+    const tag = new RegExp(`<${name}(?:\\s[^>]*)?/?>`).exec(open)?.[0];
+    return tag === undefined ? undefined : (/\sval="([^"]*)"/.exec(tag)?.[1] ?? '');
+  };
+  const on = (name: string) => {
+    const v = val(name);
+    return v !== undefined && v !== '0' && v !== 'false';
+  };
+  const words: string[] = [];
+  if (on('b')) words.push('bold');
+  if (on('i')) words.push('italic');
+  const underline = val('u');
+  if (underline !== undefined && underline !== 'none') words.push('underline');
+  if (on('strike')) words.push('strikethrough');
+  const vertical = val('vertAlign');
+  if (vertical === 'superscript') words.push('superscript');
+  if (vertical === 'subscript') words.push('subscript');
+  return words.join(' ');
+}
+
 /**
  * The words for a tag's format: `bold italic`, `link`, `footnote`,
  * `field PAGE`. A tag the table cannot explain is `unknown tag`.
@@ -175,6 +199,10 @@ export function describeFormat(format: FormatEntry | undefined): string {
   if (format.open.startsWith('<a:r>'))
     return describeDrawingRun(format.open) || format.kind;
   if (/^<a:/.test(format.open)) return describeDrawingPlaceholder(format.open);
+  // XLSX (issue #169): a run is `<r>` with no prefix, and a cell's line break is a
+  // character, so its tag's XML is the character (`LINE_BREAK_OPEN`).
+  if (format.open === LINE_BREAK_OPEN) return 'line break';
+  if (format.open.startsWith('<r>')) return describeSheetRun(format.open) || format.kind;
   switch (format.placement) {
     case 'run': {
       const rPr =

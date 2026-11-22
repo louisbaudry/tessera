@@ -44,6 +44,9 @@ const REQUIRED_PARTS = ['[Content_Types].xml', 'word/document.xml'] as const;
 /** Parts every PPTX must have (`planning/v1-spec.md` §3.9). */
 const PPTX_REQUIRED_PARTS = ['[Content_Types].xml', 'ppt/presentation.xml'] as const;
 
+/** Parts every XLSX must have (`planning/v1-spec.md` §3.10). */
+const XLSX_REQUIRED_PARTS = ['[Content_Types].xml', 'xl/workbook.xml'] as const;
+
 export function readDocx(bytes: Uint8Array): DocxPackage {
   return readPackage(bytes, REQUIRED_PARTS);
 }
@@ -51,6 +54,11 @@ export function readDocx(bytes: Uint8Array): DocxPackage {
 /** A PPTX read the same way: parts and their order, nothing parsed. */
 export function readPptx(bytes: Uint8Array): DocxPackage {
   return readPackage(bytes, PPTX_REQUIRED_PARTS);
+}
+
+/** An XLSX read the same way: parts and their order, nothing parsed. */
+export function readXlsx(bytes: Uint8Array): DocxPackage {
+  return readPackage(bytes, XLSX_REQUIRED_PARTS);
 }
 
 function readPackage(bytes: Uint8Array, required: readonly string[]): DocxPackage {
@@ -85,6 +93,11 @@ export function writeDocx(pkg: DocxPackage): Uint8Array {
 /** The inverse of {@link readPptx}. */
 export function writePptx(pkg: DocxPackage): Uint8Array {
   return writePackage(pkg, PPTX_REQUIRED_PARTS);
+}
+
+/** The inverse of {@link readXlsx}. */
+export function writeXlsx(pkg: DocxPackage): Uint8Array {
+  return writePackage(pkg, XLSX_REQUIRED_PARTS);
 }
 
 function writePackage(pkg: DocxPackage, required: readonly string[]): Uint8Array {

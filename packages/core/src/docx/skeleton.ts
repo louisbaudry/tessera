@@ -56,7 +56,8 @@ export class SkeletonError extends Error {
  */
 export interface SkeletonDialect {
   readonly paragraph: string;
-  readonly props: string;
+  /** Absent where a paragraph has no properties element (a spreadsheet string, §3.10). */
+  readonly props?: string;
   readonly text: string;
   /**
    * Spans of a region whose text is not read: text a field regenerates (a slide
@@ -78,6 +79,28 @@ export const DRAWINGML_DIALECT: SkeletonDialect = {
   props: 'a:pPr',
   text: 'a:t',
   skip: /<a:fld\b[\s\S]*?<\/a:fld>/g,
+};
+
+/**
+ * What is common to a spreadsheet's two kinds of string (`planning/v1-spec.md`
+ * §3.10): no properties element, text in `t`, and a phonetic guide (`rPh`)
+ * whose `t` is a reading of the text, never part of it.
+ */
+const SPREADSHEET_TEXT = {
+  text: 't',
+  skip: /<rPh\b[\s\S]*?<\/rPh>/g,
+} as const;
+
+/** SpreadsheetML shared strings: one `si` of `xl/sharedStrings.xml` is one paragraph. */
+export const SHARED_STRING_DIALECT: SkeletonDialect = {
+  paragraph: 'si',
+  ...SPREADSHEET_TEXT,
+};
+
+/** SpreadsheetML inline strings: the `is` of a cell that holds its own text. */
+export const INLINE_STRING_DIALECT: SkeletonDialect = {
+  paragraph: 'is',
+  ...SPREADSHEET_TEXT,
 };
 
 const marker = (key: string): string => `<!--cat:${key}-->`;
@@ -119,7 +142,9 @@ export function extractSkeleton(
     return { part, skeleton: xml, regions: [] };
   }
   const propsAt = new Map(
-    scanElements(xml, new Set([dialect.props])).map((pr) => [pr.start, pr]),
+    (dialect.props === undefined ? [] : scanElements(xml, new Set([dialect.props]))).map(
+      (pr) => [pr.start, pr],
+    ),
   );
 
   // Assign keys in document order so `ord` is stable across runs.

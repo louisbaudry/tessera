@@ -18,8 +18,6 @@
  */
 
 import { type ProjectFile, type Replacements } from '../docx/document.js';
-import { readDocx, readPptx } from '../docx/package.js';
-import { renderTokens } from '../docx/render.js';
 import type { Segment } from '../model/segment.js';
 import type { TokenizedRegion } from '../model/token.js';
 import { mergeSegments } from '../segment/edit.js';
@@ -90,7 +88,7 @@ export function foldSegments(
     const folded = group
       .map(contribution)
       .reduce((acc, next) => mergeSegments(acc, next, { separator: ' ' }));
-    const xml = renderTokens(folded.tokens, folded.formats, format.render);
+    const xml = format.render(folded.tokens, folded.formats);
 
     const first = group[0]!;
     const partName = format.toPartName(first.part);
@@ -136,8 +134,6 @@ export function exportProjectFile(
     );
   }
   const { replacements, summary } = foldSegments(segments, format);
-  const pkg =
-    format.kind === 'pptx' ? readPptx(file.originalBlob) : readDocx(file.originalBlob);
-  const doc = { pkg, skeletons: file.skeleton };
+  const doc = { pkg: format.readPackage(file.originalBlob), skeletons: file.skeleton };
   return { bytes: format.exportDoc(doc, replacements), summary };
 }
