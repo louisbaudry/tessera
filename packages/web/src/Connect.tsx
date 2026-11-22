@@ -38,7 +38,7 @@ export function Connect({ request }: { request: ConnectRequest }) {
   if (loaded.state === 'error') {
     return (
       <div className="page connect">
-        <h2>Connect a chat assistant</h2>
+        <h1>Connect a chat assistant</h1>
         <p className="error">
           This request cannot be used. Start again from your chat assistant.
         </p>
@@ -48,7 +48,7 @@ export function Connect({ request }: { request: ConnectRequest }) {
   const client = loaded.data;
   return (
     <div className="page connect">
-      <h2>Connect a chat assistant</h2>
+      <h1>Connect a chat assistant</h1>
       <p>
         An application that calls itself <strong>{client.clientName}</strong> asks to
         connect to your account. That name is its own and has not been checked.

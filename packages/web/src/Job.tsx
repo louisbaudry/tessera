@@ -74,10 +74,10 @@ function Job({
   return (
     <div className="page job">
       <header>
-        <h2>
+        <h1>
           {job.project}{' '}
           <span className={`chip status-${job.status}`}>{STATUS_LABEL[job.status]}</span>
-        </h2>
+        </h1>
         <p className="muted">
           Deadline: {formatDeadline(job.deadline)} {'·'} offered{' '}
           {formatDeadline(job.offeredAt)}
@@ -86,13 +86,13 @@ function Job({
 
       {job.instructions !== null && (
         <section aria-label="Instructions">
-          <h3>Instructions</h3>
+          <h2>Instructions</h2>
           <p className="instructions">{job.instructions}</p>
         </section>
       )}
 
       <section aria-label="Size and rates">
-        <h3>What is in it</h3>
+        <h2>What is in it</h2>
         {offer.analysis === null ? (
           <p className="muted">The word count was not recorded for this job.</p>
         ) : (
@@ -144,7 +144,7 @@ function Job({
 
       {offer.source !== null && offer.source.preview.length > 0 && (
         <section aria-label="Source preview">
-          <h3>A look at the source</h3>
+          <h2>A look at the source</h2>
           <ol className="preview">
             {offer.source.preview.map((text, i) => (
               <li key={i}>{text}</li>
@@ -178,7 +178,7 @@ function Payable({ payable }: { payable: LockedPayable }) {
     payable.currency === null ? '—' : formatMicros(micros, payable.currency);
   return (
     <section aria-label="Final amount">
-      <h3>Final amount</h3>
+      <h2>Final amount</h2>
       <table className="tier-table">
         <thead>
           <tr>

@@ -249,9 +249,33 @@ button.link {
   font-size: 0.85rem;
 }
 
+/* Each signed-in screen's title is its level-1 heading and its sections level 2 (issue #391,
+   audit O3). The sizes are written out so a title looks as the level-2 heading it was, and so a
+   browser's own smaller style for an h1 inside a section never applies. A screen with its own
+   title rule (`.list`, `.job`, `.vendors`, the pay screens, the grid) overrides this one. */
+.screen h1 {
+  font-size: 1.5em;
+  margin: 0.83em 0;
+}
+
+.list h1,
 .list h2 {
   font-size: 1.15rem;
   margin: 0 0 0.75rem;
+}
+
+/* Read by a screen reader, never drawn: a title for a screen that shows none, and the
+   editor's announcements (issue #391). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* --- the grid ----------------------------------------------------- */
@@ -283,6 +307,13 @@ button.link {
   gap: 1rem;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
+}
+
+/* The file's name is the screen's title (audit O3), drawn as the bold name it always was. */
+.grid-meta h1 {
+  margin: 0;
+  font: inherit;
+  font-weight: bolder;
 }
 
 .grid-meta .restructure {
@@ -1070,7 +1101,7 @@ button.chip-button:hover {
 .chip.status-declined {
   color: var(--status-locked);
 }
-.job h2 {
+.job h1 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1078,7 +1109,7 @@ button.chip-button:hover {
   font-size: 1.25rem;
   margin: 0 0 0.25rem;
 }
-.job h3 {
+.job h2 {
   font-size: 1rem;
   margin: 0 0 0.5rem;
 }
@@ -1158,7 +1189,7 @@ button.chip-button:hover {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
 }
-.gp-proposals h3 {
+.gp-proposals h2 {
   margin: 0 0 0.35rem;
   font-size: 0.9rem;
 }
@@ -1183,8 +1214,8 @@ button.chip-button:hover {
   align-content: start;
   gap: 1rem;
 }
-.payables h2,
-.payments h2 {
+.payables h1,
+.payments h1 {
   font-size: 1.25rem;
   margin: 0;
 }
@@ -1272,11 +1303,11 @@ button.chip-button:hover {
   align-content: start;
   gap: 1rem;
 }
-.vendors h2 {
+.vendors h1 {
   font-size: 1.25rem;
   margin: 0;
 }
-.vendors h3 {
+.vendors h2 {
   font-size: 1.05rem;
   margin: 0 0 0.5rem;
 }
@@ -1333,7 +1364,7 @@ button.chip-button:hover {
 .rp-pad p {
   margin: 0 0 0.6rem;
 }
-.rp-group h3 {
+.rp-group h2 {
   font-size: 0.9rem;
   margin: 0 0 0.35rem;
 }
@@ -1447,8 +1478,9 @@ button.chip-button:hover {
   border-radius: 10px;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
 }
-.add-term h3 {
+.add-term h2 {
   margin: 0;
+  font-size: 1.17em;
 }
 .add-term label {
   display: grid;
@@ -1490,8 +1522,9 @@ button.chip-button:hover {
   overflow-y: auto;
   margin: 0;
 }
-.concordance h3 {
+.concordance h2 {
   margin: 0;
+  font-size: 1.17em;
 }
 .concordance-ask {
   display: flex;
@@ -1569,8 +1602,9 @@ button.chip-button:hover {
   border-radius: 10px;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
 }
-.find-replace h3 {
+.find-replace h2 {
   margin: 0;
+  font-size: 1.17em;
 }
 .find-replace > label {
   display: grid;
@@ -1695,6 +1729,13 @@ button.chip-button:hover {
   flex-direction: row;
   align-items: center;
   gap: 0.5rem;
+}
+/* The staff and account screens' sections were level 3 at the browser's own size; as level 2
+   (audit O3) they keep it, over the form and list rules above. */
+.staff h2,
+.account h2 {
+  font-size: 1.17em;
+  margin: 1em 0;
 }
 .account section + section {
   margin-top: 2rem;

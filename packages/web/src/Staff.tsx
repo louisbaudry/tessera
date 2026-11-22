@@ -37,7 +37,7 @@ export function Staff() {
   const changed = () => setVersion((v) => v + 1);
   return (
     <div className="page staff">
-      <h2>Staff</h2>
+      <h1>Staff</h1>
       <Invite
         onInvited={(email, link) => {
           setFresh({ email, link });
@@ -68,7 +68,7 @@ function Invite({ onInvited }: { onInvited: (email: string, link: string) => voi
 
   return (
     <form className="panel form" onSubmit={(e) => void submit(e)}>
-      <h3>Invite a colleague</h3>
+      <h2>Invite a colleague</h2>
       <p className="muted">
         Enter their address and choose a role. You get a link to pass on, valid for{' '}
         {INVITATION_TTL_DAYS} days and good for one use: whoever opens it sets a password
@@ -118,7 +118,7 @@ function FreshLink({ email, link }: { email: string; link: string }) {
   };
   return (
     <section className="panel fresh-link" aria-label="New staff link">
-      <h3>Link for {email}</h3>
+      <h2>Link for {email}</h2>
       <p className="muted">
         Copy it now and send it yourself. It is not shown again; if it is lost, invite the
         address again.
@@ -147,9 +147,9 @@ function StaffLists({ onChanged }: { onChanged: () => void }) {
   return (
     <>
       <section className="list" aria-label="Your staff">
-        <h3>
+        <h2>
           Your staff <span className="muted">{staff.length}</span>
-        </h3>
+        </h2>
         <table className="ledger" aria-label="Your staff">
           <thead>
             <tr>
@@ -173,7 +173,7 @@ function StaffLists({ onChanged }: { onChanged: () => void }) {
       </section>
       {invitations.length > 0 && (
         <section className="list" aria-label="Staff invitations">
-          <h3>Invitations</h3>
+          <h2>Invitations</h2>
           <table className="ledger" aria-label="Staff invitations">
             <thead>
               <tr>

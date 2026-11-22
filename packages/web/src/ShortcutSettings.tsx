@@ -73,7 +73,7 @@ export function ShortcutSettings() {
 
   return (
     <section className="shortcuts">
-      <h3>Editor keys</h3>
+      <h2>Editor keys</h2>
       <p className="muted">
         Kept in this browser only. A key needs Ctrl, Alt or Meta, and the browser&apos;s
         and editor&apos;s own keys (copy, paste, undo, Esc) cannot be taken.

@@ -45,6 +45,9 @@
  */
 import type { QaIssue, Segment, Token } from '@cat-tool/core';
 
+/** Which request of a segment an answer is for: a write of its text, a confirm, a draft taken. */
+export type WriteKind = 'save' | 'confirm' | 'accept';
+
 export interface SaveResult {
   readonly segment: Segment;
   /** The segments whose QA reran with the write, and their issues now. */
@@ -65,14 +68,22 @@ export interface SaveQueueDeps {
   ) => Promise<SaveResult>;
   /** The version of a segment this page loaded, before any write of its own. */
   readonly loadedVersion: (segmentId: number) => string | undefined;
-  /** `latest`: no later write of the segment was asked for since this one. */
-  readonly onSaved: (segmentId: number, result: SaveResult, latest: boolean) => void;
+  /**
+   * `latest`: no later write of the segment was asked for since this one. `kind` says
+   * which request was answered: a confirm landing is said aloud, a save is not (`announce.ts`).
+   */
+  readonly onSaved: (
+    segmentId: number,
+    result: SaveResult,
+    latest: boolean,
+    kind: WriteKind,
+  ) => void;
   /** `kind` says which request failed: a confirm's failure is not a save's. */
   readonly onFailed: (
     segmentId: number,
     error: unknown,
     latest: boolean,
-    kind: 'save' | 'confirm' | 'accept',
+    kind: WriteKind,
   ) => void;
   /**
    * Sends one confirm over the version the segment's last write returned,
@@ -106,6 +117,12 @@ export interface SaveQueue {
   whenIdle(segmentIds: readonly number[]): Promise<void>;
   /** The version of a segment the next write of it goes over. */
   version(segmentId: number): string | undefined;
+  /**
+   * The confirm or accept asked for and still waiting on this segment's writes, if any.
+   * Read from `onSaved`: a save answered with a confirm still to go is not the last word
+   * on the segment's status.
+   */
+  pending(segmentId: number): 'confirm' | 'accept' | undefined;
   /**
    * These segments were replaced or removed by a merge or split: what the
    * queue remembers of them (versions, the newest write) is of rows that
@@ -182,7 +199,7 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
           if (n > (versions.get(id)?.n ?? 0)) {
             versions.set(id, { updatedAt: result.segment.updatedAt, n });
           }
-          deps.onSaved(id, result, newest.get(id) === wrote);
+          deps.onSaved(id, result, newest.get(id) === wrote, kind);
         },
         (error: unknown) => deps.onFailed(id, error, newest.get(id) === wrote, kind),
       )
@@ -204,7 +221,7 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
           if (n > (versions.get(id)?.n ?? 0)) {
             versions.set(id, { updatedAt: result.segment.updatedAt, n });
           }
-          deps.onSaved(id, result, newest.get(id) === n);
+          deps.onSaved(id, result, newest.get(id) === n, 'save');
         },
         (error: unknown) => {
           confirming.delete(id);
@@ -220,6 +237,7 @@ export function createSaveQueue(deps: SaveQueueDeps): SaveQueue {
       return new Promise<void>((resolve) => idleWaiters.push({ ids, resolve }));
     },
     version: versionOf,
+    pending: (id) => confirming.get(id),
     forget(ids) {
       for (const id of ids) {
         versions.delete(id);

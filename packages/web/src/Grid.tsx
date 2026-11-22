@@ -7,6 +7,8 @@
  * it lists the file's findings, jumps to their segments and dismisses
  * them (backlog #33). The filter bar above it narrows the rows shown, and
  * the progress line counts segments and words confirmed (backlog #34).
+ * Two regions that are read and not drawn say a confirmation gained, lost
+ * or refused to a screen reader (issue #391, `announce.ts`).
  */
 import type { FormatEntry, QaIssue, Segment, SegmentStatus, Token } from '@cat-tool/core';
 import { isBlankTarget, withoutHiddenTags } from '@cat-tool/core/model';
@@ -43,6 +45,7 @@ import {
   type QaMark,
 } from './gutter.js';
 import { AddTermDialog } from './AddTermDialog.js';
+import { failedAnnouncement, savedAnnouncement } from './announce.js';
 import { ConcordanceDialog } from './ConcordanceDialog.js';
 import { FindReplaceDialog } from './FindReplaceDialog.js';
 import { draftFromSelection, type TermDraft, type TermSide } from './add-term.js';
@@ -110,6 +113,18 @@ interface SaveFailure {
   readonly message: string;
 }
 
+/** One thing said to a screen reader; `n` makes a repeat of the same words a new node. */
+interface Said {
+  readonly text: string;
+  readonly n: number;
+}
+
+/**
+ * How long an announcement stays in its region. Long enough to be read, short enough that
+ * someone reading the page afterwards does not meet a stale "Segment 12 confirmed".
+ */
+const ANNOUNCEMENT_MS = 7000;
+
 export function Grid({ project, fileId }: { project: string; fileId: number }) {
   // Bumped after a find-and-replace wrote segments: the grid loads them again (§7.8).
   const [reloads, setReloads] = useState(0);
@@ -170,6 +185,21 @@ function SegmentGrid({
   const [unsaved, setUnsaved] = useState<ReadonlyMap<number, SaveFailure>>(new Map());
   const [fullTags, setFullTags] = useState(loadFullTags);
   const [note, setNote] = useState<string | null>(null);
+  // What a row's badge shows a sighted translator, said (issue #391, audit N3): a
+  // confirmation gained or lost in the polite region, a failed write in the alert one.
+  // What is worth saying is `announce.ts`'s; a save that changes neither is silent.
+  const [said, setSaid] = useState<{
+    readonly status: Said | null;
+    readonly alert: Said | null;
+  }>({ status: null, alert: null });
+  useEffect(() => {
+    if (said.status === null && said.alert === null) return;
+    const timer = window.setTimeout(
+      () => setSaid({ status: null, alert: null }),
+      ANNOUNCEMENT_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [said]);
   const [qaOpen, setQaOpen] = useState(loadQaPanel);
   const [glossaryOpen, setGlossaryOpen] = useState(loadGlossaryPanel);
   const [resourcesOpen, setResourcesOpen] = useState(loadResourcesPanel);
@@ -244,6 +274,21 @@ function SegmentGrid({
   const [drafts] = useState(() =>
     createDrafts(browserStorage(), { account: data.account.id, project }),
   );
+  // The rows and their numbers as last drawn, for the answers that arrive later.
+  const segmentsNow = useRef(segments);
+  const shownNow = useRef(shown);
+  const positionsNow = useRef(positions);
+  useEffect(() => {
+    segmentsNow.current = segments;
+    shownNow.current = shown;
+    positionsNow.current = positions;
+  });
+  const numberOf = (segmentId: number): number | undefined => {
+    const at = positionsNow.current.get(segmentId);
+    return at === undefined ? undefined : at + 1;
+  };
+  const say = (channel: 'status' | 'alert', text: string) =>
+    setSaid((was) => ({ ...was, [channel]: { text, n: (was[channel]?.n ?? 0) + 1 } }));
   const [queue] = useState(() => {
     return createSaveQueue({
       send: (segmentId, tokens, baseUpdatedAt, urgent) =>
@@ -281,7 +326,20 @@ function SegmentGrid({
             return result;
           }),
       loadedVersion: (segmentId) => loadedVersions.current.get(segmentId),
-      onSaved: (segmentId, result, latest) => {
+      onSaved: (segmentId, result, latest, kind) => {
+        const spoken = savedAnnouncement({
+          position: numberOf(segmentId),
+          kind,
+          before: segmentsNow.current.find((s) => s.id === segmentId)?.status,
+          after: result.segment.status,
+          confirmFollows: queue.pending(segmentId) === 'confirm',
+          qa: result.rerun.includes(segmentId)
+            ? qaMarks(result.issues.filter((i) => i.segmentId === segmentId)).get(
+                segmentId,
+              )
+            : undefined,
+        });
+        if (spoken !== null) say('status', spoken);
         // The row takes what the server stored — unless a later edit of
         // it is still on its way, whose text the row already shows.
         setSegments((all) =>
@@ -327,6 +385,7 @@ function SegmentGrid({
                 ? `${err.message}: this edit was not saved. Reload the file to see the segment as it is now.`
                 : `Not saved: ${what}`;
         setUnsaved((all) => new Map(all).set(segmentId, { message }));
+        say('alert', failedAnnouncement(numberOf(segmentId), message));
       },
     });
   });
@@ -448,12 +507,6 @@ function SegmentGrid({
   // Ctrl+Enter: the editor has sent any change; the queue confirms after
   // it. The next segment opens at once — the answer, or a refusal shown on
   // the row, follows — and scrolls into view if it is not.
-  const segmentsNow = useRef(segments);
-  const shownNow = useRef(shown);
-  useEffect(() => {
-    segmentsNow.current = segments;
-    shownNow.current = shown;
-  });
   // Within the filter: the next segment still to do among those shown.
   const confirmAndAdvance = useCallback(
     (segmentId: number) => {
@@ -935,7 +988,8 @@ function SegmentGrid({
     <section className={fullTags ? 'grid full-tags' : 'grid'}>
       <div className="grid-main">
         <div className="grid-meta">
-          <strong>{file.file.relPath}</strong>
+          {/* The screen's title (audit O3): the file is what the screen is about. */}
+          <h1>{file.file.relPath}</h1>
           <span className="muted progress">
             <span title="Confirmed segments, of those to translate (locked ones are not)">
               {done.segments.confirmed.toLocaleString()} /{' '}
@@ -1134,6 +1188,14 @@ function SegmentGrid({
             }
           />
         )}
+      </div>
+      {/* Read, never drawn (audit N3). Both regions are in the page from the start and only
+          their text changes, which is what a screen reader listens for. */}
+      <div className="visually-hidden" role="status">
+        {said.status && <span key={said.status.n}>{said.status.text}</span>}
+      </div>
+      <div className="visually-hidden" role="alert">
+        {said.alert && <span key={said.alert.n}>{said.alert.text}</span>}
       </div>
       {paletteOpen && (
         <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />

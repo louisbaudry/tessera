@@ -28,7 +28,7 @@ export function Projects() {
   return (
     <div className="page">
       <section className="list">
-        <h2>Projects</h2>
+        <h1>Projects</h1>
         {projects.data.length === 0 ? (
           <p className="muted">No projects yet.</p>
         ) : (
@@ -175,12 +175,12 @@ export function ProjectFiles({ name }: { name: string }) {
   return (
     <div className="page">
       <section className="list">
-        <h2>
+        <h1>
           {project.name}{' '}
           <span className="muted">
             {project.srcLang} {'\u2192'} {project.tgtLang}
           </span>
-        </h2>
+        </h1>
         {files.length === 0 ? (
           <p className="muted">No files in this project.</p>
         ) : (

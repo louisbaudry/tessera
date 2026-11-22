@@ -32,7 +32,7 @@ export function Memories() {
   return (
     <div className="page">
       <section className="list">
-        <h2>Memories</h2>
+        <h1>Memories</h1>
         {memories.state === 'loading' && (
           <p className="muted">Loading memories{'\u2026'}</p>
         )}

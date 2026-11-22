@@ -44,7 +44,7 @@ export function Account({
 }) {
   return (
     <div className="page account">
-      <h2>Account</h2>
+      <h1>Account</h1>
       <LinkedSignIns returning={returning} />
       {staffRole === 'admin' && <Policy />}
       {staffRole !== null && <Connections />}
@@ -95,7 +95,7 @@ function LinkedSignIns({ returning }: { returning?: SsoFragment }) {
 
   return (
     <section>
-      <h3>Microsoft and Google sign-ins</h3>
+      <h2>Microsoft and Google sign-ins</h2>
       <IdentityList
         key={version}
         onChanged={() => setVersion((v) => v + 1)}
@@ -196,7 +196,7 @@ function Connections() {
   const [version, setVersion] = useState(0);
   return (
     <section>
-      <h3>Chat assistants</h3>
+      <h2>Chat assistants</h2>
       <ConnectionList key={version} onChanged={() => setVersion((v) => v + 1)} />
     </section>
   );
@@ -273,7 +273,7 @@ function Policy() {
   const loaded = useLoad(load);
   return (
     <section>
-      <h3>Single sign-on for staff</h3>
+      <h2>Single sign-on for staff</h2>
       {loaded.state === 'loading' && <p className="muted">Loading{'…'}</p>}
       {loaded.state === 'error' && <p className="error">{loaded.message}</p>}
       {loaded.state === 'done' && <PolicyForm initial={draftOf(loaded.data)} />}

@@ -35,7 +35,7 @@ export function GlossaryProposals({
 
   return (
     <section className="gp-proposals" aria-label="Proposed changes">
-      <h3>Proposed changes</h3>
+      <h2>Proposed changes</h2>
       <ul>
         {load.data.proposals.map((p) => (
           <li key={`${p.termId}:${p.lang}:${p.chosen}`}>

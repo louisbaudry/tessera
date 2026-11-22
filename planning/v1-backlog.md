@@ -4341,6 +4341,28 @@ rest of that range:
     shape. The application the client sees had been audited last; next time it goes first.
   - **The vendor's screens and the invitation page had nothing to fix** (fourth pass). Still unseen: a
     job's own screen, the staff invitation page, the chat assistant's consent page.
+  - **The three choices left on issue #391 were made** (2026-11-22, audit §10;
+    `web/src/announce.ts`, `Grid.tsx`, `save-queue.ts`, `styles.css`,
+    `e2e/{editor-announcements,screen-headings}.spec.ts`). Decided in the session, not by Louis,
+    each cheap to reverse. _Announcements:_ a confirmation is what is said (gained, lost,
+    refused) and any failed write; a plain save is silent, since one goes at every leave of a
+    segment. _Tags:_ left as they are read; the right reading is for someone who translates with
+    a screen reader to say, so it moved to issue #392. _Headings:_ each screen's title is its
+    level-1 heading, not the banner's name, and its sections moved up a level so none is skipped.
+    Stack: TypeScript (interface code; the card said so). What it taught:
+    - **"Looks as it did" was measured, not judged.** A script recorded every heading's computed
+      size, weight, margins and position on twenty-six screen states before and after; they were
+      identical but for the level. That is what made renumbering seventeen components' headings
+      safe to do in one change.
+    - **A stash that leaves a new file behind tests the new build.** The first run of the new
+      browser tests against the old code passed: the old sources did not compile beside an
+      untracked new module, so the bundle on disk was still the new one. The same trap as the
+      audit's own (read the build's result before the test's), met again; stash with `-u`.
+    - **The queue had to say which write was answered.** A confirm and a save both answer through
+      `onSaved`, and Ctrl+Enter on an edited, confirmed segment is a save then a confirm: without
+      `kind` and `pending`, that would be announced as a confirmation lost and then gained.
+    - Not verified: any screen reader. Whether a sentence per confirm is welcome to someone who
+      confirms hundreds of segments is the open question, and it is on issue #392.
 
 - **#122 · ~~Stale-translation advisor~~ · DONE — `core/src/glossary/stale.ts`, `db/src/tm/stale.ts` (`scanTmForStale`), op `glossary.scanTm` in `db/src/jobs/ops.ts`, `POST /api/tms/:slug/stale-scan` in `server/src/app.ts`, `web/src/{StaleCheck.tsx,stale-scan.ts}`.**
   From the 2026-10-08 competitor sweep (issue #182, `competitive-research.md`): after a glossary ruling,

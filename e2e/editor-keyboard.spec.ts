@@ -4,39 +4,12 @@
  * Enter, Escape hands focus back to the grid at the same segment, a dialog keeps Tab inside
  * it, and the grid is one named table with its header.
  *
- * It makes its own project, so it relies on nothing the sign-in tests created.
+ * Each test makes its own project (`editor.ts`), so it relies on nothing the sign-in tests
+ * created.
  */
-import { fileURLToPath } from 'node:url';
+import { expect, test } from '@playwright/test';
 
-import { expect, type Page, test } from '@playwright/test';
-
-const FIXTURE = fileURLToPath(
-  new URL('../fixtures/docx/prose-short.docx', import.meta.url),
-);
-
-/** Signs in and opens the one file of a project made for this test. */
-async function openEditor(page: Page, slug: string): Promise<void> {
-  const email = process.env.E2E_EMAIL;
-  const password = process.env.E2E_PASSWORD;
-  if (!email || !password) throw new Error('E2E_EMAIL and E2E_PASSWORD are not set');
-  await page.goto('/');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByLabel('Title').fill(`Keyboard ${slug}`);
-  await page.getByLabel('Name its address').fill(slug);
-  await page.getByLabel('Source language').fill('en');
-  await page.getByLabel('Target language').fill('de');
-  await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page).toHaveURL(new RegExp(`#/p/${slug}$`));
-  await page.locator('input[type=file]').first().setInputFiles(FIXTURE);
-  await page.getByRole('link', { name: 'prose-short.docx' }).click();
-  // The row group, not the table's name: the test of the name is one test, not all three.
-  await expect(page.getByRole('rowgroup')).toBeVisible();
-}
-
-/** ProseMirror undoes a caret moved in the first 200 ms after it takes focus (CLAUDE.md). */
-const EDITOR_SETTLE_MS = 250;
+import { EDITOR_SETTLE_MS, openEditor } from './editor.js';
 
 test('the grid is one named table that holds its header', async ({ page }) => {
   await openEditor(page, 'e2e-keyboard-table');

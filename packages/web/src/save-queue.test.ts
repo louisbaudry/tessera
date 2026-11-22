@@ -20,6 +20,9 @@ function harness() {
   const answers: Array<(ok: boolean) => void> = [];
   const saved: string[] = [];
   const latest: boolean[] = [];
+  const kinds: string[] = [];
+  // What `pending` said as each answer arrived: read inside `onSaved`, as the grid reads it.
+  const pendingAtAnswer: Array<string | undefined> = [];
   const failed: Array<[number, boolean, string]> = [];
   const confirms: Array<{ id: number; base: string | undefined }> = [];
   const accepts: Array<{ id: number; base: string | undefined }> = [];
@@ -37,9 +40,11 @@ function harness() {
       );
     },
     loadedVersion: () => 'v0',
-    onSaved: (_id, result, isLatest) => {
+    onSaved: (id, result, isLatest, kind) => {
       saved.push(result.segment.updatedAt);
       latest.push(isLatest);
+      kinds.push(kind);
+      pendingAtAnswer.push(queue.pending(id));
     },
     onFailed: (id, _error, isLatest, kind) => failed.push([id, isLatest, kind]),
     confirm: (id, base) => {
@@ -69,7 +74,18 @@ function harness() {
     answers.splice(which, 1)[0]!(ok);
     await new Promise((r) => setTimeout(r, 0));
   };
-  return { queue, sent, confirms, accepts, saved, latest, failed, answer };
+  return {
+    queue,
+    sent,
+    confirms,
+    accepts,
+    saved,
+    latest,
+    kinds,
+    pendingAtAnswer,
+    failed,
+    answer,
+  };
 }
 
 describe('createSaveQueue', () => {
@@ -287,6 +303,44 @@ describe('createSaveQueue confirm', () => {
     h.queue.confirm(1);
     await h.answer(false);
     expect(h.failed).toEqual([[1, true, 'confirm']]);
+  });
+});
+
+describe('createSaveQueue — which write an answer is for (issue #391)', () => {
+  it('names the request each answer is for', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.confirm(1);
+    await h.answer();
+    await h.answer();
+    h.queue.accept(2);
+    await h.answer();
+    expect(h.kinds).toEqual(['save', 'confirm', 'accept']);
+  });
+
+  it('says a confirm still waits when the save before it answers, and not after', async () => {
+    // Ctrl+Enter on an edited segment: the save's answer is not the last word on its status.
+    const h = harness();
+    h.queue.save(1, text('a'));
+    h.queue.confirm(1);
+    expect(h.queue.pending(1)).toBe('confirm');
+    await h.answer();
+    await h.answer();
+    expect(h.pendingAtAnswer).toEqual(['confirm', undefined]);
+    expect(h.queue.pending(1)).toBeUndefined();
+  });
+
+  it('has nothing pending for a save alone, or once an edit dropped the confirm', async () => {
+    const h = harness();
+    h.queue.save(1, text('a'));
+    expect(h.queue.pending(1)).toBeUndefined();
+    h.queue.confirm(1);
+    h.queue.save(1, text('b'));
+    expect(h.queue.pending(1)).toBeUndefined();
+    await h.answer();
+    await h.answer();
+    expect(h.pendingAtAnswer).toEqual([undefined, undefined]);
+    expect(h.confirms).toEqual([]);
   });
 });
 
