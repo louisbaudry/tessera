@@ -99,7 +99,10 @@ describe('openPortalDb', () => {
     );
 
     setWordCountAndPrice(db, order.id, 1000, 120, { actor: TEST_ACTOR });
-    const approved = setStatus(db, order.id, 'approved', { actor: TEST_ACTOR });
+    const approved = setStatus(db, order.id, 'approved', {
+      actor: TEST_ACTOR,
+      note: 'by email',
+    });
     expect(approved.status).toBe('approved');
 
     expect(() => setStatus(db, order.id, 'delivered', { actor: TEST_ACTOR })).toThrow();

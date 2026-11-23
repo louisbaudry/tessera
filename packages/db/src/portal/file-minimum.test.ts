@@ -269,7 +269,11 @@ describe('setWordCountAndPrice with a count per file', () => {
       actor: TEST_ACTOR,
       fileWordCounts: counts([id, 90]),
     });
-    setStatus(db, order.id, 'approved', { actor: TEST_ACTOR, seenPrice: 25 });
+    setStatus(db, order.id, 'approved', {
+      actor: TEST_ACTOR,
+      seenPrice: 25,
+      note: 'by email',
+    });
     expect(() =>
       setWordCountAndPrice(db, order.id, 900, 250, {
         actor: TEST_ACTOR,

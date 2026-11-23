@@ -5048,6 +5048,31 @@ decision; TypeScript, not Rust/Wasm, since nothing here has a measured cost. Wha
 - Not built: an invoice (Epic 13, `e-invoicing-spec.md` §10.3, §10.4), a currency per client, a calendar grid or
   iCalendar export, deadlines from CAT projects. Not verified: the quote printed from a real browser.
 
+**#223 · ~~The admin enters an order on a client's behalf~~ · DONE — `portal-core/src/order.ts` (`recordedApprovalNote`), `db/portal/orders.ts` (`createOrder`, `setStatus`), `portal-server/src/app.ts` (`placeOrder`, `POST /api/admin/orders`), `portal-server/src/public/admin.js`**
+(issue #221, 2026-11-23; design in `portal-v0-spec.md` §2a)
+
+For a client who sends requests by email and will not fill in a form. Louis picked the card and answered its
+three questions one at a time: TypeScript (asked first, no Rust/Wasm: a route, a rule and a form); an approval the
+admin records must say how the client gave it; no email to the client when an order is entered for them.
+
+- **One function places an order, for both routes.** The client's route was a hundred lines of parsing, counting,
+  update check and storing; the admin's would have been a copy. `placeOrder` is that body once, so the two cannot
+  drift in what they check. The admin's route adds a `clientId` and takes away the notice to the admin.
+- **The actor says who did it, and the note follows the actor.** `createOrder` writes "order entered by the admin
+  on the client's behalf" when the actor is an admin, so a route cannot forget to say so.
+- **The admin could already approve, silently.** The card asked for "its own event" for an admin-recorded approval;
+  reading the code showed the admin's status button had always moved a priced order to `approved` with no note at
+  all. So the change is a tightening of every admin approval, not a new path: `setStatus` refuses an approval from
+  any actor but the client's without an account of how the client gave it, and the note reads "approval recorded
+  by the admin: ...". No migration: `order_event.note` was already free text.
+- **Three rules were broken on purpose** (an approval with no account, a creation note that never names the admin,
+  the admin's route writing as the client): each failed its own tests. The first versions of those tests were
+  written with the code and passed at once, which proved nothing until then.
+- Seen in a browser on a throwaway portal: an order entered from the admin page, priced, an approval refused with
+  "say how the client approved", then recorded with the price shown, and the order listed at the client's link.
+- Not built: a notice to the client (decided against), the client's email attached as evidence, a marker on the
+  client's page. Not verified: the form with a real email attachment, and any browser but Chromium.
+
 ### Cross-cutting — Auditability (spec'd 2026-09-23, #55–#58 done 2026-09-24)
 
 Design in `planning/audit-spec.md`. Added "from the get-go", ahead of the

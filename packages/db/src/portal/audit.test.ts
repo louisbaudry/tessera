@@ -9,7 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { PORTAL_AUDIT_ACTIONS, type AuditActor } from '@cat-tool/core';
-import { hashPassword, OrderPricingError } from '@cat-tool/portal-core';
+import {
+  hashPassword,
+  OrderApprovalError,
+  OrderPricingError,
+} from '@cat-tool/portal-core';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -26,6 +30,7 @@ import {
   createAdminUser,
   createClient,
   createOrder,
+  getOrder,
   insertDeliveredFile,
   insertSourceFile,
   listOrderEvents,
@@ -90,10 +95,72 @@ describe('order_event', () => {
     ]);
   });
 
+  it('takes an approval from anyone but the client only with how the client gave it (issue #221)', () => {
+    const order = newOrder();
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
+    // No account of how, or a blank one: refused, whoever the non-client actor is.
+    expect(() => setStatus(db, order.id, 'approved', { actor: ADMIN })).toThrow(
+      OrderApprovalError,
+    );
+    expect(() =>
+      setStatus(db, order.id, 'approved', { actor: ADMIN, note: '  ' }),
+    ).toThrow(OrderApprovalError);
+    expect(() =>
+      setStatus(db, order.id, 'approved', { actor: GATE, note: undefined }),
+    ).toThrow(OrderApprovalError);
+    expect(getOrder(db, order.id)?.status).toBe('submitted');
+
+    // And still bound to the price the admin's page showed, when it says which.
+    expect(() =>
+      setStatus(db, order.id, 'approved', {
+        actor: ADMIN,
+        note: 'by email, 21 November',
+        seenPrice: 100,
+      }),
+    ).toThrow(OrderPricingError);
+
+    setStatus(db, order.id, 'approved', {
+      actor: ADMIN,
+      note: 'by email, 21 November',
+      seenPrice: 120,
+    });
+    expect(
+      listOrderEvents(db, order.id).map((e) => [e.toStatus, e.actor, e.note]),
+    ).toEqual([
+      ['submitted', 'client:1', 'order created'],
+      ['approved', 'admin:1', 'approval recorded by the admin: by email, 21 November'],
+    ]);
+  });
+
+  it("leaves a client's own approval as it was: no account needed", () => {
+    const order = newOrder();
+    setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
+    setStatus(db, order.id, 'approved', { actor: CLIENT, seenPrice: 120 });
+    expect(listOrderEvents(db, order.id).at(-1)).toMatchObject({
+      toStatus: 'approved',
+      actor: 'client:1',
+      note: null,
+    });
+  });
+
+  it('says so when an admin, not the client, entered the order (issue #221)', () => {
+    const client = createClient(db, 'Ada', 'ada@example.com', 'tok');
+    const entered = createOrder(
+      db,
+      { clientId: client.id, srcLang: 'en', tgtLangs: ['fr'] },
+      { actor: ADMIN },
+    );
+    expect(
+      listOrderEvents(db, entered.id).map((e) => [e.toStatus, e.actor, e.note]),
+    ).toEqual([
+      ['submitted', 'admin:1', "order entered by the admin on the client's behalf"],
+    ]);
+  });
+
   it('aborts an UPDATE and a DELETE, and lets only a label erasure through', () => {
     const order = newOrder();
     setWordCountAndPrice(db, order.id, 1000, 120, { actor: ADMIN });
-    setStatus(db, order.id, 'approved', { actor: ADMIN });
+    setStatus(db, order.id, 'approved', { actor: ADMIN, note: 'by email' });
     expect(() =>
       db.prepare("UPDATE order_event SET to_status = 'cancelled'").run(),
     ).toThrow(/append-only/);

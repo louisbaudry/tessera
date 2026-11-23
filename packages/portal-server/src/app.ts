@@ -84,6 +84,7 @@ import {
   FileWordCountsRequiredError,
   generateSessionToken,
   InvalidTransitionError,
+  OrderApprovalError,
   isClientResourceKind,
   matchEarlierFile,
   needsFileWordCounts,
@@ -529,43 +530,64 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   // Create an order plus its source files, multipart: fields srcLang,
   // tgtLangs (repeatable), notes; file parts are the uploads.
-  app.post('/api/client/orders', async (req, reply) => {
-    const client = requireClient(req);
-    if (!client)
-      return reply.code(401).send({ error: 'invalid or missing access token' });
+  /** An order form as it arrived, whoever sent it: the fields and the files. */
+  interface OrderForm {
+    readonly clientId?: string;
+    readonly srcLang?: string;
+    readonly tgtLangs: readonly string[];
+    readonly notes?: string;
+    readonly updateOf?: string;
+    readonly files: readonly UploadedPart[];
+  }
 
-    let srcLang: string | undefined;
-    const tgtLangs: string[] = [];
-    let notes: string | undefined;
-    let updateOf: string | undefined;
-    const files: UploadedPart[] = [];
-
+  /** Reads a multipart order form: the client's own, or the admin's for a client. */
+  async function readOrderForm(req: FastifyRequest): Promise<OrderForm> {
+    const form: {
+      clientId?: string;
+      srcLang?: string;
+      tgtLangs: string[];
+      notes?: string;
+      updateOf?: string;
+      files: UploadedPart[];
+    } = { tgtLangs: [], files: [] };
     for await (const part of req.parts()) {
       if (part.type === 'file') {
-        files.push({
+        form.files.push({
           filename: part.filename,
           contentType: part.mimetype,
           buffer: await part.toBuffer(),
         });
       } else if (part.fieldname === 'srcLang') {
-        srcLang = String(part.value);
+        form.srcLang = String(part.value);
       } else if (part.fieldname === 'tgtLangs') {
-        tgtLangs.push(String(part.value));
+        form.tgtLangs.push(String(part.value));
       } else if (part.fieldname === 'notes') {
-        notes = String(part.value);
+        form.notes = String(part.value);
       } else if (part.fieldname === 'updateOf') {
-        updateOf = String(part.value);
+        form.updateOf = String(part.value);
+      } else if (part.fieldname === 'clientId') {
+        form.clientId = String(part.value);
       }
     }
+    return form;
+  }
 
+  /**
+   * Places an order for `client` from a form, as `actor`: the one way an order
+   * comes to exist, for the client's own route and for the admin's on a client's
+   * behalf (issue #221), so the two cannot drift in what they check or store.
+   * Returns the order, or the 400 message that refuses the form.
+   */
+  function placeOrder(
+    client: Client,
+    form: OrderForm,
+    actor: AuditActor,
+  ): { readonly order: TranslationOrder } | { readonly refused: string } {
+    const { srcLang, tgtLangs, notes, updateOf, files } = form;
     if (!srcLang || tgtLangs.length === 0) {
-      return reply
-        .code(400)
-        .send({ error: 'srcLang and at least one tgtLangs are required' });
+      return { refused: 'srcLang and at least one tgtLangs are required' };
     }
-    if (files.length === 0) {
-      return reply.code(400).send({ error: 'at least one file is required' });
-    }
+    if (files.length === 0) return { refused: 'at least one file is required' };
 
     // Counted first, from the buffers already in memory, so a count that
     // goes wrong can never leave a committed order behind a 500. It is
@@ -583,9 +605,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       try {
         assertCanUpdate(base, { clientId: client.id, srcLang });
       } catch (err) {
-        if (err instanceof OrderUpdateError) {
-          return reply.code(400).send({ error: err.message });
-        }
+        if (err instanceof OrderUpdateError) return { refused: err.message };
         throw err;
       }
       previousOrderId = id;
@@ -600,7 +620,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const order = createOrder(
       db,
       { clientId: client.id, srcLang, tgtLangs, notes, previousOrderId },
-      { actor: clientActor(client) },
+      { actor },
     );
 
     files.forEach((file, i) =>
@@ -610,6 +630,17 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         ...comparisons[i],
       }),
     );
+    return { order };
+  }
+
+  app.post('/api/client/orders', async (req, reply) => {
+    const client = requireClient(req);
+    if (!client)
+      return reply.code(401).send({ error: 'invalid or missing access token' });
+
+    const placed = placeOrder(client, await readOrderForm(req), clientActor(client));
+    if ('refused' in placed) return reply.code(400).send({ error: placed.refused });
+    const { order } = placed;
 
     void Promise.resolve(
       notifications.notifyAdmin({
@@ -782,6 +813,29 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return listOrders(db).map(serializeOrder);
   });
 
+  // An order entered by the admin for a client whose request arrived by email
+  // (issue #221, portal-v0-spec.md §2a): the client's own form, with the client
+  // named in a field. The actor is the admin, so no event says the client placed
+  // it, and nobody is notified: the admin is the one doing it, and the client is
+  // told by whoever is already writing to them.
+  app.post('/api/admin/orders', async (req, reply) => {
+    const form = await readOrderForm(req);
+    const clientId = Number(form.clientId);
+    const client =
+      form.clientId !== undefined && Number.isSafeInteger(clientId)
+        ? getClient(db, clientId)
+        : null;
+    if (!client) {
+      return reply.code(400).send({ error: 'clientId must be one of your clients' });
+    }
+    const placed = placeOrder(client, form, adminSessionActor(req));
+    if ('refused' in placed) return reply.code(400).send({ error: placed.refused });
+    return reply.code(201).send({
+      order: serializeOrder(placed.order),
+      sourceFiles: listSourceFiles(db, placed.order.id).map(serializeFile),
+    });
+  });
+
   app.get('/api/admin/orders/:id', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const order = getOrder(db, id);
@@ -833,7 +887,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const id = Number((req.params as { id: string }).id);
     const body = req.body as {
       status?: string;
+      /** For an approval: how the client gave it (§2a). Required then. */
       note?: string;
+      /** For an approval: the price the admin's page showed, as the client's request carries. */
+      price?: unknown;
       wordCount?: number;
       /** Source file id to confirmed count, for an order a per-file minimum applies to (§4b). */
       fileWordCounts?: unknown;
@@ -892,11 +949,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       try {
         updated = setStatus(db, id, body.status as TranslationOrder['status'], {
           actor: adminSessionActor(req),
-          note: body.note,
+          note: typeof body.note === 'string' ? body.note : undefined,
+          ...(typeof body.price === 'number' ? { seenPrice: body.price } : {}),
         });
       } catch (err) {
         if (err instanceof InvalidTransitionError || err instanceof OrderPricingError) {
           return reply.code(409).send({ error: err.message });
+        }
+        // An approval recorded for a client with no word of how it was given.
+        if (err instanceof OrderApprovalError) {
+          return reply.code(400).send({ error: err.message });
         }
         throw err;
       }

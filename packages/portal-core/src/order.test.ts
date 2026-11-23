@@ -6,9 +6,12 @@ import {
   assertCanUpdate,
   assertValidTransition,
   canTransition,
+  APPROVAL_NOTE_MAX,
   InvalidTransitionError,
+  OrderApprovalError,
   OrderPricingError,
   OrderUpdateError,
+  recordedApprovalNote,
 } from './order.js';
 
 describe('order lifecycle transitions', () => {
@@ -116,6 +119,32 @@ describe('assertCanUpdate', () => {
   it('refuses a different source language', () => {
     expect(() => assertCanUpdate(base, { ...update, srcLang: 'de' })).toThrow(
       /same source language/,
+    );
+  });
+});
+
+describe('recordedApprovalNote (issue #221)', () => {
+  it('keeps how the client approved, under words that say who recorded it', () => {
+    expect(recordedApprovalNote('by email, 21 November')).toBe(
+      'approval recorded by the admin: by email, 21 November',
+    );
+    // Trimmed: the account is what was said, not the spaces around it.
+    expect(recordedApprovalNote('  on the phone\n')).toBe(
+      'approval recorded by the admin: on the phone',
+    );
+  });
+
+  it('refuses an approval that does not say how the client gave it', () => {
+    for (const how of [undefined, '', '   ', '\n\t']) {
+      expect(() => recordedApprovalNote(how)).toThrow(OrderApprovalError);
+      expect(() => recordedApprovalNote(how)).toThrow(/how the client approved/);
+    }
+  });
+
+  it('refuses an account too long to be one', () => {
+    expect(() => recordedApprovalNote('a'.repeat(APPROVAL_NOTE_MAX))).not.toThrow();
+    expect(() => recordedApprovalNote('a'.repeat(APPROVAL_NOTE_MAX + 1))).toThrow(
+      OrderApprovalError,
     );
   });
 });

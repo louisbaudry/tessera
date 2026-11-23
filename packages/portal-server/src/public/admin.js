@@ -243,7 +243,16 @@ async function renderOrderDetail(id) {
 
     <div class="card">
       <label>Status</label>
+      ${
+        // Approving here records the client's consent for them (portal-v0-spec.md §2a), so it
+        // says how they gave it and to which price; the server refuses it without.
+        order.status === 'submitted' && order.price != null
+          ? `<label for="approval-how">How the client approved the price of ${money(order.price)} (needed to mark it approved)</label>
+      <input id="approval-how" type="text" maxlength="500" placeholder="by email, 21 November" />`
+          : ''
+      }
       <div id="status-buttons" role="group" aria-label="Status"></div>
+      <p class="error" role="alert" id="status-error"></p>
     </div>
 
     <h2>Source files</h2>
@@ -321,15 +330,24 @@ async function renderOrderDetail(id) {
     : '<span class="muted">terminal status</span>';
   statusButtons.querySelectorAll('[data-status]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      const errorEl = app.querySelector('#status-error');
+      errorEl.textContent = '';
+      const status = btn.dataset.status;
+      // An approval carries how the client gave it and the price this page showed, as the
+      // client's own approval carries the price theirs showed.
+      const approval =
+        status === 'approved'
+          ? { note: app.querySelector('#approval-how')?.value ?? '', price: order.price }
+          : {};
       try {
         await api(`/api/admin/orders/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: btn.dataset.status }),
+          body: JSON.stringify({ status, ...approval }),
         });
         renderOrderDetail(id);
       } catch (err) {
-        alert(err.message);
+        errorEl.textContent = err.message;
       }
     });
   });
@@ -389,8 +407,12 @@ async function renderOrderDetail(id) {
 
 async function renderOrderList() {
   let orders;
+  let clients;
   try {
-    orders = await api('/api/admin/orders');
+    [orders, clients] = await Promise.all([
+      api('/api/admin/orders'),
+      api('/api/admin/clients'),
+    ]);
   } catch (err) {
     app.innerHTML = `<p class="error" role="alert">${escapeHtml(err.message)}</p>`;
     return;
@@ -417,9 +439,53 @@ async function renderOrderList() {
           .join('') || '<tr><td colspan="6" class="muted">No orders yet.</td></tr>'
       }
     </table>
+
+    <h2>Enter an order for a client</h2>
+    <p class="muted">For a request that reached you by email. The order is recorded as entered by you, and the client is not emailed: it appears at their link like any other.</p>
+    ${
+      clients.length === 0
+        ? '<p class="muted">Add a client first.</p>'
+        : `<form id="enter-form" class="card">
+      <label for="enter-client">Client</label>
+      <select id="enter-client" name="clientId" required>
+        ${clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+      </select>
+      <label for="enter-src">Source language (for example en)</label>
+      <input id="enter-src" type="text" name="srcLang" required />
+      <label for="enter-tgt">Target languages, separated by commas (for example es, fr)</label>
+      <input id="enter-tgt" type="text" name="tgtLangs" required />
+      <label for="enter-files">Files</label>
+      <input id="enter-files" type="file" name="files" multiple required />
+      <label for="enter-notes">Note (optional)</label>
+      <textarea id="enter-notes" name="notes" rows="2"></textarea>
+      <button type="submit">Enter order</button>
+      <p class="error" role="alert" id="enter-error"></p>
+    </form>`
+    }
   `;
   app.querySelectorAll('[data-open]').forEach((row) => {
     row.addEventListener('click', () => renderOrderDetail(row.dataset.open));
+  });
+  app.querySelector('#enter-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const errorEl = app.querySelector('#enter-error');
+    errorEl.textContent = '';
+    const data = new FormData();
+    data.append('clientId', form.clientId.value);
+    data.append('srcLang', form.srcLang.value.trim());
+    for (const lang of form.tgtLangs.value.split(',')) {
+      if (lang.trim() !== '') data.append('tgtLangs', lang.trim());
+    }
+    if (form.notes.value.trim() !== '') data.append('notes', form.notes.value.trim());
+    for (const file of form.files.files) data.append('files', file, file.name);
+    try {
+      // `api` sets the session header and reads the error; the browser sets the form's type.
+      const made = await api('/api/admin/orders', { method: 'POST', body: data });
+      renderOrderDetail(made.order.id);
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
   });
   wireNav();
 }

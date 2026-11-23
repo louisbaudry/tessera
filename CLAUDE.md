@@ -964,6 +964,13 @@ engine, but follows the same discipline:
   (`source_file.confirmed_word_count`, dropped from a client's file by name in
   `clientFile`); `translation_order.word_count` stays their sum, the actual
   words, so the billed words exist only in the price.
+- **An order has one way in, and an approval recorded for a client says how the client gave it**
+  (issue #221, `portal-v0-spec.md` §2a). The client's route and the admin's `POST /api/admin/orders` both go
+  through `placeOrder` (`portal-server/src/app.ts`); the admin's writes as `admin:<id>`, its creation note
+  says the admin entered it, and it notifies nobody. `setStatus` refuses an approval from any actor but the
+  client's without `recordedApprovalNote`'s account (a 400), keyed on the actor's kind so no route can leave it
+  out; don't add a way to approve that carries neither the client's link nor that account. It records what the
+  admin says the client agreed to: a statement, never a proof.
 - **A quote's total is the order's stored price, and a due date is the translator's alone**
   (issue #179, `planning/solo-translator-spec.md`). `quoteFor` shows a breakdown only when it adds
   up to the price, else one line; the quote is HTML the browser prints, so no PDF library. `due_at`
