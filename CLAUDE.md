@@ -613,7 +613,9 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   exclusion named. The excluded list is always returned and an offer to an
   excluded vendor still goes through, because each input is a hand-set value that
   goes stale. Don't make it a gate without a decision (enforcing at offer time
-  is still open on #156).
+  is issue #403). A vendor's **time off** (`time_off`, `.ctv` v9, issue #156) is theirs to set per
+  roster and is not audited, like capacity; it is named as `time_off` when a period shares a day with
+  the job's window (today to the read's `deadline`, else today), and refuses nothing.
 - **A project's portal client is a number the owner typed, never checked against
   `portal.sqlite`** (backlog #130, `portal_client_setting`, project v13): the CAT
   server must not reach into the portal's file. A client's vendor pool is an

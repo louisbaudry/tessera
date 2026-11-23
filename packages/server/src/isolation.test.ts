@@ -542,6 +542,11 @@ const ROUTES: Record<string, Entry> = {
     why: 'sets the caller’s tenant’s lead time',
     req: { method: 'PUT', url: '/api/webhooks/reminders', body: { leadHours: 5 } },
   },
+  'PUT /api/vendor/time-off': {
+    kind: 'own',
+    why: 'the vendor’s own time off',
+    req: { method: 'PUT', url: '/api/vendor/time-off', body: { timeOff: [] } },
+  },
   'PUT /api/vendor/capacity': {
     kind: 'own',
     why: 'the vendor’s own capacity',

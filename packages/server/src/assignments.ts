@@ -18,7 +18,13 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 
-import { isSlug, plainText, type AuditActor } from '@cat-tool/core';
+import {
+  isCalendarDate,
+  isSlug,
+  plainText,
+  utcCalendarDate,
+  type AuditActor,
+} from '@cat-tool/core';
 import {
   AssignmentAccessError,
   AssignmentConflictError,
@@ -35,6 +41,7 @@ import {
   getAssignmentAnalysis,
   getAssignmentPayable,
   getCapacity,
+  getTimeOff,
   getPaymentState,
   getProfile,
   getVendor,
@@ -73,6 +80,7 @@ import {
   startJob,
   revokeProjectAuthorization,
   setCapacity,
+  setTimeOff,
   setVendorRate,
   vendorRateHistory,
   vendorFeed,
@@ -89,6 +97,8 @@ import {
   AssignmentPartyError,
   daysToPay,
   isCapacityStatus,
+  parseTimeOff,
+  type DateWindow,
   InvalidAssignmentTransitionError,
   ledgerCsv,
   totalsByCurrency,
@@ -180,6 +190,9 @@ interface CapacityView {
   readonly note: string | null;
   readonly setAt: string | null;
 }
+
+/** Today as the server counts it: the first day of a job, and where a vendor's past time off ends. */
+const today = (): string => utcCalendarDate(new Date());
 
 /** A capacity as a vendor sees it: who set it is not part of it (an owner's account id stays theirs). */
 function capacityView(c: Capacity | null): CapacityView {
@@ -452,7 +465,9 @@ export function registerAssignmentRoutes(
   // files, so a vendor on two rosters has two statuses and each is set on its own.
   app.get('/api/vendor/capacity', async (req) => {
     const me = deps.account(req);
-    const rosters: Array<{ tenantId: number } & CapacityView> = [];
+    const rosters: Array<
+      { tenantId: number } & CapacityView & { timeOff: readonly DateWindow[] }
+    > = [];
     for (const tenantId of rosterTenantsFor(req, me.id)) {
       const tenant = getTenantById(platform, tenantId);
       if (!tenant) continue;
@@ -461,13 +476,53 @@ export function registerAssignmentRoutes(
       try {
         const vendor = getVendorByAccount(roster, me.id);
         if (!vendor) continue;
-        rosters.push({ tenantId, ...capacityView(getCapacity(roster, vendor.id)) });
+        rosters.push({
+          tenantId,
+          ...capacityView(getCapacity(roster, vendor.id)),
+          // Only what is still to come: a period that has ended is of no use to anyone.
+          timeOff: getTimeOff(roster, vendor.id, { endingFrom: today() }),
+        });
       } finally {
         roster.close();
       }
     }
     return { rosters };
   });
+
+  // A vendor's time off on one roster (issue #156): the whole list, replaced, as the
+  // availability panel shows it. Kept like capacity: the vendor's own, per roster, not
+  // audited. It feeds the advisory eligibility read and refuses no offer. Periods that
+  // have already ended are dropped, so the list cannot grow with the past.
+  app.put<{ Body: { timeOff?: unknown } | undefined }>(
+    '/api/vendor/time-off',
+    async (req, reply) => {
+      const me = deps.account(req);
+      const tenant = tenantParam(req);
+      if (!tenant || isOwn(req, tenant)) return noSuch(reply);
+      const parsed = parseTimeOff(req.body?.timeOff);
+      if (typeof parsed === 'string') return reply.code(400).send({ error: parsed });
+      const roster = openRoster(tenant);
+      if (!roster) return noSuch(reply);
+      try {
+        const vendor = getVendorByAccount(roster, me.id);
+        if (!vendor) return noSuch(reply);
+        const from = today();
+        setTimeOff(
+          roster,
+          vendor.id,
+          parsed.filter((w) => w.to >= from),
+        );
+        return {
+          tenantId: tenant.id,
+          timeOff: getTimeOff(roster, vendor.id, { endingFrom: from }),
+        };
+      } catch (err) {
+        return mapError(err, reply);
+      } finally {
+        roster.close();
+      }
+    },
+  );
 
   app.put<{ Body: { status?: unknown; note?: unknown } | undefined }>(
     '/api/vendor/capacity',
@@ -971,16 +1026,28 @@ export function registerAssignmentRoutes(
   // (vendor-spec.md, the #156 note): it filters nothing and an offer or a pool post still
   // goes to anyone on the roster. The caller's own project and roster only; the pair is the
   // project's, the specialty is what the owner types.
-  app.get<{ Querystring: { project?: string; specialty?: string } }>(
+  app.get<{ Querystring: { project?: string; specialty?: string; deadline?: string } }>(
     '/api/vendors/eligibility',
     async (req, reply) => {
       const tenant = deps.ownTenant(req);
-      const { project, specialty } = req.query;
+      const { project, specialty, deadline } = req.query;
       if (!isSlug(project ?? ''))
         return reply.code(400).send({ error: 'name a project' });
       if (specialty !== undefined && typeof specialty !== 'string') {
         return reply.code(400).send({ error: 'specialty must be text' });
       }
+      // The job's days: from today to its deadline (a date, or the date of an instant), or
+      // today alone with none, so time off that covers today is still named (issue #156).
+      const deadlineDay =
+        deadline === undefined || deadline === '' ? null : String(deadline).slice(0, 10);
+      if (deadlineDay !== null && !isCalendarDate(deadlineDay)) {
+        return reply.code(400).send({ error: 'deadline must be a date, YYYY-MM-DD' });
+      }
+      const start = today();
+      const window = {
+        from: start,
+        to: deadlineDay !== null && deadlineDay > start ? deadlineDay : start,
+      };
       const job = tenant
         ? readJob(projectPath(deps.storageRoot, tenant, project!))
         : null;
@@ -988,7 +1055,7 @@ export function registerAssignmentRoutes(
       const { pair, portalClientId } = job;
       const roster = openRoster(tenant);
       const fits = roster
-        ? assessRoster(roster, { ...pair, specialty }, { portalClientId })
+        ? assessRoster(roster, { ...pair, specialty, window }, { portalClientId })
         : [];
       roster?.close();
       const view = (f: (typeof fits)[number]) => ({
@@ -997,6 +1064,7 @@ export function registerAssignmentRoutes(
       });
       return {
         pair,
+        window,
         eligible: fits.filter((f) => f.reasons.length === 0).map(view),
         excluded: fits
           .filter((f) => f.reasons.length > 0)

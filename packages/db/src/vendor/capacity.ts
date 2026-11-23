@@ -5,7 +5,12 @@
  * history decision 8 declines to build.
  */
 
-import { isCapacityStatus, type CapacityStatus } from '@cat-tool/vendor-core';
+import {
+  isCapacityStatus,
+  parseTimeOff,
+  type CapacityStatus,
+  type DateWindow,
+} from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
 import { VendorError } from './error.js';
@@ -82,4 +87,54 @@ export function getCapacity(db: Database.Database, vendorId: number): Capacity |
         setBy: row.set_by,
       }
     : null;
+}
+
+/**
+ * Replaces the vendor's time off with `windows` (issue #156): the list as it stands,
+ * not an edit of one window, so the vendor's screen sends what it shows. Checked by
+ * `parseTimeOff` here too, so no caller can store a backwards or unreal date. Not
+ * audited, as capacity is not.
+ *
+ * @throws {VendorError} for an unknown vendor or a list `parseTimeOff` refuses
+ */
+export function setTimeOff(
+  db: Database.Database,
+  vendorId: number,
+  windows: readonly DateWindow[],
+): DateWindow[] {
+  const parsed = parseTimeOff(windows);
+  if (typeof parsed === 'string') throw new VendorError(parsed);
+  return db.transaction((): DateWindow[] => {
+    if (!db.prepare('SELECT 1 FROM vendor WHERE id = ?').get(vendorId)) {
+      throw new VendorError(`no vendor #${vendorId}`);
+    }
+    db.prepare('DELETE FROM time_off WHERE vendor_id = ?').run(vendorId);
+    const insert = db.prepare(
+      'INSERT OR IGNORE INTO time_off (vendor_id, starts_on, ends_on) VALUES (?, ?, ?)',
+    );
+    for (const w of parsed) insert.run(vendorId, w.from, w.to);
+    return getTimeOff(db, vendorId);
+  })();
+}
+
+/**
+ * The vendor's time off in date order; with `endingFrom`, only the periods that end
+ * on or after that day (what is still to come, for the vendor's screen).
+ */
+export function getTimeOff(
+  db: Database.Database,
+  vendorId: number,
+  options: { readonly endingFrom?: string } = {},
+): DateWindow[] {
+  const rows = db
+    .prepare(
+      `SELECT starts_on, ends_on FROM time_off
+        WHERE vendor_id = @vendorId AND ends_on >= @from
+        ORDER BY starts_on, ends_on`,
+    )
+    .all({ vendorId, from: options.endingFrom ?? '' }) as Array<{
+    starts_on: string;
+    ends_on: string;
+  }>;
+  return rows.map((r) => ({ from: r.starts_on, to: r.ends_on }));
 }

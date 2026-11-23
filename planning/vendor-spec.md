@@ -1134,8 +1134,8 @@ confidentiality call, as the 2026-10-09 decision above says), and so does any au
   busy). A vendor can have several. The rule is pure, `vendor-core/src/eligibility.ts`; `assessRoster`
   (`db/vendor/eligibility.ts`) loads each vendor's profile and capacity for it. A project carries no
   specialty of its own, so the tag is the owner's to type.
-- **Not built, still #156:** vendor time off (a date window needs a table and a decision on who may set
-  it and how it shows). Enforcing at offer time stays open until a pilot owner asks for it. No screen
+- **Not built, still #156:** vendor time off (built later, the time-off note below). Enforcing at offer
+  time stays open until a pilot owner asks for it (now issue #403). No screen
   yet either (the offer screens are not built). The client allowlist is the next note.
 
 **Implementation note (#156 slice: the project's portal client and a client's pool), 2026-10-10.** Louis
@@ -1160,4 +1160,30 @@ chose to link a project to a portal client first, which also unblocks the margin
   unchanged, so enforcing the pool at offer time is the same open question as for the other reasons.
   The reason is pure (`vendor-core/src/eligibility.ts`, `inClientPool`); `assessRoster` takes the project's
   `portalClientId` and loads the pool.
+
+**Implementation note (#156 slice: vendor time off), 2026-11-23.** Louis picked the last slice of the card
+and chose TypeScript over Rust/Wasm (asked first). The decisions the earlier note left open, made here as
+cheap and reversible:
+
+- **The vendor sets it, per roster, as they set their capacity.** `time_off (vendor_id, starts_on, ends_on)`
+  (`.ctv` v9), calendar days with both ends included, checked by the schema (`ends_on >= starts_on`) and
+  by `parseTimeOff` (real dates, at most 20 periods, never repaired). `PUT /api/vendor/time-off?tenant=`
+  replaces the whole list (`{ timeOff: [{ from, to }] }`), the vendor's own on that roster only, and is
+  **not audited**, for decision 8's reason: a list someone edits as plans change is not a change that
+  matters, and a log of it is the capacity history decision 8 declines. Periods that have already ended
+  are dropped on save and not listed, so the list cannot grow with the past. An owner cannot set it.
+- **It shows as a reason, `time_off`, in the same advisory read.** The job's days are today to its
+  deadline: `GET /api/vendors/eligibility` takes an optional `deadline` (a date, or an instant read as its
+  day), and with none the job is today alone, so time off that covers today is still named. The answer
+  now says which `window` it compared. A period that shares one day with the job is enough; it sits beside
+  `busy` and `away`, since a vendor can be available today and off next week, which a status cannot say.
+- **The vendor sees and edits it on the availability panel** of their home screen, under each roster's
+  status: the periods still to come, each removable, and two date fields to add one. The owner sees it
+  only as a reason in the eligibility read (no offer screen exists yet).
+- **Still advice.** Nothing refuses an offer for it. Whether any reason should ever refuse one (the client's
+  pool first) is issue #403, so this card closes.
+- **"Today" is the server's UTC date.** A vendor whose time off starts tomorrow in their own time zone may
+  see it named a few hours early or late. Not worth a time zone per vendor until someone notices.
+- The calendar-date check moved from `portal-core` to `core/model` (`calendar.ts`), one definition for the
+  portal's due dates and this; `portal-core` re-exports it.
 

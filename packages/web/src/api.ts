@@ -19,6 +19,7 @@ import type {
   AssignmentStatus,
   CapacityStatus,
   CurrencyTotal,
+  DateWindow,
   InvitationStatus,
   PaymentStatus,
   RateTier,
@@ -142,6 +143,8 @@ export interface RosterCapacity {
   readonly status: CapacityStatus | null;
   readonly note: string | null;
   readonly setAt: string | null;
+  /** Periods off still to come, both days included (issue #156); not in a status write's answer. */
+  readonly timeOff?: readonly DateWindow[];
 }
 
 /** Opening an offer (vendor-spec §7): everything needed before answering, and no total. */
@@ -570,6 +573,13 @@ export const api = {
       method: 'PUT',
       body,
     }),
+  /** Replaces the vendor's time off on one roster (issue #156): the whole list. */
+  setTimeOff: (token: string, tenantId: number, timeOff: readonly DateWindow[]) =>
+    call<{ tenantId: number; timeOff: DateWindow[] }>(
+      `/api/vendor/time-off?tenant=${tenantId}`,
+      token,
+      { method: 'PUT', body: { timeOff } },
+    ),
   /** The vendor's job on a project they were granted, if any (backlog #53). */
   vendorJob: (token: string, tenantId: number, project: string, signal?: AbortSignal) =>
     call<{ id: number; status: string }>(

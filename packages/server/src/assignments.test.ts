@@ -763,7 +763,13 @@ describe('a vendor’s capacity (#54)', () => {
     const b = await login('bob');
     expect((await capacityOf(b)).json()).toEqual({
       rosters: [
-        { tenantId: tenantOf(config, alice).id, status: null, note: null, setAt: null },
+        {
+          tenantId: tenantOf(config, alice).id,
+          status: null,
+          note: null,
+          setAt: null,
+          timeOff: [],
+        },
       ],
     });
     const set = await setCapacityAs(b, { status: 'busy', note: ' Back Monday ' });
@@ -1973,5 +1979,101 @@ describe('payments against locked payables (#112)', () => {
         totals: [],
       });
     }
+  });
+});
+
+describe('a vendor’s time off (issue #156)', () => {
+  const day = (offset: number): string =>
+    new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const setTimeOffAs = (
+    token: string,
+    body: unknown,
+    tenant: number | string = tenantOf(config, alice).id,
+  ) =>
+    app.inject({
+      method: 'PUT',
+      url: `/api/vendor/time-off?tenant=${tenant}`,
+      headers: as(token),
+      payload: body as object,
+    });
+  const fitsOf = (token: string, query: string) =>
+    app.inject({
+      method: 'GET',
+      url: `/api/vendors/eligibility?project=job${query}`,
+      headers: as(token),
+    });
+  const reasonsOf = async (token: string, query: string, accountId: number) => {
+    const res = await fitsOf(token, query);
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json() as {
+      excluded: Array<{ accountId: number; reasons: string[] }>;
+    };
+    return body.excluded.find((v) => v.accountId === accountId)?.reasons ?? [];
+  };
+
+  it('is set by the vendor, listed with their capacity, and drops what has ended', async () => {
+    await aliceWithProject();
+    indexBobOnAlice();
+    const b = await login('bob');
+    const set = await setTimeOffAs(b, {
+      timeOff: [
+        { from: day(20), to: day(25) },
+        { from: day(-10), to: day(-5) }, // already over: not kept
+        { from: day(3), to: day(4) },
+      ],
+    });
+    expect(set.statusCode, set.body).toBe(200);
+    const expected = [
+      { from: day(3), to: day(4) },
+      { from: day(20), to: day(25) },
+    ];
+    expect(set.json()).toEqual({
+      tenantId: tenantOf(config, alice).id,
+      timeOff: expected,
+    });
+    const listed = (await capacityOf(b)).json() as {
+      rosters: Array<{ timeOff: unknown }>;
+    };
+    expect(listed.rosters[0]!.timeOff).toEqual(expected);
+  });
+
+  it('names a vendor off during the job’s days, and only then (advice, as ever)', async () => {
+    const a = await aliceWithProject();
+    indexBobOnAlice();
+    const b = await login('bob');
+    await setTimeOffAs(b, { timeOff: [{ from: day(5), to: day(8) }] });
+    // bob is on the roster with no language, so that reason is always there.
+    expect(await reasonsOf(a, '', bob.id)).toEqual(['language_pair']);
+    expect(await reasonsOf(a, `&deadline=${day(3)}`, bob.id)).toEqual(['language_pair']);
+    expect(await reasonsOf(a, `&deadline=${day(6)}`, bob.id)).toEqual([
+      'language_pair',
+      'time_off',
+    ]);
+    // An instant is read as its day; the window is reported.
+    const res = await fitsOf(a, `&deadline=${day(30)}T17:00:00.000Z`);
+    expect(res.json()).toMatchObject({ window: { from: day(0), to: day(30) } });
+    // Time off that covers today is named even with no deadline.
+    await setTimeOffAs(b, { timeOff: [{ from: day(0), to: day(1) }] });
+    expect(await reasonsOf(a, '', bob.id)).toEqual(['language_pair', 'time_off']);
+  });
+
+  it('refuses a bad list or deadline as a 400, and a stranger, the owner or a bad address as a 404', async () => {
+    const a = await aliceWithProject();
+    indexBobOnAlice();
+    const b = await login('bob');
+    expect((await setTimeOffAs(b, {})).statusCode).toBe(400);
+    expect(
+      (await setTimeOffAs(b, { timeOff: [{ from: day(5), to: day(1) }] })).statusCode,
+    ).toBe(400);
+    expect(
+      (await setTimeOffAs(b, { timeOff: [{ from: '2026-02-30', to: day(1) }] }))
+        .statusCode,
+    ).toBe(400);
+    expect((await fitsOf(a, '&deadline=soon')).statusCode).toBe(400);
+    expect((await setTimeOffAs(await login('dave'), { timeOff: [] })).statusCode).toBe(
+      404,
+    );
+    expect((await setTimeOffAs(a, { timeOff: [] })).statusCode).toBe(404);
+    expect((await setTimeOffAs(b, { timeOff: [] }, 'abc')).statusCode).toBe(404);
   });
 });

@@ -557,4 +557,37 @@ const v8: Migration = {
   },
 };
 
-export const VENDOR_MIGRATIONS: readonly Migration[] = [v1, v2, v3, v4, v5, v6, v7, v8];
+/**
+ * v9 (issue #156): `time_off` — the periods a vendor has said they are off, calendar
+ * days both ends included. Beside `capacity` and kept like it: the current list only,
+ * replaced whole by its vendor, never audited (decision 8 declines a capacity history).
+ * Read by the advisory eligibility, which names a vendor whose time off meets a job's
+ * days; nothing is refused for it.
+ */
+const v9: Migration = {
+  version: 9,
+  description: 'time_off — the periods a vendor is off (issue #156)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE time_off (
+        vendor_id INTEGER NOT NULL REFERENCES vendor(id),
+        starts_on TEXT    NOT NULL CHECK (starts_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+        ends_on   TEXT    NOT NULL CHECK (ends_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+        CHECK (ends_on >= starts_on),
+        PRIMARY KEY (vendor_id, starts_on, ends_on)
+      ) WITHOUT ROWID;
+    `);
+  },
+};
+
+export const VENDOR_MIGRATIONS: readonly Migration[] = [
+  v1,
+  v2,
+  v3,
+  v4,
+  v5,
+  v6,
+  v7,
+  v8,
+  v9,
+];

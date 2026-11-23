@@ -4560,6 +4560,23 @@ rest of that range:
     project table list gains `portal_client_setting`. Not verified: any screen (none exists).
   - Not built: cascading offers, reminders to vendors (no channel), a per-event filter (issue #206), a
     badge on the owner's list for a late job.
+- **#156 · ~~A vendor's time off, named in the eligibility read~~ · DONE — `vendor-core/src/eligibility.ts` (`parseTimeOff`, `time_off`), `db/src/vendor/capacity.ts` (`.ctv` v9, `setTimeOff`, `getTimeOff`), `PUT /api/vendor/time-off` and the eligibility read's `deadline` in `server/src/assignments.ts`, `web/src/Capacity.tsx`, `core/src/model/calendar.ts`**
+  (2026-11-23; design note: `vendor-spec.md`, the #156 time-off note.) The card's last slice; Louis chose
+  TypeScript (asked first). The decisions the earlier note left open were made in the session as cheap and
+  reversible: the vendor sets it per roster, unaudited like capacity; the job's days are today to the
+  deadline, or today alone; a single shared day is enough; it stays advice. What it taught:
+  - **One open question outlived the card.** Whether eligibility should ever refuse an offer was "still
+    open on #156" in three places; closing the card would have left it nowhere, so it became issue #403.
+  - **A second copy of a date check was one import away.** `vendor-core` needed `isCalendarDate`, which
+    lived in `portal-core`; it moved to `core/model` and is re-exported, rather than copied.
+  - Verified: the rule's cases (inside, touching either end, around, before, after, none, no window), the
+    repository (whole-list replace, date order, the schema's own CHECK), the routes (a period already over
+    is dropped, the deadline as a date or an instant, a bad list or date a 400, a stranger or the owner a
+    404), the isolation walk, and a functional test in a browser (a vendor invited, a period added, kept on
+    reload, named against a job's days, removed). Switching the reason off failed four tests across three
+    packages. Two existing tests changed on purpose: the `.ctv` `user_version` is now 9.
+  - Not built: an owner's view of a vendor's time off outside the eligibility read, a time zone per vendor,
+    and enforcement (issue #403).
 
 ### Epic 14 — Tenancy (spec'd 2026-10-23, not started)
 

@@ -9,7 +9,7 @@
  * with every exclusion named, for the owner to overrule by simply offering.
  */
 
-import { primarySubtag } from '@cat-tool/core/model';
+import { isCalendarDate, primarySubtag } from '@cat-tool/core/model';
 
 import { normalizeSpecialty, type CapacityStatus } from './profile.js';
 
@@ -19,15 +19,63 @@ export const EXCLUSION_REASONS = [
   'specialty',
   'busy',
   'away',
+  'time_off',
   'not_in_client_pool',
 ] as const;
 export type ExclusionReason = (typeof EXCLUSION_REASONS)[number];
+
+/**
+ * A span of calendar days, both ends included (`YYYY-MM-DD`): a vendor's declared time
+ * off, or the days a job runs (issue #156).
+ */
+export interface DateWindow {
+  readonly from: string;
+  readonly to: string;
+}
+
+/** The most windows of time off a vendor keeps on one roster. */
+export const TIME_OFF_MAX = 20;
+
+/**
+ * Reads a vendor's list of time off from a request: up to {@link TIME_OFF_MAX}
+ * windows of real calendar dates, each ending on or after it starts. Returns the
+ * windows in date order, or the message that refuses the list. It never repairs one:
+ * a window written backwards is refused, not turned round.
+ */
+export function parseTimeOff(value: unknown): DateWindow[] | string {
+  if (!Array.isArray(value)) return 'timeOff must be a list of { from, to } dates';
+  if (value.length > TIME_OFF_MAX) {
+    return `at most ${TIME_OFF_MAX} periods of time off`;
+  }
+  const out: DateWindow[] = [];
+  for (const [i, raw] of value.entries()) {
+    const w = raw as { from?: unknown; to?: unknown } | null;
+    const from = typeof w?.from === 'string' ? w.from : '';
+    const to = typeof w?.to === 'string' ? w.to : '';
+    if (!isCalendarDate(from) || !isCalendarDate(to)) {
+      return `period ${i + 1}: from and to must be dates written YYYY-MM-DD`;
+    }
+    if (to < from) return `period ${i + 1} ends before it starts`;
+    out.push({ from, to });
+  }
+  return out.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+}
+
+/** Whether two spans of days share at least one day. Dates compare as text: `YYYY-MM-DD`. */
+export function overlaps(a: DateWindow, b: DateWindow): boolean {
+  return a.from <= b.to && b.from <= a.to;
+}
 
 /** What the job asks of a vendor. `specialty` is optional: no tag, no specialty test. */
 export interface EligibilityJob {
   readonly src: string;
   readonly tgt: string;
   readonly specialty?: string | null;
+  /**
+   * The days the job runs (today to its deadline). Absent: no time-off test, since
+   * there is no day to compare with.
+   */
+  readonly window?: DateWindow | null;
 }
 
 /** What a vendor has declared: their pairs (primary subtags), tags and capacity. */
@@ -36,6 +84,8 @@ export interface EligibilityProfile {
   readonly specialties: readonly string[];
   /** `null` when they have never set one: unknown is not busy. */
   readonly capacity: CapacityStatus | null;
+  /** The periods they have said they are off (issue #156). None declared: none tested. */
+  readonly timeOff?: readonly DateWindow[];
   /**
    * Whether the project's client has approved this vendor: `null` when the
    * job has no client pool to be in (the project is for no portal client, or
@@ -51,7 +101,9 @@ export interface EligibilityProfile {
  * pair fits no job. A specialty is asked only when the job names one.
  * `available` and a never-set capacity both pass; `busy` and `away` are
  * reasons of their own, since "at full capacity" and "away" are different
- * things to tell an owner. A client's own pool (`not_in_client_pool`) is the
+ * things to tell an owner. Declared time off that shares a day with the job's
+ * window is `time_off`, beside the status: a vendor can be available today and
+ * away next week, which the status alone cannot say. A client's own pool (`not_in_client_pool`) is the
  * owner's standing rule for that client, so it is named like the rest: advice
  * the owner can still overrule by offering.
  */
@@ -74,6 +126,10 @@ export function exclusionReasons(
   }
   if (profile.capacity === 'busy') reasons.push('busy');
   if (profile.capacity === 'away') reasons.push('away');
+  const window = job.window;
+  if (window && (profile.timeOff ?? []).some((off) => overlaps(off, window))) {
+    reasons.push('time_off');
+  }
   if (profile.inClientPool === false) reasons.push('not_in_client_pool');
   return reasons;
 }
