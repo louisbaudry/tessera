@@ -12,9 +12,12 @@ import {
   assessRoster,
   createVendorFile,
   listAssignmentsFor,
+  getTimeOff,
   setCapacity,
+  setTimeOff,
   updateProfile,
 } from './index.js';
+import { VendorError } from './error.js';
 
 let dir: string;
 let roster: Database;
@@ -83,5 +86,70 @@ describe('assessRoster', () => {
       (roster.prepare('SELECT COUNT(*) AS n FROM audit_event').get() as { n: number }).n,
     ).toBe(before);
     expect(listAssignmentsFor(roster, 1)).toEqual([]);
+  });
+});
+
+describe('time off (issue #156)', () => {
+  const job = (from: string, to: string) => ({
+    src: 'en',
+    tgt: 'de',
+    window: { from, to },
+  });
+
+  it('names a vendor whose time off meets the job’s days, and no one else', () => {
+    const off = add(1);
+    const on = add(2);
+    setTimeOff(roster, off.id, [{ from: '2026-12-05', to: '2026-12-09' }]);
+    setTimeOff(roster, on.id, [{ from: '2027-01-05', to: '2027-01-09' }]);
+    expect(
+      assessRoster(roster, job('2026-12-01', '2026-12-06')).map((f) => [
+        f.accountId,
+        f.reasons,
+      ]),
+    ).toEqual([
+      [1, ['time_off']],
+      [2, []],
+    ]);
+    // Without the job's days there is nothing to compare: no reason.
+    expect(assessRoster(roster, { src: 'en', tgt: 'de' }).map((f) => f.reasons)).toEqual([
+      [],
+      [],
+    ]);
+  });
+
+  it('replaces the list whole, keeps it in date order, and lists what is still to come', () => {
+    const v = add(1);
+    setTimeOff(roster, v.id, [
+      { from: '2026-12-20', to: '2026-12-31' },
+      { from: '2026-11-01', to: '2026-11-02' },
+    ]);
+    expect(getTimeOff(roster, v.id)).toEqual([
+      { from: '2026-11-01', to: '2026-11-02' },
+      { from: '2026-12-20', to: '2026-12-31' },
+    ]);
+    expect(getTimeOff(roster, v.id, { endingFrom: '2026-11-15' })).toEqual([
+      { from: '2026-12-20', to: '2026-12-31' },
+    ]);
+    setTimeOff(roster, v.id, []);
+    expect(getTimeOff(roster, v.id)).toEqual([]);
+  });
+
+  it('refuses a backwards or unreal window, and an unknown vendor, storing nothing', () => {
+    const v = add(1);
+    setTimeOff(roster, v.id, [{ from: '2026-12-01', to: '2026-12-02' }]);
+    expect(() =>
+      setTimeOff(roster, v.id, [{ from: '2026-12-10', to: '2026-12-01' }]),
+    ).toThrow(VendorError);
+    expect(() =>
+      setTimeOff(roster, v.id, [{ from: '2026-02-30', to: '2026-03-01' }]),
+    ).toThrow(VendorError);
+    expect(() => setTimeOff(roster, 999, [])).toThrow(/no vendor/);
+    expect(getTimeOff(roster, v.id)).toEqual([{ from: '2026-12-01', to: '2026-12-02' }]);
+    // The schema holds the order too, whatever the caller.
+    expect(() =>
+      roster
+        .prepare("INSERT INTO time_off VALUES (?, '2026-12-10', '2026-12-01')")
+        .run(v.id),
+    ).toThrow(/CHECK/);
   });
 });

@@ -14,7 +14,7 @@ import {
 } from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
-import { getCapacity } from './capacity.js';
+import { getCapacity, getTimeOff } from './capacity.js';
 import { getClientPool } from './client-pools.js';
 import { getProfile, listVendors } from './vendors.js';
 
@@ -49,6 +49,7 @@ export function assessRoster(
           languages: profile.languages,
           specialties: profile.specialties,
           capacity: getCapacity(db, v.id)?.status ?? null,
+          timeOff: getTimeOff(db, v.id),
           inClientPool: pool.length === 0 ? null : pool.includes(v.id),
         },
         job,

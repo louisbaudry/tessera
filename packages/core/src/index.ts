@@ -8,6 +8,7 @@ export * from './model/segment.js';
 export * from './model/siblings.js';
 export * from './model/file.js';
 export * from './model/csv.js';
+export * from './model/calendar.js';
 export * from './model/currency.js';
 export * from './model/qa.js';
 export * from './qa/rules.js';

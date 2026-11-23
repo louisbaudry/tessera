@@ -1792,3 +1792,19 @@ button.chip-button:hover {
 .qa-mode .stale {
   color: var(--error, #b42318);
 }
+
+/* A vendor's time off under their availability (issue #156): the periods, then a small form. */
+.time-off ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.time-off form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}

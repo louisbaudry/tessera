@@ -4,26 +4,12 @@
  * the client (that is #160). Pure, as the rest of `portal-core`.
  */
 
+import { isCalendarDate } from '@cat-tool/core/model';
+
 import type { OrderStatus } from './order.js';
 
-/** A calendar date, `YYYY-MM-DD`. */
-const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-/**
- * Whether a string is a real calendar date written `YYYY-MM-DD` (no time, no zone). A due date is a
- * day, not an instant: stored as one, it means the same day wherever the translator opens it.
- */
-export function isCalendarDate(value: string): boolean {
-  const m = DATE.exec(value);
-  if (!m) return false;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const date = new Date(Date.UTC(y, mo - 1, d));
-  return (
-    date.getUTCFullYear() === y &&
-    date.getUTCMonth() === mo - 1 &&
-    date.getUTCDate() === d
-  );
-}
+/** Defined once in `core/model` (`calendar.ts`); exported here as it always was. */
+export { isCalendarDate };
 
 /** What the agenda needs of an order. */
 export interface AgendaOrder {
