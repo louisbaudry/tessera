@@ -23,6 +23,7 @@ import {
   assertCanPrice,
   assertValidTransition,
   isCalendarDate,
+  recordedApprovalNote,
   type OrderStatus,
 } from '@cat-tool/portal-core';
 import type Database from 'better-sqlite3';
@@ -137,6 +138,21 @@ function insertOrderEvent(
   });
 }
 
+/**
+ * The note of an order's creation event. An order an admin entered for a client
+ * (issue #221: a request that arrived by email) says so, beside the actor the
+ * event already names, so the history never reads as if the client had placed it.
+ */
+function creationNote(order: NewOrder, actor: AuditActor): string {
+  const what =
+    actor.actor.kind === 'admin'
+      ? "order entered by the admin on the client's behalf"
+      : 'order created';
+  return order.previousOrderId == null
+    ? what
+    : `${what} as an update of order #${order.previousOrderId}`;
+}
+
 /** Creates an order in `submitted` status, plus its creation `order_event`. */
 export function createOrder(
   db: Database.Database,
@@ -173,10 +189,7 @@ export function createOrder(
       orderId: id,
       fromStatus: null,
       toStatus: 'submitted',
-      note:
-        order.previousOrderId == null
-          ? 'order created'
-          : `order created as an update of order #${order.previousOrderId}`,
+      note: creationNote(order, options.actor),
       createdAt: now,
       actor: options.actor,
     });
@@ -221,6 +234,10 @@ export function listOrdersForClient(
 }
 
 export interface SetStatusOptions extends OrderWriteOptions {
+  /**
+   * A note for the event. For an approval recorded by anyone but the client it
+   * is required and is **how the client approved** (portal-v0-spec.md §2a).
+   */
   readonly note?: string;
   /**
    * For an approval: the price the approver was shown. The client's
@@ -237,6 +254,12 @@ export interface SetStatusOptions extends OrderWriteOptions {
  * writing an illegal state, and `OrderPricingError` for an approval of
  * an unpriced order or of a price other than `seenPrice` — here, so no
  * route can approve around it.
+ *
+ * An approval is the client's consent. From the client's own actor it needs
+ * nothing more; from any other actor (an admin recording what a client said by
+ * email, issue #221) it needs an account of how the client gave it, and throws
+ * `OrderApprovalError` without one (`recordedApprovalNote`). The actor decides,
+ * not a flag a caller could leave out.
  */
 export function setStatus(
   db: Database.Database,
@@ -250,8 +273,12 @@ export function setStatus(
       throw new Error(`order ${orderId} not found`);
     }
     assertValidTransition(current.status, toStatus);
+    let note = options.note ?? null;
     if (toStatus === 'approved') {
       assertCanApprove(current.price, options.seenPrice);
+      if (options.actor.actor.kind !== 'client') {
+        note = recordedApprovalNote(options.note);
+      }
     }
 
     const now = new Date().toISOString();
@@ -262,7 +289,7 @@ export function setStatus(
       orderId,
       fromStatus: current.status,
       toStatus,
-      note: options.note ?? null,
+      note,
       createdAt: now,
       actor: options.actor,
     });

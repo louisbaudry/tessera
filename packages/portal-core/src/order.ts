@@ -93,6 +93,52 @@ export function assertCanApprove(price: number | null, seenPrice?: number): void
 }
 
 /**
+ * Why an approval may not be recorded (portal-v0-spec.md §2a; issue #221).
+ * Its own type, mapped to a 400 by the route: the request left something
+ * out, which is not a conflict with the order's state.
+ */
+export class OrderApprovalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OrderApprovalError';
+  }
+}
+
+/** The longest account of how a client approved: a sentence or two, not a document. */
+export const APPROVAL_NOTE_MAX = 500;
+
+/**
+ * The note stored for an approval **recorded by someone other than the
+ * client** (the admin, for a client who agreed by email or on the phone).
+ *
+ * An approval is the client's consent to a price. The client's own approve
+ * route proves it by the client's link; when anyone else records it, the only
+ * trace of the consent is what they say about it, so they must say **how the
+ * client gave it**. The stored note opens with words that keep the two apart
+ * in the order's history: this one was recorded for the client, not made by
+ * them.
+ *
+ * @param how what the person recording it typed ("by email, 21 November")
+ * @returns the note for the order's event
+ * @throws {OrderApprovalError} when `how` is missing, blank or over
+ *   {@link APPROVAL_NOTE_MAX} characters
+ */
+export function recordedApprovalNote(how: string | undefined): string {
+  const said = (how ?? '').trim();
+  if (said === '') {
+    throw new OrderApprovalError(
+      'say how the client approved (for example "by email, 21 November")',
+    );
+  }
+  if (said.length > APPROVAL_NOTE_MAX) {
+    throw new OrderApprovalError(
+      `how the client approved must be at most ${APPROVAL_NOTE_MAX} characters`,
+    );
+  }
+  return `approval recorded by the admin: ${said}`;
+}
+
+/**
  * Why an order cannot be an update of another (portal-v0-spec.md §4a;
  * backlog #163). Its own type, mapped to a 400 by the route: a client
  * naming the wrong order made a mistake in the request, which is not a

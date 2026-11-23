@@ -42,8 +42,10 @@ submitted -> approved -> in_progress -> delivered
    \-> cancelled          \-> cancelled  \-> cancelled
 ```
 
-- `submitted`: client created the order, has not yet approved the estimate.
-- `approved`: client approved; work can begin (manually, today).
+- `submitted`: client created the order (or the admin entered it for them, §2a),
+  has not yet approved the estimate.
+- `approved`: client approved, or the admin recorded their approval (§2a); work can
+  begin (manually, today).
 - `in_progress`: admin has started production.
 - `delivered`: admin uploaded final files and marked delivered.
 - `cancelled`: terminal, reachable from any non-terminal state.
@@ -70,6 +72,59 @@ The client's approve request also carries the price its page showed.
 If the admin re-priced the order after the page loaded, the numbers
 differ, and the server answers 409 instead of recording an approval of
 a price the client never saw. The client reloads and sees the new one.
+
+## 2a. An order entered by the admin, and an approval recorded for a client (issue #221, 2026-11-23)
+
+A client who already works by email will not start by filling in a form, and
+until now only the client could create an order. So the portal either held none
+of that client's work or the operator entered everything twice. Louis's three
+answers (2026-11-23), asked one at a time: TypeScript, not Rust/Wasm (a route, a
+rule and a form, with nothing to speed up); an approval the admin records must
+say how the client gave it; and the client is not emailed when an order is
+entered for them.
+
+**The admin enters the order: `POST /api/admin/orders`.** The client's own form
+(source language, target languages, files, a note, optionally the delivered
+order it updates) with one more field, `clientId`. Both routes place the order
+through one function (`placeOrder`, `portal-server/src/app.ts`), so what is
+checked, counted and stored cannot differ between them; the order then follows
+the normal lifecycle and appears at the client's link like any other.
+
+- **The actor is the admin.** The creation event is `admin:<id>`, and its note
+  says "order entered by the admin on the client's behalf": no event says the
+  client did something they did not (`audit-spec.md` §2.6). The note is chosen
+  from the actor in `createOrder`, not passed by the route.
+- **Nobody is notified.** The admin is the one doing it, so the "order
+  submitted" notice to the admin is not sent; and the client is told by whoever
+  is already writing to them. The "delivered" notice still goes at the end.
+- **A `clientId` that is no client of this portal is a 400**, with one message
+  whatever was wrong with it. It is an admin's route: there is nobody to hide a
+  client number from.
+
+**An approval recorded for a client says how the client gave it.** Approval is
+the client's consent to a price (§2). From the client's own link it needs
+nothing more. When anyone else records it, the only trace of that consent is
+what they say about it, so `setStatus` refuses an approval from any actor but
+the client's without an account of how it was given (`recordedApprovalNote`,
+`portal-core/src/order.ts`: non-blank, at most 500 characters), a 400 from the
+admin's `PATCH`. The event's note is "approval recorded by the admin: by email,
+21 November", which the history shows beside the client's own "approved by
+client". The request also carries the price the admin's page showed, and a
+different stored price is a 409, as for the client.
+
+- **The rule is the actor's, not a flag's.** It lives in `setStatus`, keyed on
+  the actor's kind, so no route can record a silent approval by leaving a field
+  out. It holds for every order, not only the ones an admin entered.
+- **This tightens what was there.** Until this change the admin's status button
+  moved a priced order to `approved` with one click and no note. That is now a
+  refusal with a message saying what is missing.
+- **It is a statement, not a proof.** The portal records what the admin says the
+  client agreed to. It cannot check it, and nothing may call it verified.
+
+**Not built:** a notice to the client that an order was entered for them (decided
+against, above); the admin attaching the client's email as evidence; entering an
+order for a client that does not exist yet (add the client first, §9b); a marker
+in the client's own page that an order was entered for them.
 
 ## 3. Pricing
 
@@ -308,7 +363,8 @@ the registry: there is no default, and a portal with SMTP and no sender refuses 
 start, issue #306), otherwise falls back to `ConsoleNotificationService`.
 Triggers:
 
-- order submitted -> notify admin
+- order submitted by a client -> notify admin (not when the admin enters the
+  order themselves, §2a)
 - order marked delivered -> notify client
 
 Send failures are logged, never thrown into the request path — a flaky

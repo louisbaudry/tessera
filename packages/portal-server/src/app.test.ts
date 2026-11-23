@@ -1901,3 +1901,263 @@ describe('solo-translator mode: a quote and the translator’s own deadlines (is
     expect(bad.statusCode).toBe(400);
   });
 });
+
+describe('the admin enters an order for a client (issue #221)', () => {
+  const enter = (
+    adminToken: string,
+    fields: Record<string, string | readonly string[]>,
+    files: ReadonlyArray<{ name: string; body: string }> = [
+      { name: 'brief.txt', body: 'one two three' },
+    ],
+  ) => {
+    const form = new FormData();
+    for (const [name, value] of Object.entries(fields)) {
+      for (const v of typeof value === 'string' ? [value] : value) form.append(name, v);
+    }
+    for (const f of files) {
+      form.append('files', new Blob([f.body], { type: 'text/plain' }), f.name);
+    }
+    return app.inject({
+      method: 'POST',
+      url: '/api/admin/orders',
+      headers: auth(adminToken),
+      payload: form,
+    });
+  };
+  const patch = (admin: string, orderId: number, payload: object) =>
+    app.inject({
+      method: 'PATCH',
+      url: `/api/admin/orders/${orderId}`,
+      headers: auth(admin),
+      payload,
+    });
+  const events = async (admin: string, orderId: number) =>
+    (
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/admin/orders/${orderId}`,
+          headers: auth(admin),
+        })
+      ).json() as {
+        events: Array<{ toStatus: string; actor: string; note: string | null }>;
+      }
+    ).events.map((e) => [e.toStatus, e.actor, e.note]);
+
+  it('creates the order for that client, with the admin as the one who did it', async () => {
+    const admin = await adminLogin();
+    const res = await enter(admin, {
+      clientId: String(ada.id),
+      srcLang: 'en',
+      tgtLangs: 'es',
+      notes: 'sent by email on Monday',
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const { order, sourceFiles } = res.json() as {
+      order: { id: number; clientId: number; status: string; notes: string };
+      sourceFiles: Array<{ filename: string; wordCount: number | null }>;
+    };
+    expect(order).toMatchObject({
+      clientId: ada.id,
+      status: 'submitted',
+      notes: 'sent by email on Monday',
+    });
+    // The same intake as the client's own form: stored and counted.
+    expect(sourceFiles).toMatchObject([{ filename: 'brief.txt', wordCount: 3 }]);
+
+    // The history names the admin: nothing says the client placed it.
+    const history = await events(admin, order.id);
+    expect(history).toHaveLength(1);
+    expect(history[0]![0]).toBe('submitted');
+    expect(history[0]![1]).toMatch(/^admin:\d+$/);
+    expect(history[0]![2]).toBe("order entered by the admin on the client's behalf");
+
+    // The client finds it at their own link, like an order they placed.
+    const mine = await app.inject({
+      method: 'GET',
+      url: '/api/client/orders',
+      headers: auth(ada.accessToken),
+    });
+    expect((mine.json() as Array<{ id: number }>).map((o) => o.id)).toEqual([order.id]);
+    // And another client does not.
+    const theirs = await app.inject({
+      method: 'GET',
+      url: `/api/client/orders/${order.id}`,
+      headers: auth(other.accessToken),
+    });
+    expect(theirs.statusCode).toBe(404);
+  });
+
+  it('notifies nobody: the admin did it, and tells the client themselves', async () => {
+    await app.close();
+    const sent: string[] = [];
+    app = await buildApp({
+      config,
+      logger: false,
+      notifications: {
+        notifyAdmin: (n) => void sent.push(`admin:${n.kind}`),
+        notifyClient: (n) => void sent.push(`client:${n.kind}`),
+      },
+    });
+    const admin = await adminLogin();
+    const res = await enter(admin, {
+      clientId: String(ada.id),
+      srcLang: 'en',
+      tgtLangs: 'es',
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    // The client's own form does notify the admin: the control for the line above.
+    await submitOrder(ada.accessToken, [{ name: 'a.txt', body: 'a' }]);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sent).toEqual(['admin:order_submitted']);
+  });
+
+  it('refuses a form that names no client of this portal, or lacks what an order needs', async () => {
+    const admin = await adminLogin();
+    for (const clientId of [undefined, '', 'abc', '99999', '1.5']) {
+      const res = await enter(admin, {
+        ...(clientId === undefined ? {} : { clientId }),
+        srcLang: 'en',
+        tgtLangs: 'es',
+      });
+      expect(res.statusCode, String(clientId)).toBe(400);
+      expect(res.json()).toEqual({ error: 'clientId must be one of your clients' });
+    }
+    const noTarget = await enter(admin, { clientId: String(ada.id), srcLang: 'en' });
+    expect(noTarget.statusCode).toBe(400);
+    const noFile = await enter(
+      admin,
+      { clientId: String(ada.id), srcLang: 'en', tgtLangs: 'es' },
+      [],
+    );
+    expect(noFile.statusCode).toBe(400);
+    expect(noFile.json()).toEqual({ error: 'at least one file is required' });
+    // Nothing was left behind by a refused form.
+    const all = await app.inject({
+      method: 'GET',
+      url: '/api/admin/orders',
+      headers: auth(admin),
+    });
+    expect(all.json()).toEqual([]);
+    expect(storedFiles()).toEqual([]);
+  });
+
+  it('is the admin’s alone: a client link and no credential are both refused', async () => {
+    for (const headers of [{}, auth(ada.accessToken)]) {
+      const form = new FormData();
+      form.append('clientId', String(ada.id));
+      form.append('srcLang', 'en');
+      form.append('tgtLangs', 'es');
+      form.append('files', new Blob(['x']), 'x.txt');
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/orders',
+        headers,
+        payload: form,
+      });
+      expect(res.statusCode).toBe(401);
+    }
+  });
+
+  it('records an approval for the client only with how they gave it, and at the price shown', async () => {
+    const admin = await adminLogin();
+    const entered = await enter(admin, {
+      clientId: String(ada.id),
+      srcLang: 'en',
+      tgtLangs: 'es',
+    });
+    const id = (entered.json() as { order: { id: number } }).order.id;
+    await patch(admin, id, { wordCount: 1000 }); // 1000 words at 0.1: 100
+
+    // No word of how the client approved: refused, and nothing moved.
+    for (const payload of [
+      { status: 'approved' },
+      { status: 'approved', note: '   ' },
+      { status: 'approved', note: 42 },
+    ]) {
+      const res = await patch(admin, id, payload);
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+      expect((res.json() as { error: string }).error).toMatch(/how the client approved/);
+    }
+    // A price other than the one the admin's page showed: a conflict, as for a client.
+    const stale = await patch(admin, id, {
+      status: 'approved',
+      note: 'by email, 21 November',
+      price: 80,
+    });
+    expect(stale.statusCode).toBe(409);
+
+    const ok = await patch(admin, id, {
+      status: 'approved',
+      note: 'by email, 21 November',
+      price: 100,
+    });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect((ok.json() as { status: string }).status).toBe('approved');
+    const history = await events(admin, id);
+    expect(history.at(-1)![0]).toBe('approved');
+    expect(history.at(-1)![1]).toMatch(/^admin:\d+$/);
+    expect(history.at(-1)![2]).toBe(
+      'approval recorded by the admin: by email, 21 November',
+    );
+  });
+
+  it('still lets the client approve an order the admin entered, from their link', async () => {
+    const admin = await adminLogin();
+    const entered = await enter(admin, {
+      clientId: String(ada.id),
+      srcLang: 'en',
+      tgtLangs: 'es',
+    });
+    const id = (entered.json() as { order: { id: number } }).order.id;
+    await patch(admin, id, { wordCount: 1000 });
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/client/orders/${id}/approve`,
+      headers: auth(ada.accessToken),
+      payload: { price: 100 },
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const history = await events(admin, id);
+    expect(history.at(-1)).toEqual([
+      'approved',
+      `client:${ada.id}`,
+      'approved by client',
+    ]);
+  });
+
+  it('enters an update of the same client’s delivered order, and refuses another client’s', async () => {
+    const admin = await adminLogin();
+    const first = await submitOrder(ada.accessToken, [
+      { name: 'a.txt', body: 'one two' },
+    ]);
+    await patch(admin, first.order.id, { wordCount: 1000 });
+    await app.inject({
+      method: 'POST',
+      url: `/api/client/orders/${first.order.id}/approve`,
+      headers: auth(ada.accessToken),
+      payload: { price: 100 },
+    });
+    await patch(admin, first.order.id, { status: 'in_progress' });
+    await deliver(admin, first.order.id, [{ name: 'a.es.txt', body: 'uno dos' }], true);
+
+    const update = await enter(admin, {
+      clientId: String(ada.id),
+      srcLang: 'en',
+      tgtLangs: 'es',
+      updateOf: String(first.order.id),
+    });
+    expect(update.statusCode, update.body).toBe(201);
+    expect(
+      (update.json() as { order: { previousOrderId: number } }).order.previousOrderId,
+    ).toBe(first.order.id);
+
+    const wrongClient = await enter(admin, {
+      clientId: String(other.id),
+      srcLang: 'en',
+      tgtLangs: 'es',
+      updateOf: String(first.order.id),
+    });
+    expect(wrongClient.statusCode).toBe(400);
+  });
+});
