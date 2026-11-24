@@ -100,6 +100,7 @@ export const VENDOR_AUDIT_ACTIONS = [
   'webhook.deleted',
   'webhook.reminder_changed',
   'client_pool.changed',
+  'client_pool.overridden',
 ] as const;
 
 export type ProjectAuditAction = (typeof PROJECT_AUDIT_ACTIONS)[number];
@@ -493,6 +494,15 @@ export interface AuditDetail {
     readonly client_id: number;
     readonly added: readonly number[];
     readonly removed: readonly number[];
+  };
+  /**
+   * An owner offered outside a client's vendor pool on purpose (issue #403):
+   * the assignment, the client and the vendor ids the pool left out.
+   */
+  'client_pool.overridden': {
+    readonly assignment_id: number;
+    readonly client_id: number;
+    readonly vendor_ids: readonly number[];
   };
 }
 

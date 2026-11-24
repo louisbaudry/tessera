@@ -19,6 +19,7 @@ import { formatActor, type AuditActor } from '@cat-tool/core';
 import {
   initialStatus,
   isRateTier,
+  outsideClientPool,
   RATE_TIERS,
   transitionAssignment,
   type AssignmentChannel,
@@ -29,6 +30,8 @@ import {
 } from '@cat-tool/vendor-core';
 import type Database from 'better-sqlite3';
 
+import { appendAuditEvent } from '../audit/events.js';
+import { getClientPool } from './client-pools.js';
 import { VendorError } from './error.js';
 import { getVendor } from './vendors.js';
 import { assignmentWebhookEvent, enqueueWebhook } from './webhooks.js';
@@ -164,7 +167,79 @@ export interface JobFields {
   readonly analysis?: TierWords;
   /** Who is offering it — required (audit-spec.md decision 3). */
   readonly actor: AuditActor;
+  /**
+   * The project's portal client, whose vendor pool the offer must keep to
+   * (issue #403). Omitted, or with a null client, nothing is checked: a project
+   * that is no client's work has no pool. The server always passes it.
+   */
+  readonly clientPool?: ClientPoolCheck;
   readonly now?: Date;
+}
+
+/** What an offer checks a client's vendor pool against (issue #403). */
+export interface ClientPoolCheck {
+  /** The project's portal client (`portal_client_setting`), or null for none. */
+  readonly portalClientId: number | null;
+  /**
+   * The owner's explicit choice to offer outside the pool. Logged as
+   * `client_pool.overridden` when it lets someone through; never a default.
+   */
+  readonly override?: boolean;
+}
+
+/**
+ * An offer or a pool post names a vendor outside the project's client's pool
+ * and the owner did not override it (issue #403). Nothing was written.
+ */
+export class ClientPoolError extends VendorError {
+  /** The vendor ids (roster numbers, not account ids) the pool leaves out. */
+  readonly outside: readonly number[];
+  constructor(outside: readonly number[]) {
+    super(
+      `vendor${outside.length === 1 ? '' : 's'} ${outside.map((id) => `#${id}`).join(', ')} ` +
+        "not in this client's pool: add them to it, or offer with the override",
+    );
+    this.name = 'ClientPoolError';
+    this.outside = outside;
+  }
+}
+
+/**
+ * Holds an offer to the client's pool, inside the offer's transaction: throws
+ * `ClientPoolError` for a vendor outside it without the override; with the
+ * override, returns the ids it let through so the caller logs them once the
+ * assignment has an id.
+ */
+function checkClientPool(
+  db: Database.Database,
+  check: ClientPoolCheck | undefined,
+  vendorIds: readonly number[],
+): { clientId: number; outside: number[] } | null {
+  if (!check || check.portalClientId === null) return null;
+  const outside = outsideClientPool(getClientPool(db, check.portalClientId), vendorIds);
+  if (outside.length === 0) return null;
+  if (check.override !== true) throw new ClientPoolError(outside);
+  return { clientId: check.portalClientId, outside };
+}
+
+/** Records an owner's override of a client's pool (issue #403): ids only, never a name. */
+function logPoolOverride(
+  db: Database.Database,
+  assignmentId: number,
+  overridden: { clientId: number; outside: number[] },
+  actor: AuditActor,
+): void {
+  appendAuditEvent(db, {
+    actor,
+    action: 'client_pool.overridden',
+    subjectType: 'assignment',
+    subjectId: String(assignmentId),
+    detail: {
+      assignment_id: assignmentId,
+      client_id: overridden.clientId,
+      vendor_ids: overridden.outside,
+    },
+  });
 }
 
 export interface DirectOfferOptions extends JobFields {
@@ -181,6 +256,7 @@ export function createDirectOffer(
     if (!getVendor(db, options.vendorId)) {
       throw new VendorError(`no vendor #${options.vendorId} on this roster`);
     }
+    const overridden = checkClientPool(db, options.clientPool, [options.vendorId]);
     const status = initialStatus('direct');
     const info = db
       .prepare(
@@ -206,6 +282,7 @@ export function createDirectOffer(
       actor: options.actor,
       at,
     });
+    if (overridden) logPoolOverride(db, id, overridden, options.actor);
     return getAssignment(db, id)!;
   })();
 }
@@ -225,6 +302,7 @@ export function postToPool(db: Database.Database, options: PoolPostOptions): Ass
     for (const id of ids) {
       if (!getVendor(db, id)) throw new VendorError(`no vendor #${id} on this roster`);
     }
+    const overridden = checkClientPool(db, options.clientPool, ids);
     const status = initialStatus('pool');
     const info = db
       .prepare(
@@ -253,6 +331,7 @@ export function postToPool(db: Database.Database, options: PoolPostOptions): Ass
       actor: options.actor,
       at,
     });
+    if (overridden) logPoolOverride(db, id, overridden, options.actor);
     return getAssignment(db, id)!;
   })();
 }

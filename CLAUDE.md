@@ -607,13 +607,16 @@ Epic 9 (`planning/vendor-spec.md`): `vendor-core` is the headless domain
   vendor, so a row nothing backs shows its account nothing, and the index
   is written before the roster entry. Use `ON CONFLICT DO NOTHING` for it,
   never `INSERT OR IGNORE`, which also swallows a CHECK violation.
-- **Eligibility is advice and filters nothing** (backlog #128,
+- **Eligibility is advice and filters nothing, except a client's pool** (backlog #128,
   `vendor-core/src/eligibility.ts`, `GET /api/vendors/eligibility`): who fits a
   project's pair, an optional specialty and the capacity toggle, with every
   exclusion named. The excluded list is always returned and an offer to an
   excluded vendor still goes through, because each input is a hand-set value that
-  goes stale. Don't make it a gate without a decision (enforcing at offer time
-  is issue #403). A vendor's **time off** (`time_off`, `.ctv` v9, issue #156) is theirs to set per
+  goes stale. **The one gate is the client's pool** (issue #403, Louis 2026-11-24): an
+  offer or pool post naming a vendor outside the project's client's non-empty pool is
+  a 409 unless `overrideClientPool: true`, logged as `client_pool.overridden` in the
+  offer's transaction; it is held in `createDirectOffer`/`postToPool`, never a route.
+  Don't make another reason a gate without a decision. A vendor's **time off** (`time_off`, `.ctv` v9, issue #156) is theirs to set per
   roster and is not audited, like capacity; it is named as `time_off` when a period shares a day with
   the job's window (today to the read's `deadline`, else today), and refuses nothing.
 - **A project's portal client is a number the owner typed, never checked against

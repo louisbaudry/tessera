@@ -31,6 +31,7 @@ import {
   acceptAssignment,
   addRosterMembership,
   addVendor,
+  ClientPoolError,
   claimAssignment,
   createDirectOffer,
   declineAssignment,
@@ -322,7 +323,10 @@ export function registerAssignmentRoutes(
 
   // The owner offers a project: to one vendor (`channel: "direct"`, one
   // account in `vendors`) or to a pool (`"pool"`, one or more). The
-  // vendors are named by account id and must be on the owner's roster.
+  // vendors are named by account id and must be on the owner's roster. A
+  // vendor outside the project's client's pool is a 409 naming them, unless
+  // `overrideClientPool: true` says the owner means it (issue #403), which the
+  // roster logs.
   app.post<{
     Body: {
       project?: unknown;
@@ -330,11 +334,13 @@ export function registerAssignmentRoutes(
       vendors?: unknown;
       deadline?: unknown;
       instructions?: unknown;
+      overrideClientPool?: unknown;
     };
   }>('/api/assignments', async (req, reply) => {
     const tenant = deps.ownTenant(req);
     const body = req.body ?? {};
-    const { project, channel, vendors, deadline, instructions } = body;
+    const { project, channel, vendors, deadline, instructions, overrideClientPool } =
+      body;
     if (typeof project !== 'string' || !isSlug(project)) {
       return reply.code(400).send({ error: 'project must be a project name' });
     }
@@ -358,7 +364,11 @@ export function registerAssignmentRoutes(
         return reply.code(400).send({ error: `${field} must be text` });
       }
     }
-    if (!tenant || !existsSync(projectPath(storageRoot, tenant, project))) {
+    if (overrideClientPool !== undefined && typeof overrideClientPool !== 'boolean') {
+      return reply.code(400).send({ error: 'overrideClientPool must be true or false' });
+    }
+    const job = tenant ? readJob(projectPath(storageRoot, tenant, project)) : null;
+    if (!tenant || !job) {
       return reply.code(404).send({ error: `no project named "${project}"` });
     }
 
@@ -374,7 +384,7 @@ export function registerAssignmentRoutes(
         }
         vendorIds.push(entry.id);
       }
-      const job = {
+      const fields = {
         projectName: project,
         deadline: (deadline as string | null | undefined) ?? null,
         instructions: (instructions as string | null | undefined) ?? null,
@@ -382,13 +392,25 @@ export function registerAssignmentRoutes(
         // (backlog #116): a tier cannot be read from a segment later.
         analysis: await analyseProject(projectPath(storageRoot, tenant, project)),
         actor: deps.sessionActor(req),
+        clientPool: {
+          portalClientId: job.portalClientId,
+          override: overrideClientPool === true,
+        },
       };
       const assignment =
         channel === 'direct'
-          ? createDirectOffer(roster, { ...job, vendorId: vendorIds[0]! })
-          : postToPool(roster, { ...job, vendorIds });
+          ? createDirectOffer(roster, { ...fields, vendorId: vendorIds[0]! })
+          : postToPool(roster, { ...fields, vendorIds });
       return reply.code(201).send({ assignment: ownerView(roster, assignment) });
     } catch (err) {
+      // Named by account id, as the request named them (issue #403).
+      if (err instanceof ClientPoolError) {
+        return reply.code(409).send({
+          error:
+            "not in this client's vendor pool: add them to it, or set overrideClientPool",
+          outsideClientPool: err.outside.map((id) => getVendor(roster, id)!.accountId),
+        });
+      }
       return mapError(err, reply);
     } finally {
       roster.close();

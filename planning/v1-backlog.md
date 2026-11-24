@@ -4577,6 +4577,20 @@ rest of that range:
     packages. Two existing tests changed on purpose: the `.ctv` `user_version` is now 9.
   - Not built: an owner's view of a vendor's time off outside the eligibility read, a time zone per vendor,
     and enforcement (issue #403).
+- **#403 · ~~A client's vendor pool holds at offer time~~ · DONE — `vendor-core/src/eligibility.ts` (`outsideClientPool`), `db/src/vendor/assignments.ts` (`clientPool`, `ClientPoolError`, `client_pool.overridden`, `.ctv` v10), `POST /api/assignments`'s `overrideClientPool` in `server/src/assignments.ts`**
+  (2026-11-24; design note: `vendor-spec.md`, the #403 note.) Louis chose to enforce the client's pool
+  only, with a logged override, and TypeScript (asked first). What it taught:
+  - **The gate went into the write, not the route.** The route already knew the client; putting the
+    check in `createDirectOffer`/`postToPool`, inside their transaction, means the refusal writes nothing
+    and the override's log row cannot be lost from the offer it explains.
+  - **A logged choice is an audit action, not a note.** The creation event's free-text `note` would have
+    held it with no migration, but the audit rule is that an action widens the CHECK and never becomes free
+    text, so `.ctv` v10 rebuilds `audit_event`.
+  - Verified: the repository (a direct offer and a pool post refused with nothing written, the override
+    logged with the ids left out, an override inside the pool logging nothing, no pool and no client
+    restricting nothing; red before the code) and the route (409 with account ids, a non-boolean override
+    a 400, an override a 201). Not verified: any screen (no offer screen exists).
+  - Not built: an offer screen, and anything about a pool that changes after an offer.
 
 ### Epic 14 — Tenancy (spec'd 2026-10-23, not started)
 
