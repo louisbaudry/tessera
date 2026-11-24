@@ -150,6 +150,7 @@ import {
   type HeldSession,
 } from './glossary-session.js';
 import { registerAssignmentRoutes } from './assignments.js';
+import { registerAiSpendRoutes } from './ai-spend.js';
 import { defaultAdapterFor, registerDraftRoutes, type AdapterFor } from './draft.js';
 import { registerEngineRoutes } from './engine.js';
 import { registerConcordanceRoutes } from './concordance.js';
@@ -2578,6 +2579,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     sessionActor,
     loginGate: LOGIN_GATE,
     sso: ssoFlow,
+  });
+
+  // --- what the tenant's draft runs spent (issue #150) ---------------------
+  registerAiSpendRoutes(app, {
+    storageRoot: config.storageRoot,
+    tenant: (req) => tenantFor(req, 'consent'),
   });
 
   // --- a tenant's own slice of the platform log (backlog #211) -------------

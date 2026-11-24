@@ -5792,6 +5792,17 @@ TypeScript, as S1a. What it taught:
   branch of the gate, and both are kept. The limit counts by token, so each hourly access token of a
   connection has its own window.
 
+**#150 (owner half) · ~~The owner's AI spend view~~ · DONE — `core/src/draft/usage.ts` (`usageUnit`, `AI_USAGE_UNITS`, `AI_USAGE_OUTCOMES`), `db/src/project/ai-usage.ts` (`recordAiUsage`, `readAiUsage`, `sumAiUsage`) and project schema v24, its write in `db/src/project/draft.ts`, `server/src/ai-spend.ts` (`GET /api/ai-spend`), `web/src/AiSpend.tsx` and `ai-spend-view.ts` (`#/ai-spend`)** (2026-11-24; issue #150 stays open for the rest; `translation-engine-spec.md` D42)
+
+Louis chose the owner half, in TypeScript (asked first). What it taught:
+
+- **The card's first half contradicts the spec.** "Show the linguist which engine produced each draft" is what D3, D20 and D41 forbid, so it was not built and the issue says why instead of dropping it silently.
+- **The tokens were never stored.** A run's tokens existed only in its summary, which is how D12's "tokens per job are logged either way" read in the spec; nothing could be summed afterwards. Spend before schema v24 is therefore unrecoverable, and the screen says so.
+- **`ai.requested` could not carry them.** It is logged before the send, by design, so it cannot hold what the reply has not yet reported; a second event per call would put a count in a hashed `detail`. A table of counts is the smaller change and holds no client content.
+- **A refused reply still costs.** Recording per reply, whatever became of it, and showing "8 of 10 kept" makes a wasteful prompt visible; the mutation that skips the dropped-reply row fails a test.
+- Verified: the repository (a row per reply by engine, model and unit; a refused and a dropped reply counted; DeepL in characters, apart from tokens; nothing for a call that failed; append-only by trigger; the merge of projects), the route (per-project and total sums, no spend not listed, another tenant's never shown, a pm refused, a vendor shown nothing, no session a 401), the access rule, the route round trip, the view's wording, the isolation walk and a functional test that the screen opens with its title (`e2e/screen-headings.spec.ts`). Switching off the dropped-reply row failed one test. **Not verified:** a real run's numbers against an engine's own invoice, and the screen with real spend in a browser (the e2e server drafts nothing).
+- Not built: spend limits, a per-call log view, any change to what a translator sees.
+
 **#384 · ~~Rate limit the chat connector's public sign-in routes~~ · DONE — `server/src/rate-limit.ts`
 (`clientAddress`, `senderKey`), `server/src/connector-oauth.ts` (`OAUTH_SENDER_LIMITS`: 60 token requests
 a minute, 10 registrations an hour, per sender), `server/src/config.ts` (`CAT_TRUSTED_PROXIES`),

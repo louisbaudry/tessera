@@ -781,6 +781,39 @@ const v23: Migration = {
 };
 
 /**
+ * v24 (issue #150): `ai_usage` — what each engine reply cost, one row per reply, units only
+ * (tokens, or characters for DeepL) and never text, so the owner's spend view is a sum
+ * and no client content is kept a second time. Append-only by trigger, like the
+ * other records here: a past run's spend cannot be edited away. `segment_id` is a plain
+ * integer with no foreign key, so restructuring a file does not erase what its drafts
+ * cost. The three closed sets are frozen literals (`AI_USAGE_UNITS`, `AI_USAGE_OUTCOMES`,
+ * `DRAFT_ENGINES` as of this version).
+ */
+const v24: Migration = {
+  version: 24,
+  description: 'ai_usage — what each engine reply cost, units only (issue #150)',
+  up: (db) => {
+    db.exec(`
+      CREATE TABLE ai_usage (
+        id           INTEGER PRIMARY KEY,
+        segment_id   INTEGER NOT NULL,
+        engine       TEXT NOT NULL CHECK (engine IN ('tessera', 'deepl')),
+        model        TEXT NOT NULL,
+        unit         TEXT NOT NULL CHECK (unit IN ('tokens', 'characters')),
+        input_units  INTEGER NOT NULL CHECK (input_units >= 0),
+        output_units INTEGER NOT NULL CHECK (output_units >= 0),
+        outcome      TEXT NOT NULL CHECK (outcome IN ('stored', 'rejected', 'discarded')),
+        at           TEXT NOT NULL
+      );
+      CREATE TRIGGER ai_usage_no_update BEFORE UPDATE ON ai_usage
+      BEGIN SELECT RAISE(ABORT, 'ai_usage is append-only'); END;
+      CREATE TRIGGER ai_usage_no_delete BEFORE DELETE ON ai_usage
+      BEGIN SELECT RAISE(ABORT, 'ai_usage is append-only'); END;
+    `);
+  },
+};
+
+/**
  * `origin` has no CHECK constraint: it is a deliberately open string
  * (`v1-spec.md` §4.3) so a future match kind — `tm_fuzzy_85`, `tm_ice` —
  * is just a new value, never a migration.
@@ -809,4 +842,5 @@ export const PROJECT_MIGRATIONS: readonly Migration[] = [
   v21,
   v22,
   v23,
+  v24,
 ];

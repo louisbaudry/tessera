@@ -731,6 +731,43 @@ serializer. (a) was chosen:
 
 No code changes. Stayed in TypeScript (D6).
 
+### Decided while building the owner's spend view (issue #150, 2026-11-24)
+
+**D42. The owner sees what drafts used, in units, per project; the translator sees nothing new
+(Louis chose the owner half and TypeScript, 2026-11-24).** Issue #150 asked for two things: show
+the linguist which engine produced a draft, and give the owner a spend view. The first is not
+built, because D3, D20 and D41 hold the engine invisible to whoever does the work: no route a
+translator reaches names an engine or a model, so a "translated via" column would reverse them.
+Reopen that only by reopening D3. The second is:
+
+- **Where it lives.** `ai_usage` (project schema v24), one row per reply an engine sent back:
+  segment id, engine, the model the engine reported, the unit, input and output counts, what
+  became of the reply (`stored`, `rejected` or `discarded`) and when. Append-only by trigger, like
+  the other records. `segment_id` is a plain integer with no foreign key, so restructuring a
+  file does not erase what its drafts cost. It is written in `draftSuggestions` at the point the
+  reply is known, never before the send, so a call that fails with no reply leaves no row.
+- **Why not the audit log.** `ai.requested` is written before the send (its job is to prove what
+  left), so it cannot hold a count the reply has not yet reported. Widening it would mean a second
+  event per call, with the call's cost in a hashed `detail` that cannot be erased. A table of
+  counts holds no client content and no personal data, so nothing in it needs erasing.
+- **Units, never money.** A price changes by model and by date and Tessera holds none. DeepL
+  reports no tokens, so its adapter already puts source characters in the same field (D40) and
+  the row says `characters`; a unit is part of the grouping so the two are never added. The
+  screen says to check the units against the engine's price list.
+- **A paid-for reply that was not kept is counted.** A reply refused by `validateDraft` and one
+  dropped because consent was withdrawn mid-call both cost something, and the view says how
+  many of the replies were kept, so an owner can see a prompt that wastes money.
+- **Who sees it.** `GET /api/ai-spend`, admin only through the `consent` action (the engine
+  settings' own), the tenant taken from the session, a vendor shown an empty view. It lists the
+  projects that spent something and a total merged by engine, model and unit. The screen is
+  `#/ai-spend`, in the admin's navigation, hidden from a pm like staff and activity.
+- **Not built (still issue #150):** spend limits per project or client (D12's monthly cap is
+  still waiting for real spend to be seen, which this now lets someone do), and a per-call log
+  view (the rows hold the segment id, so it is a read away). Spend from before v24 is not
+  recorded and cannot be: a run's tokens used to live only in its summary.
+
+Stayed in TypeScript: a sum over a few thousand rows, behind a route; nothing to profile.
+
 ### Still open
 
 1. **The agreement wording** (D11), a check on Louis's side before the first

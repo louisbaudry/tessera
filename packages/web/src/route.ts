@@ -9,7 +9,7 @@
  * #113) are `#/payables`, the owner's pay run, and `#/payments`, a vendor's own
  * record; each account sees only its own, whatever a hand-typed link says.
  * `#/vendors` is the owner's roster and invitations, and `#/invite/<token>` the
- * page a vendor's invitation link opens (backlog #111). `#/audit` is an admin's activity log (backlog #211), `#/staff` an admin's staff
+ * page a vendor's invitation link opens (backlog #111). `#/audit` is an admin's activity log (backlog #211), `#/ai-spend` an admin's AI spend (issue #150), `#/staff` an admin's staff
  * list and `#/join/<token>` the page a staff link opens (backlog #210). The two link
  * pages are the only screens reached without a session. `#/account` is the signed-in
  * account's own settings: its linked sign-ins and, for an admin, the tenant's single sign-on
@@ -28,6 +28,7 @@ export type Route =
   | { readonly screen: 'vendors' }
   | { readonly screen: 'staff' }
   | { readonly screen: 'audit' }
+  | { readonly screen: 'ai-spend' }
   | { readonly screen: 'account' }
   | { readonly screen: 'connect'; readonly request: ConnectRequest }
   | { readonly screen: 'join'; readonly token: string }
@@ -61,6 +62,7 @@ export function parseRoute(hash: string): Route {
   if (parts.length === 1 && parts[0] === 'vendors') return { screen: 'vendors' };
   if (parts.length === 1 && parts[0] === 'staff') return { screen: 'staff' };
   if (parts.length === 1 && parts[0] === 'audit') return { screen: 'audit' };
+  if (parts.length === 1 && parts[0] === 'ai-spend') return { screen: 'ai-spend' };
   if (parts.length === 1 && parts[0] === 'account') return { screen: 'account' };
   if (parts.length === 2 && parts[0] === 'join') {
     // A staff link, like a vendor's, lives in the fragment and is never sent to a server.
@@ -107,6 +109,8 @@ export function formatRoute(route: Route): string {
       return '#/staff';
     case 'audit':
       return '#/audit';
+    case 'ai-spend':
+      return '#/ai-spend';
     case 'account':
       return '#/account';
     case 'connect':

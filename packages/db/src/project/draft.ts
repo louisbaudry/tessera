@@ -31,8 +31,10 @@ import {
   operandOfSource,
   plainText,
   PROMPT_LIMITS,
+  usageUnit,
   withoutHiddenTags,
   DRAFT_REJECTIONS,
+  type AiUsageOutcome,
   type AuditActor,
   type DraftEngineAdapter,
   type DraftReference,
@@ -47,6 +49,7 @@ import { existsSync } from 'node:fs';
 import { appendAuditEvent } from '../audit/events.js';
 import { listTermEntries } from '../glossary/terms.js';
 import { retrieveFuzzy } from '../tm/fuzzy.js';
+import { recordAiUsage } from './ai-usage.js';
 import { getDraftSuggestion, putDraftSuggestion } from './draft-suggestions.js';
 import { listGlossaryRefs } from './glossary-refs.js';
 import { findExactTmMatch } from './pretranslate.js';
@@ -353,15 +356,32 @@ export async function draftSuggestions(
         summary.tokens.input += outcome.usage.inputTokens;
         summary.tokens.output += outcome.usage.outputTokens;
       }
+      // What was spent is recorded for every reply that came back, whatever became of
+      // it (issue #150): a refused or dropped reply was paid for all the same.
+      const spent = (kind: AiUsageOutcome): void => {
+        if (!outcome.usage) return;
+        recordAiUsage(db, {
+          segmentId: segment.id,
+          engine: options.adapter.engine,
+          model: outcome.provenance.model,
+          unit: usageUnit(options.adapter.engine),
+          inputUnits: outcome.usage.inputTokens,
+          outputUnits: outcome.usage.outputTokens,
+          outcome: kind,
+          at: now().toISOString(),
+        });
+      };
       // The consent may have been withdrawn while the call was in flight. D15 says
       // an opt-out deletes every unaccepted suggestion at that moment, so a reply
       // that lands afterwards is dropped, never stored: no await sits between this
       // check and the write, so a purge cannot slip in between them either.
       if (options.gate().engine !== options.adapter.engine) {
         summary.discarded++;
+        spent('discarded');
         summary.stop = 'gate_closed';
         break;
       }
+      spent(outcome.ok ? 'stored' : 'rejected');
       if (outcome.ok) {
         putDraftSuggestion(db, {
           segmentId: segment.id,

@@ -50,6 +50,7 @@ test("a member of staff's screens each have their title as the level-1 heading",
     ['#/payables', 'Pay run'],
     ['#/staff', 'Staff'],
     ['#/audit', 'Activity'],
+    ['#/ai-spend', 'AI spend'],
     ['#/account', 'Account'],
   ] as const) {
     await page.goto(`/${hash}`);

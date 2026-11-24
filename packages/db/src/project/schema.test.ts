@@ -36,6 +36,7 @@ describe('openProjectDb', () => {
       .all()
       .map((r) => (r as { name: string }).name);
     expect(tables).toEqual([
+      'ai_usage',
       'audit_event',
       'draft_suggestion',
       'engine_override_setting',
