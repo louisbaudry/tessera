@@ -39,6 +39,7 @@ export * from './draft/engine.js';
 export * from './draft/markup.js';
 export * from './draft/prompt.js';
 export * from './draft/draft.js';
+export * from './draft/usage.js';
 export * from './draft/fake.js';
 export * from './draft/terms.js';
 export * from './glossary/exceptions.js';

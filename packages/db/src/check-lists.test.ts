@@ -14,6 +14,8 @@ import {
   ACCOUNT_ROLES,
   TENANT_ROLES,
   DECISION_KINDS,
+  AI_USAGE_OUTCOMES,
+  AI_USAGE_UNITS,
   DRAFT_ENGINES,
   ENGINE_CHOICES,
   PLATFORM_AUDIT_ACTIONS,
@@ -70,6 +72,9 @@ const DATABASES: Readonly<Record<string, Case>> = {
       'audit_event.action': PROJECT_AUDIT_ACTIONS,
       'engine_override_setting.engine': ENGINE_CHOICES,
       'draft_suggestion.engine': DRAFT_ENGINES,
+      'ai_usage.engine': DRAFT_ENGINES,
+      'ai_usage.unit': AI_USAGE_UNITS,
+      'ai_usage.outcome': AI_USAGE_OUTCOMES,
     },
   },
   glossary: {

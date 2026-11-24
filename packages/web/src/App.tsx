@@ -18,6 +18,7 @@ import { Payables } from './Payables.js';
 import { Payments } from './Payments.js';
 import { ProjectFiles, Projects } from './Projects.js';
 import { Staff } from './Staff.js';
+import { AiSpend } from './AiSpend.js';
 import { Audit } from './Audit.js';
 import { parseProjectKey } from './project-key.js';
 import { loadTheme, saveTheme } from './prefs.js';
@@ -191,6 +192,9 @@ export function App() {
             {staffRole === 'admin' && (
               <a href={formatRoute({ screen: 'audit' })}>Activity</a>
             )}
+            {staffRole === 'admin' && (
+              <a href={formatRoute({ screen: 'ai-spend' })}>AI spend</a>
+            )}
             {role === 'vendor' && (
               <a href={formatRoute({ screen: 'payments' })}>Payments</a>
             )}
@@ -222,6 +226,7 @@ export function App() {
           )}
           {route.screen === 'staff' && staffRole === 'admin' && <Staff />}
           {route.screen === 'audit' && staffRole === 'admin' && <Audit />}
+          {route.screen === 'ai-spend' && staffRole === 'admin' && <AiSpend />}
           {route.screen === 'account' && role !== null && (
             <Account
               staffRole={staffRole}
@@ -265,6 +270,7 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
     route.screen === 'vendors' ||
     route.screen === 'staff' ||
     route.screen === 'audit' ||
+    route.screen === 'ai-spend' ||
     route.screen === 'account' ||
     route.screen === 'connect'
   ) {
@@ -275,6 +281,7 @@ function Breadcrumbs({ route, role }: { route: Route; role: AccountRole | null }
       vendors: 'Vendors',
       staff: 'Staff',
       audit: 'Activity',
+      'ai-spend': 'AI spend',
       account: 'Account',
       connect: 'Connect',
     }[route.screen];

@@ -34,6 +34,7 @@ export function screenAllowed(screen: Route['screen'], viewer: Viewer): boolean 
       return viewer.role === 'owner';
     case 'staff':
     case 'audit':
+    case 'ai-spend':
       return viewer.staffRole === 'admin';
     case 'payments':
       return viewer.role === 'vendor';

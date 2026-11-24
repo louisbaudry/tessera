@@ -15,8 +15,8 @@ describe('screenAllowed', () => {
     }
   });
 
-  it('keeps the staff list and the activity log to an admin', () => {
-    for (const screen of ['staff', 'audit'] as const) {
+  it('keeps the staff list, the activity log and the AI spend to an admin', () => {
+    for (const screen of ['staff', 'audit', 'ai-spend'] as const) {
       expect(screenAllowed(screen, admin), screen).toBe(true);
       expect(screenAllowed(screen, pm), screen).toBe(false);
       expect(screenAllowed(screen, vendor), screen).toBe(false);
