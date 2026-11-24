@@ -103,9 +103,10 @@ export interface EligibilityProfile {
  * reasons of their own, since "at full capacity" and "away" are different
  * things to tell an owner. Declared time off that shares a day with the job's
  * window is `time_off`, beside the status: a vendor can be available today and
- * away next week, which the status alone cannot say. A client's own pool (`not_in_client_pool`) is the
- * owner's standing rule for that client, so it is named like the rest: advice
- * the owner can still overrule by offering.
+ * away next week, which the status alone cannot say. A client's own pool
+ * (`not_in_client_pool`) is named like the rest here, but it is the one reason an
+ * offer also enforces (issue #403, {@link outsideClientPool}): the owner overrules
+ * it only by saying so, and the override is logged.
  */
 export function exclusionReasons(
   profile: EligibilityProfile,
@@ -132,4 +133,23 @@ export function exclusionReasons(
   }
   if (profile.inClientPool === false) reasons.push('not_in_client_pool');
   return reasons;
+}
+
+/**
+ * The vendors in `vendorIds` that a client's pool leaves out (issue #403), in the
+ * order given and without repeats: the one exclusion reason an offer enforces. A
+ * pool is absence-based, so an empty `pool` (no rows for the client) leaves no one
+ * out.
+ *
+ * @param pool the vendor ids approved for the client (`client_pool_member`)
+ * @param vendorIds the vendor ids an offer or a pool post names
+ * @returns the ids outside the pool, empty when the offer may go through
+ */
+export function outsideClientPool(
+  pool: readonly number[],
+  vendorIds: readonly number[],
+): number[] {
+  if (pool.length === 0) return [];
+  const approved = new Set(pool);
+  return [...new Set(vendorIds)].filter((id) => !approved.has(id));
 }

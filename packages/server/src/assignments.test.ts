@@ -1406,6 +1406,36 @@ describe('who fits a project (#128)', () => {
     const setPool = (token: string, clientId: number | string, vendors: unknown) =>
       put(token, `/api/client-pools/${clientId}`, { vendors });
 
+    it('refuses an offer outside the pool unless the owner overrides it, and logs the override (issue #403)', async () => {
+      const a = await aliceWithProject();
+      const ids = await rosterWithFits(a);
+      await setClient(a, 7);
+      await setPool(a, 7, [ids.eve]);
+
+      const refused = await post(a, offerBody({ vendors: [ids.frank] }));
+      expect(refused.statusCode, refused.body).toBe(409);
+      expect(refused.json()).toMatchObject({ outsideClientPool: [ids.frank] });
+      const pool = await post(
+        a,
+        offerBody({ channel: 'pool', vendors: [ids.eve, ids.frank] }),
+      );
+      expect(pool.statusCode).toBe(409);
+      expect(pool.json()).toMatchObject({ outsideClientPool: [ids.frank] });
+      // Only `true` overrides: a string is not a choice.
+      const stringy = await post(
+        a,
+        offerBody({ vendors: [ids.frank], overrideClientPool: 'yes' }),
+      );
+      expect(stringy.statusCode).toBe(400);
+
+      expect((await post(a, offerBody({ vendors: [ids.eve] }))).statusCode).toBe(201);
+      const overridden = await post(
+        a,
+        offerBody({ vendors: [ids.frank], overrideClientPool: true }),
+      );
+      expect(overridden.statusCode, overridden.body).toBe(201);
+    });
+
     it('adds not_in_client_pool for vendors the client has not approved, and nothing without a pool', async () => {
       const a = await aliceWithProject();
       const ids = await rosterWithFits(a);

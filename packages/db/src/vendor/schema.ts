@@ -580,6 +580,25 @@ const v9: Migration = {
   },
 };
 
+/** `audit_event.action` since v10: `VENDOR_AUDIT_ACTIONS` as of issue #403. */
+const V10_AUDIT_ACTIONS = [
+  ...V8_AUDIT_ACTIONS,
+  'client_pool.overridden',
+] as const satisfies readonly VendorAuditAction[];
+
+/**
+ * v10 (issue #403): a client's pool holds at offer time, and an owner's
+ * override of it is logged, so `audit_event` is rebuilt for
+ * `client_pool.overridden` (`rebuildTable`, backlog #64). No data changes.
+ */
+const v10: Migration = {
+  version: 10,
+  description: 'client_pool.overridden in the roster log (issue #403)',
+  up: (db) => {
+    rebuildTable(db, 'audit_event', auditEventDdl(V10_AUDIT_ACTIONS));
+  },
+};
+
 export const VENDOR_MIGRATIONS: readonly Migration[] = [
   v1,
   v2,
@@ -590,4 +609,5 @@ export const VENDOR_MIGRATIONS: readonly Migration[] = [
   v7,
   v8,
   v9,
+  v10,
 ];

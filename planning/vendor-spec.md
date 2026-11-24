@@ -1181,9 +1181,32 @@ cheap and reversible:
   status: the periods still to come, each removable, and two date fields to add one. The owner sees it
   only as a reason in the eligibility read (no offer screen exists yet).
 - **Still advice.** Nothing refuses an offer for it. Whether any reason should ever refuse one (the client's
-  pool first) is issue #403, so this card closes.
+  pool first) became issue #403, decided below.
 - **"Today" is the server's UTC date.** A vendor whose time off starts tomorrow in their own time zone may
   see it named a few hours early or late. Not worth a time zone per vendor until someone notices.
 - The calendar-date check moved from `portal-core` to `core/model` (`calendar.ts`), one definition for the
   portal's due dates and this; `portal-core` re-exports it.
+
+**#403 note (2026-11-24): a client's pool holds at offer time; every other reason stays advice.**
+Louis chose this of three options (every reason advice; the pool only; several reasons with an
+override). A pool is the owner's own standing rule for one client, often for confidentiality, so an
+offer outside it is more likely a mistake than a judgement; a capacity toggle, a time-off entry or a
+language tag is a hand-set value that goes stale, so those still only inform.
+
+- **What is refused.** `POST /api/assignments` reads the project's portal client
+  (`portal_client_setting`) and that client's pool. A direct offer or a pool post naming any vendor
+  outside a non-empty pool is a 409 whose body lists them (`outsideClientPool`, account ids, as the
+  request named them), and nothing is written. A project with no client, a client with no pool, and an
+  offer inside the pool are unchanged.
+- **The override is explicit and logged.** `overrideClientPool: true` (a boolean; anything else is a
+  400) lets the offer through and writes `client_pool.overridden` to the roster's `audit_event` in the
+  offer's own transaction: the assignment, the client and the vendor ids left out, never a name. An
+  override that lets no one through (everyone was in the pool) logs nothing.
+- **Where it lives.** The rule is `outsideClientPool` (`vendor-core/src/eligibility.ts`); it is held in
+  `createDirectOffer` and `postToPool` (`db/vendor/assignments.ts`, `clientPool`, `ClientPoolError`),
+  not in the route, so a later caller gets the same check. Omitting `clientPool` checks nothing (a
+  project that is no client's work); the server always passes it. `.ctv` v10 widens the action list.
+- **Not built:** an offer screen to show the refusal and tick the override (no offer screen exists), and
+  a check on the pool changing after an offer (an offer made inside the pool stays valid). The
+  eligibility read still lists `not_in_client_pool` like the other reasons.
 
