@@ -148,3 +148,66 @@ export function sumAiUsage(usages: readonly AiUsage[]): AiUsage {
   );
   return { rows, calls: rows.reduce((n, r) => n + r.calls, 0) };
 }
+
+/** One reply as the per-call log shows it: a row of `ai_usage`, nothing added. */
+export interface AiCall extends AiUsageEntry {
+  /** The row's id, the log's cursor. */
+  readonly id: number;
+}
+
+/** A page of the per-call log, newest first, and the cursor for the page after it. */
+export interface AiCallPage {
+  readonly calls: readonly AiCall[];
+  /** Pass as `before` for the next (older) page; null when this page is the last. */
+  readonly next: number | null;
+}
+
+/** The most rows one page of the log holds, whatever a caller asks for. */
+export const AI_CALL_PAGE_MAX = 200;
+
+/**
+ * The per-call log (issue #150's remainder): the project's `ai_usage` rows, newest first,
+ * `limit` at a time (clamped to 1..`AI_CALL_PAGE_MAX`), each older than the row `before`
+ * names when it is given. Keyed on the row id, the table's primary key, so a page is a
+ * seek and never a scan, and a row appended while someone pages never shifts a page they
+ * have not read yet. The rows carry what they always did: units, outcome, the segment's id
+ * and the engine's model, never text.
+ */
+export function listAiCalls(
+  db: Database.Database,
+  params: { readonly before?: number; readonly limit: number },
+): AiCallPage {
+  const limit = Math.min(AI_CALL_PAGE_MAX, Math.max(1, Math.trunc(params.limit)));
+  // One row more than the page, to know whether another page exists without a COUNT.
+  const rows = db
+    .prepare(
+      `SELECT id, segment_id, engine, model, unit, input_units, output_units, outcome, at
+         FROM ai_usage
+        WHERE id < @before
+        ORDER BY id DESC
+        LIMIT @take`,
+    )
+    .all({ before: params.before ?? Number.MAX_SAFE_INTEGER, take: limit + 1 }) as Array<{
+    id: number;
+    segment_id: number;
+    engine: DraftEngine;
+    model: string;
+    unit: AiUsageUnit;
+    input_units: number;
+    output_units: number;
+    outcome: AiUsageOutcome;
+    at: string;
+  }>;
+  const page = rows.slice(0, limit).map((r): AiCall => ({
+    id: r.id,
+    segmentId: r.segment_id,
+    engine: r.engine,
+    model: r.model,
+    unit: r.unit,
+    inputUnits: r.input_units,
+    outputUnits: r.output_units,
+    outcome: r.outcome,
+    at: r.at,
+  }));
+  return { calls: page, next: rows.length > limit ? page[page.length - 1]!.id : null };
+}

@@ -13,6 +13,7 @@ import { hashPassword, type AuditActor } from '@cat-tool/core';
 import {
   createAccount,
   getTenantForAccount,
+  grantProjectAuthorization,
   openPlatformDb,
   openProjectDb,
   recordAiUsage,
@@ -32,6 +33,7 @@ let config: ServerConfig;
 let app: FastifyInstance;
 let tenantA: Tenant;
 let tenantB: Tenant;
+let aliceId: number;
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'cat-ai-spend-'));
@@ -51,6 +53,7 @@ beforeEach(async () => {
   make('bob', { role: 'vendor' });
   const alice = make('alice');
   const carol = make('carol');
+  aliceId = alice.id;
   tenantA = getTenantForAccount(platform, alice.id)!.tenant;
   tenantB = getTenantForAccount(platform, carol.id)!.tenant;
   make('dave', { joinTenant: { tenantId: tenantA.id, role: 'pm' } });
@@ -205,5 +208,114 @@ describe('GET /api/ai-spend', () => {
     expect((await app.inject({ method: 'GET', url: '/api/ai-spend' })).statusCode).toBe(
       401,
     );
+  });
+});
+
+describe('GET /api/projects/:name/ai-calls', () => {
+  const calls = (token: string, query = '', name = 'alpha') =>
+    app.inject({
+      method: 'GET',
+      url: `/api/projects/${name}/ai-calls${query}`,
+      headers: as(token),
+    });
+
+  it('lists one project’s replies newest first, a page at a time, units and ids only', async () => {
+    const a = await login('alice');
+    await project(a, 'alpha');
+    await project(a, 'beta');
+    spend(tenantA, 'alpha', [t(100, 20), t(110, 21, 'rejected'), t(120, 22)]);
+    spend(tenantA, 'beta', [t(999, 99)]);
+
+    const first = await calls(a, '?limit=2');
+    expect(first.statusCode, first.body).toBe(200);
+    const page = first.json() as {
+      calls: Array<Record<string, unknown>>;
+      next: number | null;
+    };
+    expect(page.calls.map((c) => c.segmentId)).toEqual([3, 2]);
+    expect(page.calls[1]).toMatchObject({
+      engine: 'tessera',
+      model: 'm-1',
+      unit: 'tokens',
+      inputUnits: 110,
+      outputUnits: 21,
+      outcome: 'rejected',
+      at: '2026-11-01T00:00:00.000Z',
+    });
+    expect(Object.keys(page.calls[0]!).sort()).toEqual([
+      'at',
+      'engine',
+      'id',
+      'inputUnits',
+      'model',
+      'outcome',
+      'outputUnits',
+      'segmentId',
+      'unit',
+    ]);
+    const rest = (await calls(a, `?limit=2&before=${page.next}`)).json() as typeof page;
+    // Only alpha's rows: beta's call is another project's.
+    expect(rest.calls.map((c) => c.inputUnits)).toEqual([100]);
+    expect(rest.next).toBeNull();
+  });
+
+  it('answers an empty last page for a project nothing was drafted in', async () => {
+    const a = await login('alice');
+    await project(a, 'alpha');
+    expect((await calls(a)).json()).toEqual({ calls: [], next: null });
+  });
+
+  it('refuses a malformed cursor, size or name', async () => {
+    const a = await login('alice');
+    await project(a, 'alpha');
+    expect((await calls(a, '?before=abc')).statusCode).toBe(400);
+    expect((await calls(a, '?limit=0')).statusCode).toBe(400);
+    expect((await calls(a, '', 'Not_A_Slug')).statusCode).toBe(400);
+  });
+
+  it('is a missing project’s 404 for another tenant’s, even through a grant', async () => {
+    const a = await login('alice');
+    const c = await login('carol');
+    await project(c, 'gamma');
+    spend(tenantB, 'gamma', [t(999, 99)]);
+    const platform = openPlatformDb(config.dbPath);
+    try {
+      grantProjectAuthorization(platform, {
+        accountId: aliceId,
+        project: { tenantId: tenantB.id, name: 'gamma' },
+        scope: 'assigned_translator',
+        actor: SETUP,
+      });
+    } finally {
+      platform.close();
+    }
+    const ghost = await calls(a, '', 'ghost');
+    expect(ghost.statusCode).toBe(404);
+    const viaGrant = await calls(a, `?tenant=${tenantB.id}`, 'gamma');
+    expect(viaGrant.statusCode).toBe(404);
+    expect(viaGrant.json()).toEqual({ error: 'no project named "gamma"' });
+    expect((await calls(a, '', 'gamma')).statusCode).toBe(404);
+    // Alice's own project of the same name is theirs to read, but `?tenant=` never swaps it
+    // for B's: naming another tenant is the 404, whatever their own storage holds.
+    await project(a, 'gamma');
+    expect((await calls(a, '', 'gamma')).json()).toEqual({ calls: [], next: null });
+    expect((await calls(a, `?tenant=${tenantB.id}`, 'gamma')).statusCode).toBe(404);
+    expect((await calls(a, `?tenant=${tenantA.id}`, 'gamma')).statusCode).toBe(200);
+    // Carol, the admin it belongs to, reads it.
+    expect(
+      ((await calls(c, '', 'gamma')).json() as { calls: unknown[] }).calls,
+    ).toHaveLength(1);
+  });
+
+  it('refuses a pm with a 403, gives a vendor a 404, and needs a session', async () => {
+    const a = await login('alice');
+    await project(a, 'alpha');
+    const pm = await calls(await login('dave'));
+    expect(pm.statusCode).toBe(403);
+    expect((await calls(await login('bob'))).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/projects/alpha/ai-calls' }))
+        .statusCode,
+    ).toBe(401);
   });
 });

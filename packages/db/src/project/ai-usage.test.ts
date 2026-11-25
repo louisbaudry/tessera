@@ -19,7 +19,15 @@ import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { TEST_ACTOR } from '../audit/actor.fixture.js';
-import { readAiUsage, sumAiUsage, type AiUsageRow } from './ai-usage.js';
+import { capturePlans, scansOf } from '../query-plan.fixture.js';
+import {
+  AI_CALL_PAGE_MAX,
+  listAiCalls,
+  readAiUsage,
+  recordAiUsage,
+  sumAiUsage,
+  type AiUsageRow,
+} from './ai-usage.js';
 import { draftSuggestions } from './draft.js';
 import { insertFile } from './files.js';
 import { openProjectDb } from './index.js';
@@ -211,5 +219,86 @@ describe('sumAiUsage', () => {
 
   it('is empty for no projects', () => {
     expect(sumAiUsage([])).toEqual({ rows: [], calls: 0 });
+  });
+});
+
+describe('listAiCalls', () => {
+  function withCalls(n: number): Database.Database {
+    const db = project();
+    for (let i = 1; i <= n; i++)
+      recordAiUsage(db, {
+        segmentId: i,
+        engine: i % 2 === 0 ? 'deepl' : 'tessera',
+        model: i % 2 === 0 ? 'deepl-1' : 'm-1',
+        unit: i % 2 === 0 ? 'characters' : 'tokens',
+        inputUnits: i * 10,
+        outputUnits: i % 2 === 0 ? 0 : i,
+        outcome: i === 3 ? 'rejected' : 'stored',
+        at: `2026-11-0${Math.min(i, 9)}T00:00:00.000Z`,
+      });
+    return db;
+  }
+
+  it('is an empty last page for a project nothing was drafted in', () => {
+    const db = project();
+    expect(listAiCalls(db, { limit: 50 })).toEqual({ calls: [], next: null });
+    db.close();
+  });
+
+  it('pages newest first, and the cursor reaches every row exactly once', () => {
+    const db = withCalls(5);
+    const first = listAiCalls(db, { limit: 2 });
+    expect(first.calls.map((c) => c.segmentId)).toEqual([5, 4]);
+    expect(first.calls[1]).toMatchObject({
+      engine: 'deepl',
+      unit: 'characters',
+      inputUnits: 40,
+      outputUnits: 0,
+      outcome: 'stored',
+    });
+    const second = listAiCalls(db, { limit: 2, before: first.next! });
+    expect(second.calls.map((c) => c.segmentId)).toEqual([3, 2]);
+    expect(second.calls[0]!.outcome).toBe('rejected');
+    const last = listAiCalls(db, { limit: 2, before: second.next! });
+    expect(last.calls.map((c) => c.segmentId)).toEqual([1]);
+    expect(last.next).toBeNull();
+    db.close();
+  });
+
+  it('says there is no next page when the rows fill the page exactly', () => {
+    const db = withCalls(2);
+    expect(listAiCalls(db, { limit: 2 }).next).toBeNull();
+    db.close();
+  });
+
+  it('clamps the page size', () => {
+    const db = withCalls(3);
+    expect(listAiCalls(db, { limit: 0 }).calls).toHaveLength(1);
+    expect(AI_CALL_PAGE_MAX).toBe(200);
+    db.close();
+  });
+
+  it('holds no text: a call is units, outcome, ids and the model', () => {
+    const db = withCalls(1);
+    expect(Object.keys(listAiCalls(db, { limit: 1 }).calls[0]!).sort()).toEqual([
+      'at',
+      'engine',
+      'id',
+      'inputUnits',
+      'model',
+      'outcome',
+      'outputUnits',
+      'segmentId',
+      'unit',
+    ]);
+    db.close();
+  });
+
+  it('seeks on the primary key, never scanning the table', () => {
+    const db = withCalls(3);
+    const plans = capturePlans(db, () => listAiCalls(db, { limit: 2, before: 3 }));
+    expect(plans).toHaveLength(1);
+    expect(scansOf(plans, ['ai_usage'])).toEqual([]);
+    db.close();
   });
 });

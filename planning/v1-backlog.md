@@ -5792,6 +5792,16 @@ TypeScript, as S1a. What it taught:
   branch of the gate, and both are kept. The limit counts by token, so each hourly access token of a
   connection has its own window.
 
+**#150 (call log) · ~~The per-call log behind the spend view~~ · DONE — `db/src/project/ai-usage.ts` (`listAiCalls`, `AI_CALL_PAGE_MAX`), `server/src/ai-spend.ts` (`GET /api/projects/:name/ai-calls`), `web/src/AiSpend.tsx` (`CallLog`) and `ai-spend-view.ts` (`callOutcome`, `callTime`, `appendPage`)** (2026-11-25; issue #150 stays open for spend limits; `translation-engine-spec.md` D42)
+
+Stayed in TypeScript (asked first, Louis chose it): a keyed read of a table with no compute in it. What it taught:
+
+- **No new data, only a read.** The rows already held the segment id, so the log is `ai_usage` as it is, newest first; a test pins the keys of a call so text cannot be added to one by accident.
+- **A cursor, not an offset.** Pages are keyed on the row id (`before`), so a reply appended while an admin pages never shifts a page not yet read, and the query is a seek on the primary key; a test asserts the plan has no `SCAN ai_usage`, and turning the comparison into `id + 0` fails it.
+- **Never through a grant.** The route lives under `/api/projects/:name/` so the isolation walk probes it, but it does not use `openProject`: spend is the tenant admin's (`consent`) and a grantee with any scope reads none of it. `?tenant=` naming any tenant but the session's own is the missing project's 404; the test that proves it gives the admin a project of the same name in their own tenant, because without that the guard removed still passes.
+- Verified: the repository (paging, last page, clamping, keys, plan), the route (pages, another project's rows absent, malformed cursor, size and name a 400, another tenant's a 404 with and without a grant, a pm 403, a vendor 404, no session 401), the view's wording and the isolation walk. **Not verified:** the screen in a browser with real spend (the e2e server drafts nothing), and `pnpm test:ooxml` locally (no .NET here; CI runs it).
+- Not built: spend limits (D12's cap), a filter or export of the log.
+
 **#150 (owner half) · ~~The owner's AI spend view~~ · DONE — `core/src/draft/usage.ts` (`usageUnit`, `AI_USAGE_UNITS`, `AI_USAGE_OUTCOMES`), `db/src/project/ai-usage.ts` (`recordAiUsage`, `readAiUsage`, `sumAiUsage`) and project schema v24, its write in `db/src/project/draft.ts`, `server/src/ai-spend.ts` (`GET /api/ai-spend`), `web/src/AiSpend.tsx` and `ai-spend-view.ts` (`#/ai-spend`)** (2026-11-24; issue #150 stays open for the rest; `translation-engine-spec.md` D42)
 
 Louis chose the owner half, in TypeScript (asked first). What it taught:
@@ -5801,7 +5811,7 @@ Louis chose the owner half, in TypeScript (asked first). What it taught:
 - **`ai.requested` could not carry them.** It is logged before the send, by design, so it cannot hold what the reply has not yet reported; a second event per call would put a count in a hashed `detail`. A table of counts is the smaller change and holds no client content.
 - **A refused reply still costs.** Recording per reply, whatever became of it, and showing "8 of 10 kept" makes a wasteful prompt visible; the mutation that skips the dropped-reply row fails a test.
 - Verified: the repository (a row per reply by engine, model and unit; a refused and a dropped reply counted; DeepL in characters, apart from tokens; nothing for a call that failed; append-only by trigger; the merge of projects), the route (per-project and total sums, no spend not listed, another tenant's never shown, a pm refused, a vendor shown nothing, no session a 401), the access rule, the route round trip, the view's wording, the isolation walk and a functional test that the screen opens with its title (`e2e/screen-headings.spec.ts`). Switching off the dropped-reply row failed one test. **Not verified:** a real run's numbers against an engine's own invoice, and the screen with real spend in a browser (the e2e server drafts nothing).
-- Not built: spend limits, a per-call log view, any change to what a translator sees.
+- Not built: spend limits, a per-call log view (built next, the entry above), any change to what a translator sees.
 
 **#384 · ~~Rate limit the chat connector's public sign-in routes~~ · DONE — `server/src/rate-limit.ts`
 (`clientAddress`, `senderKey`), `server/src/connector-oauth.ts` (`OAUTH_SENDER_LIMITS`: 60 token requests

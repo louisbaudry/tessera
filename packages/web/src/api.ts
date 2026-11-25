@@ -26,7 +26,7 @@ import type {
   VendorRecord,
 } from '@cat-tool/vendor-core';
 
-import type { SpendView } from './ai-spend-view.js';
+import type { CallPage, SpendView } from './ai-spend-view.js';
 import type { AuditEventView } from './audit-view.js';
 import type {
   ExceptionProposalView,
@@ -651,6 +651,13 @@ export const api = {
   /** What the tenant's draft runs spent, per project and in total (admin only, issue #150). */
   aiSpend: (token: string, signal?: AbortSignal) =>
     call<SpendView>('/api/ai-spend', token, { signal }),
+  /** One project's AI replies, newest first, a page at a time (admin only, issue #150). */
+  aiCalls: (token: string, name: string, before: number | null, signal?: AbortSignal) =>
+    call<CallPage>(
+      `/api/projects/${encodeURIComponent(name)}/ai-calls${before === null ? '' : `?before=${before}`}`,
+      token,
+      { signal },
+    ),
   /** The tenant's staff and its staff invitations (admin only, backlog #206). */
   staff: (token: string, signal?: AbortSignal) =>
     call<{ staff: StaffMember[]; invitations: StaffInvitationView[] }>(
