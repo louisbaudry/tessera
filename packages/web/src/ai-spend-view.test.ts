@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendPage,
+  callOutcome,
+  callTime,
   engineLabel,
   outcomeSummary,
   unitsLabel,
+  type CallRow,
   type SpendRow,
 } from './ai-spend-view.js';
 
@@ -56,5 +60,38 @@ describe('outcomeSummary', () => {
     expect(outcomeSummary(row({ calls: 1, stored: 0, rejected: 1, discarded: 0 }))).toBe(
       '0 of 1 kept, 1 refused',
     );
+  });
+});
+
+const call = (id: number, over: Partial<CallRow> = {}): CallRow => ({
+  id,
+  segmentId: id,
+  engine: 'tessera',
+  model: 'm-1',
+  unit: 'tokens',
+  inputUnits: 10,
+  outputUnits: 2,
+  outcome: 'stored',
+  at: '2026-11-01T14:05:09.123Z',
+  ...over,
+});
+
+describe('the per-call log', () => {
+  it('names each outcome as the summary does', () => {
+    expect(callOutcome('stored')).toBe('Kept');
+    expect(callOutcome('rejected')).toBe('Refused');
+    expect(callOutcome('discarded')).toBe('Dropped');
+  });
+
+  it('shows a reply’s time to the minute in UTC, and an odd stamp as it is', () => {
+    expect(callTime('2026-11-01T14:05:09.123Z')).toBe('2026-11-01 14:05 UTC');
+    expect(callTime('yesterday')).toBe('yesterday');
+  });
+
+  it('appends an older page and never shows a row twice', () => {
+    const shown = [call(5), call(4)];
+    expect(
+      appendPage(shown, { calls: [call(4), call(3)], next: null }).map((c) => c.id),
+    ).toEqual([5, 4, 3]);
   });
 });

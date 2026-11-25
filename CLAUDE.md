@@ -750,7 +750,8 @@ editor strip. The benchmark (slice 5) is not. Keep true:
   origin (`MT_DRAFT_ORIGIN`) is hidden by `shownOrigin` in every screen that names an
   origin; a new one goes through it too.
 - **What drafts used is recorded per reply, in units, and shown only to an admin** (issue #150,
-  spec D42, `db/project/ai-usage.ts`, `GET /api/ai-spend`). `ai_usage` (project v24) is written
+  spec D42, `db/project/ai-usage.ts`, `GET /api/ai-spend`, and its per-call log
+  `GET /api/projects/:name/ai-calls`, which never opens through a grant). `ai_usage` (project v24) is written
   where `draftSuggestions` knows the reply (a refused or dropped one too, a failed call none),
   append-only, no text and no price; DeepL is `characters`, never added to tokens. It is admin
   only (`consent`), and what a translator sees did not change: a "translated via" column would

@@ -761,9 +761,13 @@ Reopen that only by reopening D3. The second is:
   settings' own), the tenant taken from the session, a vendor shown an empty view. It lists the
   projects that spent something and a total merged by engine, model and unit. The screen is
   `#/ai-spend`, in the admin's navigation, hidden from a pm like staff and activity.
+- **The per-call log** (2026-11-25): `GET /api/projects/:name/ai-calls`, the project's rows newest
+  first, 50 a page (at most 200), paged by a `before` cursor on the row id. Each line is the time,
+  the segment's id, the engine and model, the units and what became of the reply: the row as it
+  is, never text. The same admin rule, and never through a grant: `?tenant=` may name only the
+  session's own tenant. On `#/ai-spend`, under each project, behind "Show each reply".
 - **Not built (still issue #150):** spend limits per project or client (D12's monthly cap is
-  still waiting for real spend to be seen, which this now lets someone do), and a per-call log
-  view (the rows hold the segment id, so it is a read away). Spend from before v24 is not
+  still waiting for real spend to be seen, which this now lets someone do). Spend from before v24 is not
   recorded and cannot be: a run's tokens used to live only in its summary.
 
 Stayed in TypeScript: a sum over a few thousand rows, behind a route; nothing to profile.
