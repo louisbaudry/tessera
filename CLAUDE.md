@@ -1220,7 +1220,7 @@ or state library until a screen needs one. Three things to keep true:
 - **Logic worth testing is a `.ts` module, not a component.** The root
   vitest config runs `*.test.ts` in node; `route.ts`, `pieces.ts`,
   `gutter.ts`, `layout.ts` and the editor's `target-doc.ts`, `tags.ts`,
-  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts`, `focus-trap.ts`, `grid-entry.ts`, `screen-access.ts`, `announce.ts` and `suggestions.ts` are pure and tested there. A
+  `tag-label.ts`, `save-queue.ts`, `drafts.ts`, `tm-order.ts`, `qa-panel.ts`, `filter.ts`, `glossary-panel.ts`, `payables.ts`, `resources.ts`, `stale-scan.ts`, `vendor-record.ts`, `webhooks.ts`, `staff.ts`, `commands.ts`, `add-term.ts`, `concordance.ts`, `find-replace.ts`, `shortcuts.ts`, `shortcut-settings.ts`, `qa-mode.ts`, `focus-trap.ts`, `grid-entry.ts`, `screen-access.ts`, `announce.ts`, `suggestions.ts` and `reading-view.ts` are pure and tested there. A
   component holds rendering and nothing that needs a DOM to prove.
 - **The editor's keys are bindings, not literals** (issue #193, `web/src/shortcuts.ts`, `loadShortcuts`
   in `prefs.ts`). `Grid.tsx` resolves a key press through one listener (`resolveKey`) and

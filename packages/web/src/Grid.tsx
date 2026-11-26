@@ -84,6 +84,7 @@ import {
 import { withIssue } from './qa-panel.js';
 import { QaModeBar } from './QaModeBar.js';
 import { QaPanel } from './QaPanel.js';
+import { ReadingView } from './ReadingView.js';
 import { afterEdit, LIVE_QA, type QaModeView } from './qa-mode.js';
 import { createPageHide, createSaveQueue } from './save-queue.js';
 import { useSession } from './session-context.js';
@@ -201,6 +202,8 @@ function SegmentGrid({
     return () => window.clearTimeout(timer);
   }, [said]);
   const [qaOpen, setQaOpen] = useState(loadQaPanel);
+  // Not kept between visits: the reading view is for a look at the whole, not a working layout.
+  const [readingOpen, setReadingOpen] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(loadGlossaryPanel);
   const [resourcesOpen, setResourcesOpen] = useState(loadResourcesPanel);
   // The glossary is the owner's to manage (backlog #45): another account's project has none.
@@ -869,6 +872,12 @@ function SegmentGrid({
         keywords: 'quality',
         run: () => toggle(qaOpen, setQaOpen, saveQaPanel),
       },
+      {
+        id: 'toggle-reading',
+        title: 'Toggle reading view',
+        keywords: 'preview document context',
+        run: () => setReadingOpen((open) => !open),
+      },
       ...(foreign
         ? []
         : [
@@ -1038,6 +1047,14 @@ function SegmentGrid({
             />{' '}
             QA panel
           </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={readingOpen}
+              onChange={(e) => setReadingOpen(e.target.checked)}
+            />{' '}
+            Reading view
+          </label>
           {!foreign && (
             <label className="toggle">
               <input
@@ -1166,6 +1183,14 @@ function SegmentGrid({
             </div>
           </div>
         </div>
+        {readingOpen && (
+          <ReadingView
+            segments={segments}
+            srcLang={detail.project.srcLang}
+            tgtLang={detail.project.tgtLang}
+            onJump={jumpTo}
+          />
+        )}
         {qaOpen && (
           <QaPanel
             issues={issues}

@@ -2439,6 +2439,33 @@ that size, so the editor's own ceiling is not claimed.
   per-edit rerun also reruns each repeat), and memories and glossaries of production size
   (`pnpm bench:tm` covers memories).
 
+### 7.11 The reading view (`@cat-tool/web`; issue #172, slice 1)
+
+The grid shows a file a sentence at a time; a translator checking flow, or a reviewer reading the
+result, wants it as running text. The reading view is a panel below the grid (the toolbar's
+"Reading view", or the command palette) that shows the file paragraph by paragraph, each
+sentence in its target where it has one and in its source, greyed, where it does not.
+
+- **A reading view, not a layout** (Louis, 2026-11-26, over a third-party DOCX renderer and a
+  Rust/Wasm one). It draws what the segments carry and nothing else: document order, paragraphs
+  (`paraKey`), parts (a header, a footnote part, a slide, a sheet, each titled once a file has more
+  than one), and the inline formats a tag's kind names: bold, italic, underline, strike,
+  superscript, subscript, a link (drawn, never followed), a line break and a tab. No page, font,
+  heading style, table, image or list number, and a paragraph that holds no segment is not shown.
+  The screen says so in its first line. A wrong preview is worse than none, so nothing here
+  imitates a layout it cannot know.
+- **Built from the grid's own segments, in the browser** (`web/src/reading-view.ts`, pure and tested
+  in node; `ReadingView.tsx` renders it). No route and no server work: it shows exactly what the grid
+  holds, a draft as much as a confirmed target, and follows an edit as soon as the grid has it.
+  Hidden tags are left out as everywhere in the editor (`withoutHiddenTags`), and a text box's
+  fallback copy (`fallbackCopy`) is shown once.
+- **A sentence opens its segment.** A click, or Enter on the focused sentence, calls the QA panel's
+  jump: the grid scrolls to it and opens it, clearing a filter that hid it.
+- **Each sentence carries its language** (`lang`, the source's while it is untranslated), so a screen
+  reader and the browser's hyphenation read it right.
+- **Not built:** a side-by-side source and target mode for review (#171 would use it), any layout
+  fidelity (headings, tables, images), and a view of a whole project across files.
+
 ## 8. Risks
 
 | Risk | Mitigation |
