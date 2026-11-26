@@ -546,9 +546,36 @@ button.link {
   border-top: 1px solid var(--border);
 }
 
+.reading-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin: 0 0.75rem;
+}
+
 .reading-note {
-  margin: 0.4rem 0.75rem;
+  flex: 1;
+  margin: 0.4rem 0;
   font-size: 0.85rem;
+}
+
+/* Source beside: one row per paragraph, so a paragraph and its translation start level. */
+.reading-body.beside {
+  max-width: none;
+}
+
+.reading-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.reading-columns {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-size: 0.8rem;
+  padding: 0.25rem 0;
 }
 
 .reading-body {
@@ -584,6 +611,13 @@ button.link {
 
 .reading-seg.untranslated {
   color: var(--muted);
+}
+
+/* After the grey above, so a marked untranslated sentence takes the chip pair the theme checks
+   (theme-contrast.test.ts), never grey on the chip's background. */
+.reading-seg.paired {
+  background: var(--chip-bg);
+  color: var(--chip-text);
 }
 
 .reading-link {

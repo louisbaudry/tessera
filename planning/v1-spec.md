@@ -2468,8 +2468,15 @@ sentence in its target where it has one and in its source, greyed, where it does
   jump: the grid scrolls to it and opens it, clearing a filter that hid it.
 - **Each sentence carries its language** (`lang`, the source's while it is untranslated), so a screen
   reader and the browser's hyphenation read it right.
-- **Not built:** a side-by-side source and target mode for review (#171 would use it), any layout
-  fidelity (headings, tables, images), and a view of a whole project across files.
+- **Source beside** (slice 2, 2026-11-26): a switch in the view's first line puts the source in a
+  column to the left, each paragraph and its translation on one row so they start level. The source
+  column is the source as the segments hold it, with its own formats and spacing and nothing added.
+  Pointing at a sentence (or focusing it) marks it and its counterpart on the other side; either
+  side's sentence opens its segment. A paragraph whose targets are all empty is shown here for its
+  source, and left out of the one-column view, which would have nothing to draw. Not kept between
+  visits, like the view.
+- **Not built:** any layout fidelity (headings, tables, images), a view of a whole project across
+  files, and a review step that records a verdict per sentence (#171).
 
 ## 8. Risks
 

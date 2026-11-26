@@ -2,6 +2,7 @@ import type { FormatEntry, Segment, Token } from '@cat-tool/core';
 import { describe, expect, it } from 'vitest';
 
 import {
+  hasShownText,
   partTitle,
   readingProgress,
   readingSpans,
@@ -117,8 +118,20 @@ describe('readingView', () => {
     expect(view[0]!.title).toBe('Text');
     expect(view[0]!.paragraphs.map((p) => p.key)).toEqual(['document/s1', 'document/s2']);
     expect(view[0]!.paragraphs[0]!.segments).toEqual([
-      { id: 1, shown: 'source', before: '', spans: [{ text: 'One.', marks: [] }] },
-      { id: 2, shown: 'target', before: '', spans: [{ text: ' Zwei.', marks: [] }] },
+      {
+        id: 1,
+        shown: 'source',
+        before: '',
+        spans: [{ text: 'One.', marks: [] }],
+        sourceSpans: [{ text: 'One.', marks: [] }],
+      },
+      {
+        id: 2,
+        shown: 'target',
+        before: '',
+        spans: [{ text: ' Zwei.', marks: [] }],
+        sourceSpans: [{ text: ' Two.', marks: [] }],
+      },
     ]);
   });
 
@@ -185,6 +198,40 @@ describe('the space between sentences, as the export puts it', () => {
       seg({ ord: 2, paraKey: 's1', paraOrd: 2, targetTokens: [text('Drei.')] }),
     ]);
     expect(view[0]!.paragraphs[0]!.segments.map((s) => s.before)).toEqual(['', ' ', '']);
+  });
+});
+
+describe('the source beside the target', () => {
+  it('keeps a paragraph whose targets are all empty, for its source, out of the one-column view', () => {
+    const view = readingView([
+      seg({
+        ord: 0,
+        paraKey: 's1',
+        sourceTokens: [text('Dropped here.')],
+        targetTokens: [],
+      }),
+      seg({ ord: 1, paraKey: 's2', sourceTokens: [text('Shown.')] }),
+    ]);
+    const [cleared, shown] = view[0]!.paragraphs;
+    expect(cleared!.segments[0]!.sourceSpans).toEqual([
+      { text: 'Dropped here.', marks: [] },
+    ]);
+    expect(hasShownText(cleared!)).toBe(false);
+    expect(hasShownText(shown!)).toBe(true);
+  });
+
+  it('keeps the source’s own formats, apart from the target’s', () => {
+    const formats: FormatEntry[] = [fmt(1, 'b')];
+    const view = readingView([
+      seg({
+        formatTable: formats,
+        sourceTokens: [{ t: 'open', id: 1, fmt: 1 }, text('Bold'), { t: 'close', id: 1 }],
+        targetTokens: [text('Fett')],
+      }),
+    ]);
+    const s = view[0]!.paragraphs[0]!.segments[0]!;
+    expect(s.sourceSpans).toEqual([{ text: 'Bold', marks: ['b'] }]);
+    expect(s.spans).toEqual([{ text: 'Fett', marks: [] }]);
   });
 });
 

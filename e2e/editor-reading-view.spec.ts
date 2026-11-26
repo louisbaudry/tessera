@@ -39,3 +39,28 @@ test('the reading view shows the translation in context and jumps to a sentence'
   await translated.click();
   await expect(page.locator('.row.active')).toHaveAttribute('aria-rowindex', '2');
 });
+
+test('source beside: each paragraph on one row, a sentence marked on both sides', async ({
+  page,
+}) => {
+  await openEditor(page, 'e2e-reading-beside');
+  await page.getByLabel('Reading view').check();
+  const view = page.getByRole('region', { name: 'Reading view' });
+  await view.getByLabel('Source beside').check();
+
+  const rows = view.locator('.reading-row:not(.reading-columns)');
+  await expect(rows.first()).toBeVisible();
+  // Each row is a source paragraph in the source's language and its translation beside it.
+  const first = rows.first().locator('p');
+  await expect(first).toHaveCount(2);
+  await expect(first.nth(0)).toHaveAttribute('lang', 'en');
+  await expect(first.nth(1)).toHaveAttribute('lang', 'de');
+
+  // Pointing at a source sentence marks it and its counterpart: two marked sentences.
+  await first.nth(0).locator('.reading-seg').first().hover();
+  await expect(view.locator('.reading-seg.paired')).toHaveCount(2);
+
+  // Selecting a source sentence opens its segment.
+  await first.nth(0).locator('.reading-seg').first().click();
+  await expect(page.locator('.row.active')).toHaveAttribute('aria-rowindex', '2');
+});
