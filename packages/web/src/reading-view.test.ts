@@ -40,12 +40,13 @@ const text = (v: string): Token => ({ t: 'text', v });
 
 describe('readingSpans', () => {
   it('draws the marks of the tags open around the text, nested ones together', () => {
-    const formats = [fmt(0, 'b'), fmt(1, 'i')];
+    // Format ids start at 1, as the filter assigns them: a lookup by index would miss.
+    const formats = [fmt(1, 'b'), fmt(2, 'i')];
     const tokens: Token[] = [
       text('A '),
-      { t: 'open', id: 1, fmt: 0 },
+      { t: 'open', id: 1, fmt: 1 },
       text('bold '),
-      { t: 'open', id: 2, fmt: 1 },
+      { t: 'open', id: 2, fmt: 2 },
       text('both'),
       { t: 'close', id: 2 },
       { t: 'close', id: 1 },
@@ -60,14 +61,14 @@ describe('readingSpans', () => {
   });
 
   it('turns a line break and a tab into their characters and reads other tags through', () => {
-    const formats = [fmt(0, 'br'), fmt(1, 'tab'), fmt(2, 'image'), fmt(3, 'style')];
+    const formats = [fmt(1, 'br'), fmt(2, 'tab'), fmt(3, 'image'), fmt(4, 'style')];
     const tokens: Token[] = [
       text('one'),
-      { t: 'ph', id: 1, fmt: 0 },
+      { t: 'ph', id: 1, fmt: 1 },
       text('two'),
-      { t: 'ph', id: 2, fmt: 1 },
-      { t: 'ph', id: 3, fmt: 2 },
-      { t: 'open', id: 4, fmt: 3 },
+      { t: 'ph', id: 2, fmt: 2 },
+      { t: 'ph', id: 3, fmt: 3 },
+      { t: 'open', id: 4, fmt: 4 },
       text('three'),
       { t: 'close', id: 4 },
     ];
@@ -116,8 +117,8 @@ describe('readingView', () => {
     expect(view[0]!.title).toBe('Text');
     expect(view[0]!.paragraphs.map((p) => p.key)).toEqual(['document/s1', 'document/s2']);
     expect(view[0]!.paragraphs[0]!.segments).toEqual([
-      { id: 1, shown: 'source', spans: [{ text: 'One.', marks: [] }] },
-      { id: 2, shown: 'target', spans: [{ text: ' Zwei.', marks: [] }] },
+      { id: 1, shown: 'source', before: '', spans: [{ text: 'One.', marks: [] }] },
+      { id: 2, shown: 'target', before: '', spans: [{ text: ' Zwei.', marks: [] }] },
     ]);
   });
 
@@ -155,6 +156,35 @@ describe('readingView', () => {
       shown: 'target',
       spans: [],
     });
+  });
+});
+
+describe('the space between sentences, as the export puts it', () => {
+  it('adds one where a translated paragraph’s sentences bring none', () => {
+    const view = readingView([
+      seg({ ord: 0, paraKey: 's1', paraOrd: 0, targetTokens: [text('Erster Satz.')] }),
+      seg({ ord: 1, paraKey: 's1', paraOrd: 1, targetTokens: [text('Zweiter Satz.')] }),
+      // A source sentence keeps the space the segmenter left on it: none is added.
+      seg({ ord: 2, paraKey: 's1', paraOrd: 2, sourceTokens: [text(' Third.')] }),
+    ]);
+    expect(view[0]!.paragraphs[0]!.segments.map((s) => s.before)).toEqual(['', ' ', '']);
+  });
+
+  it('adds none in a paragraph nothing is translated in, which the export leaves as it was', () => {
+    const view = readingView([
+      seg({ ord: 0, paraKey: 's1', paraOrd: 0, sourceTokens: [text('a.')] }),
+      seg({ ord: 1, paraKey: 's1', paraOrd: 1, sourceTokens: [text('b.')] }),
+    ]);
+    expect(view[0]!.paragraphs[0]!.segments.map((s) => s.before)).toEqual(['', '']);
+  });
+
+  it('counts an empty target as the export does: the space comes after it, once', () => {
+    const view = readingView([
+      seg({ ord: 0, paraKey: 's1', paraOrd: 0, targetTokens: [text('Eins.')] }),
+      seg({ ord: 1, paraKey: 's1', paraOrd: 1, targetTokens: [] }),
+      seg({ ord: 2, paraKey: 's1', paraOrd: 2, targetTokens: [text('Drei.')] }),
+    ]);
+    expect(view[0]!.paragraphs[0]!.segments.map((s) => s.before)).toEqual(['', ' ', '']);
   });
 });
 

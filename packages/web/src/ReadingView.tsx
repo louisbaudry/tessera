@@ -7,7 +7,7 @@
  * What it draws and what it leaves out is `reading-view.ts`'s; this holds the rendering only.
  */
 import type { Segment } from '@cat-tool/core';
-import { useMemo, type ReactNode } from 'react';
+import { Fragment, useMemo, type ReactNode } from 'react';
 
 import {
   readingProgress,
@@ -68,26 +68,32 @@ export function ReadingView({
             {section.paragraphs.map((p) => (
               <p key={p.key}>
                 {p.segments.map((s) =>
-                  s.spans.length === 0 ? null : (
-                    <span
-                      key={s.id}
-                      role="button"
-                      tabIndex={0}
-                      className={
-                        s.shown === 'source' ? 'reading-seg untranslated' : 'reading-seg'
-                      }
-                      lang={s.shown === 'source' ? srcLang : tgtLang}
-                      onClick={() => onJump(s.id)}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter' && e.key !== ' ') return;
-                        e.preventDefault();
-                        onJump(s.id);
-                      }}
-                    >
-                      {s.spans.map((span, i) => (
-                        <Span key={i} span={span} />
-                      ))}
-                    </span>
+                  s.spans.length === 0 ? (
+                    s.before
+                  ) : (
+                    <Fragment key={s.id}>
+                      {s.before}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className={
+                          s.shown === 'source'
+                            ? 'reading-seg untranslated'
+                            : 'reading-seg'
+                        }
+                        lang={s.shown === 'source' ? srcLang : tgtLang}
+                        onClick={() => onJump(s.id)}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return;
+                          e.preventDefault();
+                          onJump(s.id);
+                        }}
+                      >
+                        {s.spans.map((span, i) => (
+                          <Span key={i} span={span} />
+                        ))}
+                      </span>
+                    </Fragment>
                   ),
                 )}
               </p>

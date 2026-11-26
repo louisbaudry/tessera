@@ -5802,6 +5802,12 @@ taught:
 - **The segments already hold enough for running text.** A segment keeps its own leading and trailing
   spaces, so a paragraph is its segments joined in order with nothing added; read on
   `prose-long.docx` before writing the join.
+- **Two bugs the review caught before merge, both from test data shaped unlike real data.** A format
+  was looked up by its index in the segment's table, but the filter numbers formats from 1, so bold
+  showed as plain and a line break could vanish; the tests had numbered from 0 and passed. And typed
+  targets carry no inter-sentence space, which the export adds (`foldSegments`), so a translated
+  paragraph ran its sentences together. The tests now use 1-based ids and the export's spacing
+  rule, and failed before each fix.
 - **No server work at all.** The view is a pure function of the grid's segments, so it shows what the
   grid shows and follows an edit with no reload; the e2e test confirms a sentence and sees it change
   in the view.

@@ -17,7 +17,7 @@
  * (`fallbackCopy`, backlog #34) is the same text a second time and is shown once.
  */
 import type { DocPart, FormatEntry, Segment, TagKind, Token } from '@cat-tool/core';
-import { withoutHiddenTags } from '@cat-tool/core/model';
+import { plainText, withoutHiddenTags } from '@cat-tool/core/model';
 
 /** The inline formats the view draws. Every other kind of tag is read through. */
 export const READING_MARKS = ['b', 'i', 'u', 'strike', 'sup', 'sub', 'link'] as const;
@@ -34,6 +34,12 @@ export interface ReadingSegment {
   readonly id: number;
   /** Which side is shown: the target when the segment has one, else the source. */
   readonly shown: 'target' | 'source';
+  /**
+   * What goes between this sentence and the text before it in its paragraph: a space where the
+   * export puts one (`foldSegments`), else nothing. Drawn outside the sentence, so selecting a
+   * sentence never selects it.
+   */
+  readonly before: '' | ' ';
   readonly spans: readonly ReadingSpan[];
 }
 
@@ -95,7 +101,9 @@ export function readingSpans(
   tokens: readonly Token[],
   formats: readonly FormatEntry[],
 ): ReadingSpan[] {
-  const kindOf = (fmt: number): TagKind | null => formats[fmt]?.kind ?? null;
+  // By id, never by index: the filter numbers a segment's formats from 1 (`tokenizeRegion`).
+  const byId = new Map(formats.map((f) => [f.id, f]));
+  const kindOf = (fmt: number): TagKind | null => byId.get(fmt)?.kind ?? null;
   const open = new Map<number, ReadingMark | null>();
   const spans: ReadingSpan[] = [];
   const push = (text: string) => {
@@ -128,7 +136,7 @@ export function readingSpans(
  * no spans, so a paragraph that is only that is dropped and an empty sentence inside one is not.
  */
 export function readingView(segments: readonly Segment[]): ReadingSection[] {
-  const sections = new Map<DocPart, Map<string, ReadingSegment[]>>();
+  const sections = new Map<DocPart, Map<string, Segment[]>>();
   const ordered = [...segments]
     .filter((s) => !s.fallbackCopy)
     .sort((a, b) => a.ord - b.ord || a.paraOrd - b.paraOrd);
@@ -137,20 +145,43 @@ export function readingView(segments: readonly Segment[]): ReadingSection[] {
     if (!paragraphs) sections.set(s.part, (paragraphs = new Map()));
     let list = paragraphs.get(s.paraKey);
     if (!list) paragraphs.set(s.paraKey, (list = []));
-    const shown = s.targetTokens === null ? 'source' : 'target';
-    list.push({
-      id: s.id,
-      shown,
-      spans: readingSpans(s.targetTokens ?? s.sourceTokens, s.formatTable),
-    });
+    list.push(s);
   }
   return [...sections].map(([part, paragraphs]) => ({
     part,
     title: partTitle(part),
     paragraphs: [...paragraphs]
-      .map(([paraKey, list]) => ({ key: `${part}/${paraKey}`, segments: list }))
+      .map(([paraKey, list]) => ({
+        key: `${part}/${paraKey}`,
+        segments: paragraph(list),
+      }))
       .filter((p) => p.segments.some((s) => s.spans.length > 0)),
   }));
+}
+
+/**
+ * A paragraph's segments as the view shows them, with the space the export would put between
+ * them. The rule is `mergeSegments`' (`core/segment/edit.ts`, run by `foldSegments` with a `' '`
+ * separator), which the browser cannot import: a space only where the text so far does not end in
+ * whitespace and the next does not start with it, judged on the text alone. It applies only to a
+ * paragraph with a target in it, because the export splices an untranslated one from the original.
+ */
+function paragraph(list: readonly Segment[]): ReadingSegment[] {
+  const translated = list.some((s) => s.targetTokens !== null);
+  let soFar = '';
+  return list.map((s, i) => {
+    const tokens = s.targetTokens ?? s.sourceTokens;
+    const own = plainText(tokens);
+    const before =
+      translated && i > 0 && !/\s$/.test(soFar) && !/^\s/.test(own) ? ' ' : '';
+    soFar += before + own;
+    return {
+      id: s.id,
+      shown: s.targetTokens === null ? 'source' : 'target',
+      before,
+      spans: readingSpans(tokens, s.formatTable),
+    };
+  });
 }
 
 /** How much of the view is still the source: counts for the screen's one-line summary. */

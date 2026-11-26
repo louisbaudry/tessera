@@ -2459,6 +2459,11 @@ sentence in its target where it has one and in its source, greyed, where it does
   holds, a draft as much as a confirmed target, and follows an edit as soon as the grid has it.
   Hidden tags are left out as everywhere in the editor (`withoutHiddenTags`), and a text box's
   fallback copy (`fallbackCopy`) is shown once.
+- **Sentences are joined as the export joins them.** In a paragraph with a target in it, a space goes
+  between two sentences where neither brings whitespace (`mergeSegments`' rule, which `foldSegments`
+  runs with a `' '` separator; the browser cannot import `core/segment`, so the rule is restated in
+  `reading-view.ts` and tested there). A paragraph with no target is the original's text, as the
+  export splices it, with nothing added.
 - **A sentence opens its segment.** A click, or Enter on the focused sentence, calls the QA panel's
   jump: the grid scrolls to it and opens it, clearing a filter that hid it.
 - **Each sentence carries its language** (`lang`, the source's while it is untranslated), so a screen
