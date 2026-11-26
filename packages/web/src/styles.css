@@ -538,6 +538,58 @@ button.link {
 
 /* Docked under the grid at a fixed height: opening it shortens the
    grid's window, and no column or row moves (v1-spec.md §7). */
+.reading-view {
+  flex: 0 0 18rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+.reading-note {
+  margin: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.reading-body {
+  overflow: auto;
+  padding: 0 0.75rem 0.75rem;
+  max-width: 48rem;
+  line-height: 1.6;
+}
+
+/* A part's name, when the file has more than one (a footnote, a slide). */
+.reading-part h2 {
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.reading-body p {
+  margin: 0 0 0.6rem;
+  white-space: pre-wrap;
+}
+
+.reading-seg {
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.reading-seg:hover {
+  background: var(--row-alt);
+}
+
+.reading-seg:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.reading-seg.untranslated {
+  color: var(--muted);
+}
+
+.reading-link {
+  text-decoration: underline;
+}
+
 .qa-panel {
   flex: 0 0 14rem;
   display: flex;

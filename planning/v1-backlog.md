@@ -5792,6 +5792,37 @@ TypeScript, as S1a. What it taught:
   branch of the gate, and both are kept. The limit counts by token, so each hourly access token of a
   connection has its own window.
 
+**#172 (slice 1) · ~~The editor's reading view~~ · DONE — `web/src/reading-view.ts` (`readingView`, `readingSpans`, `readingProgress`, `readingSummary`, `partTitle`), `web/src/ReadingView.tsx`, the toggle and palette entry in `web/src/Grid.tsx`, `e2e/editor-reading-view.spec.ts`** (2026-11-26; issue #172 stays open for the side-by-side review mode and any layout; `v1-spec.md` §7.11)
+
+Louis chose a TypeScript reading view (asked first) over a third-party DOCX renderer in the browser
+and a Rust/Wasm layout engine: a renderer would be a new dependency through the license register,
+DOCX only, with unproven fidelity, and nothing measured says the language is the problem. What it
+taught:
+
+- **The segments already hold enough for running text.** A segment keeps its own leading and trailing
+  spaces, so a paragraph is its segments joined in order with nothing added; read on
+  `prose-long.docx` before writing the join.
+- **Two bugs the review caught before merge, both from test data shaped unlike real data.** A format
+  was looked up by its index in the segment's table, but the filter numbers formats from 1, so bold
+  showed as plain and a line break could vanish; the tests had numbered from 0 and passed. And typed
+  targets carry no inter-sentence space, which the export adds (`foldSegments`), so a translated
+  paragraph ran its sentences together. The tests now use 1-based ids and the export's spacing
+  rule, and failed before each fix.
+- **No server work at all.** The view is a pure function of the grid's segments, so it shows what the
+  grid shows and follows an edit with no reload; the e2e test confirms a sentence and sees it change
+  in the view.
+- **What it does not draw is the point.** Order, paragraphs, parts and inline formats are facts the
+  segments carry; headings, tables, images and list numbers are the skeleton's, and drawing a guess at
+  them would be a preview that lies. The screen's first line says what it is.
+- Verified: spans (nested marks, a line break and a tab, other tags read through, a hidden tag left out
+  with its text kept, a format that points nowhere, a stray close), the view (order, target over
+  source, parts in first-seen order and named, a fallback copy once, an empty paragraph dropped and an
+  empty target kept), the counts and their wording, and in a browser: the panel opens, a confirmed
+  sentence shows as the translation in the target's language, and selecting it opens its row. Looked
+  at once in a screenshot. **Not verified:** a long file's speed in the panel (it renders every
+  paragraph, with no windowing), a PPTX, XLSX or XLIFF file in a browser, and a screen reader.
+- Not built: side-by-side source and target, layout fidelity, a whole-project view.
+
 **#150 (call log) · ~~The per-call log behind the spend view~~ · DONE — `db/src/project/ai-usage.ts` (`listAiCalls`, `AI_CALL_PAGE_MAX`), `server/src/ai-spend.ts` (`GET /api/projects/:name/ai-calls`), `web/src/AiSpend.tsx` (`CallLog`) and `ai-spend-view.ts` (`callOutcome`, `callTime`, `appendPage`)** (2026-11-25; issue #150 stays open for spend limits; `translation-engine-spec.md` D42)
 
 Stayed in TypeScript (asked first, Louis chose it): a keyed read of a table with no compute in it. What it taught:
