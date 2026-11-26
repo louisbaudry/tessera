@@ -5792,7 +5792,29 @@ TypeScript, as S1a. What it taught:
   branch of the gate, and both are kept. The limit counts by token, so each hourly access token of a
   connection has its own window.
 
-**#172 (slice 1) · ~~The editor's reading view~~ · DONE — `web/src/reading-view.ts` (`readingView`, `readingSpans`, `readingProgress`, `readingSummary`, `partTitle`), `web/src/ReadingView.tsx`, the toggle and palette entry in `web/src/Grid.tsx`, `e2e/editor-reading-view.spec.ts`** (2026-11-26; issue #172 stays open for the side-by-side review mode and any layout; `v1-spec.md` §7.11)
+**#172 (slice 2) · ~~Source beside, in the reading view~~ · DONE — `web/src/reading-view.ts` (`sourceSpans`, `hasShownText`), `web/src/ReadingView.tsx` (`Sentence`, the "Source beside" switch), `e2e/editor-reading-view.spec.ts`** (2026-11-26; issue #172 closes with it; `v1-spec.md` §7.11)
+
+Louis chose this slice next (asked); the stack was settled in slice 1 (TypeScript, a reading view, not
+a layout). What it taught:
+
+- **One row per paragraph is the alignment.** Source and target paragraphs have different lengths, so
+  two independent columns drift apart within a screen; a grid row per paragraph keeps each pair level
+  without measuring anything.
+- **The source column adds nothing.** The export's inter-sentence space belongs to a translated
+  paragraph only, so the source is drawn as the segments hold it.
+- **The filter moved one level up.** A paragraph whose targets are all empty has a source to show
+  beside it and nothing for the one-column view, so the model keeps it and the one-column view skips
+  it (`hasShownText`).
+- **A marked untranslated sentence needed its colour rule ordered.** The grey of an untranslated
+  sentence and the highlight had the same weight, so the grey won and sat on the highlight's
+  background, a pair the contrast test does not check; the highlight rule now comes after it. Seen in
+  the screenshot, not by a test.
+- Verified: unit tests for the source spans (own formats, kept for an emptied paragraph) and the
+  one-column test; an e2e test (two columns per row in their languages, a pointed sentence marked on
+  both sides, a source sentence opening its row); one screenshot. **Not verified:** a long file, a
+  right-to-left language beside a left-to-right one, a screen reader.
+
+**#172 (slice 1) · ~~The editor's reading view~~ · DONE — `web/src/reading-view.ts` (`readingView`, `readingSpans`, `readingProgress`, `readingSummary`, `partTitle`), `web/src/ReadingView.tsx`, the toggle and palette entry in `web/src/Grid.tsx`, `e2e/editor-reading-view.spec.ts`** (2026-11-26; `v1-spec.md` §7.11)
 
 Louis chose a TypeScript reading view (asked first) over a third-party DOCX renderer in the browser
 and a Rust/Wasm layout engine: a renderer would be a new dependency through the license register,
@@ -5821,7 +5843,7 @@ taught:
   sentence shows as the translation in the target's language, and selecting it opens its row. Looked
   at once in a screenshot. **Not verified:** a long file's speed in the panel (it renders every
   paragraph, with no windowing), a PPTX, XLSX or XLIFF file in a browser, and a screen reader.
-- Not built: side-by-side source and target, layout fidelity, a whole-project view.
+- Not built: layout fidelity, a whole-project view (side-by-side came next, the entry above).
 
 **#150 (call log) · ~~The per-call log behind the spend view~~ · DONE — `db/src/project/ai-usage.ts` (`listAiCalls`, `AI_CALL_PAGE_MAX`), `server/src/ai-spend.ts` (`GET /api/projects/:name/ai-calls`), `web/src/AiSpend.tsx` (`CallLog`) and `ai-spend-view.ts` (`callOutcome`, `callTime`, `appendPage`)** (2026-11-25; issue #150 stays open for spend limits; `translation-engine-spec.md` D42)
 

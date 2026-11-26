@@ -41,6 +41,11 @@ export interface ReadingSegment {
    */
   readonly before: '' | ' ';
   readonly spans: readonly ReadingSpan[];
+  /**
+   * The source as the segment holds it, for the side-by-side mode: its own spacing, nothing
+   * added (the source column is the original's text, as the export splices it).
+   */
+  readonly sourceSpans: readonly ReadingSpan[];
 }
 
 /** A paragraph: its segments in order. */
@@ -155,7 +160,11 @@ export function readingView(segments: readonly Segment[]): ReadingSection[] {
         key: `${part}/${paraKey}`,
         segments: paragraph(list),
       }))
-      .filter((p) => p.segments.some((s) => s.spans.length > 0)),
+      // Kept while either side has text: a paragraph whose sentences were all given empty
+      // targets still has a source to show beside it.
+      .filter((p) =>
+        p.segments.some((s) => s.spans.length > 0 || s.sourceSpans.length > 0),
+      ),
   }));
 }
 
@@ -180,8 +189,14 @@ function paragraph(list: readonly Segment[]): ReadingSegment[] {
       shown: s.targetTokens === null ? 'source' : 'target',
       before,
       spans: readingSpans(tokens, s.formatTable),
+      sourceSpans: readingSpans(s.sourceTokens, s.formatTable),
     };
   });
+}
+
+/** Whether a paragraph has anything to show in the target column (the one-column view's test). */
+export function hasShownText(p: ReadingParagraph): boolean {
+  return p.segments.some((s) => s.spans.length > 0);
 }
 
 /** How much of the view is still the source: counts for the screen's one-line summary. */
