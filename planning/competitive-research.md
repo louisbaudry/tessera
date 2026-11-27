@@ -106,13 +106,13 @@ findings went into `chat-connector-spec.md`, and #152 stays the card.
 | ----- | ---- | ------- |
 | #148 | Document-level context and a versioned style guide for AI pre-translate | Editor |
 | #149 | Propose glossary rulings from edits to AI output (builds on `segment_exception`) | Editor |
-| #150 | Show where each draft came from, and log AI spend (metadata only) | Editor |
+| #150 | Show where each draft came from, and log AI spend (metadata only) (built: issue #150's owner half, the admin's spend view by project and its per-call log, units only; showing a translator the engine is decided against, spec D3; spend limits remain) | Editor |
 | #151 | Fix or retire a TM unit, and add a term, without leaving the editor (half built: backlog `#129`, add a term from a selection; editing or retiring a unit needs a match panel the editor does not have) | Editor |
 | #152 | An MCP/agent endpoint over the headless core | All |
 | #153 | Payables ledger (built: backlog `#112`, screens `#113`) | LSP |
 | #154 | Margin report: portal order price minus locked payable | LSP |
 | #155 | Offer timing: cascading offers, auto-repost, deadline reminders (built: backlog `#126`, reminders and an overdue notice; auto-repost decided against; cascading offers remain) | LSP |
-| #156 | Eligibility pre-filter with time off, and restricted pools per client (built: backlog `#128`, the advisory read by pair, specialty and capacity, and `#130`, a project's portal client and a client's vendor pool; time off remains) | LSP |
+| #156 | Eligibility pre-filter with time off, and restricted pools per client (built: backlog `#128`, the advisory read by pair, specialty and capacity, and `#130`, a project's portal client and a client's vendor pool; time off since built too, issue #156) | LSP |
 | #157 | Vendor scorecard from data already held, with decline reasons (built: backlog `#123`, acceptance and on-time counts on the roster; the rest is the follow-up) | LSP |
 | #158 | Vendor-confirmed payable statement, then self-billing and e-invoice | LSP |
 | #159 | Portal quote reflecting the client's TM, and a no-login price calculator | Client |
@@ -120,7 +120,7 @@ findings went into `chat-connector-spec.md`, and #152 stays the card.
 | #161 | Certified translation as an order type | Client |
 | #162 | Client self-serve export of their own TM and glossary (built: backlog `#127`, a linked memory as TMX and glossary as CSV; the base memory is never linkable by a request) | Client |
 | #163 | Update orders priced only on new or changed segments (built: backlog `#131`, a new version of a delivered order compared sentence by sentence with the admin's total pre-filled; leverage from the client's own TM is not, that is #159) | Client |
-| #172 | Document preview beside the grid, then a side-by-side review mode | Editor |
+| #172 | Document preview beside the grid, then a side-by-side review mode (built as a reading view, not a layout preview: running text with inline formats, and the source beside it, `v1-spec.md` §7.11; a review verdict per sentence is #171) | Editor |
 | #173 | Real-time presence and per-segment locks | Editor |
 | #174 | AI quality checks in the QA panel, off by default, with a precision record | Editor |
 | #175 | Command palette, assignable shortcuts and an accessibility pass (built: backlog `#115`, the palette; the rest is #193) | Editor |
